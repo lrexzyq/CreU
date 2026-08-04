@@ -225,7 +225,7 @@ function Library:CreateLabel(Properties, IsHud)
     return Library:Create(_Instance, Properties);
 end;
 
-:function Library:MakeDraggable(Instance, Cutoff, IsWindow)
+function Library:MakeDraggable(Instance, Cutoff, IsWindow)
     Instance.Active = true;
     Instance.InputBegan:Connect(function(Input)
         if Library.LockUI then return end;
