@@ -3395,871 +3395,100 @@ function Library:CreateWindow(...)
             ZIndex = 4;
             Parent = TabButton;
         });
-        Library:AddToRegistry(TabIndicator, { BackgroundColor3 = 'AccentColor' });
 
-        local Blocker = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            Size = UDim2.new(0, 0, 0, 0);
-            Visible = false;
-            Parent = TabButton;
+        Library:AddToRegistry(TabIndicator, {
+            BackgroundColor3 = 'AccentColor'
         });
-        local TabFrame = Library:Create('Frame', {
-            Name = 'TabFrame',
-            BackgroundTransparency = 1;
-            Position = UDim2.new(0, 0, 0, 0);
-            Size = UDim2.new(1, 0, 1, 0);
-            Visible = false;
-            ZIndex = 2;
-            Parent = TabContainer;
-        });
-        local LeftSide = Library:Create('ScrollingFrame', {
-            BackgroundTransparency = 1;
-            BorderSizePixel = 0;
-            Position = UDim2.new(0, 8 - 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 1, -16);
-            CanvasSize = UDim2.new(0, 0, 0, 0);
-            BottomImage = '';
-            TopImage = '';
-            ScrollBarThickness = 0;
-            ZIndex = 2;
-            Parent = TabFrame;
-        });
-        local RightSide = Library:Create('ScrollingFrame', {
-            BackgroundTransparency = 1;
-            BorderSizePixel = 0;
-            Position = UDim2.new(0.5, 4 + 1, 0, 8 - 1);
-            Size = UDim2.new(0.5, -12 + 2, 1, -16);
-            CanvasSize = UDim2.new(0, 0, 0, 0);
-            BottomImage = '';
-            TopImage = '';
-            ScrollBarThickness = 0;
-            ZIndex = 2;
-            Parent = TabFrame;
-        });
+
+        local TabFrame = Library:Create('ScrollingFrame', {
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            Size = UDim2.new(1, -16, 1, -16),
+            Position = UDim2.new(0, 8, 0, 8),
+            ZIndex = 2,
+            Visible = false,
+            Parent = TabContainer,
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = Library.AccentColor,
+        })
+        Library:AddToRegistry(TabFrame, {
+            ScrollBarImageColor3 = 'AccentColor'
+        })
+
+        local LeftSide = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.5, -4, 1, 0),
+            ZIndex = 2,
+            Parent = TabFrame
+        })
+        local RightSide = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0.5, 4, 0, 0),
+            Size = UDim2.new(0.5, -4, 1, 0),
+            ZIndex = 2,
+            Parent = TabFrame
+        })
+
         Library:Create('UIListLayout', {
-            Padding = UDim.new(0, 8);
-            FillDirection = Enum.FillDirection.Vertical;
-            SortOrder = Enum.SortOrder.LayoutOrder;
-            HorizontalAlignment = Enum.HorizontalAlignment.Center;
-            Parent = LeftSide;
-        });
+            Padding = UDim.new(0, 8),
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = LeftSide
+        })
         Library:Create('UIListLayout', {
-            Padding = UDim.new(0, 8);
-            FillDirection = Enum.FillDirection.Vertical;
-            SortOrder = Enum.SortOrder.LayoutOrder;
-            HorizontalAlignment = Enum.HorizontalAlignment.Center;
-            Parent = RightSide;
-        });
-        for _, Side in next, { LeftSide, RightSide } do
-            Side:WaitForChild('UIListLayout'):GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-                Side.CanvasSize = UDim2.fromOffset(0, Side.UIListLayout.AbsoluteContentSize.Y);
-            end);
-        end;
+            Padding = UDim.new(0, 8),
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = RightSide
+        })
 
         function Tab:ShowTab()
-            for _, Tab in next, Window.Tabs do
-                Tab:HideTab();
-            end;
+            for _, OtherTab in next, Window.Tabs do
+                OtherTab:HideTab()
+            end
+            TabIndicator.Visible = true
+            TabFrame.Visible = true
+            TabButtonLabel.TextColor3 = Library.AccentColor
+            Library.RegistryMap[TabButtonLabel].Properties.TextColor3 = 'AccentColor'
+        end
 
-            Blocker.BackgroundTransparency = 0;
-            TabButton.BackgroundColor3 = Library.MainColor;
-            Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'MainColor';
-            TabFrame.Visible = true;
-            TabIndicator.Visible = true;
-        end;
         function Tab:HideTab()
-            Blocker.BackgroundTransparency = 1;
-            TabButton.BackgroundColor3 = Library.BackgroundColor;
-            Library.RegistryMap[TabButton].Properties.BackgroundColor3 = 'BackgroundColor';
-            TabFrame.Visible = false;
-            TabIndicator.Visible = false;
-        end;
-        function Tab:SetLayoutOrder(Position)
-            TabButton.LayoutOrder = Position;
-            TabListLayout:ApplyLayout();
-        end;
-        function Tab:AddGroupbox(Info)
-            local Groupbox = {};
-            local BoxOuter = Library:Create('Frame', {
-                BackgroundColor3 = Library.BackgroundColor;
-                BorderColor3 = Library.OutlineColor;
-                BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 0, 507 + 2);
-                ZIndex = 2;
-                Parent = Info.Side == 1 and LeftSide or RightSide;
-            });
-            Library:AddToRegistry(BoxOuter, {
-                BackgroundColor3 = 'BackgroundColor';
-                BorderColor3 = 'OutlineColor';
-            });
-            local BoxInner = Library:Create('Frame', {
-                BackgroundColor3 = Library.BackgroundColor;
-                BorderColor3 = Color3.new(0, 0, 0);
-                Size = UDim2.new(1, -2, 1, -2);
-                Position = UDim2.new(0, 1, 0, 1);
-                ZIndex = 4;
-                Parent = BoxOuter;
-            });
-            Library:AddToRegistry(BoxInner, {
-                BackgroundColor3 = 'BackgroundColor';
-            });
-            local Highlight = Library:Create('Frame', {
-                BackgroundColor3 = Library.AccentColor;
-                BorderSizePixel = 0;
-                Size = UDim2.new(1, 0, 0, 2);
-                ZIndex = 5;
-                Parent = BoxInner;
-            });
-            Library:AddToRegistry(Highlight, {
-                BackgroundColor3 = 'AccentColor';
-            });
-            local GroupboxLabel = Library:CreateLabel({
-                Size = UDim2.new(1, 0, 0, 18);
-                Position = UDim2.new(0, 0, 0, 2);
-                TextSize = Library.FontSize;
-                Text = Info.Name;
-                TextXAlignment = Enum.TextXAlignment.Center;
-                ZIndex = 5;
-                Parent = BoxInner;
-            });
-            local Container = Library:Create('Frame', {
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0, 4, 0, 20);
-                Size = UDim2.new(1, -4, 1, -20);
-                ZIndex = 1;
-                Parent = BoxInner;
-            });
-            Library:Create('UIListLayout', {
-                FillDirection = Enum.FillDirection.Vertical;
-                SortOrder = Enum.SortOrder.LayoutOrder;
-                Parent = Container;
-            });
-            function Groupbox:Resize()
-                local Size = 0;
-                for _, Element in next, Groupbox.Container:GetChildren() do
-                    if (not Element:IsA('UIListLayout')) and Element.Visible then
-                        Size = Size + Element.Size.Y.Offset;
-                    end;
-                end;
-
-                BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
-            end;
-
-            Groupbox.Container = Container;
-            setmetatable(Groupbox, BaseGroupbox);
-            Groupbox:AddBlank(3);
-            Groupbox:Resize();
-
-            Tab.Groupboxes[Info.Name] = Groupbox;
-
-            return Groupbox;
-        end;
-
-        function Tab:AddLeftGroupbox(Name)
-            return Tab:AddGroupbox({ Side = 1; Name = Name; });
-        end;
-
-        function Tab:AddRightGroupbox(Name)
-            return Tab:AddGroupbox({ Side = 2; Name = Name; });
-        end;
-
-        function Tab:AddTabbox(Info)
-            local Tabbox = {
-                Tabs = {};
-            };
-
-            local BoxOuter = Library:Create('Frame', {
-                BackgroundColor3 = Library.BackgroundColor;
-                BorderColor3 = Library.OutlineColor;
-                BorderMode = Enum.BorderMode.Inset;
-                Size = UDim2.new(1, 0, 0, 0);
-                ZIndex = 2;
-                Parent = Info.Side == 1 and LeftSide or RightSide;
-            });
-            Library:AddToRegistry(BoxOuter, {
-                BackgroundColor3 = 'BackgroundColor';
-                BorderColor3 = 'OutlineColor';
-            });
-            local BoxInner = Library:Create('Frame', {
-                BackgroundColor3 = Library.BackgroundColor;
-                BorderColor3 = Color3.new(0, 0, 0);
-                Size = UDim2.new(1, -2, 1, -2);
-                Position = UDim2.new(0, 1, 0, 1);
-                ZIndex = 4;
-                Parent = BoxOuter;
-            });
-            Library:AddToRegistry(BoxInner, {
-                BackgroundColor3 = 'BackgroundColor';
-            });
-            local TabboxButtons = Library:Create('Frame', {
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0, 0, 0, 1);
-                Size = UDim2.new(1, 0, 0, 18);
-                ZIndex = 5;
-                Parent = BoxInner;
-            });
-            Library:Create('UIListLayout', {
-                FillDirection = Enum.FillDirection.Horizontal;
-                HorizontalAlignment = Enum.HorizontalAlignment.Left;
-                SortOrder = Enum.SortOrder.LayoutOrder;
-                Parent = TabboxButtons;
-            });
-            function Tabbox:AddTab(Name)
-                local Tab = {};
-                local Button = Library:Create('Frame', {
-                    BackgroundColor3 = Library.MainColor;
-                    BorderColor3 = Color3.new(0, 0, 0);
-                    Size = UDim2.new(0.5, 0, 1, 0);
-                    ZIndex = 6;
-                    Parent = TabboxButtons;
-                });
-                Library:AddToRegistry(Button, {
-                    BackgroundColor3 = 'MainColor';
-                });
-                local TabHighlight = Library:Create('Frame', {
-                    BackgroundColor3 = Library.AccentColor;
-                    BorderSizePixel = 0;
-                    Size = UDim2.new(1, 0, 0, 2);
-                    Visible = false;
-                    ZIndex = 10;
-                    Parent = Button;
-                });
-                Library:AddToRegistry(TabHighlight, {
-                    BackgroundColor3 = 'AccentColor';
-                });
-                local ButtonLabel = Library:CreateLabel({
-                    Size = UDim2.new(1, 0, 1, 0);
-                    TextSize = Library.FontSize;
-                    Text = Name;
-                    TextXAlignment = Enum.TextXAlignment.Center;
-                    ZIndex = 7;
-                    Parent = Button;
-                });
-                local Block = Library:Create('Frame', {
-                    BackgroundColor3 = Library.BackgroundColor;
-                    BorderSizePixel = 0;
-                    Position = UDim2.new(0, 0, 1, 0);
-                    Size = UDim2.new(1, 0, 0, 1);
-                    Visible = false;
-                    ZIndex = 9;
-                    Parent = Button;
-                });
-                Library:AddToRegistry(Block, {
-                    BackgroundColor3 = 'BackgroundColor';
-                });
-                local Container = Library:Create('Frame', {
-                    BackgroundTransparency = 1;
-                    Position = UDim2.new(0, 4, 0, 20);
-                    Size = UDim2.new(1, -4, 1, -20);
-                    ZIndex = 1;
-                    Visible = false;
-                    Parent = BoxInner;
-                });
-                Library:Create('UIListLayout', {
-                    FillDirection = Enum.FillDirection.Vertical;
-                    SortOrder = Enum.SortOrder.LayoutOrder;
-                    Parent = Container;
-                });
-                function Tab:Show()
-                    for _, Tab in next, Tabbox.Tabs do
-                        Tab:Hide();
-                    end;
-
-                    Container.Visible = true;
-                    Block.Visible = true;
-                    TabHighlight.Visible = true;
-
-                    Button.BackgroundColor3 = Library.BackgroundColor;
-                    Library.RegistryMap[Button].Properties.BackgroundColor3 = 'BackgroundColor';
-
-                    Tab:Resize();
-                end;
-                function Tab:Hide()
-                    Container.Visible = false;
-                    Block.Visible = false;
-                    TabHighlight.Visible = false;
-
-                    Button.BackgroundColor3 = Library.MainColor;
-                    Library.RegistryMap[Button].Properties.BackgroundColor3 = 'MainColor';
-                end;
-                function Tab:Resize()
-                    local TabCount = 0;
-                    for _, Tab in next, Tabbox.Tabs do
-                        TabCount = TabCount + 1;
-                    end;
-
-                    for _, Button in next, TabboxButtons:GetChildren() do
-                        if not Button:IsA('UIListLayout') then
-                            Button.Size = UDim2.new(1 / TabCount, 0, 1, 0);
-                        end;
-                    end;
-
-                    if (not Container.Visible) then
-                        return;
-                    end;
-
-                    local Size = 0;
-
-                    for _, Element in next, Tab.Container:GetChildren() do
-                        if (not Element:IsA('UIListLayout')) and Element.Visible then
-                            Size = Size + Element.Size.Y.Offset;
-                        end;
-                    end;
-
-                    BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
-                end;
-                Button.InputBegan:Connect(function(Input)
-                    if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
-                        Tab:Show();
-                        Tab:Resize();
-                    end;
-                end);
-
-                Tab.Container = Container;
-                Tabbox.Tabs[Name] = Tab;
-
-                setmetatable(Tab, BaseGroupbox);
-
-                Tab:AddBlank(3);
-                Tab:Resize();
-
-                if #TabboxButtons:GetChildren() == 2 then
-                    Tab:Show();
-                end;
-
-                return Tab;
-            end;
-
-            Tab.Tabboxes[Info.Name or ''] = Tabbox;
-
-            return Tabbox;
-        end;
-        function Tab:AddLeftTabbox(Name)
-            return Tab:AddTabbox({ Name = Name, Side = 1; });
-        end;
-
-        function Tab:AddRightTabbox(Name)
-            return Tab:AddTabbox({ Name = Name, Side = 2; });
-        end;
+            TabIndicator.Visible = false
+            TabFrame.Visible = false
+            TabButtonLabel.TextColor3 = Library.FontColor
+            Library.RegistryMap[TabButtonLabel].Properties.TextColor3 = 'FontColor'
+        end
 
         TabButton.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
-                Tab:ShowTab();
-            end;
-        end);
-        if #TabContainer:GetChildren() == 1 then
-            Tab:ShowTab();
-        end;
-        Window.Tabs[Name] = Tab;
-        return Tab;
-    end;
-
-    local ModalElement = Library:Create('TextButton', {
-        BackgroundTransparency = 1;
-        Size = UDim2.new(0, 0, 0, 0);
-        Visible = true;
-        Text = '';
-        Modal = false;
-        Parent = ScreenGui;
-    });
-    function Library:Toggle()
-        Library.Toggled = not Library.Toggled;
-        ModalElement.Modal = Library.Toggled;
-        Outer.Visible = Library.Toggled;
-        if Library.Toggled then
-            task.spawn(function()
-                local State = InputService.MouseIconEnabled;
-
-                local Cursor = Drawing.new('Triangle');
-                Cursor.Thickness = 1;
-                Cursor.Filled = true;
-                Cursor.Visible = true;
-
-                local CursorOutline = Drawing.new('Triangle');
-                CursorOutline.Thickness = 1;
-                CursorOutline.Filled = false;
-                CursorOutline.Color = Color3.new(0, 0, 0);
-                CursorOutline.Visible = true;
-
-                while Library.Toggled and ScreenGui.Parent do
-                    InputService.MouseIconEnabled = false;
-
-                    local mPos = InputService:GetMouseLocation();
-
-                    Cursor.Color = Library.AccentColor;
-
-                    Cursor.PointA = Vector2.new(mPos.X, mPos.Y);
-                    Cursor.PointB = Vector2.new(mPos.X + 16, mPos.Y + 6);
-                    Cursor.PointC = Vector2.new(mPos.X + 6, mPos.Y + 16);
-                    CursorOutline.PointA = Cursor.PointA;
-                    CursorOutline.PointB = Cursor.PointB;
-                    CursorOutline.PointC = Cursor.PointC;
-
-                    RenderStepped:Wait();
-                end;
-
-                InputService.MouseIconEnabled = State;
-
-                Cursor:Remove();
-                CursorOutline:Remove();
-            end);
-        end;
-        if Library.UseBlur then
-            if Library.Toggled then
-                Library.BlurEffect.Enabled = true
-                Library.BlurEffect.Size = Library.BlurSize
-            else
-                Library.BlurEffect.Size = 0
-                Library.BlurEffect.Enabled = false
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+                Tab:ShowTab()
             end
+        end)
+
+        local Count = 0
+        for _ in next, Window.Tabs do Count = Count + 1 end
+        if Count == 0 then
+            Tab:ShowTab()
         else
-            Library.BlurEffect.Size = 0
-            Library.BlurEffect.Enabled = false
+            Tab:HideTab()
         end
+        
+        Window.Tabs[Name] = Tab
+        return Tab
     end
 
-    Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
-        if type(Library.ToggleKeybind) == 'table' and Library.ToggleKeybind.Type == 'KeyPicker' then
-            if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind.Value then
-                task.spawn(Library.Toggle)
-            end
-        elseif type(Library.ToggleKeybind) == 'string' then
-            if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind then
-                task.spawn(Library.Toggle)
-            end
-        elseif Input.KeyCode == Enum.KeyCode.RightControl or (Input.KeyCode == Enum.KeyCode.RightShift and (not Processed)) then
-            task.spawn(Library.Toggle)
-        end
-    end))
-
-    if Config.AutoShow then task.spawn(Library.Toggle) end
-
-    Window.Holder = Outer;
-    return Window;
-end;
-
-local function OnPlayerChange()
-    local PlayerList = GetPlayersString();
-    for _, Value in next, Options do
-        if Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then
-            Value:SetValues(PlayerList);
-        end;
-    end;
-end;
-
-Players.PlayerAdded:Connect(OnPlayerChange);
-Players.PlayerRemoving:Connect(OnPlayerChange);
-
-if InputService.TouchEnabled then
-    local MobileGui = Instance.new("ScreenGui")
-    MobileGui.Name = "LinoriaMobileUI"
-    MobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    ProtectGui(MobileGui)
-    MobileGui.Parent = CoreGui
-
-    local BTN_W, BTN_H = 88, 30
-    local BTN_GAP      = 40  
-
-    local function CreateMobileButton(name, text, startPos)
-        local Outer = Library:Create('Frame', {
-            Name             = name .. "Outer",
-            BackgroundColor3 = Library.OutlineColor,
-            BorderSizePixel  = 0,
-            Position         = startPos,
-            Size             = UDim2.new(0, BTN_W, 0, BTN_H),
-            ZIndex           = 300,
-            Parent           = MobileGui,
-            Active           = true,
-        })
-        Library:AddToRegistry(Outer, { BackgroundColor3 = 'OutlineColor' })
-
-        local AccentFrame = Library:Create('Frame', {
-            Name             = name .. "Accent",
-            BackgroundColor3 = Library.AccentColor,
-            BorderSizePixel  = 0,
-            Position         = UDim2.new(0, 1, 0, 1),
-            Size             = UDim2.new(1, -2, 1, -2),
-            ZIndex           = 301,
-            Parent           = Outer,
-        })
-        Library:AddToRegistry(AccentFrame, { BackgroundColor3 = 'AccentColor' })
-
-        local Inner = Library:Create('Frame', {
-            Name             = name .. "Inner",
-            BackgroundColor3 = Color3.fromRGB(8, 8, 12),
-            BorderSizePixel  = 0,
-            Position         = UDim2.new(0, 1, 0, 1),
-            Size             = UDim2.new(1, -2, 1, -2),
-            ZIndex           = 302,
-            Parent           = AccentFrame,
-        })
-
-        local GradientOverlay = Library:Create('Frame', {
-            Name             = name .. "Gradient",
-            BackgroundColor3 = Color3.new(1, 1, 1), 
-            BorderSizePixel  = 0,
-            Size             = UDim2.new(1, 0, 1, 0),
-            ZIndex           = 303,
-            Parent           = Inner,
-        })
-        Library:Create('UIGradient', {
-            Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.90), 
-                NumberSequenceKeypoint.new(1, 1.0)   
-            }),
-            Rotation = 90,
-            Parent = GradientOverlay,
-        })
-
-        local Btn = Library:Create('TextButton', {
-            Name                = name .. "Btn",
-            BackgroundTransparency = 1,
-            Size                = UDim2.new(1, 0, 1, 0),
-            Font                = Enum.Font.Code,
-            Text                = text,
-            TextColor3          = Color3.fromRGB(255, 255, 255),
-            TextSize            = Library.FontSize - 1,
-            ZIndex              = 304,
-            Parent              = Inner,
-            Active              = true,
-        })
-
-        return Outer, Btn
+    function Window:Toggle()
+        Outer.Visible = not Outer.Visible
+        Library.Toggled = Outer.Visible
+        Library:UpdateBlur()
     end
 
-    local ToggleOuter, ToggleBtn = CreateMobileButton("Toggle", "Toggle UI",  UDim2.new(0, 10, 0, 10))
-    local LockOuter,   LockBtn  = CreateMobileButton("Lock",   "Unlock UI",  UDim2.new(0, 10, 0, 10 + BTN_H + (BTN_GAP - BTN_H)))
-
-    local IsUnlocked = false
-
-    local function BindMobileButtonAction(Btn, Outer, ClickAction)
-        local dragging  = false
-        local dragInput = nil
-        local dragStart = nil
-        local startPos  = nil
-        local hasMoved  = false
-
-        Btn.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                dragging  = true
-                hasMoved  = false
-                dragStart = input.Position
-                startPos  = Outer.Position
-                dragInput = input
-
-                local connection
-                connection = input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
-                        dragging = false
-                        connection:Disconnect()
-                        if not hasMoved then
-                            ClickAction()
-                        end
-                    end
-                end)
-            end
-        end)
-
-        InputService.InputChanged:Connect(function(input)
-            if input == dragInput and dragging then
-                local delta = input.Position - dragStart
-                if delta.Magnitude > 3 then
-                    hasMoved = true
-                end
-                if IsUnlocked and hasMoved then
-                    Outer.Position = UDim2.new(
-                        startPos.X.Scale, startPos.X.Offset + delta.X,
-                        startPos.Y.Scale, startPos.Y.Offset + delta.Y
-                    )
-                end
-            end
-        end)
+    if Config.AutoShow then
+        Window:Toggle()
     end
 
-    BindMobileButtonAction(ToggleBtn, ToggleOuter, function()
-        Library:Toggle()
-    end)
-
-    BindMobileButtonAction(LockBtn, LockOuter, function()
-        IsUnlocked = not IsUnlocked
-        LockBtn.Text = IsUnlocked and "Lock UI" or "Unlock UI"
-        LockBtn.TextColor3 = IsUnlocked
-            and Library.AccentColor
-            or  Color3.fromRGB(255, 255, 255)
-    end)
-
-    local _origUpdate = Library.UpdateColorsUsingRegistry
-    Library.UpdateColorsUsingRegistry = function(self)
-        _origUpdate(self)
-    end
-end
-function Library:RenderCallSettings(Window)
-    local SettingsTab = Window:AddTab('UI Settings')
-    local MenuGroup = SettingsTab:AddLeftGroupbox('Menu Settings')
-    
-    MenuGroup:AddToggle('LockUI', {
-        Text = 'Lock UI Drag',
-        Default = false,
-        Tooltip = 'Locks UI dragging position',
-        Callback = function(Value)
-            Library.LockUI = Value
-        end
-    })
-
-    MenuGroup:AddToggle('KeybindMenu', {
-        Text = 'Show Keybinds',
-        Default = false,
-        Callback = function(Value)
-            if Library.KeybindFrame then
-                Library.KeybindFrame.Visible = Value
-            end
-        end
-    })
-
-    MenuGroup:AddToggle('Watermark', {
-        Text = 'Show Watermark',
-        Default = false,
-        Callback = function(Value)
-            if Library.SetWatermarkVisibility then
-                Library:SetWatermarkVisibility(Value)
-            end
-        end
-    })
-
-    MenuGroup:AddButton({
-        Text = 'Unload UI',
-        Func = function()
-            Library:Unload()
-        end,
-        DoubleClick = true,
-        Tooltip = 'Double-click to completely unload the interface'
-    })
-
-    local SettingsTab = Window:AddTab('UI Settings')
-
--- ==================== KHỞI TẠO THƯ MỤC CẤU HÌNH (CONFIG FOLDER) ====================
-local ConfigFolder = "CreU_Configs"
-
-if isfolder and not isfolder(ConfigFolder) then
-    makefolder(ConfigFolder)
+    return Window
 end
 
--- ==================== 1. CỘT TRÁI (TẬP 1): MENU & NOTIFICATIONS ====================
-local LeftTabbox1 = SettingsTab:AddLeftTabbox()
-
-local MenuTab = LeftTabbox1:AddTab('Menu')
-MenuTab:AddLabel('Menu bind'):AddKeybind('MenuKeybind', {
-    Default = 'RightControl',
-    NoUI = true,
-    Text = 'Menu bind',
-    Callback = function()
-        Library:Toggle()
-    end
-})
-
-MenuTab:AddToggle('KeybindMenuToggle', {
-    Text = 'Keybind Menu',
-    Default = true,
-    Callback = function(Value)
-        if Library.KeybindFrame then
-            Library.KeybindFrame.Visible = Value
-        end
-    end
-})
-
-MenuTab:AddSlider('MenuTransparency', {
-    Text = 'Menu Transparency',
-    Default = 0,
-    Min = 0,
-    Max = 100,
-    Rounding = 0,
-    Suffix = '%',
-    Callback = function(Value)
-        if Library.MainFrame then
-            Library.MainFrame.BackgroundTransparency = Value / 100
-        end
-    end
-})
-
-MenuTab:AddDropdown('KeybindMenuMode', {
-    Values = {'Always', 'Toggled'},
-    Default = 2,
-    Multi = false,
-    Text = 'Keybind Menu Mode'
-})
-
-MenuTab:AddButton({
-    Text = 'Unload UI',
-    Func = function()
-        Library:Unload()
-    end,
-    DoubleClick = true
-})
-
-local NotifTab = LeftTabbox1:AddTab('Notifications')
-NotifTab:AddToggle('ShowNotifications', {
-    Text = 'Enable Notifications',
-    Default = true
-})
-
--- ==================== 2. CỘT TRÁI (TẬP 2): THEMES & BACKGROUND ====================
-local LeftTabbox2 = SettingsTab:AddLeftTabbox()
-
-local ThemesTab = LeftTabbox2:AddTab('Themes')
-ThemesTab:AddLabel('Main Color'):AddColorPicker('MainColorPicker', { Default = Library.MainColor or Color3.fromRGB(30, 30, 30) })
-ThemesTab:AddLabel('Accent Color'):AddColorPicker('AccentColorPicker', { Default = Library.AccentColor or Color3.fromRGB(255, 200, 0) })
-ThemesTab:AddLabel('Background Color'):AddColorPicker('BackgroundColorPicker', { Default = Library.BackgroundColor or Color3.fromRGB(20, 20, 20) })
-ThemesTab:AddLabel('Outline Color'):AddColorPicker('OutlineColorPicker', { Default = Library.OutlineColor or Color3.fromRGB(50, 50, 50) })
-ThemesTab:AddLabel('Text Color'):AddColorPicker('TextColorPicker', { Default = Library.FontColor or Color3.fromRGB(255, 255, 255) })
-
-local BackgroundTab = LeftTabbox2:AddTab('Background')
-BackgroundTab:AddLabel('Background Settings')
-
--- ==================== 3. CỘT PHẢI: CONFIGURATION (QUẢN LÝ FILE THẬT) ====================
-local ConfigGroup = SettingsTab:AddRightGroupbox('Configuration')
-
-local ConfigInput = ConfigGroup:AddInput('ConfigNameInput', {
-    Text = 'Config name',
-    Placeholder = 'Tên config mới...'
-})
-
-local ConfigDropdown = ConfigGroup:AddDropdown('ConfigListDropdown', {
-    Values = {},
-    Default = 1,
-    Multi = false,
-    Text = 'Config list'
-})
-
--- Hàm quét lấy danh sách các file config từ thư mục
-local function GetConfigList()
-    local list = {}
-    if listfiles and isfolder(ConfigFolder) then
-        for _, file in pairs(listfiles(ConfigFolder)) do
-            if file:sub(-5) == ".json" then
-                local filename = file:gsub(ConfigFolder .. "\\", ""):gsub(ConfigFolder .. "/", "")
-                table.insert(list, filename:sub(1, -6)) -- Bỏ đuôi .json
-            end
-        end
-    end
-    return list
-end
-
--- Hàm cập nhật lại giao diện danh sách
-local function RefreshConfigs()
-    local list = GetConfigList()
-    ConfigDropdown:SetValues(list)
-    if #list > 0 then
-        ConfigDropdown:SetValue(list[1])
-    else
-        ConfigDropdown:SetValue(nil)
-    end
-end
-
--- Nút tạo Config
-ConfigGroup:AddButton({
-    Text = 'Create config',
-    Func = function()
-        local name = Options.ConfigNameInput.Value
-        if name and name:gsub("%s+", "") ~= "" then
-            local filePath = ConfigFolder .. '/' .. name .. '.json'
-            if writefile then
-                writefile(filePath, "{}")
-                if Library.Notify then Library:Notify('Đã tạo config: ' .. name, 3) end
-                RefreshConfigs()
-            end
-        end
-    end
-})
-
--- Nút Load Config
-ConfigGroup:AddButton({
-    Text = 'Load config',
-    Func = function()
-        local selected = Options.ConfigListDropdown.Value
-        if selected then
-            local filePath = ConfigFolder .. '/' .. selected .. '.json'
-            if isfile and isfile(filePath) and readfile then
-                local data = readfile(filePath)
-                if Library.Notify then Library:Notify('Đã tải config: ' .. selected, 3) end
-            end
-        end
-    end
-})
-
--- Nút Overwrite Config
-ConfigGroup:AddButton({
-    Text = 'Overwrite config',
-    Func = function()
-        local selected = Options.ConfigListDropdown.Value
-        if selected then
-            local filePath = ConfigFolder .. '/' .. selected .. '.json'
-            if writefile then
-                writefile(filePath, "{}")
-                if Library.Notify then Library:Notify('Đã ghi đè config: ' .. selected, 3) end
-            end
-        end
-    end
-})
-
--- Nút Delete Config
-ConfigGroup:AddButton({
-    Text = 'Delete config',
-    Func = function()
-        local selected = Options.ConfigListDropdown.Value
-        if selected then
-            local filePath = ConfigFolder .. '/' .. selected .. '.json'
-            if delfile and isfile and isfile(filePath) then
-                delfile(filePath)
-                if Library.Notify then Library:Notify('Đã xóa config: ' .. selected, 3) end
-                RefreshConfigs()
-            end
-        end
-    end
-})
-
--- Nút Refresh List
-ConfigGroup:AddButton({
-    Text = 'Refresh list',
-    Func = RefreshConfigs
-})
-
--- Quản lý Autoload
-local AutoloadLabel = ConfigGroup:AddLabel('Current autoload config: none')
-
-ConfigGroup:AddButton({
-    Text = 'Set autoload',
-    Func = function()
-        local selected = Options.ConfigListDropdown.Value
-        if selected and writefile then
-            writefile(ConfigFolder .. '/autoload.txt', selected)
-            AutoloadLabel:SetText('Current autoload config: ' .. selected)
-            if Library.Notify then Library:Notify('Đã đặt autoload: ' .. selected, 3) end
-        end
-    end
-})
-
-ConfigGroup:AddButton({
-    Text = 'Remove autoload',
-    Func = function()
-        if isfile and isfile(ConfigFolder .. '/autoload.txt') and delfile then
-            delfile(ConfigFolder .. '/autoload.txt')
-            AutoloadLabel:SetText('Current autoload config: none')
-            if Library.Notify then Library:Notify('Đã hủy autoload', 3) end
-        end
-    end
-})
-
--- Khởi tạo ban đầu: Quét thư mục và kiểm tra file Autoload
-RefreshConfigs()
-
-if isfile and isfile(ConfigFolder .. '/autoload.txt') and readfile then
-    local autoName = readfile(ConfigFolder .. '/autoload.txt')
-    AutoloadLabel:SetText('Current autoload config: ' .. autoName)
-end
-
-end
-
-
-getgenv().Library = Library
 return Library
