@@ -1,5 +1,5 @@
 --[[
-    Crefy / Linoria-style UI — Complete Example / Feature Showcase
+    CreU / Linoria-style UI — Complete Example / Feature Showcase
 
     Layout:
         1. Bootstrap ......... load Library + ThemeManager + SaveManager
@@ -13,7 +13,7 @@
         9. UI Settings ....... menu/theme/config controls
 
     Notes:
-        - This example targets the current Crefy Library API, not an external UI library.
+        - This example targets the current CreU Library API, not an external UI library.
         - Advanced dropdowns support long lists, search, multi-select and disabled values.
         - SaveManager uses batched config loading to avoid startup callback storms.
 ]]
@@ -21,9 +21,9 @@
 --// 1. Bootstrap \\
 
 local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
-local Library = loadstring(game:HttpGet(Repo .. "Library.lua.creu"))()
-local ThemeManager = loadstring(game:HttpGet(Repo .. "ThemeManager.lua.creu"))()
-local SaveManager = loadstring(game:HttpGet(Repo .. "SaveManager.lua.creu"))()
+local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
 
 local Players = game:GetService("Players")
 local Stats = game:GetService("Stats")
@@ -36,13 +36,13 @@ Library.ForceCheckbox = false
 Library.ShowToggleFrameInKeybinds = true
 
 local function Log(...)
-    print("[Crefy Example]", ...)
+    print("[CreU Example]", ...)
 end
 
 --// 2. Window \\
 
 local Window = Library:CreateWindow({
-    Title = "Crefy UI Showcase",
+    Title = "CreU UI Showcase",
     Size = UDim2.fromOffset(680, 650),
     Center = true,
     AutoShow = true,
