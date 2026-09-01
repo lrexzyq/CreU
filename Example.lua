@@ -1,5 +1,5 @@
 --[[
-    Uelinoria — Full Example / Feature Showcase
+    CreU — Full Example
 
     Includes:
       1. Bootstrap
