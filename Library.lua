@@ -2985,6 +2985,25 @@ do
             Library:UpdateDependencyBoxes();
         end
 
+        local function RecalculateListPosition()
+            local Camera = workspace.CurrentCamera
+            local View = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
+            local DropPos = DropdownOuter.AbsolutePosition
+            local DropSize = DropdownOuter.AbsoluteSize
+            local ListSize = ListOuter.AbsoluteSize
+            local X = DropPos.X
+            local Y = DropPos.Y + DropSize.Y + 1
+            if Y + ListSize.Y > View.Y then
+                Y = math.max(4, DropPos.Y - ListSize.Y - 1)
+            end
+            if X + ListSize.X > View.X then
+                X = math.max(4, View.X - ListSize.X - 4)
+            end
+            if X < 4 then X = 4 end
+            if Y < 4 then Y = 4 end
+            ListOuter.Position = UDim2.fromOffset(X, Y)
+        end
+
         function Dropdown:OpenDropdown()
             if self.Disabled then return end
             if ListOuter.Visible then return end
@@ -3172,20 +3191,6 @@ do
             self:BuildDropdownList();
         end
 
-        -- Position the popup relative to the current dropdown and keep it inside the UI where possible.
-        local function RecalculateListPosition()
-            local X = DropdownOuter.AbsolutePosition.X;
-            local Y = DropdownOuter.AbsolutePosition.Y + DropdownOuter.AbsoluteSize.Y + 1;
-            local View = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080);
-            local Height = ListOuter.AbsoluteSize.Y;
-            if Y + Height > View.Y then
-                Y = math.max(0, DropdownOuter.AbsolutePosition.Y - Height - 1);
-            end
-            if X + ListOuter.AbsoluteSize.X > View.X then
-                X = math.max(0, View.X - ListOuter.AbsoluteSize.X - 4);
-            end
-            ListOuter.Position = UDim2.fromOffset(X, Y);
-        end
         DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition);
         DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
             RecalculateListPosition();
@@ -3840,6 +3845,7 @@ function Library:CreateWindow(...)
         Position = UDim2.new(0, 1, 0, 1);
         Size = UDim2.new(1, -2, 1, -2);
         ZIndex = 1;
+        ClipsDescendants = true;
         Parent = Outer;
     });
     Library:AddToRegistry(Inner, {
@@ -4043,6 +4049,16 @@ function Library:CreateWindow(...)
             Corner = Library:Create('UICorner', { Name='WindowCorner', Parent=Outer })
         end
         Corner.CornerRadius = UDim.new(0, Radius)
+        Outer.ClipsDescendants = true
+        local InnerCorner = Inner:FindFirstChild('WindowInnerCorner')
+        if Radius > 0 then
+            if not InnerCorner then
+                InnerCorner = Library:Create('UICorner', { Name='WindowInnerCorner', Parent=Inner })
+            end
+            InnerCorner.CornerRadius = UDim.new(0, math.max(0, Radius - 1))
+        elseif InnerCorner then
+            InnerCorner:Destroy()
+        end
         return Window
     end
 
@@ -4201,7 +4217,6 @@ function Library:CreateWindow(...)
         end;
         function Tab:SetLayoutOrder(Position)
             TabButton.LayoutOrder = Position;
-            TabListLayout:ApplyLayout();
         end;
         function Tab:AddGroupbox(Info)
             local Groupbox = {};
@@ -4499,11 +4514,37 @@ function Library:CreateWindow(...)
             local Sub={Name=tostring(Info.Name or 'SubTab'),Groupboxes={},Tabboxes={},ParentTab=Tab,SingleColumn=true}
             local Container=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,8,0,34),Size=UDim2.new(1,-16,1,-42),CanvasSize=UDim2.new(),ScrollBarThickness=3,Visible=false,ZIndex=3,Parent=TabFrame})
             if not Tab.SubTabBar then
-                Tab.SubTabBar=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,4,0,1),Size=UDim2.new(1,-8,0,29),CanvasSize=UDim2.new(),ScrollingDirection=Enum.ScrollingDirection.X,ScrollBarThickness=0,ClipsDescendants=true,ZIndex=10,Parent=TabFrame})
+                Tab.SubTabBar=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,4,0,1),Size=UDim2.new(1,-8,0,29),CanvasSize=UDim2.fromOffset(0,0),ScrollingDirection=Enum.ScrollingDirection.X,ScrollBarThickness=0,ClipsDescendants=true,ScrollingEnabled=true,Active=true,ZIndex=10,Parent=TabFrame})
+                Tab.SubTabBar:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+                    local total = 8
+                    for _,o in next,Tab.SubTabs do
+                        if o.Button then total += o.Button.AbsoluteSize.X + 4 end
+                    end
+                    Tab.SubTabBar.CanvasSize = UDim2.fromOffset(math.max(Tab.SubTabBar.AbsoluteSize.X, total), 0)
+                end)
             end
             Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Container})
             Sub.Container=Container; setmetatable(Sub,BaseGroupbox)
-            function Sub:Show() for _,o in next,Tab.SubTabs do if o.Container then o.Container.Visible=false end; if o.Button then o.Button.BackgroundColor3=Library.MainColor end end; self.Container.Visible=true; if self.Button then self.Button.BackgroundColor3=Library.BackgroundColor end; return self end
+            function Sub:Show()
+                for _,o in next,Tab.SubTabs do
+                    if o.Container then o.Container.Visible=false end
+                    if o.Button then o.Button.BackgroundColor3=Library.MainColor end
+                end
+                self.Container.Visible=true
+                if self.Button then
+                    self.Button.BackgroundColor3=Library.BackgroundColor
+                    local x=self.Button.Position.X.Offset
+                    local w=self.Button.AbsoluteSize.X
+                    local view=Tab.SubTabBar.AbsoluteSize.X
+                    local scroll=Tab.SubTabBar.CanvasPosition.X
+                    if x < scroll then
+                        Tab.SubTabBar.CanvasPosition=Vector2.new(x,0)
+                    elseif x+w > scroll+view then
+                        Tab.SubTabBar.CanvasPosition=Vector2.new(math.max(0,x+w-view),0)
+                    end
+                end
+                return self
+            end
             function Sub:Hide() self.Container.Visible=false; return self end
             function Sub:Resize() local h=0; for _,c in next,Container:GetChildren() do if c:IsA('Frame') and c.Visible then h+=c.Size.Y.Offset end end; Container.CanvasSize=UDim2.fromOffset(0,h+8) end
             local SubLeft=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,0,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
@@ -4542,7 +4583,8 @@ function Library:CreateWindow(...)
             local SubBtnTextWidth=Library:GetTextBounds(Sub.Name,Library.Font,Library.FontSize)
             local Button=Library:Create('TextButton',{BackgroundColor3=Library.MainColor,BorderColor3=Library.OutlineColor,AutoButtonColor=false,Text=Sub.Name,TextColor3=Library.FontColor,Font=Library.Font,TextSize=Library.FontSize,Size=UDim2.fromOffset(math.max(70,SubBtnTextWidth+22),24),ZIndex=11,Parent=Tab.SubTabBar})
             local x=4; for _,o in next,Tab.SubTabs do if o.Button then x+=o.Button.Size.X.Offset+4 end end; Button.Position=UDim2.fromOffset(x,2); Sub.Button=Button
-            Tab.SubTabBar.CanvasSize=UDim2.fromOffset(x+Button.Size.X.Offset+4,0)
+            local ViewWidth = math.max(0, Tab.SubTabBar.AbsoluteSize.X - 2)
+            Tab.SubTabBar.CanvasSize=UDim2.fromOffset(math.max(ViewWidth, x+Button.Size.X.Offset+4),0)
             Button.MouseButton1Click:Connect(function() Sub:Show() end)
             local WasFirst = #Tab.SubTabs == 0
             Tab.SubTabs[#Tab.SubTabs+1]=Sub; LeftSide.Visible=false; RightSide.Visible=false; if WasFirst then Sub:Show() end
@@ -4663,6 +4705,10 @@ if InputService.TouchEnabled then
     MobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
     ProtectGui(MobileGui)
     MobileGui.Parent = CoreGui
+    local MobileScale = Instance.new('UIScale')
+    MobileScale.Scale = Library.DPIScale or 1
+    MobileScale.Parent = MobileGui
+    Library._MobileScale = MobileScale
 
     local BTN_W, BTN_H = 88, 30
     local BTN_GAP      = 40  
@@ -5249,7 +5295,12 @@ function Library:SetDPIScale(Value)
     local n=math.clamp(tonumber(Value) or 100,50,200)
     Library.DPIScale=n/100
     for _, Window in next, Library._Windows or {} do
-        if Window and Window._Scale then Window._Scale.Scale=Library.DPIScale end
+        if Window and Window._Scale then
+            Window._Scale.Scale=Library.DPIScale
+        end
+    end
+    if Library._MobileScale then
+        Library._MobileScale.Scale=Library.DPIScale
     end
     return Library
 end
