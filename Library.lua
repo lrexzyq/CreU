@@ -2992,6 +2992,7 @@ do
             Library.OpenedFrames[ListOuter] = true;
             DropdownArrow.Rotation = 180;
             self:BuildDropdownList();
+            RecalculateListPosition();
             if SearchBox then SearchBox.Text = ''; SearchBox:CaptureFocus(); SearchBox:ReleaseFocus() end
         end
 
@@ -3196,10 +3197,18 @@ do
         end);
 
         DropdownOuter.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch)
-                and not Library:MouseIsOverOpenedFrame() then
-                if ListOuter.Visible then Dropdown:CloseDropdown() else Dropdown:OpenDropdown() end
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local OverOpenedFrame = false
+            local Pos = Input.Position
+            for Frame in next, Library.OpenedFrames do
+                local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize
+                if Pos.X >= AbsPos.X and Pos.X <= AbsPos.X + AbsSize.X and Pos.Y >= AbsPos.Y and Pos.Y <= AbsPos.Y + AbsSize.Y then
+                    OverOpenedFrame = true
+                    break
+                end
             end
+            if OverOpenedFrame then return end
+            if ListOuter.Visible then Dropdown:CloseDropdown() else Dropdown:OpenDropdown() end
         end);
 
         InputService.InputBegan:Connect(function(Input)
@@ -3207,7 +3216,10 @@ do
                 if not ListOuter.Visible then return end
                 local Pos = Input.Position;
                 local AbsPos, AbsSize = ListOuter.AbsolutePosition, ListOuter.AbsoluteSize;
-                if Pos.X < AbsPos.X or Pos.X > AbsPos.X + AbsSize.X or Pos.Y < AbsPos.Y or Pos.Y > AbsPos.Y + AbsSize.Y then
+                local DropPos, DropSize = DropdownOuter.AbsolutePosition, DropdownOuter.AbsoluteSize;
+                local OverDropdown = Pos.X >= DropPos.X and Pos.X <= DropPos.X + DropSize.X and Pos.Y >= DropPos.Y and Pos.Y <= DropPos.Y + DropSize.Y;
+                local OverList = Pos.X >= AbsPos.X and Pos.X <= AbsPos.X + AbsSize.X and Pos.Y >= AbsPos.Y and Pos.Y <= AbsPos.Y + AbsSize.Y;
+                if not OverDropdown and not OverList then
                     Dropdown:CloseDropdown();
                 end
             end
@@ -4100,6 +4112,7 @@ function Library:CreateWindow(...)
             Size = UDim2.new(1, 0, 1, 0);
             Visible = false;
             ZIndex = 2;
+            ClipsDescendants = true;
             Parent = TabContainer;
         });
         local LeftSide = Library:Create('ScrollingFrame', {
@@ -4485,6 +4498,9 @@ function Library:CreateWindow(...)
             Tab.SubTabs=Tab.SubTabs or {}
             local Sub={Name=tostring(Info.Name or 'SubTab'),Groupboxes={},Tabboxes={},ParentTab=Tab,SingleColumn=true}
             local Container=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,8,0,34),Size=UDim2.new(1,-16,1,-42),CanvasSize=UDim2.new(),ScrollBarThickness=3,Visible=false,ZIndex=3,Parent=TabFrame})
+            if not Tab.SubTabBar then
+                Tab.SubTabBar=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,4,0,1),Size=UDim2.new(1,-8,0,29),CanvasSize=UDim2.new(),ScrollingDirection=Enum.ScrollingDirection.X,ScrollBarThickness=0,ClipsDescendants=true,ZIndex=10,Parent=TabFrame})
+            end
             Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Container})
             Sub.Container=Container; setmetatable(Sub,BaseGroupbox)
             function Sub:Show() for _,o in next,Tab.SubTabs do if o.Container then o.Container.Visible=false end; if o.Button then o.Button.BackgroundColor3=Library.MainColor end end; self.Container.Visible=true; if self.Button then self.Button.BackgroundColor3=Library.BackgroundColor end; return self end
@@ -4523,9 +4539,10 @@ function Library:CreateWindow(...)
             end
             function Sub:AddLeftTabbox(Name) return self:AddTabbox({Name=type(Name)=='table' and Name.Name or Name,Side=1}) end
             function Sub:AddRightTabbox(Name) return self:AddTabbox({Name=type(Name)=='table' and Name.Name or Name,Side=2}) end
-            local SubBtnTextWidth=Library:GetTextBounds(Sub.Name,Library.Font,Library.FontSize) -- GetTextBounds trả về (X, Y) riêng biệt, không phải object .X/.Y
-            local Button=Library:Create('TextButton',{BackgroundColor3=Library.MainColor,BorderColor3=Library.OutlineColor,AutoButtonColor=false,Text=Sub.Name,TextColor3=Library.FontColor,Font=Library.Font,TextSize=Library.FontSize,Size=UDim2.fromOffset(math.max(70,SubBtnTextWidth+22),24),ZIndex=10,Parent=TabFrame})
-            local x=8; for _,o in next,Tab.SubTabs do if o.Button then x+=o.Button.Size.X.Offset+4 end end; Button.Position=UDim2.fromOffset(x,5); Sub.Button=Button
+            local SubBtnTextWidth=Library:GetTextBounds(Sub.Name,Library.Font,Library.FontSize)
+            local Button=Library:Create('TextButton',{BackgroundColor3=Library.MainColor,BorderColor3=Library.OutlineColor,AutoButtonColor=false,Text=Sub.Name,TextColor3=Library.FontColor,Font=Library.Font,TextSize=Library.FontSize,Size=UDim2.fromOffset(math.max(70,SubBtnTextWidth+22),24),ZIndex=11,Parent=Tab.SubTabBar})
+            local x=4; for _,o in next,Tab.SubTabs do if o.Button then x+=o.Button.Size.X.Offset+4 end end; Button.Position=UDim2.fromOffset(x,2); Sub.Button=Button
+            Tab.SubTabBar.CanvasSize=UDim2.fromOffset(x+Button.Size.X.Offset+4,0)
             Button.MouseButton1Click:Connect(function() Sub:Show() end)
             local WasFirst = #Tab.SubTabs == 0
             Tab.SubTabs[#Tab.SubTabs+1]=Sub; LeftSide.Visible=false; RightSide.Visible=false; if WasFirst then Sub:Show() end
