@@ -7,35 +7,21 @@ local RunService = game:GetService('RunService')
 local TweenService = game:GetService('TweenService');
 local Lighting = game:GetService('Lighting');
 local RenderStepped = RunService.RenderStepped;
-local LocalPlayer = Players.LocalPlayer or Players.LocalPlayer;
-if not LocalPlayer then
-    Players:GetPropertyChangedSignal('LocalPlayer'):Wait()
-    LocalPlayer = Players.LocalPlayer
-end
-local Mouse = LocalPlayer and LocalPlayer:GetMouse() or nil;
+local LocalPlayer = Players.LocalPlayer;
+local Mouse = LocalPlayer:GetMouse();
 
 local ProtectGui = protectgui or (syn and syn.protect_gui) or (function() end);
-local function SafeProtectGui(Gui)
-    pcall(ProtectGui, Gui)
-end
 
 local ScreenGui = Instance.new('ScreenGui');
-ScreenGui.Name = 'LinoriaLibrary_' .. tostring(math.random(100000, 999999));
-SafeProtectGui(ScreenGui);
+ProtectGui(ScreenGui);
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global;
-local GuiParent = CoreGui
-local parentOk = pcall(function() ScreenGui.Parent = GuiParent end)
-if not parentOk then
-    GuiParent = LocalPlayer:FindFirstChildOfClass('PlayerGui') or LocalPlayer:WaitForChild('PlayerGui')
-    ScreenGui.Parent = GuiParent
-end
+ScreenGui.Parent = CoreGui;
 
 local Toggles = {};
 local Options = {};
 
-local GlobalEnv = (type(getgenv) == 'function' and getgenv()) or _G;
-GlobalEnv.Toggles = Toggles;
-GlobalEnv.Options = Options;
+getgenv().Toggles = Toggles;
+getgenv().Options = Options;
 
 local Library = {
     Registry = {};
@@ -93,23 +79,17 @@ Library.BlurEffect.Enabled = false
 pcall(function() Library.BlurEffect.Parent = Lighting end)
 
 function Library:UpdateBlur()
-    if Library.Unloaded or not Library.BlurEffect or not Library.BlurEffect.Parent then
-        return
-    end
     if Library.UseBlur then
         if Library.Toggled then
             Library.BlurEffect.Enabled = true
             TweenService:Create(Library.BlurEffect, TweenInfo.new(0.2, Enum.EasingStyle.Linear), {Size = Library.BlurSize}):Play()
-        else
-            local tween = TweenService:Create(Library.BlurEffect, TweenInfo.new(0.2, Enum.EasingStyle.Linear), {Size = 0})
-            tween:Play()
         end
     else
         local tween = TweenService:Create(Library.BlurEffect, TweenInfo.new(0.2, Enum.EasingStyle.Linear), {Size = 0})
         tween:Play()
-
+    
         task.delay(0.2, function()
-            if not Library.Unloaded and Library.BlurEffect and not Library.UseBlur then
+            if not Library.UseBlur then
                 Library.BlurEffect.Enabled = false
             end
         end)
@@ -126,9 +106,8 @@ function Library:SetFontSize(Size)
             end
         end
     end
-    local mobileUI = Library._MobileGui or CoreGui:FindFirstChild("LinoriaMobileUI")
-        or (LocalPlayer and LocalPlayer:FindFirstChildOfClass('PlayerGui') and LocalPlayer:FindFirstChildOfClass('PlayerGui'):FindFirstChild('LinoriaMobileUI'))
-    if mobileUI and mobileUI.Parent then
+    local mobileUI = CoreGui:FindFirstChild("LinoriaMobileUI")
+    if mobileUI then
         for _, descendant in pairs(mobileUI:GetDescendants()) do
             if descendant:IsA("TextLabel") or descendant:IsA("TextBox") or descendant:IsA("TextButton") then
                 local offset = descendant:GetAttribute("FontSizeOffset")
@@ -144,7 +123,6 @@ local RainbowStep = 0
 local Hue = 0
 
 table.insert(Library.Signals, RenderStepped:Connect(function(Delta)
-    if Library.Unloaded then return end
     RainbowStep = RainbowStep + Delta
 
     if RainbowStep >= (1 / 60) then
@@ -181,27 +159,27 @@ local function GetTeamsString()
 end;
 
 function Library:SafeCallback(f, ...)
-    if type(f) ~= 'function' or Library.Unloaded then
-        return
-    end
+    if (not f) then
+        return;
+    end;
+    if not Library.NotifyOnError then
+        return f(...);
+    end;
 
-    local success, event = pcall(f, ...)
-    if not success and Library.NotifyOnError then
-        local _, i = tostring(event):find(":%d+: ")
+    local success, event = pcall(f, ...);
+    if not success then
+        local _, i = event:find(":%d+: ");
         if not i then
-            pcall(Library.Notify, Library, tostring(event))
-        else
-            pcall(Library.Notify, Library, tostring(event):sub(i + 1), 3)
-        end
-    end
-    return success, event
+            return Library:Notify(event);
+        end;
+        return Library:Notify(event:sub(i + 1), 3);
+    end;
 end;
 
 function Library:AttemptSave()
-    if Library.Unloaded then return end
-    if Library.SaveManager and type(Library.SaveManager.Save) == 'function' then
-        pcall(function() Library.SaveManager:Save() end)
-    end
+    if Library.SaveManager then
+        Library.SaveManager:Save();
+    end;
 end;
 
 function Library:Create(Class, Properties)
@@ -286,7 +264,7 @@ function Library:MakeDraggable(Instance, Cutoff, IsWindow)
             -- began the drag, or a matching MouseMovement change, drives it.
             local DragInputType = Input.UserInputType
 
-            ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+            ChangedConn = InputService.InputChanged:Connect(function(Change)
                 if not Dragging then return end
                 if Change == Input or (Change.UserInputType == Enum.UserInputType.MouseMovement and DragInputType == Enum.UserInputType.MouseButton1) then
                     local Delta = Change.Position - DragStart
@@ -327,9 +305,9 @@ function Library:MakeDraggable(Instance, Cutoff, IsWindow)
                         )
                     end
                 end
-            end))
+            end)
 
-            EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
+            EndedConn = InputService.InputEnded:Connect(function(EndInput)
                 -- Only the specific InputObject that started this drag may end it.
                 -- Previously any Touch ending anywhere on screen (e.g. a second
                 -- finger, or a tap on an unrelated button like an unload button)
@@ -347,7 +325,7 @@ function Library:MakeDraggable(Instance, Cutoff, IsWindow)
                         Wireframe = nil
                     end
                 end
-            end))
+            end)
         end
     end)
 end;
@@ -395,7 +373,7 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         Tooltip.Position = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12)
         Tooltip.Visible = true
 
-        while IsHovering and not Library.Unloaded and Tooltip.Parent do
+        while IsHovering do
             RunService.Heartbeat:Wait()
             Tooltip.Position = UDim2.fromOffset(Mouse.X + 15, Mouse.Y + 12)
         end
@@ -475,11 +453,7 @@ function Library:RefreshBatchedUI()
 end;
 
 function Library:MapValue(Value, MinA, MaxA, MinB, MaxB)
-    local Range = MaxA - MinA
-    if Range == 0 then
-        return MinB
-    end
-    return (1 - ((Value - MinA) / Range)) * MinB + ((Value - MinA) / Range) * MaxB;
+    return (1 - ((Value - MinA) / (MaxA - MinA))) * MinB + ((Value - MinA) / (MaxA - MinA)) * MaxB;
 end;
 
 function Library:GetTextBounds(Text, Font, Size, Resolution)
@@ -543,42 +517,26 @@ function Library:UpdateColorsUsingRegistry()
 end;
 
 function Library:GiveSignal(Signal)
-    if Signal then
-        table.insert(Library.Signals, Signal)
-    end
-    return Signal
+    table.insert(Library.Signals, Signal)
 end
 
 function Library:Unload()
-    if Library.Unloaded then return end
     Library.Unloaded = true
 
     for Idx = #Library.Signals, 1, -1 do
         local Connection = table.remove(Library.Signals, Idx)
-        if Connection then pcall(function() Connection:Disconnect() end) end
+        Connection:Disconnect()
     end
 
     if Library.OnUnload then
-        pcall(Library.OnUnload)
-        Library.OnUnload = nil
+        Library.OnUnload()
     end
     
     if Library.BlurEffect then
-        pcall(function() Library.BlurEffect:Destroy() end)
-        Library.BlurEffect = nil
+        Library.BlurEffect:Destroy()
     end
 
-    Library._MobileLockRefresh = nil
-    Library._WatermarkV2 = nil
-    Library._Windows = {}
-    GlobalEnv.Toggles = nil
-    GlobalEnv.Options = nil
-    GlobalEnv.Library = nil
-
-    pcall(function() ScreenGui:Destroy() end)
-    local MobileGui = Library._MobileGui or CoreGui:FindFirstChild('LinoriaMobileUI')
-    if MobileGui then pcall(function() MobileGui:Destroy() end) end
-    Library._MobileGui = nil
+    ScreenGui:Destroy()
 end
 
 function Library:OnUnload(Callback)
@@ -1053,29 +1011,27 @@ do
                     local MaxY = MinY + SatVibMap.AbsoluteSize.Y;
                     local MouseY = math.clamp(PosY, MinY, MaxY);
 
-                    local RangeX = MaxX - MinX
-                    ColorPicker.Sat = RangeX > 0 and ((MouseX - MinX) / RangeX) or 0;
-                    local RangeY = MaxY - MinY
-                    ColorPicker.Vib = RangeY > 0 and (1 - ((MouseY - MinY) / RangeY)) or 0;
+                    ColorPicker.Sat = (MouseX - MinX) / (MaxX - MinX);
+                    ColorPicker.Vib = 1 - ((MouseY - MinY) / (MaxY - MinY));
                     ColorPicker:Display();
                 end
 
                 UpdateColor(Input.Position.X, Input.Position.Y)
 
-                local ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+                local ChangedConn = InputService.InputChanged:Connect(function(Change)
                     if Change.UserInputType == Enum.UserInputType.MouseMovement or Change == Input then
                         UpdateColor(Change.Position.X, Change.Position.Y)
                     end
-                end))
+                end)
 
                 local EndedConn
-                EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
-                    if EndInput == Input then
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput == Input or EndInput.UserInputType == Enum.UserInputType.Touch then
                         ChangedConn:Disconnect()
                         EndedConn:Disconnect()
                         Library:AttemptSave()
                     end
-                end))
+                end)
             end
         end);
         HueSelectorInner.InputBegan:Connect(function(Input)
@@ -1085,27 +1041,26 @@ do
                     local MaxY = MinY + HueSelectorInner.AbsoluteSize.Y;
                     local MouseY = math.clamp(PosY, MinY, MaxY);
 
-                    local RangeY = MaxY - MinY
-                    ColorPicker.Hue = RangeY > 0 and ((MouseY - MinY) / RangeY) or 0;
+                    ColorPicker.Hue = ((MouseY - MinY) / (MaxY - MinY));
                     ColorPicker:Display();
                 end
 
                 UpdateHue(Input.Position.Y)
 
-                local ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+                local ChangedConn = InputService.InputChanged:Connect(function(Change)
                     if Change.UserInputType == Enum.UserInputType.MouseMovement or Change == Input then
                         UpdateHue(Change.Position.Y)
                     end
-                end))
+                end)
 
                 local EndedConn
-                EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
-                    if EndInput == Input then
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput == Input or EndInput.UserInputType == Enum.UserInputType.Touch then
                         ChangedConn:Disconnect()
                         EndedConn:Disconnect()
                         Library:AttemptSave()
                     end
-                end))
+                end)
             end
         end);
         DisplayFrame.InputBegan:Connect(function(Input)
@@ -1130,27 +1085,26 @@ do
                         local MaxX = MinX + TransparencyBoxInner.AbsoluteSize.X;
                         local MouseX = math.clamp(PosX, MinX, MaxX);
 
-                        local RangeX = MaxX - MinX
-                        ColorPicker.Transparency = RangeX > 0 and (1 - ((MouseX - MinX) / RangeX)) or 0;
+                        ColorPicker.Transparency = 1 - ((MouseX - MinX) / (MaxX - MinX));
                         ColorPicker:Display();
                     end
 
                     UpdateAlpha(Input.Position.X)
 
-                    local ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+                    local ChangedConn = InputService.InputChanged:Connect(function(Change)
                         if Change.UserInputType == Enum.UserInputType.MouseMovement or Change == Input then
                             UpdateAlpha(Change.Position.X)
                         end
-                    end))
+                    end)
 
                     local EndedConn
-                    EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
-                        if EndInput == Input then
+                    EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                        if EndInput == Input or EndInput.UserInputType == Enum.UserInputType.Touch then
                             ChangedConn:Disconnect()
                             EndedConn:Disconnect()
                             Library:AttemptSave()
                         end
-                    end))
+                    end)
                 end
             end);
         end;
@@ -1395,14 +1349,6 @@ do
 
             Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10 + 15, 210), 0, YSize + 23)
         end;
-        local TouchHeld = false
-        Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.Touch then TouchHeld = true end
-        end))
-        Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.Touch then TouchHeld = false end
-        end))
-
         function KeyPicker:GetState()
             if KeyPicker.Mode == 'Always' then
                 return true;
@@ -1415,7 +1361,7 @@ do
                 if Key == 'MB1' or Key == 'MB2' or Key == 'Touch' then
                     return Key == 'MB1' and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
                         or Key == 'MB2' and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                        or Key == 'Touch' and TouchHeld
+                        or Key == 'Touch' and true
                 else
                     return InputService:IsKeyDown(Enum.KeyCode[KeyPicker.Value]);
                 end;
@@ -1428,13 +1374,7 @@ do
             local Key, Mode = Data[1], Data[2];
             DisplayLabel.Text = Key;
             KeyPicker.Value = Key;
-            local Button = ModeButtons[Mode]
-            if Button then
-                Button:Select()
-            else
-                local Fallback = ModeButtons[KeyPicker.Mode] or ModeButtons.Toggle or ModeButtons.Always or ModeButtons.Hold
-                if Fallback then Fallback:Select() end
-            end
+            ModeButtons[Mode]:Select();
             KeyPicker:Update();
         end;
 
@@ -1482,7 +1422,7 @@ do
             local Text = '';
 
             task.spawn(function()
-                while (not Break) and (not Library.Unloaded) do
+                while (not Break) do
                     if Text == '...' then
                         Text = '';
                     end;
@@ -1497,7 +1437,7 @@ do
             wait(0.2);
 
             local Event;
-            Event = Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
+            Event = InputService.InputBegan:Connect(function(Input)
                 local Key;
 
                 if Input.UserInputType == Enum.UserInputType.Keyboard then
@@ -1524,7 +1464,7 @@ do
 
                 Library:AttemptSave();
                 Event:Disconnect();
-            end));
+            end);
         end;
 
         PickOuter.InputBegan:Connect(function(Input)
@@ -1544,15 +1484,15 @@ do
                 local ChangedConn;
                 local EndedConn;
 
-                ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+                ChangedConn = InputService.InputChanged:Connect(function(Change)
                     if Change == Input then
                         if (Change.Position - StartPosition).Magnitude > TouchMoveThreshold then
                             TouchMoved = true;
                         end;
                     end;
-                end));
+                end);
 
-                EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
                     if EndInput == Input then
                         TouchEnded = true;
 
@@ -1568,7 +1508,7 @@ do
                             task.spawn(BeginPicking);
                         end;
                     end;
-                end));
+                end);
 
                 task.delay(LongPressTime, function()
                     if TouchEnded or TouchMoved then
@@ -2636,20 +2576,20 @@ do
 
                 UpdateSlider(Input.Position.X)
 
-                local ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+                local ChangedConn = InputService.InputChanged:Connect(function(Change)
                     if Change.UserInputType == Enum.UserInputType.MouseMovement or Change == Input then
                         UpdateSlider(Change.Position.X)
                     end
-                end))
+                end)
 
                 local EndedConn
-                EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
-                    if EndInput == Input then
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput == Input or EndInput.UserInputType == Enum.UserInputType.Touch then
                         ChangedConn:Disconnect()
                         EndedConn:Disconnect()
                         Library:AttemptSave()
                     end
-                end))
+                end)
             end;
         end);
 
@@ -3059,7 +2999,7 @@ do
                         local ThisInput = Input;
 
                         local ChangedConn, EndedConn;
-                        ChangedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+                        ChangedConn = InputService.InputChanged:Connect(function(Change)
                             if Change ~= ThisInput and Change.UserInputType ~= Enum.UserInputType.MouseMovement then return end
                             local Delta = (Change.Position - PressStart).Magnitude;
                             if Delta > 6 then
@@ -3083,8 +3023,8 @@ do
                                     end
                                 end
                             end
-                        end));
-                        EndedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
+                        end);
+                        EndedConn = InputService.InputEnded:Connect(function(EndInput)
                             if EndInput ~= ThisInput then return end
                             if ChangedConn then ChangedConn:Disconnect(); end
                             if EndedConn then EndedConn:Disconnect(); end
@@ -3093,7 +3033,7 @@ do
                                 LastDragValue = Value;
                                 ToggleValue();
                             end
-                        end));
+                        end);
                     end);
                 end
             end
@@ -3323,15 +3263,15 @@ do
             self:BuildDropdownList();
         end
 
-        Library:GiveSignal(DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition));
-        Library:GiveSignal(DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+        DropdownOuter:GetPropertyChangedSignal('AbsolutePosition'):Connect(RecalculateListPosition);
+        DropdownOuter:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
             RecalculateListPosition();
             if ListOuter.Visible then Dropdown:BuildDropdownList() end
-        end));
-        Library:GiveSignal(Scrolling:GetPropertyChangedSignal('CanvasPosition'):Connect(function()
+        end);
+        Scrolling:GetPropertyChangedSignal('CanvasPosition'):Connect(function()
             if not ListOuter.Visible then return end
             if not Dropdown.Multi or not Dropdown.DragSelect then return end
-        end));
+        end);
 
         DropdownOuter.InputBegan:Connect(function(Input)
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -3348,9 +3288,9 @@ do
             if ListOuter.Visible then Dropdown:CloseDropdown() else Dropdown:OpenDropdown() end
         end);
 
-        Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
+        InputService.InputBegan:Connect(function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                if Library.Unloaded or not ListOuter.Parent or not ListOuter.Visible then return end
+                if not ListOuter.Visible then return end
                 local Pos = Input.Position;
                 local AbsPos, AbsSize = ListOuter.AbsolutePosition, ListOuter.AbsoluteSize;
                 local DropPos, DropSize = DropdownOuter.AbsolutePosition, DropdownOuter.AbsoluteSize;
@@ -3360,7 +3300,7 @@ do
                     Dropdown:CloseDropdown();
                 end
             end
-        end));
+        end);
 
         -- Defaults are applied before the first build so the initial UI is correct without duplicate rebuilds.
         if Info.Multi then
@@ -3723,7 +3663,6 @@ function Library:SetWatermarkVisibility(Bool)
 end;
 
 function Library:SetWatermark(Text)
-    Text = tostring(Text or '')
     local X, Y = Library:GetTextBounds(Text, Library.Font, Library.FontSize);
     Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3);
     Library:SetWatermarkVisibility(true)
@@ -3810,7 +3749,6 @@ function Library:ClearNotificationHistory()
 end
 
 function Library:Notify(Text, Time)
-    Text = tostring(Text or '')
     Library._NotificationHistory = Library._NotificationHistory or {}
     table.insert(Library._NotificationHistory, { Text = tostring(Text), Time = os.clock() })
     if #Library._NotificationHistory > 100 then table.remove(Library._NotificationHistory, 1) end
@@ -4132,7 +4070,7 @@ function Library:CreateWindow(...)
                 Cell.MouseButton1Click:Connect(function()
                     local CopyText=type(Segment)=='table' and Segment.CopyText or Text
                     local fn=setclipboard or toclipboard; if fn then pcall(fn,tostring(CopyText or Text)) end
-                end))
+                end)
             end
         end
         Window.FooterFrame=FooterFrame
@@ -4766,41 +4704,40 @@ function Library:CreateWindow(...)
         Outer.Visible = Library.Toggled;
         if Library.Toggled then
             task.spawn(function()
-                local State = Library:GiveSignal(InputService.MouseIconEnabled;
-                local DrawingApi = Drawing
-                if type(DrawingApi) ~= 'table' or type(DrawingApi.new) ~= 'function' then
-                    return
-                end
+                local State = InputService.MouseIconEnabled;
 
-                local ok1, Cursor = pcall(DrawingApi.new, 'Triangle');
-                local ok2, CursorOutline = pcall(DrawingApi.new, 'Triangle');
-                if not ok1 or not ok2 or not Cursor or not CursorOutline then
-                    if Cursor then pcall(function() Cursor:Remove() end) end
-                    if CursorOutline then pcall(function() CursorOutline:Remove() end) end
-                    return
-                end
+                local Cursor = Drawing.new('Triangle');
+                Cursor.Thickness = 1;
+                Cursor.Filled = true;
+                Cursor.Visible = true;
 
-                pcall(function()
-                    Cursor.Thickness = 1; Cursor.Filled = true; Cursor.Visible = true;
-                    CursorOutline.Thickness = 1; CursorOutline.Filled = false; CursorOutline.Color = Color3.new(0, 0, 0); CursorOutline.Visible = true;
-                end)
+                local CursorOutline = Drawing.new('Triangle');
+                CursorOutline.Thickness = 1;
+                CursorOutline.Filled = false;
+                CursorOutline.Color = Color3.new(0, 0, 0);
+                CursorOutline.Visible = true;
 
-                while Library.Toggled and not Library.Unloaded and ScreenGui.Parent do
+                while Library.Toggled and ScreenGui.Parent do
                     InputService.MouseIconEnabled = false;
+
                     local mPos = InputService:GetMouseLocation();
-                    pcall(function()
-                        Cursor.Color = Library.AccentColor;
-                        Cursor.PointA = Vector2.new(mPos.X, mPos.Y);
-                        Cursor.PointB = Vector2.new(mPos.X + 16, mPos.Y + 6);
-                        Cursor.PointC = Vector2.new(mPos.X + 6, mPos.Y + 16);
-                        CursorOutline.PointA = Cursor.PointA; CursorOutline.PointB = Cursor.PointB; CursorOutline.PointC = Cursor.PointC;
-                    end)
+
+                    Cursor.Color = Library.AccentColor;
+
+                    Cursor.PointA = Vector2.new(mPos.X, mPos.Y);
+                    Cursor.PointB = Vector2.new(mPos.X + 16, mPos.Y + 6);
+                    Cursor.PointC = Vector2.new(mPos.X + 6, mPos.Y + 16);
+                    CursorOutline.PointA = Cursor.PointA;
+                    CursorOutline.PointB = Cursor.PointB;
+                    CursorOutline.PointC = Cursor.PointC;
+
                     RenderStepped:Wait();
                 end;
 
-                pcall(function() InputService.MouseIconEnabled = State end)
-                pcall(function() Cursor.Visible = false; Cursor:Remove() end)
-                pcall(function() CursorOutline.Visible = false; CursorOutline:Remove() end)
+                InputService.MouseIconEnabled = State;
+
+                Cursor:Remove();
+                CursorOutline:Remove();
             end);
         end;
         if Library.UseBlur then
@@ -4829,7 +4766,7 @@ function Library:CreateWindow(...)
         elseif Input.KeyCode == Enum.KeyCode.RightControl or (Input.KeyCode == Enum.KeyCode.RightShift and (not Processed)) then
             task.spawn(Library.Toggle)
         end
-    end)))
+    end))
 
     if Config.AutoShow then task.spawn(Library.Toggle) end
 
@@ -4877,26 +4814,21 @@ end;
 local function OnPlayerChange()
     local PlayerList = GetPlayersString();
     for _, Value in next, Options do
-        if Value and Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then
-            pcall(Value.SetValues, Value, PlayerList);
+        if Value.Type == 'Dropdown' and Value.SpecialType == 'Player' then
+            Value:SetValues(PlayerList);
         end;
     end;
 end;
 
-Library:GiveSignal(Players.PlayerAdded:Connect(OnPlayerChange));
-Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
+Players.PlayerAdded:Connect(OnPlayerChange);
+Players.PlayerRemoving:Connect(OnPlayerChange);
 
 if InputService.TouchEnabled then
     local MobileGui = Instance.new("ScreenGui")
     MobileGui.Name = "LinoriaMobileUI"
-    Library._MobileGui = MobileGui
     MobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    SafeProtectGui(MobileGui)
-    local MobileParent = CoreGui
-    if not pcall(function() MobileGui.Parent = MobileParent end) then
-        MobileParent = LocalPlayer:FindFirstChildOfClass('PlayerGui') or LocalPlayer:WaitForChild('PlayerGui')
-        MobileGui.Parent = MobileParent
-    end
+    ProtectGui(MobileGui)
+    MobileGui.Parent = CoreGui
     local MobileScale = Instance.new('UIScale')
     MobileScale.Scale = Library.DPIScale or 1
     MobileScale.Parent = MobileGui
@@ -5020,9 +4952,9 @@ if InputService.TouchEnabled then
                     end
                 end)
             end
-        end))
+        end)
 
-        local MobileChangedConn = InputService.InputChanged:Connect(function(input)
+        InputService.InputChanged:Connect(function(input)
             if input == dragInput and dragging then
                 local delta = input.Position - dragStart
                 if delta.Magnitude > 3 then
@@ -5035,8 +4967,7 @@ if InputService.TouchEnabled then
                     )
                 end
             end
-        end))
-        Library:GiveSignal(MobileChangedConn)
+        end)
     end
 
     BindMobileButtonAction(ToggleBtn, ToggleOuter, function()
@@ -5121,7 +5052,7 @@ function BaseGroupbox:AddPriorityDropdown(Idx, Info)
     return dropdown
 end
 
-GlobalEnv.Library = Library
+getgenv().Library = Library
 
 
 -- Extended public helpers inspired by mature UI libraries, kept compatible with Linoria APIs.
@@ -5388,7 +5319,7 @@ function Library:MakeResizable(UI, DragFrame, Callback, MinSize)
         dragStart = Input.Position
         startSize = UI.Size
 
-        changedConn = Library:GiveSignal(InputService.InputChanged:Connect(function(Change)
+        changedConn = InputService.InputChanged:Connect(function(Change)
             if not dragging then return end
             -- Only react to the exact InputObject that started this resize
             -- (or a matching MouseMovement for mouse users) -- previously any
@@ -5399,16 +5330,16 @@ function Library:MakeResizable(UI, DragFrame, Callback, MinSize)
             local X = math.max(MinX, startSize.X.Offset + Delta.X)
             local Y = math.max(MinY, startSize.Y.Offset + Delta.Y)
             UI.Size = UDim2.new(startSize.X.Scale, X, startSize.Y.Scale, Y)
-        end))
+        end)
 
-        endedConn = Library:GiveSignal(InputService.InputEnded:Connect(function(EndInput)
+        endedConn = InputService.InputEnded:Connect(function(EndInput)
             -- Only the specific InputObject that started this resize may end
             -- it (same fix as MakeDraggable) -- previously any touch ending
             -- anywhere on screen would stop the resize prematurely.
             if EndInput == activeInput then
                 stop()
             end
-        end))
+        end)
     end)
 
     return UI
