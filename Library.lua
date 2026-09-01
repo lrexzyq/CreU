@@ -168,12 +168,11 @@ function Library:SafeCallback(f, ...)
 
     local success, event = pcall(f, ...);
     if not success then
-        local message = tostring(event);
-        local _, i = message:find(":%d+: ");
+        local _, i = event:find(":%d+: ");
         if not i then
-            return Library:Notify(message);
+            return Library:Notify(event);
         end;
-        return Library:Notify(message:sub(i + 1), 3);
+        return Library:Notify(event:sub(i + 1), 3);
     end;
 end;
 
@@ -400,40 +399,24 @@ function Library:OnHighlight(HighlightInstance, Instance, Properties, Properties
     end)
 end;
 
-function Library:GetInputPosition(Input)
-    if Input and Input.Position then
-        return Input.Position;
-    end;
-
-    return Vector2.new(Mouse.X, Mouse.Y);
-end;
-
-function Library:MouseIsOverOpenedFrame(Position)
-    Position = Position or Library:GetInputPosition();
-
+function Library:MouseIsOverOpenedFrame()
     for Frame, _ in next, Library.OpenedFrames do
         local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize;
-        if Position.X >= AbsPos.X and Position.X <= AbsPos.X + AbsSize.X
-            and Position.Y >= AbsPos.Y and Position.Y <= AbsPos.Y + AbsSize.Y then
+        if Mouse.X >= AbsPos.X and Mouse.X <= AbsPos.X + AbsSize.X
+            and Mouse.Y >= AbsPos.Y and Mouse.Y <= AbsPos.Y + AbsSize.Y then
 
             return true;
         end;
     end;
 end;
 
-function Library:IsMouseOverFrame(Frame, Position)
-    if not Frame then return false end;
-
-    Position = Position or Library:GetInputPosition();
-
+function Library:IsMouseOverFrame(Frame)
     local AbsPos, AbsSize = Frame.AbsolutePosition, Frame.AbsoluteSize;
-    if Position.X >= AbsPos.X and Position.X <= AbsPos.X + AbsSize.X
-        and Position.Y >= AbsPos.Y and Position.Y <= AbsPos.Y + AbsSize.Y then
+    if Mouse.X >= AbsPos.X and Mouse.X <= AbsPos.X + AbsSize.X
+        and Mouse.Y >= AbsPos.Y and Mouse.Y <= AbsPos.Y + AbsSize.Y then
 
         return true;
     end;
-
-    return false;
 end;
 
 function Library:UpdateDependencyBoxes()
@@ -512,16 +495,10 @@ end;
 function Library:UpdateColorsUsingRegistry()
     for Idx, Object in next, Library.Registry do
         for Property, ColorIdx in next, Object.Properties do
-            local Instance = Object.Instance
-            if Instance and Instance.Parent then
-                pcall(function()
-                    if type(ColorIdx) == 'string' then
-                        Instance[Property] = Library[ColorIdx];
-                    elseif type(ColorIdx) == 'function' then
-                        Instance[Property] = ColorIdx()
-                    end
-                end)
-            end
+            if type(ColorIdx) == 'string' then
+                Object.Instance[Property] = Library[ColorIdx];
+            elseif type(ColorIdx) == 'function' then
+                Object.Instance[Property] = ColorIdx()
             end
         end;
     end;
@@ -540,10 +517,8 @@ function Library:Unload()
     end
 
     if Library.OnUnload then
-        pcall(Library.OnUnload)
+        Library.OnUnload()
     end
-    Library._LockBlockers = {}
-    Library._Windows = {}
     
     if Library.BlurEffect then
         Library.BlurEffect:Destroy()
@@ -1077,14 +1052,14 @@ do
             end
         end);
         DisplayFrame.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
+            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                 if PickerFrameOuter.Visible then
                     ColorPicker:Hide()
                 else
                     ContextMenu:Hide()
                     ColorPicker:Show()
                 end;
-            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame(Input.Position) then
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
                 ContextMenu:Show()
                 ColorPicker:Hide()
             end
@@ -1124,28 +1099,26 @@ do
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
-                local Position = Library:GetInputPosition(Input);
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
                 local DFPos = DisplayFrame.AbsolutePosition;
                 local DFSize = DisplayFrame.AbsoluteSize;
 
-                if Position.X < AbsPos.X or Position.X > AbsPos.X + AbsSize.X
-                    or Position.Y < DFPos.Y or Position.Y > AbsPos.Y + AbsSize.Y then
+                if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
+                    or Mouse.Y < DFPos.Y or Mouse.Y > AbsPos.Y + AbsSize.Y then
 
-                    if not (Position.X >= DFPos.X and Position.X <= DFPos.X + DFSize.X
-                        and Position.Y >= DFPos.Y and Position.Y <= DFPos.Y + DFSize.Y) then
+                    if not (Mouse.X >= DFPos.X and Mouse.X <= DFPos.X + DFSize.X
+                        and Mouse.Y >= DFPos.Y and Mouse.Y <= DFPos.Y + DFSize.Y) then
                         ColorPicker:Hide();
                     end
                 end;
 
-                if not Library:IsMouseOverFrame(ContextMenu.Container, Position) then
+                if not Library:IsMouseOverFrame(ContextMenu.Container) then
                     ContextMenu:Hide()
                 end
             end;
 
             if Input.UserInputType == Enum.UserInputType.MouseButton2 and ContextMenu.Container.Visible then
-                local Position = Library:GetInputPosition(Input);
-                if not Library:IsMouseOverFrame(ContextMenu.Container, Position) and not Library:IsMouseOverFrame(DisplayFrame, Position) then
+                if not Library:IsMouseOverFrame(ContextMenu.Container) and not Library:IsMouseOverFrame(DisplayFrame) then
                     ContextMenu:Hide()
                 end
             end
@@ -1198,7 +1171,6 @@ do
             ChangedCallback = Info.ChangedCallback or function(New) end;
 
             SyncToggleState = Info.SyncToggleState or false;
-            _TouchHeld = false;
         };
         if KeyPicker.SyncToggleState then
             Info.Modes = { 'Toggle' }
@@ -1377,7 +1349,7 @@ do
                 if Key == 'MB1' or Key == 'MB2' or Key == 'Touch' then
                     return Key == 'MB1' and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
                         or Key == 'MB2' and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                        or Key == 'Touch' and KeyPicker._TouchHeld
+                        or Key == 'Touch' and true
                 else
                     return InputService:IsKeyDown(Enum.KeyCode[KeyPicker.Value]);
                 end;
@@ -1387,14 +1359,10 @@ do
         end;
 
         function KeyPicker:SetValue(Data)
-            if type(Data) ~= 'table' then return end
             local Key, Mode = Data[1], Data[2];
-            if Key == nil then return end
-            DisplayLabel.Text = tostring(Key);
+            DisplayLabel.Text = Key;
             KeyPicker.Value = Key;
-            if ModeButtons[Mode] then
-                ModeButtons[Mode]:Select();
-            end
+            ModeButtons[Mode]:Select();
             KeyPicker:Update();
         end;
 
@@ -1488,7 +1456,7 @@ do
         end;
 
         PickOuter.InputBegan:Connect(function(Input)
-            if Library:MouseIsOverOpenedFrame(Input.Position) then
+            if Library:MouseIsOverOpenedFrame() then
                 return;
             end;
 
@@ -1550,16 +1518,7 @@ do
             end;
         end);
 
-        Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
-            if Input.UserInputType == Enum.UserInputType.Touch and KeyPicker.Value == 'Touch' then
-                KeyPicker._TouchHeld = true
-            end
-
-            if Processed then
-                KeyPicker:Update()
-                return
-            end
-
+        Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
             if (not Picking) then
                 if KeyPicker.Mode == 'Toggle' then
                     local Key = KeyPicker.Value;
@@ -1582,10 +1541,9 @@ do
                 KeyPicker:Update();
             end;
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
-                local Position = Library:GetInputPosition(Input);
                 local AbsPos, AbsSize = ModeSelectOuter.AbsolutePosition, ModeSelectOuter.AbsoluteSize;
-                if Position.X < AbsPos.X or Position.X > AbsPos.X + AbsSize.X
-                    or Position.Y < (AbsPos.Y - 20 - 1) or Position.Y > AbsPos.Y + AbsSize.Y then
+                if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
+                    or Mouse.Y < (AbsPos.Y - 20 - 1) or Mouse.Y > AbsPos.Y + AbsSize.Y then
 
                     ModeSelectOuter.Visible = false;
                 end;
@@ -1593,9 +1551,6 @@ do
         end))
 
         Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
-            if Input.UserInputType == Enum.UserInputType.Touch and KeyPicker.Value == 'Touch' then
-                KeyPicker._TouchHeld = false
-            end
             if (not Picking) then
                 KeyPicker:Update();
             end;
@@ -2003,7 +1958,7 @@ do
             end
 
             local function ValidateClick(Input)
-                if Library:MouseIsOverOpenedFrame(Input.Position) then
+                if Library:MouseIsOverOpenedFrame() then
                     return false
                 end
 
@@ -2133,7 +2088,7 @@ do
     end
 
     function Funcs:AddInput(Idx, Info)
-        assert(Info.Text, 'AddToggle: Missing `Text` string.')
+        assert(Info.Text, 'AddInput: Missing `Text` string.')
 
         local Textbox = {
             Value = Info.Default or '';
@@ -2224,7 +2179,6 @@ do
 
         Library:ApplyTextStroke(Box);
         function Textbox:SetValue(Text)
-            Text = tostring(Text == nil and '' or Text)
             if Info.MaxLength and #Text > Info.MaxLength then
                 Text = Text:sub(1, Info.MaxLength);
             end;
@@ -2402,7 +2356,7 @@ do
             Library:UpdateDependencyBoxes();
         end;
         ToggleRegion.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
+            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                 Toggle:SetValue(not Toggle.Value)
                 Library:AttemptSave();
             end;
@@ -2587,7 +2541,7 @@ do
             Library:SafeCallback(Slider.Changed, Slider.Value);
         end;
         SliderInner.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
+            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                 
                 local function UpdateSlider(PosX)
                     local gPos = SliderInner.AbsolutePosition.X
@@ -3000,92 +2954,36 @@ do
                         Library:AttemptSave();
                     end
 
-                    local function GetButtonAtPosition(Position)
-                        for _, Candidate in next, Buttons do
-                            local CandidateButton = Candidate.Button
-                            if CandidateButton and CandidateButton.Visible and CandidateButton.Active then
-                                local Pos, Size = CandidateButton.AbsolutePosition, CandidateButton.AbsoluteSize
-                                if Position.X >= Pos.X and Position.X <= Pos.X + Size.X
-                                    and Position.Y >= Pos.Y and Position.Y <= Pos.Y + Size.Y then
-                                    return Candidate
-                                end
-                            end
-                        end
-                    end
-
-                    local function BeginDragSelection(Input)
-                        if not self.Multi or not self.DragSelect then return nil end
-                        local ChangedConn, EndedConn
-                        local StartPosition = Input.Position
-                        local Moved = false
-                        LastDragValue = Value
-                        DraggingSelection = false
-
-                        local function Cleanup()
-                            if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
-                            if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
-                            DraggingSelection = false
-                        end
-
-                        ChangedConn = InputService.InputChanged:Connect(function(Change)
-                            if Change ~= Input then return end
-                            local Position = Change.Position
-                            if (Position - StartPosition).Magnitude > 8 then
-                                Moved = true
-                                DraggingSelection = true
-                            end
-                            if not DraggingSelection then return end
-
-                            local Candidate = GetButtonAtPosition(Position)
-                            if Candidate and Candidate.Value ~= LastDragValue then
-                                LastDragValue = Candidate.Value
-                                if not self.DisabledValues[Candidate.Value] then
-                                    self.Value[Candidate.Value] = true
-                                    self:Display()
-                                    self:RefreshButtons()
-                                    self:RunChanged()
-                                    Library:AttemptSave()
-                                end
-                            end
-                        end)
-
-                        EndedConn = InputService.InputEnded:Connect(function(EndInput)
-                            if EndInput ~= Input then return end
-                            Cleanup()
-                            if not Moved then
-                                ToggleValue()
-                            end
-                            Library:AttemptSave()
-                        end)
-                        return Cleanup
-                    end
-
                     Button.InputBegan:Connect(function(Input)
                         if not Button.Active or self.Disabled then return end
                         if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                            ToggleValue()
-                            LastDragValue = Value
-                            if self.Multi and self.DragSelect then
-                                BeginDragSelection(Input)
-                            end
+                            -- Mouse: no scroll-vs-tap ambiguity, toggle immediately.
+                            ToggleValue();
+                            LastDragValue = Value;
+                            DraggingSelection = self.Multi and self.DragSelect == true;
                         elseif Input.UserInputType == Enum.UserInputType.Touch then
-                            local Cleanup = BeginDragSelection(Input)
-                            if not Cleanup then
-                                local TouchStart = Input.Position
-                                local Moved = false
-                                local ChangedConn, EndedConn
-                                ChangedConn = InputService.InputChanged:Connect(function(Change)
-                                    if Change == Input and (Change.Position - TouchStart).Magnitude > 8 then
-                                        Moved = true
-                                    end
-                                end)
-                                EndedConn = InputService.InputEnded:Connect(function(EndInput)
-                                    if EndInput ~= Input then return end
-                                    if ChangedConn then ChangedConn:Disconnect() end
-                                    if EndedConn then EndedConn:Disconnect() end
-                                    if not Moved then ToggleValue() end
-                                end)
-                            end
+                            -- Touch: a press might be the start of a scroll gesture through
+                            -- this button, not a tap. Wait to see if the finger moves before
+                            -- deciding; only toggle on release if it stayed roughly in place.
+                            local TouchStart = Input.Position;
+                            local Moved = false;
+
+                            local ChangedConn, EndedConn;
+                            ChangedConn = InputService.InputChanged:Connect(function(Change)
+                                if Change == Input and (Change.Position - TouchStart).Magnitude > 8 then
+                                    Moved = true;
+                                end
+                            end);
+                            EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                                if EndInput ~= Input then return end
+                                if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+                                if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+                                if not Moved then
+                                    ToggleValue();
+                                    LastDragValue = Value;
+                                    DraggingSelection = self.Multi and self.DragSelect == true;
+                                end
+                            end);
                         end
                     end);
                 end
@@ -3181,25 +3079,7 @@ do
 
         function Dropdown:SetValues(NewValues)
             if type(NewValues) ~= 'table' then return end
-
-            local IsDictionary = #NewValues == 0
-            if IsDictionary then
-                local DictValues = NewValues
-                local Keys = {}
-                for Key in next, DictValues do Keys[#Keys + 1] = Key end
-                table.sort(Keys, function(a, b) return tostring(a) < tostring(b) end)
-                self._DisplayValues = DictValues
-                self.Values = Keys
-                if type(Info.FormatListValue) ~= 'function' then
-                    Info.FormatListValue = function(Value)
-                        return tostring(DictValues[Value] ~= nil and DictValues[Value] or Value)
-                    end
-                end
-            else
-                self._DisplayValues = nil
-                self.Values = NewValues
-            end
-
+            self.Values = NewValues;
             if self.Multi then
                 for Value in next, self.Value do
                     if not ValueExists(Value) then self.Value[Value] = nil end
@@ -3712,7 +3592,6 @@ function Library:SetWatermarkVisibility(Bool)
 end;
 
 function Library:SetWatermark(Text)
-    Text = tostring(Text == nil and '' or Text)
     local X, Y = Library:GetTextBounds(Text, Library.Font, Library.FontSize);
     Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3);
     Library:SetWatermarkVisibility(true)
@@ -3799,9 +3678,6 @@ function Library:ClearNotificationHistory()
 end
 
 function Library:Notify(Text, Time)
-    Text = tostring(Text == nil and '' or Text)
-    Time = tonumber(Time) or 5
-    if Time < 0 then Time = 0 end
     Library._NotificationHistory = Library._NotificationHistory or {}
     table.insert(Library._NotificationHistory, { Text = tostring(Text), Time = os.clock() })
     if #Library._NotificationHistory > 100 then table.remove(Library._NotificationHistory, 1) end
@@ -3922,7 +3798,7 @@ function Library:Notify(Text, Time)
     pcall(NotifyOuter.TweenSize, NotifyOuter,
         UDim2.new(0, finalWidth, 0, YSize), 'Out', 'Quad', 0.4, true);
     task.spawn(function()
-        task.wait(Time);
+        wait(Time or 5);
         pcall(NotifyOuter.TweenSize, NotifyOuter,
             UDim2.new(0, 0, 0, YSize), 'Out', 'Quad', 0.4, true);
         wait(0.4);
@@ -3949,24 +3825,11 @@ function Library:CreateWindow(...)
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
 
     if InputService.TouchEnabled then
-        local Camera = workspace.CurrentCamera
-        local vp = Camera and Camera.ViewportSize or Vector2.new(800, 600)
-        local requestedWidth = Config.Size.X.Scale ~= 0 and vp.X * Config.Size.X.Scale + Config.Size.X.Offset or Config.Size.X.Offset
-        local requestedHeight = Config.Size.Y.Scale ~= 0 and vp.Y * Config.Size.Y.Scale + Config.Size.Y.Offset or Config.Size.Y.Offset
-        local maxWidth = math.max(180, vp.X - 20)
-        local maxHeight = math.max(140, vp.Y - 60)
-        local width = math.clamp(requestedWidth, 180, maxWidth)
-        local height = math.clamp(requestedHeight, 140, maxHeight)
-        Config.Size = UDim2.fromOffset(width, height)
-
-        if not Config.Center then
-            local px = Config.Position.X.Scale ~= 0 and vp.X * Config.Position.X.Scale + Config.Position.X.Offset or Config.Position.X.Offset
-            local py = Config.Position.Y.Scale ~= 0 and vp.Y * Config.Position.Y.Scale + Config.Position.Y.Offset or Config.Position.Y.Offset
-            Config.Position = UDim2.fromOffset(
-                math.clamp(px, 0, math.max(0, vp.X - width)),
-                math.clamp(py, 0, math.max(0, vp.Y - height))
-            )
-        end
+        local vp = workspace.CurrentCamera.ViewportSize
+        local maxWidth = math.min(Config.Size.X.Offset, vp.X - 20)
+      
+        local maxHeight = math.min(Config.Size.Y.Offset, vp.Y - 60)
+        Config.Size = UDim2.fromOffset(maxWidth, maxHeight)
     end
 
     if Config.Center then
@@ -4631,7 +4494,7 @@ function Library:CreateWindow(...)
                     BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
                 end;
                 Button.InputBegan:Connect(function(Input)
-                    if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
+                    if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                         Tab:Show();
                         Tab:Resize();
                     end;
@@ -4842,7 +4705,6 @@ function Library:CreateWindow(...)
     end
 
     Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
-        if Processed then return end
         if type(Library.ToggleKeybind) == 'table' and Library.ToggleKeybind.Type == 'KeyPicker' then
             if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind.Value then
                 task.spawn(Library.Toggle)
@@ -4972,7 +4834,6 @@ if InputService.TouchEnabled then
         local hasMoved  = false
 
         Btn.InputBegan:Connect(function(input)
-            if dragging then return end
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
                 dragging  = true
@@ -4985,7 +4846,6 @@ if InputService.TouchEnabled then
                 connection = input.Changed:Connect(function()
                     if input.UserInputState == Enum.UserInputState.End then
                         dragging = false
-                        dragInput = nil
                         connection:Disconnect()
                         if not hasMoved then
                             ClickAction()
@@ -5335,11 +5195,9 @@ function Library:MakeResizable(UI, DragFrame, Callback)
     local dragStart
     local startSize
     local changedConn
-    local activeInput
 
     local function stop()
         dragging = false
-        activeInput = nil
         if changedConn then
             changedConn:Disconnect()
             changedConn = nil
@@ -5350,9 +5208,7 @@ function Library:MakeResizable(UI, DragFrame, Callback)
     DragFrame.InputBegan:Connect(function(Input)
         if Input.UserInputType ~= Enum.UserInputType.MouseButton1
             and Input.UserInputType ~= Enum.UserInputType.Touch then return end
-        if dragging then return end
         dragging = true
-        activeInput = Input
         dragStart = Input.Position
         startSize = UI.Size
         changedConn = InputService.InputChanged:Connect(function(Change)
@@ -5367,7 +5223,8 @@ function Library:MakeResizable(UI, DragFrame, Callback)
     end)
 
     InputService.InputEnded:Connect(function(Input)
-        if dragging and Input == activeInput then
+        if dragging and (Input.UserInputType == Enum.UserInputType.MouseButton1
+            or Input.UserInputType == Enum.UserInputType.Touch) then
             stop()
         end
     end)
