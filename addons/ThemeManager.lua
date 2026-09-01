@@ -17,6 +17,7 @@ local ThemeManager = {} do
 	}
 
 	function ThemeManager:ApplyTheme(theme)
+		if type(theme) ~= 'string' or theme == '' then return end
 		local customThemeData = self:GetCustomTheme(theme)
 		local data = customThemeData or self.BuiltInThemes[theme]
 
