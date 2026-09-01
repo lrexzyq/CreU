@@ -48,6 +48,7 @@ local Library = {
     ScreenGui = ScreenGui;
 
     Toggled = false;
+    Unloaded = false;
     BatchUpdating = false;
     Options = Options;
     Toggles = Toggles;
@@ -505,33 +506,22 @@ function Library:GiveSignal(Signal)
 end
 
 function Library:Unload()
-    if Library.Unloaded then
-        return
-    end
-
     Library.Unloaded = true
-    Library._WatermarkSegmentRefs = nil
-    Library._WatermarkSegments = nil
 
     for Idx = #Library.Signals, 1, -1 do
         local Connection = table.remove(Library.Signals, Idx)
-        pcall(function() Connection:Disconnect() end)
+        Connection:Disconnect()
     end
 
     if Library.OnUnload then
-        pcall(Library.OnUnload)
+        Library.OnUnload()
     end
     
     if Library.BlurEffect then
-        pcall(function() Library.BlurEffect:Destroy() end)
+        Library.BlurEffect:Destroy()
     end
 
-    if Library.MobileGui then
-        pcall(function() Library.MobileGui:Destroy() end)
-        Library.MobileGui = nil
-    end
-
-    pcall(function() ScreenGui:Destroy() end)
+    ScreenGui:Destroy()
 end
 
 function Library:OnUnload(Callback)
@@ -964,7 +954,7 @@ do
 
         function ColorPicker:OnChanged(Func)
             ColorPicker.Changed = Func;
-            Library:SafeCallback(Func, ColorPicker.Value)
+            Func(ColorPicker.Value)
         end;
 
         function ColorPicker:Show()
@@ -1059,7 +1049,6 @@ do
             end
         end);
         DisplayFrame.InputBegan:Connect(function(Input)
-            if ColorPicker.Disabled then return end
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                 if PickerFrameOuter.Visible then
                     ColorPicker:Hide()
@@ -1149,8 +1138,6 @@ do
 
         ColorPicker:Display();
         ColorPicker.DisplayFrame = DisplayFrame
-        ColorPicker._UI = { Outer = DisplayFrame, Picker = PickerFrameOuter, ContextMenu = ContextMenu }
-        ColorPicker.Disabled = false
 
         Options[Idx] = ColorPicker;
 
@@ -1369,26 +1356,10 @@ do
         end;
 
         function KeyPicker:SetValue(Data)
-            if type(Data) ~= 'table' then
-                return
-            end
-
             local Key, Mode = Data[1], Data[2];
-            Key = tostring(Key or 'None')
-            Mode = tostring(Mode or KeyPicker.Mode or 'Toggle')
-
-            if not ModeButtons[Mode] then
-                Mode = KeyPicker.Mode
-            end
-            if not ModeButtons[Mode] then
-                Mode = next(ModeButtons)
-            end
-
             DisplayLabel.Text = Key;
             KeyPicker.Value = Key;
-            if Mode and ModeButtons[Mode] then
-                ModeButtons[Mode]:Select();
-            end
+            ModeButtons[Mode]:Select();
             KeyPicker:Update();
         end;
 
@@ -1407,7 +1378,6 @@ do
         end
 
         function KeyPicker:DoClick()
-            if KeyPicker.Disabled then return end
             if ParentObj.Type == 'Toggle' and KeyPicker.SyncToggleState then
                 ParentObj:SetValue(not ParentObj.Value)
             end
@@ -1483,7 +1453,6 @@ do
         end;
 
         PickOuter.InputBegan:Connect(function(Input)
-            if KeyPicker.Disabled then return end
             if Library:MouseIsOverOpenedFrame() then
                 return;
             end;
@@ -1585,8 +1554,6 @@ do
         end))
 
         KeyPicker:Update();
-        KeyPicker._UI = { Outer = PickOuter, ModeMenu = ModeSelectOuter, Display = DisplayLabel }
-        KeyPicker.Disabled = false
         Options[Idx] = KeyPicker;
 
         return self;
@@ -1594,52 +1561,29 @@ do
 
     -- Extended component API kept separate from the rendering code so existing scripts remain compatible.
     function Funcs:SetDisabled(Disabled)
-        Disabled = Disabled == true
-
-        -- Components with a native SetDisabled implementation should own their
-        -- interaction state. Avoid recursive dispatch back into this fallback.
-        local native = rawget(self, 'SetDisabled')
-        if (self.Type == 'Dropdown' or self.Type == 'PriorityDropdown') and type(native) == 'function' and native ~= Funcs.SetDisabled then
-            native(self, Disabled)
-            self.Disabled = Disabled
-            return self
-        end
-
-        self.Disabled = Disabled
+        self.Disabled = not not Disabled
         local ui = self._UI
         if ui and ui.Outer then
-            ui.Outer.Active = not Disabled
-            if ui.Outer:IsA('GuiObject') then
-                ui.Outer.BackgroundTransparency = Disabled and 0.35 or 0
-            end
+            ui.Outer.Active = not self.Disabled
+            ui.Outer.BackgroundTransparency = self.Disabled and 0.35 or 0
         end
-
-        if ui and ui.ModeMenu and Disabled then
-            ui.ModeMenu.Visible = false
-        end
-
-        return self
     end
 
     function Funcs:SetVisible(Visible)
         local IsVisible = Visible ~= false
-        self.Visible = IsVisible
         local ui = self._UI
         if ui and ui.Outer then
             ui.Outer.Visible = IsVisible
-        elseif self.TextLabel then
-            self.TextLabel.Visible = IsVisible
-        elseif self.Outer then
-            self.Outer.Visible = IsVisible
-        end
-
-        local parent = ui and ui.Outer and ui.Outer.Parent or self.Container
-        if parent then
-            for _, box in next, Library.DependencyBoxes do
-                if box and box.Container == parent then
-                    pcall(box.Resize, box)
+            local parent = ui.Outer.Parent
+            if parent and parent.Parent then
+                for _, box in next, Library.DependencyBoxes do
+                    if box and box.Container == parent then
+                        pcall(box.Resize, box)
+                    end
                 end
             end
+        elseif self.TextLabel then
+            self.TextLabel.Visible = IsVisible
         end
         return self
     end
@@ -2058,8 +2002,6 @@ do
         Button.Outer, Button.Inner, Button.Label = CreateBaseButton(Button)
         Button.Outer.Parent = Container
 
-        Button._UI = { Outer = Button.Outer, Inner = Button.Inner, Label = Button.Label };
-        Button.Disabled = Button.Disabled == true
         InitEvents(Button)
 
         function Button:AddTooltip(tooltip)
@@ -2253,7 +2195,6 @@ do
 
         if Textbox.Finished then
             Box.FocusLost:Connect(function(enter)
-                if Textbox.Disabled then return end
                 if not enter then return end
 
                 Textbox:SetValue(Box.Text);
@@ -2261,7 +2202,6 @@ do
             end)
         else
             Box:GetPropertyChangedSignal('Text'):Connect(function()
-                if Textbox.Disabled then return end
                 Textbox:SetValue(Box.Text);
                 Library:AttemptSave();
             end);
@@ -2303,14 +2243,12 @@ do
 
         function Textbox:OnChanged(Func)
             Textbox.Changed = Func;
-            Library:SafeCallback(Func, Textbox.Value);
+            Func(Textbox.Value);
         end;
 
         Groupbox:AddBlank(5);
         Groupbox:Resize();
 
-        Textbox._UI = { Outer = TextBoxOuter, Inner = TextBoxInner, Box = Box, Label = InputLabel };
-        Textbox.Disabled = false;
         Options[Idx] = Textbox;
 
         return Textbox;
@@ -2395,7 +2333,7 @@ do
 
         function Toggle:OnChanged(Func)
             Toggle.Changed = Func;
-            Library:SafeCallback(Func, Toggle.Value);
+            Func(Toggle.Value);
         end;
 
         function Toggle:SetValue(Bool)
@@ -2415,7 +2353,6 @@ do
             Library:UpdateDependencyBoxes();
         end;
         ToggleRegion.InputBegan:Connect(function(Input)
-            if Toggle.Disabled then return end
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                 Toggle:SetValue(not Toggle.Value)
                 Library:AttemptSave();
@@ -2433,8 +2370,6 @@ do
 
         Toggle.TextLabel = ToggleLabel;
         Toggle.Container = Container;
-        Toggle._UI = { Outer = ToggleOuter, Inner = ToggleInner, Region = ToggleRegion, Label = ToggleLabel };
-        Toggle.Disabled = false
         setmetatable(Toggle, BaseAddons);
 
         Toggles[Idx] = Toggle;
@@ -2445,15 +2380,15 @@ do
     end;
 
     function Funcs:AddSlider(Idx, Info)
-        assert(Info.Default ~= nil, 'AddSlider: Missing default value.');
+        assert(Info.Default, 'AddSlider: Missing default value.');
         assert(Info.Text, 'AddSlider: Missing slider text.');
         assert(Info.Min ~= nil, 'AddSlider: Missing minimum value.');
         assert(Info.Max ~= nil, 'AddSlider: Missing maximum value.');
         assert(Info.Rounding ~= nil, 'AddSlider: Missing rounding value.');
         local Slider = {
-            Value = tonumber(Info.Default) or 0;
-            Min = tonumber(Info.Min) or 0;
-            Max = tonumber(Info.Max) or 100;
+            Value = Info.Default;
+            Min = Info.Min;
+            Max = Info.Max;
             Rounding = Info.Rounding;
             MaxSize = 232;
             Type = 'Slider';
@@ -2571,7 +2506,7 @@ do
         end;
         function Slider:OnChanged(Func)
             Slider.Changed = Func;
-            Library:SafeCallback(Func, Slider.Value);
+            Func(Slider.Value);
         end;
         local function Round(Value)
             if Slider.Rounding == 0 then
@@ -2589,7 +2524,6 @@ do
             return Round(Library:MapValue(math.clamp(X, 0, Width), 0, Width, Slider.Min, Slider.Max));
         end;
         function Slider:SetValue(Str)
-            if Slider.Disabled then return end
             local Num = tonumber(Str);
             if (not Num) then
                 return;
@@ -2604,7 +2538,6 @@ do
             Library:SafeCallback(Slider.Changed, Slider.Value);
         end;
         SliderInner.InputBegan:Connect(function(Input)
-            if Slider.Disabled then return end
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
                 
                 local function UpdateSlider(PosX)
@@ -2829,7 +2762,7 @@ do
             end);
         end
 
-        if type(Dropdown.Values) == 'table' and #Dropdown.Values == 0 then
+        if #Dropdown.Values == 0 then
             local DictValues = Dropdown.Values
             local Keys = {}
             for Key, _ in next, DictValues do Keys[#Keys + 1] = Key end
@@ -2865,8 +2798,8 @@ do
         local LastDragValue;
 
         local function ValueText(Value)
-            if type(Dropdown._DisplayValues) == 'table' and Dropdown._DisplayValues[Value] ~= nil then
-                Value = Dropdown._DisplayValues[Value]
+            if type(Info.Values) == 'table' and #Info.Values == 0 and Info.Values[Value] ~= nil then
+                Value = Info.Values[Value]
             end
             if Info.FormatListValue and type(Info.FormatListValue) == 'function' then
                 local Ok, Result = pcall(Info.FormatListValue, Value);
@@ -2874,7 +2807,6 @@ do
             end
             return tostring(Value);
         end
-        Dropdown._ValueText = ValueText
 
         local function ValueExists(Value)
             if type(Dropdown.Values) ~= 'table' then return false end
@@ -2898,17 +2830,9 @@ do
         function Dropdown:Display()
             local Parts = {};
             if self.Multi then
-                local ValuesToDisplay = self.Priority and self.Order or self.Values
-                for _, Value in ipairs(ValuesToDisplay or {}) do
+                for _, Value in ipairs(self.Values) do
                     if self.Value[Value] then
                         Parts[#Parts + 1] = ValueText(Value);
-                    end
-                end
-                if self.Priority then
-                    for _, Value in ipairs(self.Values or {}) do
-                        if self.Value[Value] and not table.find(ValuesToDisplay, Value) then
-                            Parts[#Parts + 1] = ValueText(Value)
-                        end
                     end
                 end
             elseif self.Value ~= nil then
@@ -3007,15 +2931,8 @@ do
                             if self.Multi then
                                 if self.Value[Value] then
                                     self.Value[Value] = nil;
-                                    if self.Priority and self.Order then
-                                        local existing = table.find(self.Order, Value)
-                                        if existing then table.remove(self.Order, existing) end
-                                    end
                                 else
                                     self.Value[Value] = true;
-                                    if self.Priority and self.Order and not table.find(self.Order, Value) then
-                                        self.Order[#self.Order + 1] = Value
-                                    end
                                 end
                                 self:Display();
                                 self:RunChanged();
@@ -3087,7 +3004,7 @@ do
 
         function Dropdown:OnChanged(Func)
             self.Changed = Func;
-            Library:SafeCallback(Func, self.Value);
+            Func(self.Value);
         end
 
         function Dropdown:SetValue(Val)
@@ -3119,21 +3036,7 @@ do
 
         function Dropdown:SetValues(NewValues)
             if type(NewValues) ~= 'table' then return end
-
-            local IsArray = #NewValues > 0
-            if IsArray then
-                self._DisplayValues = nil
-                self.Values = NewValues
-            else
-                local Keys = {}
-                for Key in next, NewValues do
-                    Keys[#Keys + 1] = Key
-                end
-                table.sort(Keys, function(a, b) return tostring(a) < tostring(b) end)
-                self._DisplayValues = NewValues
-                self.Values = Keys
-            end
-
+            self.Values = NewValues;
             if self.Multi then
                 for Value in next, self.Value do
                     if not ValueExists(Value) then self.Value[Value] = nil end
@@ -3141,19 +3044,6 @@ do
             elseif self.Value ~= nil and not ValueExists(self.Value) then
                 self.Value = nil;
             end
-
-            if self.Priority then
-                local NextOrder = {}
-                for _, Value in ipairs(self.Order or {}) do
-                    if ValueExists(Value) and not self.DisabledValues[Value] then
-                        NextOrder[#NextOrder + 1] = Value
-                    end
-                end
-                self.Order = NextOrder
-                self.Value = {}
-                for _, Value in ipairs(self.Order) do self.Value[Value] = true end
-            end
-
             if not Library.BatchUpdating then self:BuildDropdownList() end
             self:Display();
         end
@@ -3175,16 +3065,6 @@ do
             if type(NewValues) ~= 'table' then return end
             for _, Value in ipairs(NewValues) do
                 self.DisabledValues[Value] = true;
-            end
-            if self.Priority then
-                local kept = {}
-                for _, Value in ipairs(self.Order or {}) do
-                    if not self.DisabledValues[Value] then kept[#kept + 1] = Value end
-                end
-                self.Order = kept
-                self.Value = {}
-                for _, Value in ipairs(kept) do self.Value[Value] = true end
-                self:Display()
             end
             self:RefreshButtons();
         end
@@ -3341,7 +3221,14 @@ do
                 end
             end
         elseif type(Info.Default) == 'string' or type(Info.Default) == 'number' then
-            if ValueExists(Info.Default) then Dropdown.Value = Info.Default end
+            local DefaultValue = Info.Default
+            if type(DefaultValue) == 'number' then
+                local IndexedValue = Dropdown.Values[DefaultValue]
+                if IndexedValue ~= nil then
+                    DefaultValue = IndexedValue
+                end
+            end
+            if ValueExists(DefaultValue) then Dropdown.Value = DefaultValue end
         end
 
         Dropdown._UI = {
@@ -3673,8 +3560,8 @@ end;
 function Library:SetWatermarkSegments(Segments)
     Segments = type(Segments) == 'table' and Segments or { Segments }
     local Frame = Library.WatermarkSegmentsFrame
-    if not Frame or not Library.Watermark then
-        return Library.Watermark
+    if not Frame then
+        return Library:SetWatermark('')
     end
 
     for _, child in next, Frame:GetChildren() do
@@ -3685,104 +3572,44 @@ function Library:SetWatermarkSegments(Segments)
 
     Library.WatermarkText.Visible = false
     Frame.Visible = true
-    Library._WatermarkSegmentRefs = {}
 
     local totalWidth = 10
-    local function addTextSegment(text, source)
+    local count = 0
+    for _, segment in ipairs(Segments) do
+        local value = segment
+        local text = ''
+        if type(segment) == 'table' then
+            value = segment.Text or ''
+        end
+        if type(value) == 'function' then
+            local ok, result = pcall(value)
+            text = ok and tostring(result or '') or ''
+        else
+            text = tostring(value or '')
+        end
+
         local label = Library:CreateLabel({
             AutomaticSize = Enum.AutomaticSize.X;
             Size = UDim2.fromOffset(0, 18);
             TextSize = Library.FontSize;
-            Text = tostring(text or '');
+            Text = text;
             TextXAlignment = Enum.TextXAlignment.Left;
-            TextYAlignment = Enum.TextYAlignment.Center;
             ZIndex = 205;
             Parent = Frame;
         })
-        Library._WatermarkSegmentRefs[#Library._WatermarkSegmentRefs + 1] = {
-            Label = label,
-            Source = source,
-        }
-        return label
-    end
-
-    local function addPlayerSegment(segment)
-        local Player = segment.Player
-        local UserId = segment.UserId or (typeof(Player) == 'Instance' and Player.UserId) or 0
-        local Card = Library:Create('Frame', {
-            BackgroundTransparency = 1;
-            AutomaticSize = Enum.AutomaticSize.X;
-            Size = UDim2.fromOffset(0, 18);
-            ZIndex = 205;
-            Parent = Frame;
-        })
-        Library:Create('UIListLayout', {
-            FillDirection = Enum.FillDirection.Horizontal;
-            VerticalAlignment = Enum.VerticalAlignment.Center;
-            Padding = UDim.new(0, 4);
-            Parent = Card;
-        })
-        Library:Create('ImageLabel', {
-            BackgroundTransparency = 1;
-            Size = UDim2.fromOffset(18, 18);
-            Image = 'rbxthumb://type=AvatarHeadShot&id=' .. tostring(UserId) .. '&w=48&h=48';
-            ZIndex = 206;
-            Parent = Card;
-        })
-        local name = ''
-        if typeof(Player) == 'Instance' then
-            name = segment.NameType == 'Username' and ('@' .. Player.Name) or Player.DisplayName
-        elseif segment.Name then
-            name = tostring(segment.Name)
-        end
-        addTextSegment(name, nil).Parent = Card
-        return Card
-    end
-
-    for _, segment in ipairs(Segments) do
-        if type(segment) == 'table' and (segment.Player ~= nil or segment.PlayerCard == true) then
-            local card = addPlayerSegment(segment)
-            totalWidth += math.max(24, card.AbsoluteSize.X) + 6
-        else
-            local source = type(segment) == 'table' and segment.Text or segment
-            local text = ''
-            if type(source) == 'function' then
-                local ok, result = pcall(source)
-                text = ok and tostring(result or '') or ''
-            else
-                text = tostring(source or '')
-            end
-            local label = addTextSegment(text, type(source) == 'function' and source or nil)
-            totalWidth += label.TextBounds.X + 6
-        end
+        count += 1
+        totalWidth += label.TextBounds.X + 6
     end
 
     Library.Watermark.Size = UDim2.fromOffset(math.max(100, totalWidth), 20)
     Library:SetWatermarkVisibility(true)
-    Library._WatermarkSegments = Segments
-    Library.Watermark.RefreshRate = math.max(0.1, tonumber(Library.Watermark.RefreshRate) or 1)
 
-    if not Library._WatermarkRefreshRunning then
-        Library._WatermarkRefreshRunning = true
-        task.spawn(function()
-            while not Library.Unloaded and Library.Watermark and Library.Watermark.Parent do
-                task.wait(Library.Watermark.RefreshRate or 1)
-                if Library.Unloaded then break end
-                if Library._WatermarkSegmentRefs then
-                    local total = 10
-                    for _, ref in ipairs(Library._WatermarkSegmentRefs) do
-                        if ref.Label and ref.Label.Parent and ref.Source then
-                            local ok, result = pcall(ref.Source)
-                            if ok then ref.Label.Text = tostring(result or '') end
-                        end
-                        if ref.Label and ref.Label.Parent then total += ref.Label.TextBounds.X + 6 end
-                    end
-                    Library.Watermark.Size = UDim2.fromOffset(math.max(100, total), 20)
-                end
-            end
-            Library._WatermarkRefreshRunning = false
-        end)
-    end
+    Library._WatermarkSegments = Segments
+    -- LƯU Ý: Library.Watermark là 1 Roblox Instance (Frame) thật, KHÔNG được gán
+    -- thuộc tính tùy ý như .RefreshRate lên nó (Roblox sẽ báo lỗi "not a valid
+    -- member of Frame" và crash). RefreshRate cho hệ thống segment cũ này được
+    -- lưu riêng ở Library._LegacyWatermarkRefreshRate thay vì gán lên Instance.
+    Library._LegacyWatermarkRefreshRate = Library._LegacyWatermarkRefreshRate or 1
     return Library.Watermark
 end
 
@@ -3949,8 +3776,6 @@ function Library:CreateWindow(...)
         Config.AutoShow = Arguments[2] or false;
     end
 
-    if type(Config) ~= 'table' then Config = {} end
-    if Config.AnchorPoint == nil then Config.AnchorPoint = Vector2.zero end
     if type(Config.Title) ~= 'string' then Config.Title = 'No title' end
     if type(Config.TabPadding) ~= 'number' then Config.TabPadding = 0 end
     if type(Config.MenuFadeTime) ~= 'number' then Config.MenuFadeTime = 0.2 end
@@ -3959,18 +3784,11 @@ function Library:CreateWindow(...)
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
 
     if InputService.TouchEnabled then
-        local camera = workspace.CurrentCamera
-        local vp = camera and camera.ViewportSize or Vector2.new(800, 600)
-
-        local requestedWidth = math.max(1, Config.Size.X.Scale * vp.X + Config.Size.X.Offset)
-        local requestedHeight = math.max(1, Config.Size.Y.Scale * vp.Y + Config.Size.Y.Offset)
-        local maxWidth = math.max(1, vp.X - 20)
-        local maxHeight = math.max(1, vp.Y - 60)
-
-        Config.Size = UDim2.fromOffset(
-            math.min(requestedWidth, maxWidth),
-            math.min(requestedHeight, maxHeight)
-        )
+        local vp = workspace.CurrentCamera.ViewportSize
+        local maxWidth = math.min(Config.Size.X.Offset, vp.X - 20)
+      
+        local maxHeight = math.min(Config.Size.Y.Offset, vp.Y - 60)
+        Config.Size = UDim2.fromOffset(maxWidth, maxHeight)
     end
 
     if Config.Center then
@@ -4210,27 +4028,11 @@ function Library:CreateWindow(...)
     function Window:SetCornerRadius(Radius)
         Radius = math.clamp(tonumber(Radius) or 0, 0, 20)
         Window.CornerRadius = Radius
-
         local Corner = Outer:FindFirstChild('WindowCorner')
         if not Corner then
-            Corner = Library:Create('UICorner', { Name = 'WindowCorner', Parent = Outer })
+            Corner = Library:Create('UICorner', { Name='WindowCorner', Parent=Outer })
         end
         Corner.CornerRadius = UDim.new(0, Radius)
-
-        -- Keep the nested content from visually escaping the rounded window.
-        Outer.ClipsDescendants = Radius > 0 or Outer.ClipsDescendants
-
-        if Radius > 0 then
-            local InnerCorner = Inner:FindFirstChild('WindowInnerCorner')
-            if not InnerCorner then
-                InnerCorner = Library:Create('UICorner', { Name = 'WindowInnerCorner', Parent = Inner })
-            end
-            InnerCorner.CornerRadius = UDim.new(0, math.max(0, Radius - 1))
-        else
-            local InnerCorner = Inner:FindFirstChild('WindowInnerCorner')
-            if InnerCorner then InnerCorner:Destroy() end
-        end
-
         return Window
     end
 
@@ -4676,68 +4478,22 @@ function Library:CreateWindow(...)
             return Holder
         end
 
-        function Tab:SetSubTabAlignment(Alignment)
-            Alignment = tostring(Alignment or 'Left')
-            if Alignment ~= 'Left' and Alignment ~= 'Center' and Alignment ~= 'Right' then
-                Alignment = 'Left'
-            end
-            self.SubTabAlignment = Alignment
-
-            local tabs = self.SubTabs or {}
-            local total = 0
-            for _, sub in ipairs(tabs) do
-                if sub.Button then total += sub.Button.Size.X.Offset + 4 end
-            end
-            local viewport = TabFrame.AbsoluteSize.X
-            if viewport <= 0 then viewport = 1000 end
-            local startX
-            if Alignment == 'Center' then
-                startX = math.max(8, (viewport - math.max(0, total - 4)) / 2)
-            elseif Alignment == 'Right' then
-                startX = math.max(8, viewport - math.max(0, total - 4) - 8)
-            else
-                startX = 8
-            end
-            for _, sub in ipairs(tabs) do
-                if sub.Button then
-                    sub.Button.Position = UDim2.fromOffset(math.floor(startX), 5)
-                    startX += sub.Button.Size.X.Offset + 4
-                end
-            end
-            return self
-        end
+        function Tab:SetSubTabAlignment(Alignment) self.SubTabAlignment=tostring(Alignment or 'Left'); return self end
 
         function Tab:AddSubTab(Info)
             Info=type(Info)=='table' and Info or {Name=tostring(Info)}
             Tab.SubTabs=Tab.SubTabs or {}
             local Sub={Name=tostring(Info.Name or 'SubTab'),Groupboxes={},Tabboxes={},ParentTab=Tab,SingleColumn=true}
             local Container=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,8,0,34),Size=UDim2.new(1,-16,1,-42),CanvasSize=UDim2.new(),ScrollBarThickness=3,Visible=false,ZIndex=3,Parent=TabFrame})
-            local ContainerLayout=Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Container})
+            Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Container})
             Sub.Container=Container; setmetatable(Sub,BaseGroupbox)
-            local SubLeft
-            local SubRight
-            local SubLeftLayout
-            local SubRightLayout
-            function Sub:Show() for _,o in next,Tab.SubTabs do if o.Container then o.Container.Visible=false end; if o.Button then o.Button.BackgroundColor3=Library.MainColor end end; self.Container.Visible=true; if self.Button then self.Button.BackgroundColor3=Library.BackgroundColor end; self:Resize(); return self end
+            function Sub:Show() for _,o in next,Tab.SubTabs do if o.Container then o.Container.Visible=false end; if o.Button then o.Button.BackgroundColor3=Library.MainColor end end; self.Container.Visible=true; if self.Button then self.Button.BackgroundColor3=Library.BackgroundColor end; return self end
             function Sub:Hide() self.Container.Visible=false; return self end
-            local function ResizeColumns()
-                local leftLayout = SubLeft:FindFirstChildOfClass('UIListLayout')
-                local rightLayout = SubRight:FindFirstChildOfClass('UIListLayout')
-                local leftH = leftLayout and leftLayout.AbsoluteContentSize.Y or 0
-                local rightH = rightLayout and rightLayout.AbsoluteContentSize.Y or 0
-                SubLeft.CanvasSize = UDim2.fromOffset(0, leftH + 8)
-                SubRight.CanvasSize = UDim2.fromOffset(0, rightH + 8)
-                local h = math.max(leftH, rightH)
-                Container.CanvasSize = UDim2.fromOffset(0, h + 8)
-            end
-            function Sub:Resize() ResizeColumns(); return self end
-            SubLeft=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,0,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
-            SubRight=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,4,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
-            SubLeftLayout=Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubLeft})
-            SubRightLayout=Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubRight})
-            SubLeftLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(ResizeColumns)
-            SubRightLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(ResizeColumns)
-            ContainerLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(ResizeColumns)
+            function Sub:Resize() local h=0; for _,c in next,Container:GetChildren() do if c:IsA('Frame') and c.Visible then h+=c.Size.Y.Offset end end; Container.CanvasSize=UDim2.fromOffset(0,h+8) end
+            local SubLeft=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,0,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
+            local SubRight=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,4,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
+            Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubLeft})
+            Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubRight})
             function Sub:_AddBox(Name,Side)
                 local Box={Groupboxes={}}
                 local Parent=Side==1 and SubLeft or SubRight
@@ -4767,13 +4523,12 @@ function Library:CreateWindow(...)
             end
             function Sub:AddLeftTabbox(Name) return self:AddTabbox({Name=type(Name)=='table' and Name.Name or Name,Side=1}) end
             function Sub:AddRightTabbox(Name) return self:AddTabbox({Name=type(Name)=='table' and Name.Name or Name,Side=2}) end
-            local Button=Library:Create('TextButton',{BackgroundColor3=Library.MainColor,BorderColor3=Library.OutlineColor,AutoButtonColor=false,Text=Sub.Name,TextColor3=Library.FontColor,Font=Library.Font,TextSize=Library.FontSize,Size=UDim2.fromOffset(math.max(70,Library:GetTextBounds(Sub.Name,Library.Font,Library.FontSize).X+22),24),ZIndex=10,Parent=TabFrame})
+            local SubBtnTextWidth=Library:GetTextBounds(Sub.Name,Library.Font,Library.FontSize) -- GetTextBounds trả về (X, Y) riêng biệt, không phải object .X/.Y
+            local Button=Library:Create('TextButton',{BackgroundColor3=Library.MainColor,BorderColor3=Library.OutlineColor,AutoButtonColor=false,Text=Sub.Name,TextColor3=Library.FontColor,Font=Library.Font,TextSize=Library.FontSize,Size=UDim2.fromOffset(math.max(70,SubBtnTextWidth+22),24),ZIndex=10,Parent=TabFrame})
             local x=8; for _,o in next,Tab.SubTabs do if o.Button then x+=o.Button.Size.X.Offset+4 end end; Button.Position=UDim2.fromOffset(x,5); Sub.Button=Button
             Button.MouseButton1Click:Connect(function() Sub:Show() end)
             local WasFirst = #Tab.SubTabs == 0
             Tab.SubTabs[#Tab.SubTabs+1]=Sub; LeftSide.Visible=false; RightSide.Visible=false; if WasFirst then Sub:Show() end
-            Tab:SetSubTabAlignment(Tab.SubTabAlignment or 'Left')
-            Sub:Resize()
             return Sub
         end
 
@@ -4804,10 +4559,6 @@ function Library:CreateWindow(...)
         if Library.Toggled then
             task.spawn(function()
                 local State = InputService.MouseIconEnabled;
-
-                if type(Drawing) ~= 'table' or type(Drawing.new) ~= 'function' then
-                    return
-                end
 
                 local Cursor = Drawing.new('Triangle');
                 Cursor.Thickness = 1;
@@ -4886,12 +4637,11 @@ local function OnPlayerChange()
     end;
 end;
 
-Library:GiveSignal(Players.PlayerAdded:Connect(OnPlayerChange));
-Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
+Players.PlayerAdded:Connect(OnPlayerChange);
+Players.PlayerRemoving:Connect(OnPlayerChange);
 
 if InputService.TouchEnabled then
     local MobileGui = Instance.new("ScreenGui")
-    Library.MobileGui = MobileGui
     MobileGui.Name = "LinoriaMobileUI"
     MobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
     ProtectGui(MobileGui)
@@ -5001,7 +4751,7 @@ if InputService.TouchEnabled then
             end
         end)
 
-        Library:GiveSignal(InputService.InputChanged:Connect(function(input)
+        InputService.InputChanged:Connect(function(input)
             if input == dragInput and dragging then
                 local delta = input.Position - dragStart
                 if delta.Magnitude > 3 then
@@ -5014,7 +4764,7 @@ if InputService.TouchEnabled then
                     )
                 end
             end
-        end))
+        end)
     end
 
     BindMobileButtonAction(ToggleBtn, ToggleOuter, function()
@@ -5053,139 +4803,393 @@ function BaseGroupbox:AddPriorityDropdown(Idx, Info)
     Info.Multi = true
     Info.AllowNull = true
     Info.Default = Info.Default or {}
-
     local dropdown = self:AddDropdown(Idx, Info)
     dropdown.Priority = true
     dropdown.Order = {}
-
-    local function isValid(value)
-        return value ~= nil
-            and table.find(dropdown.Values or {}, value) ~= nil
-            and not dropdown.DisabledValues[value]
-    end
-
-    local function appendUnique(list, value)
-        if isValid(value) and not table.find(list, value) then
-            list[#list + 1] = value
-        end
-    end
-
-    local function normalizeOrder(value)
-        local out = {}
-        if type(value) ~= 'table' then return out end
-        for _, v in ipairs(value) do appendUnique(out, v) end
-        if #out == 0 then
-            for k, v in next, value do
-                local candidate = (v == true and k) or (type(k) == 'number' and v or nil)
-                appendUnique(out, candidate)
+    for _, v in next, Info.Values or {} do table.insert(dropdown.Order, v) end
+    function dropdown:SetValue(Order)
+        local values = type(Order) == 'table' and Order or {}
+        self.Order = {}
+        if #values > 0 then
+            for _, v in ipairs(values) do
+                if table.find(self.Values, v) and not self.DisabledValues[v] then table.insert(self.Order, v) end
+            end
+        else
+            for v, selected in next, values do
+                if selected == true and table.find(self.Values, v) and not self.DisabledValues[v] then table.insert(self.Order, v) end
             end
         end
-        return out
+        local selected = {}
+        for _, v in ipairs(self.Order) do selected[v] = true end
+        self.Value = selected
+        self:BuildDropdownList(); self:Display()
+        Library:SafeCallback(self.Callback, self.Order)
+        Library:SafeCallback(self.Changed, self.Order)
     end
-
-    local initial = normalizeOrder(Info.Default)
-    if #initial == 0 then
-        for _, value in ipairs(dropdown.Values or {}) do
-            if dropdown.Value[value] then appendUnique(initial, value) end
-        end
+    function dropdown:GetValue() return self.Order end
+    function dropdown:MoveUp(Value)
+        local i = table.find(self.Order, Value); if not i or i <= 1 then return end
+        self.Order[i], self.Order[i-1] = self.Order[i-1], self.Order[i]; self:SetValue(self.Order)
     end
-
-    dropdown.Order = initial
-    dropdown.Value = {}
-    for _, value in ipairs(dropdown.Order) do dropdown.Value[value] = true end
-
-    local function applyOrder(order, fire)
-        local normalized = normalizeOrder(order)
-        dropdown.Order = normalized
-        dropdown.Value = {}
-        for _, value in ipairs(normalized) do dropdown.Value[value] = true end
-
-        if not Library.BatchUpdating then dropdown:BuildDropdownList() end
-        dropdown:Display()
-        if fire then dropdown:RunChanged() end
+    function dropdown:MoveDown(Value)
+        local i = table.find(self.Order, Value); if not i or i >= #self.Order then return end
+        self.Order[i], self.Order[i+1] = self.Order[i+1], self.Order[i]; self:SetValue(self.Order)
     end
-
-    function dropdown:SetValue(order)
-        applyOrder(order, true)
-        return self
-    end
-
-    function dropdown:GetValue()
-        return table.clone(self.Order or {})
-    end
-
-    function dropdown:Select(value, Silent)
-        if not isValid(value) then return self end
-        local nextOrder = table.clone(self.Order or {})
-        appendUnique(nextOrder, value)
-        applyOrder(nextOrder, not Silent)
-        return self
-    end
-
-    function dropdown:Deselect(value, Silent)
-        local nextOrder = {}
-        for _, current in ipairs(self.Order or {}) do
-            if current ~= value then nextOrder[#nextOrder + 1] = current end
-        end
-        applyOrder(nextOrder, not Silent)
-        return self
-    end
-
-    function dropdown:SelectAll(Search)
-        local query = Search and tostring(Search):lower() or ''
-        local nextOrder = {}
-        for _, value in ipairs(self.Values or {}) do
-            local text = dropdown._ValueText and dropdown._ValueText(value) or tostring(value)
-            if (query == '' or text:lower():find(query, 1, true)) and isValid(value) then
-                appendUnique(nextOrder, value)
-            end
-        end
-        applyOrder(nextOrder, true)
-        return self
-    end
-
-    function dropdown:DeselectAll(Search)
-        if not Search or tostring(Search) == '' then
-            applyOrder({}, true)
-            return self
-        end
-        local query = tostring(Search):lower()
-        local nextOrder = {}
-        for _, value in ipairs(self.Order or {}) do
-            local text = dropdown._ValueText and dropdown._ValueText(value) or tostring(value)
-            if not text:lower():find(query, 1, true) then
-                nextOrder[#nextOrder + 1] = value
-            end
-        end
-        applyOrder(nextOrder, true)
-        return self
-    end
-
-    function dropdown:MoveUp(value)
-        local order = table.clone(self.Order or {})
-        local i = table.find(order, value)
-        if i and i > 1 then
-            order[i], order[i - 1] = order[i - 1], order[i]
-            applyOrder(order, true)
-        end
-        return self
-    end
-
-    function dropdown:MoveDown(value)
-        local order = table.clone(self.Order or {})
-        local i = table.find(order, value)
-        if i and i < #order then
-            order[i], order[i + 1] = order[i + 1], order[i]
-            applyOrder(order, true)
-        end
-        return self
-    end
-
-    function dropdown:Remove(value)
-        return self:Deselect(value)
-    end
-
+    function dropdown:Remove(Value) self:Deselect(Value); self.Order = self.Order or {}; local i = table.find(self.Order, Value); if i then table.remove(self.Order, i) end end
     return dropdown
+end
+
+getgenv().Library = Library
+
+
+-- Extended public helpers inspired by mature UI libraries, kept compatible with Linoria APIs.
+--
+-- AddWatermark(Segments):
+--   * nil            -> ẩn watermark (dùng lại hệ thống text đơn giản cũ)
+--   * string         -> watermark 1 dòng text đơn giản (hệ thống cũ, không đổi)
+--   * table segments -> watermark nhiều "segment" (icon + text + player card),
+--                        dùng hệ thống MỚI, tự quản lý riêng, KHÔNG đụng vào
+--                        Library.Watermark (Frame Instance) để tránh lỗi gán
+--                        thuộc tính lạ lên Instance (bug đã fix).
+--
+-- Segments = {
+--   { Text = "chuỗi cố định" },
+--   { Text = function() return "chuỗi động, tự refresh theo Watermark.RefreshRate" end },
+--   { Icon = 6031097225, Text = "..." }, -- Icon chỉ nhận asset id số hoặc 'rbxassetid://...'/'http...'
+--   { Player = SomePlayer, NameType = "Username" }, -- avatar + tên (mặc định DisplayName)
+--   { Text = "CreU", Accent = true }, -- tô màu AccentColor thay vì FontColor
+-- }
+--
+-- LƯU Ý: bản Library này không có bộ icon theo tên (kiểu "flame","cpu","wifi" của
+-- Lucide icon pack). Icon dạng tên chữ thường sẽ không hiện icon nào (không lỗi,
+-- chỉ đơn giản bỏ qua phần icon của segment đó) — chỉ Icon dạng số/asset id hoạt động.
+function Library:AddWatermark(Segments)
+    if Segments == nil then
+        self:SetWatermark('')
+        return self.Watermark
+    elseif type(Segments) ~= 'table' then
+        self:SetWatermark(tostring(Segments))
+        return self.Watermark
+    end
+
+    return self:BuildWatermarkV2(Segments)
+end
+
+function Library:BuildWatermarkV2(Segments)
+    if Library._WatermarkV2 then
+        Library._WatermarkV2.Holder:Destroy()
+        Library._WatermarkV2 = nil
+    end
+
+    local Watermark = { RefreshRate = 1 }
+
+    local PADDING = 12
+    local HEIGHT = 20
+
+    local Outer = Library:Create('Frame', {
+        Name = 'WatermarkV2';
+        BackgroundTransparency = 1;
+        Position = UDim2.new(0, 10, 0, 10);
+        Size = UDim2.new(0, 0, 0, HEIGHT);
+        ZIndex = 200;
+        Parent = ScreenGui;
+    });
+    local Inner = Library:Create('Frame', {
+        BackgroundColor3 = Library.MainColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Size = UDim2.new(1, 0, 1, 0);
+        ZIndex = 200;
+        Parent = Outer;
+    });
+    Library:AddToRegistry(Inner, {
+        BackgroundColor3 = 'MainColor';
+        BorderColor3 = 'OutlineColor';
+    });
+
+    local Layout = Library:Create('UIListLayout', {
+        FillDirection = Enum.FillDirection.Horizontal;
+        SortOrder = Enum.SortOrder.LayoutOrder;
+        VerticalAlignment = Enum.VerticalAlignment.Center;
+        Padding = UDim.new(0, 5);
+        Parent = Inner;
+    });
+    Library:Create('UIPadding', {
+        PaddingLeft = UDim.new(0, 6);
+        PaddingRight = UDim.new(0, 6);
+        Parent = Inner;
+    });
+
+    local function ResolveIcon(IconValue)
+        if type(IconValue) == 'number' then
+            return 'rbxassetid://' .. tostring(IconValue);
+        elseif type(IconValue) == 'string' then
+            if IconValue:match('^rbxassetid://') or IconValue:match('^http') then
+                return IconValue;
+            end;
+        end;
+        return nil;
+    end;
+
+    local DynamicLabels = {};
+
+    local function BuildSegment(Info, Order)
+        local Holder = Library:Create('Frame', {
+            BackgroundTransparency = 1;
+            AutomaticSize = Enum.AutomaticSize.X;
+            Size = UDim2.new(0, 0, 1, 0);
+            LayoutOrder = Order;
+            Parent = Inner;
+        });
+        Library:Create('UIListLayout', {
+            FillDirection = Enum.FillDirection.Horizontal;
+            SortOrder = Enum.SortOrder.LayoutOrder;
+            VerticalAlignment = Enum.VerticalAlignment.Center;
+            Padding = UDim.new(0, 4);
+            Parent = Holder;
+        });
+
+        if Order > 1 then
+            Library:CreateLabel({
+                Size = UDim2.new(0, 6, 1, 0);
+                Text = '|';
+                TextColor3 = Library.OutlineColor;
+                TextSize = Library.FontSize;
+                LayoutOrder = 0;
+                Parent = Holder;
+            });
+        end;
+
+        if Info.Player then
+            local Ok, Thumb = pcall(function()
+                return Players:GetUserThumbnailAsync(Info.Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48);
+            end);
+
+            local Avatar = Library:Create('ImageLabel', {
+                BackgroundTransparency = 1;
+                Size = UDim2.new(0, 16, 0, 16);
+                Image = (Ok and Thumb) or '';
+                LayoutOrder = 1;
+                Parent = Holder;
+            });
+            Library:Create('UICorner', { CornerRadius = UDim.new(1, 0); Parent = Avatar });
+
+            Library:CreateLabel({
+                Size = UDim2.new(0, 0, 1, 0);
+                AutomaticSize = Enum.AutomaticSize.X;
+                Text = (Info.NameType == 'Username') and Info.Player.Name or Info.Player.DisplayName;
+                TextSize = Library.FontSize;
+                LayoutOrder = 2;
+                Parent = Holder;
+            });
+            return;
+        end;
+
+        local IconImage = ResolveIcon(Info.Icon);
+        if IconImage then
+            Library:Create('ImageLabel', {
+                BackgroundTransparency = 1;
+                Size = UDim2.new(0, 13, 0, 13);
+                Image = IconImage;
+                ImageColor3 = Info.Accent and Library.AccentColor or Library.FontColor;
+                LayoutOrder = 1;
+                Parent = Holder;
+            });
+        end;
+
+        local InitialText = Info.Text;
+        if type(InitialText) == 'function' then
+            local Ok, Result = pcall(InitialText);
+            InitialText = (Ok and type(Result) == 'string') and Result or '';
+        elseif type(InitialText) ~= 'string' then
+            InitialText = '';
+        end;
+
+        local TextLabel = Library:CreateLabel({
+            Size = UDim2.new(0, 0, 1, 0);
+            AutomaticSize = Enum.AutomaticSize.X;
+            Text = InitialText;
+            TextColor3 = Info.Accent and Library.AccentColor or Library.FontColor;
+            TextSize = Library.FontSize;
+            LayoutOrder = 2;
+            Parent = Holder;
+        });
+        if Info.Accent then
+            Library:RemoveFromRegistry(TextLabel);
+            Library:AddToRegistry(TextLabel, { TextColor3 = 'AccentColor' });
+        end;
+
+        if type(Info.Text) == 'function' then
+            table.insert(DynamicLabels, { Label = TextLabel; Fn = Info.Text });
+        end;
+    end;
+
+    for Idx, SegInfo in ipairs(Segments) do
+        BuildSegment(SegInfo, Idx);
+    end;
+
+    Outer.Size = UDim2.new(0, Layout.AbsoluteContentSize.X + PADDING, 0, HEIGHT);
+    Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+        Outer.Size = UDim2.new(0, Layout.AbsoluteContentSize.X + PADDING, 0, HEIGHT);
+    end);
+
+    Library:MakeDraggable(Outer);
+
+    if #DynamicLabels > 0 then
+        task.spawn(function()
+            while (not Library.Unloaded) and ScreenGui.Parent do
+                for _, Entry in ipairs(DynamicLabels) do
+                    local Ok, Result = pcall(Entry.Fn);
+                    if Ok and type(Result) == 'string' then
+                        Entry.Label.Text = Result;
+                    end;
+                end;
+                task.wait(Watermark.RefreshRate or 1);
+            end;
+        end);
+    end;
+
+    Watermark.Holder = Outer;
+    Library._WatermarkV2 = Watermark;
+    return Watermark;
+end
+
+function Library:AddTooltip(InfoStr, DisabledInfoStr, HoverInstance, Variant)
+    if type(HoverInstance) ~= 'Instance' and type(Variant) ~= 'nil' then
+        HoverInstance, Variant = DisabledInfoStr, HoverInstance
+        DisabledInfoStr = nil
+    end
+    if not HoverInstance then return nil end
+    local ok, result = pcall(function()
+        return self:AddToolTip(tostring(InfoStr or ''), HoverInstance)
+    end)
+    return ok and result or nil
+end
+
+function Library:MakeResizable(UI, DragFrame, Callback)
+    if not UI or not DragFrame then return nil end
+    local dragging = false
+    local dragStart
+    local startSize
+    local changedConn
+
+    local function stop()
+        dragging = false
+        if changedConn then
+            changedConn:Disconnect()
+            changedConn = nil
+        end
+        if Callback then self:SafeCallback(Callback, UI.Size) end
+    end
+
+    DragFrame.InputBegan:Connect(function(Input)
+        if Input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+        dragging = true
+        dragStart = Input.Position
+        startSize = UI.Size
+        changedConn = InputService.InputChanged:Connect(function(Change)
+            if not dragging then return end
+            if Change.UserInputType ~= Enum.UserInputType.MouseMovement
+                and Change.UserInputType ~= Enum.UserInputType.Touch then return end
+            local Delta = Change.Position - dragStart
+            local X = math.max(180, startSize.X.Offset + Delta.X)
+            local Y = math.max(120, startSize.Y.Offset + Delta.Y)
+            UI.Size = UDim2.new(startSize.X.Scale, X, startSize.Y.Scale, Y)
+        end)
+    end)
+
+    InputService.InputEnded:Connect(function(Input)
+        if dragging and (Input.UserInputType == Enum.UserInputType.MouseButton1
+            or Input.UserInputType == Enum.UserInputType.Touch) then
+            stop()
+        end
+    end)
+    return UI
+end
+
+function Library:AddDraggableLabel(...)
+    local Params = select(1, ...)
+    if type(Params) ~= 'table' then
+        Params = { Text = tostring(Params or ''), Position = select(2, ...), Size = select(3, ...) }
+    end
+    local Label = self:Create('TextLabel', {
+        BackgroundTransparency = 1,
+        Size = Params.Size or UDim2.fromOffset(180, 20),
+        Position = Params.Position or UDim2.fromOffset(10, 10),
+        Text = Params.Text or '',
+        Font = Params.Font or self.Font,
+        TextSize = Params.TextSize or self.FontSize,
+        TextColor3 = Params.TextColor3 or self.FontColor,
+        TextXAlignment = Params.TextXAlignment or Enum.TextXAlignment.Left,
+        Active = true,
+        ZIndex = Params.ZIndex or 200,
+        Parent = Params.Parent or self.ScreenGui,
+    })
+    self:AddToRegistry(Label, { TextColor3 = 'FontColor' })
+    self:MakeDraggable(Label, Params.Cutoff or 40, false)
+    return Label
+end
+
+function Library:AddDraggableButton(...)
+    local Params = select(1, ...)
+    local Callback
+    if type(Params) ~= 'table' then
+        Callback = select(2, ...)
+        Params = { Text = tostring(Params or ''), Func = Callback }
+    else
+        Callback = Params.Callback or Params.Func
+    end
+    local Outer = self:Create('TextButton', {
+        BackgroundColor3 = Params.BackgroundColor3 or self.MainColor,
+        BorderColor3 = Params.BorderColor3 or self.OutlineColor,
+        Size = Params.Size or UDim2.fromOffset(180, 22),
+        Position = Params.Position or UDim2.fromOffset(10, 10),
+        Text = Params.Text or '',
+        Font = Params.Font or self.Font,
+        TextSize = Params.TextSize or self.FontSize,
+        TextColor3 = Params.TextColor3 or self.FontColor,
+        Active = true,
+        AutoButtonColor = false,
+        ZIndex = Params.ZIndex or 200,
+        Parent = Params.Parent or self.ScreenGui,
+    })
+    self:AddToRegistry(Outer, {
+        BackgroundColor3 = 'MainColor',
+        BorderColor3 = 'OutlineColor',
+        TextColor3 = 'FontColor',
+    })
+    self:MakeDraggable(Outer, Params.Cutoff or 40, false)
+    Outer.MouseButton1Click:Connect(function()
+        if Callback then self:SafeCallback(Callback, Outer) end
+    end)
+    return Outer
+end
+
+function Library:AddDraggableImageButton(...)
+    local Params = select(1, ...)
+    if type(Params) ~= 'table' then Params = { Image = tostring(Params or '') } end
+    local Button = self:Create('ImageButton', {
+        BackgroundTransparency = Params.BackgroundTransparency == nil and 1 or Params.BackgroundTransparency,
+        Size = Params.Size or UDim2.fromOffset(32, 32),
+        Position = Params.Position or UDim2.fromOffset(10, 10),
+        Image = Params.Image or '',
+        ImageColor3 = Params.ImageColor3 or self.FontColor,
+        AutoButtonColor = false,
+        Active = true,
+        ZIndex = Params.ZIndex or 200,
+        Parent = Params.Parent or self.ScreenGui,
+    })
+    self:MakeDraggable(Button, Params.Cutoff or 40, false)
+    if Params.Callback then
+        Button.MouseButton1Click:Connect(function() self:SafeCallback(Params.Callback, Button) end)
+    end
+    return Button
+end
+
+-- Compatibility aliases commonly used by advanced Linoria-style scripts.
+function BaseGroupbox:AddCheckbox(Idx, Info)
+    return self:AddToggle(Idx, Info)
 end
 
 function BaseGroupbox:AddParagraph(Text, DoesWrap)
@@ -5203,21 +5207,10 @@ end
 
 -- Compatibility helpers for the ObsidianUltra-style showcase, layered on the Linoria core.
 function Library:SetNotifySide(Side)
-    Side = tostring(Side or 'Right')
-    if Side ~= 'Left' and Side ~= 'Right' and Side ~= 'Top' and Side ~= 'Bottom' then
-        Side = 'Right'
-    end
-    Library.NotifySide = Side
-    Library.NotifyConfig = Library.NotifyConfig or {}
-    Library.NotifyConfig.BarSide = Side
-
-    -- Keep horizontal alignment sane; the bar side controls the actual accent side.
-    if Side == 'Left' or Side == 'Top' then
-        Library.NotifyConfig.Alignment = 'Left'
-    elseif Side == 'Right' or Side == 'Bottom' then
-        Library.NotifyConfig.Alignment = 'Right'
-    end
-
+    Side=tostring(Side or 'Right')
+    Library.NotifySide=Side
+    Library.NotifyConfig=Library.NotifyConfig or {}
+    Library.NotifyConfig.Alignment=Side
     if Library.UpdateNotifAlignment then Library.UpdateNotifAlignment() end
     return Library
 end
