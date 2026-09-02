@@ -880,7 +880,7 @@ do
             Size = UDim2.new(0.5, -6, 0, 20),
             Parent = PickerFrameInner
         });
-        local RgbBox = Library:Create(RgbBoxBase.Frame:FindFirstChild('TextBox'), {
+        local RgbBox = Library:Create(RgbBoxBase:FindFirstChildWhichIsA('TextBox', true), {
             Text = '255, 255, 255',
             PlaceholderText = 'RGB color',
             TextColor3 = Library.FontColor
@@ -1043,12 +1043,12 @@ do
 
 
             ContextMenu:AddOption('Copy HEX', function()
-                pcall(setclipboard, ColorPicker.Value:ToHex())
+                if type(setclipboard) == 'function' then pcall(setclipboard, ColorPicker.Value:ToHex()) end
                 Library:Notify('Copied hex code to clipboard!', 2)
             end)
 
             ContextMenu:AddOption('Copy RGB', function()
-                pcall(setclipboard, table.concat({ math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', '))
+                if type(setclipboard) == 'function' then pcall(setclipboard, table.concat({ math.floor(ColorPicker.Value.R * 255), math.floor(ColorPicker.Value.G * 255), math.floor(ColorPicker.Value.B * 255) }, ', ')) end
                 Library:Notify('Copied RGB values to clipboard!', 2)
             end)
 
@@ -1058,7 +1058,7 @@ do
         Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor'; });
         Library:AddToRegistry(SatVibMapInner, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor'; });
         Library:AddToRegistry(HueBoxInner, { BackgroundColor3 = 'MainColor'; BorderColor3 = 'OutlineColor'; });
-        Library:AddToRegistry(RgbBoxBase.Frame, { BackgroundColor3 = 'MainColor'; BorderColor3 = 'OutlineColor'; });
+        Library:AddToRegistry(RgbBoxBase, { BackgroundColor3 = 'MainColor'; BorderColor3 = 'OutlineColor'; });
         Library:AddToRegistry(RgbBox, { TextColor3 = 'FontColor', });
         Library:AddToRegistry(HueBox, { TextColor3 = 'FontColor', });
 
@@ -1620,14 +1620,14 @@ do
                     and Library:BeginGesture(Input) then
                     MarkControlInput(Input)
                     ModeButton:Select();
-                    Library:AttemptSave();
                     Library:EndGesture(Input)
                 end;
             end);
-            if Mode == KeyPicker.Mode then
-                ModeButton:Select();
-            end;
-
+            -- Register the mode button before any initial selection.
+            -- The previous order called Select() before KeyPicker:Update()
+            -- existed, causing: "attempt to call missing method 'Update'"
+            -- during KeyPicker construction. Initial selection is deferred
+            -- until all KeyPicker methods have been defined below.
             ModeButtons[Mode] = ModeButton;
         end;
 
@@ -1712,6 +1712,12 @@ do
             else
                 return KeyPicker.Toggled;
             end;
+        end;
+
+        -- Now that Update/GetState exist, safely apply the initial mode.
+        local InitialModeButton = ModeButtons[KeyPicker.Mode] or ModeButtons['Toggle'];
+        if InitialModeButton then
+            InitialModeButton:Select();
         end;
 
         function KeyPicker:SetValue(Data)
@@ -3394,6 +3400,7 @@ function Funcs:AddDropdown(Idx, Info)
             TextColor3 = 'FontColor';
             PlaceholderColor3 = 'FontColor';
         });
+        Dropdown.SearchBox = SearchBox
         SearchBox:GetPropertyChangedSignal('Text'):Connect(function()
             if not Dropdown.Searchable then
                 return;
@@ -3803,8 +3810,12 @@ function Funcs:AddDropdown(Idx, Info)
 
         function Dropdown:AddDisabledValues(NewValues)
             if type(NewValues) ~= 'table' then return self end
-            for _, Value in ipairs(NewValues) do
-                self.DisabledValues[Value] = true;
+            for Key, Value in next, NewValues do
+                if type(Key) == 'number' then
+                    self.DisabledValues[Value] = true
+                elseif Value then
+                    self.DisabledValues[Key] = true
+                end
             end
             self:RefreshButtons();
             return self;
@@ -3813,6 +3824,7 @@ function Funcs:AddDropdown(Idx, Info)
         function Dropdown:SetValueImages(NewValues)
             self.ValueImages = type(NewValues) == 'table' and NewValues or {};
             self:BuildDropdownList();
+            return self;
         end
 
         function Dropdown:AddValueImages(NewValues)
