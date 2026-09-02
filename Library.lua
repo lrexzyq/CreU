@@ -58,6 +58,7 @@ local Library = {
     BlurSize = 15;
 
     KeybindMode = 'All';
+    ShowKeybinds = true;
 
     DPIScale = 1;
     ActiveGestureInput = nil;
@@ -65,6 +66,8 @@ local Library = {
     NotifyScale = nil;
     _MobileGui = nil;
     _DropdownScales = {};
+    _TouchCount = 0;
+    _OnUnloadCallbacks = {};
 
     NotifyConfig = {
         Alignment = 'Left';
@@ -247,6 +250,19 @@ function Library:CreateLabel(Properties, IsHud)
     }, IsHud);
     return Library:Create(_Instance, Properties);
 end;
+
+local function GetAncestorUIScale(Instance)
+    local Current = Instance
+    while Current and Current ~= ScreenGui do
+        for _, Child in ipairs(Current:GetChildren()) do
+            if Child:IsA('UIScale') then
+                return Child
+            end
+        end
+        Current = Current.Parent
+    end
+    return nil
+end
 
 function Library:BeginGesture(Input, AllowCurrent)
     if Library.Unloaded or not Input then return false end
@@ -589,6 +605,9 @@ function Library:RemoveFromRegistry(Instance)
 end;
 
 function Library:UpdateColorsUsingRegistry()
+    if Library.AccentColor then
+        Library.AccentColorDark = Library:GetDarkerColor(Library.AccentColor)
+    end
     for Idx, Object in next, Library.Registry do
         for Property, ColorIdx in next, Object.Properties do
             if type(ColorIdx) == 'string' then
@@ -600,9 +619,32 @@ function Library:UpdateColorsUsingRegistry()
     end;
 end;
 
-function Library:GiveSignal(Signal)
-    table.insert(Library.Signals, Signal)
+function Library:SetAccentColor(Color)
+    if typeof(Color) ~= 'Color3' then
+        return Library
+    end
+    Library.AccentColor = Color
+    Library.AccentColorDark = Library:GetDarkerColor(Color)
+    Library:UpdateColorsUsingRegistry()
+    return Library
 end
+
+function Library:GiveSignal(Signal)
+    if Signal then
+        table.insert(Library.Signals, Signal)
+    end
+    return Signal
+end
+
+-- Track active touches so a KeyPicker bound to the virtual Touch key can
+-- report a real Hold state instead of a permanent true value.
+Library:GiveSignal(InputService.TouchStarted:Connect(function()
+    Library._TouchCount = (Library._TouchCount or 0) + 1
+end))
+
+Library:GiveSignal(InputService.TouchEnded:Connect(function()
+    Library._TouchCount = math.max(0, (Library._TouchCount or 0) - 1)
+end))
 
 function Library:Unload()
     if Library.Unloaded then return end
@@ -615,8 +657,11 @@ function Library:Unload()
         if Connection then pcall(function() Connection:Disconnect() end) end
     end
 
-    if Library.OnUnload then
-        pcall(Library.OnUnload)
+    for Index = #Library._OnUnloadCallbacks, 1, -1 do
+        local Callback = table.remove(Library._OnUnloadCallbacks, Index)
+        if type(Callback) == 'function' then
+            pcall(Callback)
+        end
     end
     
     if Library.BlurEffect then
@@ -651,7 +696,10 @@ Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
 end))
 
 function Library:OnUnload(Callback)
-    Library.OnUnload = Callback
+    if type(Callback) == 'function' then
+        table.insert(Library._OnUnloadCallbacks, Callback)
+    end
+    return Library
 end
 
 Library:GiveSignal(ScreenGui.DescendantRemoving:Connect(function(Instance)
@@ -665,6 +713,8 @@ do
     local Funcs = {};
 
     function Funcs:AddColorPicker(Idx, Info)
+        Info = type(Info) == 'table' and Info or {};
+        assert(self.TextLabel, 'AddColorPicker: this control does not expose an addon host. Use AddColorPicker on a label/toggle-compatible control.');
         local ToggleLabel = self.TextLabel;
         assert(Info.Default, 'AddColorPicker: Missing default value.');
 
@@ -1284,12 +1334,11 @@ do
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
                 local DFPos = DisplayFrame.AbsolutePosition;
                 local DFSize = DisplayFrame.AbsoluteSize;
-
-                if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
-                    or Mouse.Y < DFPos.Y or Mouse.Y > AbsPos.Y + AbsSize.Y then
-
-                    if not (Mouse.X >= DFPos.X and Mouse.X <= DFPos.X + DFSize.X
-                        and Mouse.Y >= DFPos.Y and Mouse.Y <= DFPos.Y + DFSize.Y) then
+                local InputPos = Input.Position
+                if InputPos.X < AbsPos.X or InputPos.X > AbsPos.X + AbsSize.X
+                    or InputPos.Y < DFPos.Y or InputPos.Y > DFPos.Y + DFSize.Y then
+                    if not (InputPos.X >= DFPos.X and InputPos.X <= DFPos.X + DFSize.X
+                        and InputPos.Y >= DFPos.Y and InputPos.Y <= DFPos.Y + DFSize.Y) then
                         ColorPicker:Hide();
                     end
                 end;
@@ -1338,19 +1387,28 @@ do
     end;
 
     function Funcs:AddKeyPicker(Idx, Info)
+        Info = type(Info) == 'table' and Info or {};
+        assert(self.TextLabel, 'AddKeyPicker: this control does not expose an addon host. Use AddKeyPicker on a label/toggle-compatible control.');
         local ParentObj = self;
         local ToggleLabel = self.TextLabel;
         local Container = self.Container;
 
-        assert(Info.Default, 'AddKeyPicker: Missing default value.');
+        Info.Default = Info.Default ~= nil and Info.Default or 'None';
+
+        local RequestedMode = Info.Mode or 'Toggle'
+        if RequestedMode ~= 'Toggle' and RequestedMode ~= 'Always' and RequestedMode ~= 'Hold' then
+            RequestedMode = 'Toggle'
+        end
 
         local KeyPicker = {
             Value = Info.Default;
             Toggled = false;
-            Mode = Info.Mode or 'Toggle';
+            Mode = RequestedMode;
             Type = 'KeyPicker';
             Callback = Info.Callback or function(Value) end;
             ChangedCallback = Info.ChangedCallback or function(New) end;
+            NoUI = Info.NoUI == true;
+            MobileHeld = false;
 
             SyncToggleState = Info.SyncToggleState or false;
         };
@@ -1360,42 +1418,74 @@ do
         end
 
         local PickOuter = Library:Create('Frame', {
-            BackgroundColor3 = Color3.new(0, 0, 0);
-            BorderColor3 = Color3.new(0, 0, 0);
-            Size = UDim2.new(0, 28, 0, 15);
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Size = UDim2.new(0, 72, 0, 18);
             ZIndex = 6;
             Parent = ToggleLabel;
         });
-        local PickInner = Library:Create('Frame', {
+
+        local GearButton = Library:Create('TextButton', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Position = UDim2.fromOffset(0, 0);
+            Size = UDim2.fromOffset(20, 18);
+            AutoButtonColor = false;
+            Text = '⚙';
+            Font = Library.Font;
+            TextSize = Library.FontSize - 1;
+            TextColor3 = Library.FontColor;
+            ZIndex = 8;
+            Parent = PickOuter;
+        });
+        Library:AddToRegistry(GearButton, {
+            BackgroundColor3 = 'MainColor';
+            BorderColor3 = 'OutlineColor';
+            TextColor3 = 'FontColor';
+        });
+
+        local KeyButton = Library:Create('TextButton', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
             BorderMode = Enum.BorderMode.Inset;
-            Size = UDim2.new(1, 0, 1, 0);
-            ZIndex = 7;
+            Position = UDim2.fromOffset(22, 0);
+            Size = UDim2.fromOffset(50, 18);
+            AutoButtonColor = false;
+            Text = Info.Default;
+            Font = Library.Font;
+            TextSize = Library.FontSize - 1;
+            TextColor3 = Library.FontColor;
+            TextXAlignment = Enum.TextXAlignment.Center;
+            ZIndex = 8;
             Parent = PickOuter;
         });
-        Library:AddToRegistry(PickInner, {
+        Library:AddToRegistry(KeyButton, {
             BackgroundColor3 = 'BackgroundColor';
             BorderColor3 = 'OutlineColor';
+            TextColor3 = 'FontColor';
         });
-        local DisplayLabel = Library:CreateLabel({
-            Size = UDim2.new(1, 0, 1, 0);
-            TextSize = Library.FontSize - 1;
-            Text = Info.Default;
-            TextWrapped = true;
-            ZIndex = 8;
-            Parent = PickInner;
-        });
+
+        -- Keep the old internal variable name so all existing KeyPicker logic stays compatible.
+        local DisplayLabel = KeyButton;
+
         local ModeSelectOuter = Library:Create('Frame', {
             BorderColor3 = Color3.new(0, 0, 0);
-            Position = UDim2.fromOffset(ToggleLabel.AbsolutePosition.X + ToggleLabel.AbsoluteSize.X + 4, ToggleLabel.AbsolutePosition.Y + 1);
-            Size = UDim2.new(0, 60, 0, 45 + 2);
+            Position = UDim2.fromOffset(GearButton.AbsolutePosition.X, GearButton.AbsolutePosition.Y + GearButton.AbsoluteSize.Y + 2);
+            Size = UDim2.new(0, 82, 0, 54 + 2);
             Visible = false;
-            ZIndex = 14;
+            ZIndex = 114;
             Parent = ScreenGui;
         });
-        ToggleLabel:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
-            ModeSelectOuter.Position = UDim2.fromOffset(ToggleLabel.AbsolutePosition.X + ToggleLabel.AbsoluteSize.X + 4, ToggleLabel.AbsolutePosition.Y + 1);
+        GearButton:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
+            if ModeSelectOuter and ModeSelectOuter.Parent then
+                ModeSelectOuter.Position = UDim2.fromOffset(GearButton.AbsolutePosition.X, GearButton.AbsolutePosition.Y + GearButton.AbsoluteSize.Y + 2);
+            end
+        end);
+        GearButton:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+            if ModeSelectOuter and ModeSelectOuter.Parent then
+                ModeSelectOuter.Position = UDim2.fromOffset(GearButton.AbsolutePosition.X, GearButton.AbsolutePosition.Y + GearButton.AbsoluteSize.Y + 2);
+            end
         end);
         local ModeSelectInner = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
@@ -1416,10 +1506,23 @@ do
         });
         local KeybindEntry = Library:Create('Frame', {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 18),
+            Size = UDim2.new(1, 0, 0, 20),
+            Active = true,
             Visible = false,
             ZIndex = 110,
             Parent = Library.KeybindContainer,
+        })
+
+        local MobileBindButton = Library:Create('TextButton', {
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.fromOffset(0, 0),
+            Text = '',
+            AutoButtonColor = false,
+            Active = true,
+            ZIndex = 112,
+            Parent = KeybindEntry,
         })
 
         local ContainerLabel = Library:CreateLabel({
@@ -1427,7 +1530,7 @@ do
             Size = UDim2.new(1, -4, 1, 0),
             TextSize = Library.FontSize - 1,
             TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 111,
+            ZIndex = 113,
             Parent = KeybindEntry,
         }, true)
 
@@ -1482,13 +1585,23 @@ do
                 return;
             end;
 
+            if Library.ShowKeybinds == false then
+                KeybindEntry.Visible = false
+                if Library.KeybindFrame then
+                    Library.KeybindFrame.Visible = false
+                end
+                return;
+            end
+
             local State = KeyPicker:GetState();
 
             local displayKey = (KeyPicker.Value == 'None') and '...' or KeyPicker.Value
             ContainerLabel.Text = string.format('[%s] %s (%s)', displayKey, Info.Text, KeyPicker.Mode);
             local kbMode = Library.KeybindMode or 'All'
             if kbMode == 'Active' then
-                KeybindEntry.Visible = State == true
+                local canOnlyBeTurnedOnHere = InputService.TouchEnabled
+                    and not (ParentObj and ParentObj.Type == 'Toggle')
+                KeybindEntry.Visible = State == true or canOnlyBeTurnedOnHere
             elseif kbMode == 'Toggled' then
                 local parentOn = false
                 if ParentObj and ParentObj.Type == 'Toggle' then
@@ -1511,7 +1624,7 @@ do
 
             for _, Frame in next, Library.KeybindContainer:GetChildren() do
                 if Frame:IsA('Frame') and Frame.Visible then
-                    YSize = YSize + 18;
+                    YSize = YSize + 20;
                     local LabelChild = Frame:FindFirstChildOfClass('TextLabel')
                     if LabelChild and (LabelChild.TextBounds.X + 20 > XSize) then
                         XSize = LabelChild.TextBounds.X + 20 
@@ -1521,6 +1634,21 @@ do
 
             Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10 + 15, 210), 0, YSize + 23)
             Library.KeybindFrame.Visible = YSize > 0
+            if YSize > 0 then
+                task.defer(function()
+                    if Library.Unloaded or not Library.KeybindFrame or not Library.KeybindFrame.Parent then return end
+                    local maxWidth = 0
+                    for _, Frame in ipairs(Library.KeybindContainer:GetChildren()) do
+                        if Frame:IsA('Frame') and Frame.Visible then
+                            local LabelChild = Frame:FindFirstChildOfClass('TextLabel')
+                            if LabelChild then
+                                maxWidth = math.max(maxWidth, LabelChild.TextBounds.X + 20)
+                            end
+                        end
+                    end
+                    Library.KeybindFrame.Size = UDim2.fromOffset(math.max(maxWidth + 15, 210), YSize + 23)
+                end)
+            end
         end;
         function KeyPicker:GetState()
             if KeyPicker.Mode == 'Always' then
@@ -1534,9 +1662,10 @@ do
                 if Key == 'MB1' or Key == 'MB2' or Key == 'Touch' then
                     return Key == 'MB1' and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
                         or Key == 'MB2' and InputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                        or Key == 'Touch' and true
+                        or Key == 'Touch' and (Library._TouchCount or 0) > 0
                 else
-                    return InputService:IsKeyDown(Enum.KeyCode[KeyPicker.Value]);
+                    local KeyCode = Enum.KeyCode[KeyPicker.Value]
+                    return KeyCode ~= nil and InputService:IsKeyDown(KeyCode) or false;
                 end;
             else
                 return KeyPicker.Toggled;
@@ -1544,10 +1673,17 @@ do
         end;
 
         function KeyPicker:SetValue(Data)
-            local Key, Mode = Data[1], Data[2];
+            Data = type(Data) == 'table' and Data or { Data, KeyPicker.Mode };
+            local Key = Data[1] ~= nil and tostring(Data[1]) or 'None';
+            local Mode = Data[2] or KeyPicker.Mode or 'Toggle';
             DisplayLabel.Text = Key;
             KeyPicker.Value = Key;
-            ModeButtons[Mode]:Select();
+            local ModeButton = ModeButtons[Mode] or ModeButtons[KeyPicker.Mode] or ModeButtons['Toggle'];
+            if ModeButton then
+                ModeButton:Select();
+            else
+                KeyPicker.Mode = Mode;
+            end
             KeyPicker:Update();
         end;
 
@@ -1574,6 +1710,30 @@ do
             Library:SafeCallback(KeyPicker.Clicked, KeyPicker.Toggled)
         end
 
+        local function SetMobileBindState(Active)
+            if KeyPicker.Mode == 'Always' then
+                KeyPicker.Toggled = true
+                return
+            end
+            if KeyPicker.Mode == 'Hold' then
+                if KeyPicker.MobileHeld == Active then
+                    return
+                end
+                KeyPicker.MobileHeld = Active
+                KeyPicker.Toggled = Active
+                KeyPicker:DoClick()
+                Library:AttemptSave()
+                KeyPicker:Update()
+                return
+            end
+            if Active then
+                KeyPicker.Toggled = not KeyPicker.Toggled
+                KeyPicker:DoClick()
+                Library:AttemptSave()
+                KeyPicker:Update()
+            end
+        end
+
         local Picking = false;
         local LongPressTime = Info.LongPressTime or 0.55;
         local TouchMoveThreshold = Info.TouchMoveThreshold or 10;
@@ -1583,163 +1743,228 @@ do
         end;
 
         local function BeginPicking()
-            if Picking then
-                return;
-            end;
+            if Picking or Library.Unloaded then
+                return
+            end
 
-            Picking = true;
+            Picking = true
+            local Break = false
+            local Text = ''
+            DisplayLabel.Text = ''
 
-            DisplayLabel.Text = '';
-
-            local Break;
-            local Text = '';
-
-            task.spawn(function()
-                while (not Break) do
-                    if Text == '...' then
-                        Text = '';
-                    end;
-
-                    Text = Text .. '.';
-                    DisplayLabel.Text = Text;
-
-                    task.wait(0.4);
-                end;
-            end);
-
-            task.wait(0.2);
-
-            local Event;
+            local Event
             Event = InputService.InputBegan:Connect(function(Input)
-                local Key;
+                if Library.Unloaded or not Picking then
+                    return
+                end
 
+                local Key
                 if Input.UserInputType == Enum.UserInputType.Keyboard then
-                    Key = Input.KeyCode.Name;
+                    Key = Input.KeyCode.Name
                 elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    Key = 'MB1';
+                    Key = 'MB1'
                 elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
-                    Key = 'MB2';
+                    Key = 'MB2'
                 elseif Input.UserInputType == Enum.UserInputType.Touch then
-                    Key = 'Touch';
-                end;
+                    Key = 'Touch'
+                end
 
                 if not Key then
-                    return;
-                end;
+                    return
+                end
 
-                Break = true;
-                Picking = false;
-
-                DisplayLabel.Text = Key;
-                KeyPicker.Value = Key;
+                Break = true
+                Picking = false
+                DisplayLabel.Text = Key
+                KeyPicker.Value = Key
                 Library:SafeCallback(KeyPicker.ChangedCallback, Input.KeyCode or Input.UserInputType)
                 Library:SafeCallback(KeyPicker.Changed, Input.KeyCode or Input.UserInputType)
+                Library:AttemptSave()
+                if Event then
+                    Event:Disconnect()
+                    Event = nil
+                end
+                KeyPicker:Update()
+            end)
+            Library:GiveSignal(Event)
 
-                Library:AttemptSave();
-                Event:Disconnect();
-            end);
-            Library:GiveSignal(Event);
-        end;
+            task.spawn(function()
+                while not Break and not Library.Unloaded and Picking and DisplayLabel.Parent do
+                    if Text == '...' then
+                        Text = ''
+                    end
+                    Text = Text .. '.'
+                    DisplayLabel.Text = Text
+                    task.wait(0.4)
+                end
+            end)
+        end
 
-        PickOuter.InputBegan:Connect(function(Input)
+        GearButton.InputBegan:Connect(function(Input)
             if Library:MouseIsOverOpenedFrame(Input.Position) then
                 return;
             end;
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1
-                or Input.UserInputType == Enum.UserInputType.MouseButton2
-                or Input.UserInputType == Enum.UserInputType.Touch)
-                and not Library:BeginGesture(Input) then
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
+                return;
+            end;
+            if not Library:BeginGesture(Input) then
                 return;
             end;
 
             if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                BeginPicking();
-            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                Library:EndGesture(Input)
                 OpenModeSelect();
-            elseif Input.UserInputType == Enum.UserInputType.Touch then
+            else
                 local StartPosition = Input.Position;
                 local TouchMoved = false;
                 local TouchEnded = false;
-                local LongPressed = false;
                 local ChangedConn;
                 local EndedConn;
-
-                ChangedConn = InputService.InputChanged:Connect(function(Change)
-                    if Change == Input then
-                        if (Change.Position - StartPosition).Magnitude > TouchMoveThreshold then
-                            TouchMoved = true;
-                        end;
-                    end;
-                end);
-
-                EndedConn = InputService.InputEnded:Connect(function(EndInput)
-                    if EndInput == Input then
-                        TouchEnded = true;
-
-                        if ChangedConn then
-                            ChangedConn:Disconnect();
-                        end;
-
-                        if EndedConn then
-                            EndedConn:Disconnect();
-                        end;
-
-                        if (not LongPressed) and (not TouchMoved) then
-                            task.spawn(BeginPicking);
-                        end;
-                    end;
-                end);
-                Library:RegisterGestureCleanup(Input, function()
+                local function cleanup()
                     if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
                     if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+                end
+                ChangedConn = InputService.InputChanged:Connect(function(Change)
+                    if Change == Input and (Change.Position - StartPosition).Magnitude > TouchMoveThreshold then
+                        TouchMoved = true;
+                    end
                 end)
-
-                task.delay(LongPressTime, function()
-                    if Library.Unloaded or TouchEnded or TouchMoved then
-                        return;
-                    end;
-
-                    LongPressed = true;
-
-                    if ChangedConn then
-                        ChangedConn:Disconnect();
-                    end;
-
-                    if EndedConn then
-                        EndedConn:Disconnect();
-                    end;
-
-                    OpenModeSelect();
-                end);
-            end;
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput ~= Input then return end
+                    TouchEnded = true
+                    cleanup()
+                    Library:EndGesture(Input)
+                    if not TouchMoved then
+                        OpenModeSelect()
+                    end
+                end)
+                Library:RegisterGestureCleanup(Input, cleanup)
+            end
         end);
 
+        KeyButton.InputBegan:Connect(function(Input)
+            if Library:MouseIsOverOpenedFrame(Input.Position) then
+                return;
+            end;
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
+                return;
+            end;
+            if not Library:BeginGesture(Input) then
+                return;
+            end;
+
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                Library:EndGesture(Input)
+                BeginPicking();
+            else
+                local StartPosition = Input.Position;
+                local TouchMoved = false;
+                local TouchEnded = false;
+                local ChangedConn;
+                local EndedConn;
+                local function cleanup()
+                    if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+                    if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+                end
+                ChangedConn = InputService.InputChanged:Connect(function(Change)
+                    if Change == Input and (Change.Position - StartPosition).Magnitude > TouchMoveThreshold then
+                        TouchMoved = true;
+                    end
+                end)
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput ~= Input then return end
+                    TouchEnded = true
+                    cleanup()
+                    Library:EndGesture(Input)
+                    if not TouchMoved then
+                        BeginPicking()
+                    end
+                end)
+                Library:RegisterGestureCleanup(Input, cleanup)
+            end
+        end);
+
+        -- Mobile keybind interaction: the visible keybind row itself acts as the
+        -- virtual key. Toggle taps switch state; Hold stays active while the
+        -- finger is down; Always is continuously active and is not toggled.
+        MobileBindButton.InputBegan:Connect(function(Input)
+            if Input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            if not Library:BeginGesture(Input) then
+                return
+            end
+
+            KeyPicker._MobileBindInput = Input
+            local StartPosition = Input.Position
+            local Moved = false
+            local ChangedConn
+            local EndedConn
+            local function cleanup()
+                if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+                if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+            end
+
+            ChangedConn = InputService.InputChanged:Connect(function(Change)
+                if Change ~= Input then return end
+                if (Change.Position - StartPosition).Magnitude > TouchMoveThreshold then
+                    Moved = true
+                end
+            end)
+
+            EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                if EndInput ~= Input then return end
+                cleanup()
+                if not Moved then
+                    if KeyPicker.Mode == 'Hold' then
+                        SetMobileBindState(false)
+                    elseif KeyPicker.Mode == 'Toggle' then
+                        SetMobileBindState(true)
+                    end
+                elseif KeyPicker.Mode == 'Hold' then
+                    SetMobileBindState(false)
+                end
+                Library:EndGesture(Input)
+                KeyPicker._MobileBindInput = nil
+            end)
+
+            if KeyPicker.Mode == 'Hold' then
+                SetMobileBindState(true)
+            end
+            Library:RegisterGestureCleanup(Input, cleanup)
+        end)
+
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
-            if (not Picking) then
-                if KeyPicker.Mode == 'Toggle' then
-                    local Key = KeyPicker.Value;
+            if (not Picking) and Input ~= KeyPicker._MobileBindInput then
+                local Key = KeyPicker.Value
+                local Matches = false
 
-                    if Key == 'MB1' or Key == 'MB2' or Key == 'Touch' then
-                        if Key == 'MB1' and Input.UserInputType == Enum.UserInputType.MouseButton1
-                        or Key == 'MB2' and Input.UserInputType == Enum.UserInputType.MouseButton2 
-                        or Key == 'Touch' and Input.UserInputType == Enum.UserInputType.Touch then
-                            KeyPicker.Toggled = not KeyPicker.Toggled
-                            KeyPicker:DoClick()
-                        end;
-                    elseif Input.UserInputType == Enum.UserInputType.Keyboard then
-                        if Input.KeyCode.Name == Key then
-                            KeyPicker.Toggled = not KeyPicker.Toggled;
-                            KeyPicker:DoClick()
-                        end;
-                    end;
-                end;
+                if Key == 'MB1' then
+                    Matches = Input.UserInputType == Enum.UserInputType.MouseButton1
+                elseif Key == 'MB2' then
+                    Matches = Input.UserInputType == Enum.UserInputType.MouseButton2
+                elseif Key == 'Touch' then
+                    Matches = Input.UserInputType == Enum.UserInputType.Touch
+                elseif Input.UserInputType == Enum.UserInputType.Keyboard then
+                    Matches = Input.KeyCode.Name == Key
+                end
 
-                KeyPicker:Update();
+                if Matches then
+                    if KeyPicker.Mode == 'Toggle' then
+                        KeyPicker.Toggled = not KeyPicker.Toggled
+                        KeyPicker:DoClick()
+                    elseif KeyPicker.Mode == 'Hold' and not KeyPicker.Toggled then
+                        KeyPicker.Toggled = true
+                        KeyPicker:DoClick()
+                    end
+                    KeyPicker:Update();
+                end
             end;
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
                 local AbsPos, AbsSize = ModeSelectOuter.AbsolutePosition, ModeSelectOuter.AbsoluteSize;
-                if Mouse.X < AbsPos.X or Mouse.X > AbsPos.X + AbsSize.X
-                    or Mouse.Y < (AbsPos.Y - 20 - 1) or Mouse.Y > AbsPos.Y + AbsSize.Y then
+                local InputPos = Input.Position
+                if InputPos.X < AbsPos.X or InputPos.X > AbsPos.X + AbsSize.X
+                    or InputPos.Y < (AbsPos.Y - 20 - 1) or InputPos.Y > AbsPos.Y + AbsSize.Y then
 
                     ModeSelectOuter.Visible = false;
                 end;
@@ -1747,7 +1972,23 @@ do
         end))
 
         Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
-            if (not Picking) then
+            if (not Picking) and Input ~= KeyPicker._MobileBindInput then
+                local Key = KeyPicker.Value
+                local Matches = false
+                if Key == 'MB1' then
+                    Matches = Input.UserInputType == Enum.UserInputType.MouseButton1
+                elseif Key == 'MB2' then
+                    Matches = Input.UserInputType == Enum.UserInputType.MouseButton2
+                elseif Key == 'Touch' then
+                    Matches = Input.UserInputType == Enum.UserInputType.Touch
+                elseif Input.UserInputType == Enum.UserInputType.Keyboard then
+                    Matches = Input.KeyCode.Name == Key
+                end
+
+                if Matches and KeyPicker.Mode == 'Hold' and KeyPicker.Toggled then
+                    KeyPicker.Toggled = false
+                    KeyPicker:DoClick()
+                end
                 KeyPicker:Update();
             end;
         end))
@@ -2042,6 +2283,7 @@ do
 
         Label.TextLabel = TextLabel;
         Label.Container = Container;
+        Label.Addons = {};
         function Label:SetText(Text)
             TextLabel.Text = Text
 
@@ -2504,7 +2746,8 @@ do
     end;
 
     function Funcs:AddToggle(Idx, Info)
-        assert(Info.Text, 'AddInput: Missing `Text` string.')
+        Info = type(Info) == 'table' and Info or {}
+        assert(Info.Text, 'AddToggle: Missing `Text` string.')
 
         local Toggle = {
             Value = Info.Default or false;
@@ -2641,7 +2884,7 @@ do
         end
 
         Toggle:Display();
-        Groupbox:AddBlank(Info.BlankSize or 5 + 2);
+        Groupbox:AddBlank((Info.BlankSize or 5) + 2);
         Groupbox:Resize();
 
         Toggle.TextLabel = ToggleLabel;
@@ -2685,6 +2928,7 @@ do
             MaxSize = 232;
             Type = 'Slider';
             Callback = Info.Callback or function(Value) end;
+            SupportsAddons = false;
         };
 
         local Groupbox = self;
@@ -2887,19 +3131,6 @@ do
 
         return Slider;
     end;
-    local function GetAncestorUIScale(Instance)
-    local Current = Instance
-    while Current and Current ~= ScreenGui do
-        for _, Child in ipairs(Current:GetChildren()) do
-            if Child:IsA('UIScale') then
-                return Child
-            end
-        end
-        Current = Current.Parent
-    end
-    return nil
-end
-
 function Funcs:AddDropdown(Idx, Info)
         Info = Info or {};
 
@@ -2947,6 +3178,7 @@ function Funcs:AddDropdown(Idx, Info)
             MaxVisibleDropdownItems = math.clamp(tonumber(Info.MaxVisibleDropdownItems or Info.MaxVisibleItems or 8) or 8, 1, 40);
             Text = Info.Text;
             Placeholder = Info.Placeholder or 'Search...';
+            SupportsAddons = false;
         };
 
         -- Accept both array-style and dictionary-style disabled values.
@@ -3052,10 +3284,20 @@ function Funcs:AddDropdown(Idx, Info)
             Parent = ListOuter;
         });
         table.insert(Library._DropdownScales, ListScale);
+        local OwnerScaleConn
         if OwnerScale then
-            OwnerScale:GetPropertyChangedSignal('Scale'):Connect(function()
+            OwnerScaleConn = OwnerScale:GetPropertyChangedSignal('Scale'):Connect(function()
                 if ListScale.Parent then
                     ListScale.Scale = OwnerScale.Scale
+                elseif OwnerScaleConn then
+                    OwnerScaleConn:Disconnect()
+                    OwnerScaleConn = nil
+                end
+            end)
+            ListOuter.AncestryChanged:Connect(function(_, Parent)
+                if not Parent and OwnerScaleConn then
+                    OwnerScaleConn:Disconnect()
+                    OwnerScaleConn = nil
                 end
             end)
         end
@@ -3075,8 +3317,8 @@ function Funcs:AddDropdown(Idx, Info)
                 Position = UDim2.fromOffset(2, 2);
                 ClearTextOnFocus = false;
                 PlaceholderText = Dropdown.Placeholder;
+                TextSize = math.max(10, Library.FontSize - 3);
                 Text = '';
-                TextSize = math.max(11, Library.FontSize - 1);
                 TextXAlignment = Enum.TextXAlignment.Left;
                 ZIndex = 25;
                 Parent = ListOuter;
@@ -3212,7 +3454,7 @@ function Funcs:AddDropdown(Idx, Info)
                         Size = UDim2.new(1, -1, 0, self.ItemHeight);
                         Text = ValueText(Value);
                         TextColor3 = Library.FontColor;
-                        TextSize = Library.FontSize;
+                        TextSize = math.max(10, Library.FontSize - 4);
                         TextXAlignment = Enum.TextXAlignment.Left;
                         Active = not self.Disabled and not self.DisabledValues[Value];
                         ZIndex = 23;
@@ -3977,10 +4219,22 @@ function Library:IsUILocked()
 end;
 
 function Library:SetKeybindMode(Mode)
-    assert(Mode == 'All' or Mode == 'Active' or Mode == 'Toggled',
-        "SetKeybindMode: Mode must be 'All', 'Active', or 'Toggled'")
+    if Mode ~= 'All' and Mode ~= 'Active' and Mode ~= 'Toggled' then
+        return Library
+    end
     Library.KeybindMode = Mode
     Library:RefreshKeybinds()
+    return Library
+end
+
+function Library:SetShowKeybinds(Visible)
+    Library.ShowKeybinds = Visible == true
+    if Library.ShowKeybinds then
+        Library:RefreshKeybinds()
+    elseif Library.KeybindFrame then
+        Library.KeybindFrame.Visible = false
+    end
+    return Library
 end
 
 function Library:RefreshKeybinds()
@@ -4948,222 +5202,15 @@ function Library:CreateWindow(...)
             return Holder
         end
 
-        -- The old LinoriaLib-style SubTab implementation was removed.  It used
-        -- its own nested scrolling/button hierarchy and was a frequent source of
-        -- layout/input conflicts with the rest of this library.  Keep only a
-        -- compatibility surface so existing scripts still build: AddSubTab now
-        -- creates a normal stacked section inside the main tab, with no subtab
-        -- buttons, switching, or second tab system.
+        -- SubTab compatibility: this library intentionally has NO nested SubTab UI.
+        -- Older showcase scripts may still call AddSubTab(), so return the normal
+        -- parent Tab instead. All content is placed into the tab's regular layout.
         function Tab:SetSubTabAlignment(_Alignment)
-            return self
+            return Tab
         end
 
-        function Tab:AddSubTab(Info)
-            Info = type(Info) == 'table' and Info or { Name = tostring(Info) }
-            Tab._LegacySubSections = Tab._LegacySubSections or {}
-
-            local Sub = {
-                Name = tostring(Info.Name or 'Section');
-                Groupboxes = {};
-                Tabboxes = {};
-                ParentTab = Tab;
-                SingleColumn = false;
-            }
-
-            local Host = Tab._LegacySubHost
-            if not Host then
-                Host = Library:Create('ScrollingFrame', {
-                    BackgroundTransparency = 1;
-                    BorderSizePixel = 0;
-                    Position = UDim2.new(0, 7, 0, 7);
-                    Size = UDim2.new(1, -14, 1, -14);
-                    CanvasSize = UDim2.fromOffset(0, 0);
-                    ScrollBarThickness = 3;
-                    ScrollingDirection = Enum.ScrollingDirection.Y;
-                    Active = true;
-                    ZIndex = 3;
-                    Parent = TabFrame;
-                });
-                Library:Create('UIListLayout', {
-                    Padding = UDim.new(0, 8);
-                    SortOrder = Enum.SortOrder.LayoutOrder;
-                    Parent = Host;
-                })
-                Tab._LegacySubHost = Host
-                LeftSide.Visible = false
-                RightSide.Visible = false
-            end
-
-            local SectionOuter = Library:Create('Frame', {
-                BackgroundColor3 = Library.BackgroundColor;
-                BorderColor3 = Library.OutlineColor;
-                Size = UDim2.new(1, 0, 0, 30);
-                ClipsDescendants = true;
-                ZIndex = 4;
-                Parent = Host;
-            })
-            Library:AddToRegistry(SectionOuter, {
-                BackgroundColor3 = 'BackgroundColor';
-                BorderColor3 = 'OutlineColor';
-            })
-
-            local SectionTitle = Library:CreateLabel({
-                Size = UDim2.new(1, 0, 0, 22);
-                Text = Sub.Name;
-                TextXAlignment = Enum.TextXAlignment.Center;
-                ZIndex = 5;
-                Parent = SectionOuter;
-            })
-
-            local Content = Library:Create('Frame', {
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0, 4, 0, 24);
-                Size = UDim2.new(1, -8, 0, 0);
-                ZIndex = 5;
-                Parent = SectionOuter;
-            })
-
-            local Left = Library:Create('Frame', {
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0, 0, 0, 0);
-                Size = UDim2.new(0.5, -4, 0, 0);
-                ZIndex = 5;
-                Parent = Content;
-            })
-            local Right = Library:Create('Frame', {
-                BackgroundTransparency = 1;
-                Position = UDim2.new(0.5, 4, 0, 0);
-                Size = UDim2.new(0.5, -4, 0, 0);
-                ZIndex = 5;
-                Parent = Content;
-            })
-            Library:Create('UIListLayout', { Padding = UDim.new(0, 8); SortOrder = Enum.SortOrder.LayoutOrder; Parent = Left })
-            Library:Create('UIListLayout', { Padding = UDim.new(0, 8); SortOrder = Enum.SortOrder.LayoutOrder; Parent = Right })
-
-            Sub.Container = Content
-            setmetatable(Sub, BaseGroupbox)
-
-            local function ColumnHeight(Col)
-                local h, n = 0, 0
-                for _, c in next, Col:GetChildren() do
-                    if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
-                        h += c.AbsoluteSize.Y
-                        n += 1
-                    end
-                end
-                if n > 1 then h += (n - 1) * 8 end
-                return h
-            end
-
-            function Sub:Resize()
-                local leftH = ColumnHeight(Left)
-                local rightH = ColumnHeight(Right)
-                local contentH = math.max(leftH, rightH, 24)
-                Content.Size = UDim2.new(1, -8, 0, contentH)
-                Left.Size = UDim2.new(0.5, -4, 0, contentH)
-                Right.Size = UDim2.new(0.5, -4, 0, contentH)
-                SectionOuter.Size = UDim2.new(1, 0, 0, contentH + 30)
-
-                local total = 0
-                for _, c in next, Host:GetChildren() do
-                    if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
-                        total += c.AbsoluteSize.Y + 8
-                    end
-                end
-                Host.CanvasSize = UDim2.fromOffset(0, math.max(0, total))
-            end
-
-            function Sub:_AddBox(Name, Side)
-                local Box = { Groupboxes = {} }
-                local Parent = Side == 1 and Left or Right
-                local Outer = Library:Create('Frame', {
-                    BackgroundColor3 = Library.BackgroundColor;
-                    BorderColor3 = Library.OutlineColor;
-                    Size = UDim2.new(1, 0, 0, 24);
-                    ClipsDescendants = true;
-                    Parent = Parent;
-                    ZIndex = 6;
-                })
-                Library:AddToRegistry(Outer, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor' })
-                Library:CreateLabel({ Size = UDim2.new(1, 0, 0, 20); Text = tostring(Name or 'Groupbox'); TextXAlignment = Enum.TextXAlignment.Center; Parent = Outer; ZIndex = 7 })
-                local Inner = Library:Create('Frame', {
-                    BackgroundTransparency = 1;
-                    Position = UDim2.new(0, 4, 0, 21);
-                    Size = UDim2.new(1, -8, 0, 0);
-                    Parent = Outer;
-                    ZIndex = 7;
-                })
-                Library:Create('UIListLayout', { Padding = UDim.new(0, 4); SortOrder = Enum.SortOrder.LayoutOrder; Parent = Inner })
-                Box.Container = Inner
-                setmetatable(Box, BaseGroupbox)
-
-                function Box:Resize()
-                    local h, n = 0, 0
-                    for _, c in next, Inner:GetChildren() do
-                        if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
-                            h += c.Size.Y.Offset
-                            n += 1
-                        end
-                    end
-                    if n > 1 then h += (n - 1) * 4 end
-                    Inner.Size = UDim2.new(1, -8, 0, h)
-                    Outer.Size = UDim2.new(1, 0, 0, 27 + h + 4)
-                    task.defer(Sub.Resize, Sub)
-                end
-
-                Box:Resize()
-                return Box
-            end
-
-            function Sub:AddGroupbox(Info2)
-                Info2 = type(Info2) == 'table' and Info2 or { Name = tostring(Info2) }
-                return self:_AddBox(Info2.Name, Info2.Side or 1)
-            end
-            function Sub:AddLeftGroupbox(Name, _Icon)
-                return self:_AddBox(type(Name) == 'table' and Name.Name or Name, 1)
-            end
-            function Sub:AddRightGroupbox(Name, _Icon)
-                return self:_AddBox(type(Name) == 'table' and Name.Name or Name, 2)
-            end
-
-            function Sub:AddTabbox(Info2)
-                Info2 = Info2 or {}
-                local Box = { Tabs = {} }
-                local Holder = self:_AddBox(Info2.Name or 'Tabbox', Info2.Side or 1)
-                Box.Container = Holder.Container
-                Box.Outer = Holder.Container.Parent
-                function Box:AddTab(TabName)
-                    local T = {
-                        Container = Library:Create('Frame', {
-                            BackgroundTransparency = 1;
-                            Size = UDim2.new(1, 0, 0, 0);
-                            Parent = Box.Container;
-                        })
-                    }
-                    setmetatable(T, BaseGroupbox)
-                    function T:Resize()
-                        local h = 0
-                        for _, c in next, T.Container:GetChildren() do
-                            if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then h += c.Size.Y.Offset end
-                        end
-                        T.Container.Size = UDim2.new(1, 0, 0, h + 4)
-                        task.defer(Sub.Resize, Sub)
-                    end
-                    function T:Show() T.Container.Visible = true; T:Resize(); return T end
-                    function T:Hide() T.Container.Visible = false; task.defer(Sub.Resize, Sub) end
-                    local WasFirst = next(Box.Tabs) == nil
-                    Box.Tabs[TabName] = T
-                    if WasFirst then T:Show() end
-                    return T
-                end
-                return Box
-            end
-            function Sub:AddLeftTabbox(Name) return self:AddTabbox({ Name = type(Name) == 'table' and Name.Name or Name, Side = 1 }) end
-            function Sub:AddRightTabbox(Name) return self:AddTabbox({ Name = type(Name) == 'table' and Name.Name or Name, Side = 2 }) end
-
-            Tab._LegacySubSections[#Tab._LegacySubSections + 1] = Sub
-            Sub:Resize()
-            return Sub
+        function Tab:AddSubTab(_Info)
+            return Tab
         end
 
         -- Cùng lỗi hệ thống: đổi tab chính ngay khi chạm xuống khiến lỡ tay
@@ -5424,7 +5471,7 @@ if InputService.TouchEnabled then
     local LockOuter,   LockBtn  = CreateMobileButton("Lock",   "Lock UI",  UDim2.new(0, 10, 0, 10 + BTN_H + (BTN_GAP - BTN_H)))
 
     -- Library.UILocked is the single source of truth for "is the UI locked".
-    -- When true: the main window, subtab bar, draggable labels/buttons, and
+    -- When true: the main window and draggable labels/buttons,
     -- these two mobile control buttons all stop being draggable (both on
     -- mobile touch and PC mouse). Only the ClickAction (tap-to-toggle /
     -- tap-to-lock) still works while locked, so you can always re-unlock.
@@ -5438,7 +5485,7 @@ if InputService.TouchEnabled then
     Library._MobileLockRefresh = RefreshLockVisual
     RefreshLockVisual()
 
-    local function BindMobileButtonAction(Btn, Outer, ClickAction, IsLockButton)
+    local function BindMobileButtonAction(Btn, Outer, ClickAction)
         local dragging  = false
         local dragInput = nil
         local dragStart = nil
@@ -5500,16 +5547,12 @@ if InputService.TouchEnabled then
         if type(Library.Toggle) == 'function' then
             Library:Toggle()
         end
-    end, false)
+    end)
 
     BindMobileButtonAction(LockBtn, LockOuter, function()
         Library:SetUILocked(not Library.UILocked)
-    end, true)
+    end)
 
-    local _origUpdate = Library.UpdateColorsUsingRegistry
-    Library.UpdateColorsUsingRegistry = function(self)
-        _origUpdate(self)
-    end
 end
 
 function BaseGroupbox:AddPlayerInfo(Idx, Info)
@@ -5989,6 +6032,9 @@ function Library:SetNotifySide(Side)
     return Library
 end
 function Library:SetDPIScale(Value)
+    if type(Value) == 'string' then
+        Value = tonumber(Value:match('%-?%d+%.?%d*'))
+    end
     local n=math.clamp(tonumber(Value) or 100,50,200)
     Library.DPIScale=n/100
     for _, Window in next, Library._Windows or {} do
@@ -6002,12 +6048,15 @@ function Library:SetDPIScale(Value)
     if Library.NotifyScale then
         Library.NotifyScale.Scale=Library.DPIScale
     end
+    local LiveDropdownScales = {}
     for _, ScaleObject in next, Library._DropdownScales or {} do
         if ScaleObject and ScaleObject.Parent then
             local owner = GetAncestorUIScale(ScaleObject.Parent)
             ScaleObject.Scale = owner and owner.Scale or Library.DPIScale
+            LiveDropdownScales[#LiveDropdownScales + 1] = ScaleObject
         end
     end
+    Library._DropdownScales = LiveDropdownScales
     return Library
 end
 local _OrigNotify = Library.Notify
