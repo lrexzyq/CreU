@@ -986,6 +986,7 @@ do
                     end
                     if not Library:BeginGesture(Input) then return end
                     Callback()
+                    Library:EndGesture(Input)
                 end)
             end
 
@@ -1203,6 +1204,7 @@ do
                 if not Library:BeginGesture(Input) then return end
                 ContextMenu:Show()
                 ColorPicker:Hide()
+                Library:EndGesture(Input)
                 return
             end
 
@@ -1465,6 +1467,7 @@ do
                     and Library:BeginGesture(Input) then
                     ModeButton:Select();
                     Library:AttemptSave();
+                    Library:EndGesture(Input)
                 end;
             end);
             if Mode == KeyPicker.Mode then
@@ -1517,6 +1520,7 @@ do
             end;
 
             Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10 + 15, 210), 0, YSize + 23)
+            Library.KeybindFrame.Visible = YSize > 0
         end;
         function KeyPicker:GetState()
             if KeyPicker.Mode == 'Always' then
@@ -2652,16 +2656,32 @@ do
     end;
 
     function Funcs:AddSlider(Idx, Info)
-        assert(Info.Default, 'AddSlider: Missing default value.');
+        Info = type(Info) == 'table' and Info or {}
         assert(Info.Text, 'AddSlider: Missing slider text.');
         assert(Info.Min ~= nil, 'AddSlider: Missing minimum value.');
         assert(Info.Max ~= nil, 'AddSlider: Missing maximum value.');
         assert(Info.Rounding ~= nil, 'AddSlider: Missing rounding value.');
+
+        -- Be defensive about callers/configs that omit Default.  Linoria-style
+        -- addons sometimes create a slider before applying their saved value.
+        -- Falling back to Min keeps construction deterministic instead of
+        -- aborting the whole UI build.
+        local MinValue = tonumber(Info.Min) or 0
+        local MaxValue = tonumber(Info.Max) or MinValue
+        if MaxValue < MinValue then
+            MinValue, MaxValue = MaxValue, MinValue
+        end
+        local DefaultValue = tonumber(Info.Default)
+        if DefaultValue == nil then
+            DefaultValue = MinValue
+        end
+        DefaultValue = math.clamp(DefaultValue, MinValue, MaxValue)
+
         local Slider = {
-            Value = Info.Default;
-            Min = Info.Min;
-            Max = Info.Max;
-            Rounding = Info.Rounding;
+            Value = DefaultValue;
+            Min = MinValue;
+            Max = MaxValue;
+            Rounding = tonumber(Info.Rounding) or 0;
             MaxSize = 232;
             Type = 'Slider';
             Callback = Info.Callback or function(Value) end;
@@ -2867,7 +2887,20 @@ do
 
         return Slider;
     end;
-    function Funcs:AddDropdown(Idx, Info)
+    local function GetAncestorUIScale(Instance)
+    local Current = Instance
+    while Current and Current ~= ScreenGui do
+        for _, Child in ipairs(Current:GetChildren()) do
+            if Child:IsA('UIScale') then
+                return Child
+            end
+        end
+        Current = Current.Parent
+    end
+    return nil
+end
+
+function Funcs:AddDropdown(Idx, Info)
         Info = Info or {};
 
         if Info.SpecialType == 'Player' then
@@ -2879,7 +2912,7 @@ do
         end;
 
         assert(Info.Values, 'AddDropdown: Missing dropdown value list.');
-        assert(Info.AllowNull or Info.Default or Info.Multi, 'AddDropdown: Missing default value. Pass `AllowNull` as true if this was intentional.');
+        assert(Info.AllowNull or Info.Default ~= nil or Info.Multi, 'AddDropdown: Missing default value. Pass `AllowNull` as true if this was intentional.');
 
         if (not Info.Text) then
             Info.Compact = true;
@@ -3013,11 +3046,19 @@ do
         -- the scaled window) renders smaller -- this was the "dropdown text
         -- bigger than the rest of the UI" bug. Mirror the window/mobile scale
         -- onto the list so it always matches.
+        local OwnerScale = GetAncestorUIScale(DropdownOuter)
         local ListScale = Library:Create('UIScale', {
-            Scale = Library.DPIScale or 1;
+            Scale = OwnerScale and OwnerScale.Scale or Library.DPIScale or 1;
             Parent = ListOuter;
         });
         table.insert(Library._DropdownScales, ListScale);
+        if OwnerScale then
+            OwnerScale:GetPropertyChangedSignal('Scale'):Connect(function()
+                if ListScale.Parent then
+                    ListScale.Scale = OwnerScale.Scale
+                end
+            end)
+        end
         Library:AddToRegistry(ListOuter, {
             BackgroundColor3 = 'MainColor';
             BorderColor3 = 'OutlineColor';
@@ -3252,7 +3293,7 @@ do
                     Button.InputBegan:Connect(function(Input)
                         if not Button.Active or self.Disabled then return end
                         if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
-                        if not Library:BeginGesture(Input, true) then return end
+                        if not Library:BeginGesture(Input) then return end
 
                         local PressStart = Input.Position;
                         local Moved = false;
@@ -3557,7 +3598,10 @@ do
                     break
                 end
             end
-            if OverOpenedFrame then return end
+            if OverOpenedFrame then
+                Library:EndGesture(Input)
+                return
+            end
 
             local PressStart = Input.Position;
             local Moved = false;
@@ -4904,125 +4948,221 @@ function Library:CreateWindow(...)
             return Holder
         end
 
-        function Tab:SetSubTabAlignment(Alignment) self.SubTabAlignment=tostring(Alignment or 'Left'); return self end
+        -- The old LinoriaLib-style SubTab implementation was removed.  It used
+        -- its own nested scrolling/button hierarchy and was a frequent source of
+        -- layout/input conflicts with the rest of this library.  Keep only a
+        -- compatibility surface so existing scripts still build: AddSubTab now
+        -- creates a normal stacked section inside the main tab, with no subtab
+        -- buttons, switching, or second tab system.
+        function Tab:SetSubTabAlignment(_Alignment)
+            return self
+        end
 
         function Tab:AddSubTab(Info)
-            Info=type(Info)=='table' and Info or {Name=tostring(Info)}
-            Tab.SubTabs=Tab.SubTabs or {}
-            local Sub={Name=tostring(Info.Name or 'SubTab'),Groupboxes={},Tabboxes={},ParentTab=Tab,SingleColumn=true}
-            -- Content container now starts at y=38 (was 34) to leave a clear
-            -- gap below the 29px-tall SubTabBar (which sits at y=1..30), and
-            -- its height is measured from the bar's bottom instead of a fixed
-            -- offset, so subtab buttons/content never visually overlap or
-            -- poke past the tab bar's outline when the window is resized.
-            local Container=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,8,0,38),Size=UDim2.new(1,-16,1,-46),CanvasSize=UDim2.new(),ScrollBarThickness=3,Visible=false,ZIndex=3,ClipsDescendants=true,Parent=TabFrame})
-            if not Tab.SubTabBar then
-                Tab.SubTabBar=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,4,0,1),Size=UDim2.new(1,-8,0,29),CanvasSize=UDim2.fromOffset(0,0),ScrollingDirection=Enum.ScrollingDirection.X,ScrollBarThickness=0,ClipsDescendants=true,ScrollingEnabled=true,Active=true,ZIndex=10,Parent=TabFrame})
-                Tab.SubTabBar:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
-                    local total = 8
-                    for _,o in next,Tab.SubTabs do
-                        if o.Button then total += o.Button.AbsoluteSize.X + 4 end
-                    end
-                    local NewCanvasSize = math.max(Tab.SubTabBar.AbsoluteSize.X, total)
-                    Tab.SubTabBar.CanvasSize = UDim2.fromOffset(NewCanvasSize, 0)
-                    local MaxScroll = math.max(0, NewCanvasSize - Tab.SubTabBar.AbsoluteSize.X)
-                    if Tab.SubTabBar.CanvasPosition.X > MaxScroll then
-                        Tab.SubTabBar.CanvasPosition = Vector2.new(MaxScroll, 0)
-                    end
-                end)
+            Info = type(Info) == 'table' and Info or { Name = tostring(Info) }
+            Tab._LegacySubSections = Tab._LegacySubSections or {}
+
+            local Sub = {
+                Name = tostring(Info.Name or 'Section');
+                Groupboxes = {};
+                Tabboxes = {};
+                ParentTab = Tab;
+                SingleColumn = false;
+            }
+
+            local Host = Tab._LegacySubHost
+            if not Host then
+                Host = Library:Create('ScrollingFrame', {
+                    BackgroundTransparency = 1;
+                    BorderSizePixel = 0;
+                    Position = UDim2.new(0, 7, 0, 7);
+                    Size = UDim2.new(1, -14, 1, -14);
+                    CanvasSize = UDim2.fromOffset(0, 0);
+                    ScrollBarThickness = 3;
+                    ScrollingDirection = Enum.ScrollingDirection.Y;
+                    Active = true;
+                    ZIndex = 3;
+                    Parent = TabFrame;
+                });
+                Library:Create('UIListLayout', {
+                    Padding = UDim.new(0, 8);
+                    SortOrder = Enum.SortOrder.LayoutOrder;
+                    Parent = Host;
+                })
+                Tab._LegacySubHost = Host
+                LeftSide.Visible = false
+                RightSide.Visible = false
             end
-            Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Container})
-            Sub.Container=Container; setmetatable(Sub,BaseGroupbox)
-            function Sub:Show()
-                for _,o in next,Tab.SubTabs do
-                    if o.Container then o.Container.Visible=false end
-                    if o.Button then o.Button.BackgroundColor3=Library.MainColor end
-                end
-                self.Container.Visible=true
-                if self.Button then
-                    self.Button.BackgroundColor3=Library.BackgroundColor
-                    local x=self.Button.Position.X.Offset
-                    local w=self.Button.AbsoluteSize.X
-                    local view=Tab.SubTabBar.AbsoluteSize.X
-                    local scroll=Tab.SubTabBar.CanvasPosition.X
-                    if x < scroll then
-                        Tab.SubTabBar.CanvasPosition=Vector2.new(x,0)
-                    elseif x+w > scroll+view then
-                        Tab.SubTabBar.CanvasPosition=Vector2.new(math.max(0,x+w-view),0)
+
+            local SectionOuter = Library:Create('Frame', {
+                BackgroundColor3 = Library.BackgroundColor;
+                BorderColor3 = Library.OutlineColor;
+                Size = UDim2.new(1, 0, 0, 30);
+                ClipsDescendants = true;
+                ZIndex = 4;
+                Parent = Host;
+            })
+            Library:AddToRegistry(SectionOuter, {
+                BackgroundColor3 = 'BackgroundColor';
+                BorderColor3 = 'OutlineColor';
+            })
+
+            local SectionTitle = Library:CreateLabel({
+                Size = UDim2.new(1, 0, 0, 22);
+                Text = Sub.Name;
+                TextXAlignment = Enum.TextXAlignment.Center;
+                ZIndex = 5;
+                Parent = SectionOuter;
+            })
+
+            local Content = Library:Create('Frame', {
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0, 4, 0, 24);
+                Size = UDim2.new(1, -8, 0, 0);
+                ZIndex = 5;
+                Parent = SectionOuter;
+            })
+
+            local Left = Library:Create('Frame', {
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0, 0, 0, 0);
+                Size = UDim2.new(0.5, -4, 0, 0);
+                ZIndex = 5;
+                Parent = Content;
+            })
+            local Right = Library:Create('Frame', {
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0.5, 4, 0, 0);
+                Size = UDim2.new(0.5, -4, 0, 0);
+                ZIndex = 5;
+                Parent = Content;
+            })
+            Library:Create('UIListLayout', { Padding = UDim.new(0, 8); SortOrder = Enum.SortOrder.LayoutOrder; Parent = Left })
+            Library:Create('UIListLayout', { Padding = UDim.new(0, 8); SortOrder = Enum.SortOrder.LayoutOrder; Parent = Right })
+
+            Sub.Container = Content
+            setmetatable(Sub, BaseGroupbox)
+
+            local function ColumnHeight(Col)
+                local h, n = 0, 0
+                for _, c in next, Col:GetChildren() do
+                    if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
+                        h += c.AbsoluteSize.Y
+                        n += 1
                     end
                 end
-                return self
+                if n > 1 then h += (n - 1) * 8 end
+                return h
             end
-            function Sub:Hide() self.Container.Visible=false; return self end
-            local SubLeft=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,0,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
-            local SubRight=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,4,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
-            Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubLeft})
-            Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubRight})
+
             function Sub:Resize()
-                local function ColumnHeight(Col)
-                    local h, n = 0, 0
-                    for _,c in next, Col:GetChildren() do
-                        if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
-                            h += c.Size.Y.Offset
-                            n += 1
-                        end
+                local leftH = ColumnHeight(Left)
+                local rightH = ColumnHeight(Right)
+                local contentH = math.max(leftH, rightH, 24)
+                Content.Size = UDim2.new(1, -8, 0, contentH)
+                Left.Size = UDim2.new(0.5, -4, 0, contentH)
+                Right.Size = UDim2.new(0.5, -4, 0, contentH)
+                SectionOuter.Size = UDim2.new(1, 0, 0, contentH + 30)
+
+                local total = 0
+                for _, c in next, Host:GetChildren() do
+                    if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
+                        total += c.AbsoluteSize.Y + 8
                     end
-                    if n > 1 then h += (n - 1) * 8 end -- khoảng cách UIListLayout giữa các groupbox
-                    return h
                 end
-                -- SỬA: SubLeft/SubRight là ScrollingFrame (không phải Frame), nên
-                -- c:IsA('Frame') trước đây luôn false và CanvasSize không bao giờ
-                -- được cập nhật đúng — khiến nội dung dài không cuộn được/bị tràn.
-                local MaxHeight = math.max(ColumnHeight(SubLeft), ColumnHeight(SubRight))
-                Container.CanvasSize = UDim2.fromOffset(0, MaxHeight + 8)
+                Host.CanvasSize = UDim2.fromOffset(0, math.max(0, total))
             end
-            function Sub:_AddBox(Name,Side)
-                local Box={Groupboxes={}}
-                local Parent=Side==1 and SubLeft or SubRight
-                local Outer=Library:Create('Frame',{BackgroundColor3=Library.BackgroundColor,BorderColor3=Library.OutlineColor,Size=UDim2.new(1,0,0,24),ClipsDescendants=true,Parent=Parent,ZIndex=4})
-                Library:AddToRegistry(Outer,{BackgroundColor3='BackgroundColor',BorderColor3='OutlineColor'})
-                local Title=Library:CreateLabel({Size=UDim2.new(1,0,0,20),Text=tostring(Name or 'Groupbox'),TextXAlignment=Enum.TextXAlignment.Center,Parent=Outer,ZIndex=5})
-                local Inner=Library:Create('Frame',{BackgroundTransparency=1,Position=UDim2.new(0,4,0,21),Size=UDim2.new(1,-8,1,-21),Parent=Outer,ZIndex=5})
-                Library:Create('UIListLayout',{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Inner})
-                Box.Container=Inner; setmetatable(Box,BaseGroupbox)
+
+            function Sub:_AddBox(Name, Side)
+                local Box = { Groupboxes = {} }
+                local Parent = Side == 1 and Left or Right
+                local Outer = Library:Create('Frame', {
+                    BackgroundColor3 = Library.BackgroundColor;
+                    BorderColor3 = Library.OutlineColor;
+                    Size = UDim2.new(1, 0, 0, 24);
+                    ClipsDescendants = true;
+                    Parent = Parent;
+                    ZIndex = 6;
+                })
+                Library:AddToRegistry(Outer, { BackgroundColor3 = 'BackgroundColor'; BorderColor3 = 'OutlineColor' })
+                Library:CreateLabel({ Size = UDim2.new(1, 0, 0, 20); Text = tostring(Name or 'Groupbox'); TextXAlignment = Enum.TextXAlignment.Center; Parent = Outer; ZIndex = 7 })
+                local Inner = Library:Create('Frame', {
+                    BackgroundTransparency = 1;
+                    Position = UDim2.new(0, 4, 0, 21);
+                    Size = UDim2.new(1, -8, 0, 0);
+                    Parent = Outer;
+                    ZIndex = 7;
+                })
+                Library:Create('UIListLayout', { Padding = UDim.new(0, 4); SortOrder = Enum.SortOrder.LayoutOrder; Parent = Inner })
+                Box.Container = Inner
+                setmetatable(Box, BaseGroupbox)
+
                 function Box:Resize()
                     local h, n = 0, 0
-                    for _,c in next,Inner:GetChildren() do
+                    for _, c in next, Inner:GetChildren() do
                         if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
                             h += c.Size.Y.Offset
                             n += 1
                         end
                     end
-                    if n > 1 then h += (n - 1) * 4 end -- khoảng cách UIListLayout (Padding=4) giữa các item, trước đây bị thiếu nên groupbox bị tính thấp hơn thực tế -> nội dung tràn ra ngoài khung
-                    Outer.Size=UDim2.new(1,0,0,24+h+6)
+                    if n > 1 then h += (n - 1) * 4 end
+                    Inner.Size = UDim2.new(1, -8, 0, h)
+                    Outer.Size = UDim2.new(1, 0, 0, 27 + h + 4)
+                    task.defer(Sub.Resize, Sub)
                 end
-                Box:Resize(); Sub:Resize(); return Box
+
+                Box:Resize()
+                return Box
             end
-            function Sub:AddGroupbox(Info2) Info2=type(Info2)=='table' and Info2 or {Name=tostring(Info2)}; return self:_AddBox(Info2.Name,Info2.Side or 1) end
-            function Sub:AddLeftGroupbox(Name,Icon) return self:_AddBox(type(Name)=='table' and Name.Name or Name,1) end
-            function Sub:AddRightGroupbox(Name,Icon) return self:_AddBox(type(Name)=='table' and Name.Name or Name,2) end
+
+            function Sub:AddGroupbox(Info2)
+                Info2 = type(Info2) == 'table' and Info2 or { Name = tostring(Info2) }
+                return self:_AddBox(Info2.Name, Info2.Side or 1)
+            end
+            function Sub:AddLeftGroupbox(Name, _Icon)
+                return self:_AddBox(type(Name) == 'table' and Name.Name or Name, 1)
+            end
+            function Sub:AddRightGroupbox(Name, _Icon)
+                return self:_AddBox(type(Name) == 'table' and Name.Name or Name, 2)
+            end
+
             function Sub:AddTabbox(Info2)
-                Info2=Info2 or {}; local Box={Tabs={}}; local Holder=self:_AddBox(Info2.Name or 'Tabbox',Info2.Side or 1); Box.Container=Holder.Container; Box.Outer=Holder.Container.Parent
+                Info2 = Info2 or {}
+                local Box = { Tabs = {} }
+                local Holder = self:_AddBox(Info2.Name or 'Tabbox', Info2.Side or 1)
+                Box.Container = Holder.Container
+                Box.Outer = Holder.Container.Parent
                 function Box:AddTab(TabName)
-                    local T={Container=Library:Create('Frame',{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),Parent=Box.Container})}; setmetatable(T,BaseGroupbox)
-                    function T:Resize() local h=0; for _,c in next,T.Container:GetChildren() do if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then h+=c.Size.Y.Offset end end; T.Container.Size=UDim2.new(1,0,0,h+4) end
-                    function T:Show() for _,x in next,Box.Tabs do if x.Container then x.Container.Visible=false end end; T.Container.Visible=true; T:Resize() end
-                    function T:Hide() T.Container.Visible=false end
+                    local T = {
+                        Container = Library:Create('Frame', {
+                            BackgroundTransparency = 1;
+                            Size = UDim2.new(1, 0, 0, 0);
+                            Parent = Box.Container;
+                        })
+                    }
+                    setmetatable(T, BaseGroupbox)
+                    function T:Resize()
+                        local h = 0
+                        for _, c in next, T.Container:GetChildren() do
+                            if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then h += c.Size.Y.Offset end
+                        end
+                        T.Container.Size = UDim2.new(1, 0, 0, h + 4)
+                        task.defer(Sub.Resize, Sub)
+                    end
+                    function T:Show() T.Container.Visible = true; T:Resize(); return T end
+                    function T:Hide() T.Container.Visible = false; task.defer(Sub.Resize, Sub) end
                     local WasFirst = next(Box.Tabs) == nil
-                    Box.Tabs[TabName]=T; if WasFirst then T:Show() end; return T
+                    Box.Tabs[TabName] = T
+                    if WasFirst then T:Show() end
+                    return T
                 end
                 return Box
             end
-            function Sub:AddLeftTabbox(Name) return self:AddTabbox({Name=type(Name)=='table' and Name.Name or Name,Side=1}) end
-            function Sub:AddRightTabbox(Name) return self:AddTabbox({Name=type(Name)=='table' and Name.Name or Name,Side=2}) end
-            local SubBtnTextWidth=Library:GetTextBounds(Sub.Name,Library.Font,Library.FontSize)
-            local Button=Library:Create('TextButton',{BackgroundColor3=Library.MainColor,BorderColor3=Library.OutlineColor,AutoButtonColor=false,Text=Sub.Name,TextColor3=Library.FontColor,Font=Library.Font,TextSize=Library.FontSize,Size=UDim2.fromOffset(math.max(70,SubBtnTextWidth+22),24),ZIndex=11,Parent=Tab.SubTabBar})
-            local x=4; for _,o in next,Tab.SubTabs do if o.Button then x+=o.Button.Size.X.Offset+4 end end; Button.Position=UDim2.fromOffset(x,2); Sub.Button=Button
-            local ViewWidth = math.max(0, Tab.SubTabBar.AbsoluteSize.X - 2)
-            Tab.SubTabBar.CanvasSize=UDim2.fromOffset(math.max(ViewWidth, x+Button.Size.X.Offset+4),0)
-            Button.MouseButton1Click:Connect(function() Sub:Show() end)
-            local WasFirst = #Tab.SubTabs == 0
-            Tab.SubTabs[#Tab.SubTabs+1]=Sub; LeftSide.Visible=false; RightSide.Visible=false; if WasFirst then Sub:Show() end
+            function Sub:AddLeftTabbox(Name) return self:AddTabbox({ Name = type(Name) == 'table' and Name.Name or Name, Side = 1 }) end
+            function Sub:AddRightTabbox(Name) return self:AddTabbox({ Name = type(Name) == 'table' and Name.Name or Name, Side = 2 }) end
+
+            Tab._LegacySubSections[#Tab._LegacySubSections + 1] = Sub
+            Sub:Resize()
             return Sub
         end
 
@@ -5864,7 +6004,8 @@ function Library:SetDPIScale(Value)
     end
     for _, ScaleObject in next, Library._DropdownScales or {} do
         if ScaleObject and ScaleObject.Parent then
-            ScaleObject.Scale=Library.DPIScale
+            local owner = GetAncestorUIScale(ScaleObject.Parent)
+            ScaleObject.Scale = owner and owner.Scale or Library.DPIScale
         end
     end
     return Library
