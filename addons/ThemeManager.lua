@@ -20,6 +20,7 @@ local ThemeManager = {} do
 		['Ubuntu'] 			= { 7, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"3e3e3e","AccentColor":"e2581e","BackgroundColor":"323232","OutlineColor":"191919"}') },
 		['Quartz'] 			= { 8, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"232330","AccentColor":"426e87","BackgroundColor":"1d1b26","OutlineColor":"27232f"}') },
         ['Creep']           = { 9, httpService:JSONDecode('{"FontColor":"c5c3c3","MainColor":"000000","AccentColor":"ffffff","BackgroundColor":"000000","OutlineColor":"27232f"}') },
+		['Ue']              = { 10, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"181818","AccentColor":"4777b6","BackgroundColor":"141414","OutlineColor":"1f1f1f"}') },
 	}
 
 	function ThemeManager:ApplyTheme(theme)
