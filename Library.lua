@@ -4291,6 +4291,10 @@ do
     Library.UpdateNotifAlignment = Library_UpdateNotifAlignment
     Library_UpdateNotifAlignment()
 
+    if Library.WatermarkEnabled == nil then
+        Library.WatermarkEnabled = true
+    end
+
     local WatermarkOuter = Library:Create('Frame', {
         BorderColor3 = Color3.new(0, 0, 0);
         Position = UDim2.new(0, 100, 0, 5);
@@ -4471,7 +4475,8 @@ function Library:RefreshKeybinds()
 end
 
 function Library:SetWatermarkVisibility(Bool)
-    local Visible = Bool == true
+    Library.WatermarkEnabled = Bool == true
+    local Visible = Library.WatermarkEnabled
     if Library.Watermark then
         Library.Watermark.Visible = Visible
     end
@@ -4488,9 +4493,8 @@ function Library:SetWatermark(Text)
     end
     local X, Y = Library:GetTextBounds(Text, Library.Font, Library.FontSize);
     Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3);
-    Library:SetWatermarkVisibility(true)
-
     Library.WatermarkText.Text = Text;
+    Library:SetWatermarkVisibility(Library.WatermarkEnabled ~= false)
 end;
 function Library:SetWatermarkSegments(Segments)
     if Library._WatermarkV2 then
@@ -4543,9 +4547,8 @@ function Library:SetWatermarkSegments(Segments)
     end
 
     Library.Watermark.Size = UDim2.fromOffset(math.max(100, totalWidth), 20)
-    Library:SetWatermarkVisibility(true)
-
     Library._WatermarkSegments = Segments
+    Library:SetWatermarkVisibility(Library.WatermarkEnabled ~= false)
     -- LƯU Ý: Library.Watermark là 1 Roblox Instance (Frame) thật, KHÔNG được gán
     -- thuộc tính tùy ý như .RefreshRate lên nó (Roblox sẽ báo lỗi "not a valid
     -- member of Frame" và crash). RefreshRate cho hệ thống segment cũ này được
@@ -5987,6 +5990,7 @@ function Library:BuildWatermarkV2(Segments)
             AutomaticSize = Enum.AutomaticSize.X;
             Size = UDim2.new(0, 0, 1, 0);
             LayoutOrder = Order;
+            ZIndex = 201;
             Parent = Inner;
         });
         Library:Create('UIListLayout', {
@@ -6004,6 +6008,7 @@ function Library:BuildWatermarkV2(Segments)
                 TextColor3 = Library.OutlineColor;
                 TextSize = Library.FontSize;
                 LayoutOrder = 0;
+                ZIndex = 201;
                 Parent = Holder;
             });
         end;
@@ -6042,6 +6047,7 @@ function Library:BuildWatermarkV2(Segments)
                 Image = IconImage;
                 ImageColor3 = Info.Accent and Library.AccentColor or Library.FontColor;
                 LayoutOrder = 1;
+                ZIndex = 201;
                 Parent = Holder;
             });
         end;
@@ -6061,6 +6067,7 @@ function Library:BuildWatermarkV2(Segments)
             TextColor3 = Info.Accent and Library.AccentColor or Library.FontColor;
             TextSize = Library.FontSize;
             LayoutOrder = 2;
+            ZIndex = 201;
             Parent = Holder;
         });
         if Info.Accent then
@@ -6083,6 +6090,7 @@ function Library:BuildWatermarkV2(Segments)
     end);
 
     Library:MakeDraggable(Outer);
+    Outer.Visible = Library.WatermarkEnabled ~= false
 
     if #DynamicLabels > 0 then
         task.spawn(function()
@@ -6100,6 +6108,7 @@ function Library:BuildWatermarkV2(Segments)
 
     Watermark.Holder = Outer;
     Library._WatermarkV2 = Watermark;
+    Outer.Visible = Library.WatermarkEnabled ~= false
     return Watermark;
 end
 
@@ -6201,20 +6210,38 @@ function Library:AddDraggableLabel(...)
     if type(Params) ~= 'table' then
         Params = { Text = tostring(Params or ''), Position = select(2, ...), Size = select(3, ...) }
     end
+
     local Label = self:Create('TextLabel', {
-        BackgroundTransparency = 1,
-        Size = Params.Size or UDim2.fromOffset(180, 20),
+        BackgroundColor3 = Params.BackgroundColor3 or self.MainColor,
+        BorderColor3 = Params.BorderColor3 or self.OutlineColor,
+        BorderMode = Enum.BorderMode.Inset,
+        Size = Params.Size or UDim2.fromOffset(180, 22),
         Position = Params.Position or UDim2.fromOffset(10, 10),
         Text = Params.Text or '',
         Font = Params.Font or self.Font,
         TextSize = Params.TextSize or self.FontSize,
         TextColor3 = Params.TextColor3 or self.FontColor,
         TextXAlignment = Params.TextXAlignment or Enum.TextXAlignment.Left,
+        TextYAlignment = Params.TextYAlignment or Enum.TextYAlignment.Center,
         Active = true,
         ZIndex = Params.ZIndex or 200,
         Parent = Params.Parent or self.ScreenGui,
     })
-    self:AddToRegistry(Label, { TextColor3 = 'FontColor' })
+
+    self:AddToRegistry(Label, {
+        BackgroundColor3 = 'MainColor',
+        BorderColor3 = 'OutlineColor',
+        TextColor3 = 'FontColor',
+    })
+
+    if Params.TextColor3 then
+        self:RemoveFromRegistry(Label)
+        self:AddToRegistry(Label, {
+            BackgroundColor3 = 'MainColor',
+            BorderColor3 = 'OutlineColor',
+        })
+    end
+
     self:MakeDraggable(Label, Params.Cutoff or 40, false)
     return Label
 end
