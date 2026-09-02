@@ -1,4 +1,5 @@
 --enjoy!
+
 local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
 
 local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
@@ -7,6 +8,8 @@ local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
 
 local Players = game:GetService("Players")
 local Stats = game:GetService("Stats")
+local RunService = game:GetService("RunService")
+
 local LocalPlayer = Players.LocalPlayer
 
 local Options = Library.Options
@@ -31,9 +34,15 @@ local Window = Library:CreateWindow({
     Size = UDim2.fromOffset(700, 600),
     Footer = {
         "CreU | ",
-        { Text = "Full Example", Copyable = true },
+        {
+            Text = "Full Example",
+            Copyable = true
+        },
         " | UserId: ",
-        { Text = tostring(LocalPlayer.UserId), Copyable = true },
+        {
+            Text = tostring(LocalPlayer.UserId),
+            Copyable = true
+        }
     },
     CopyableFooter = true,
 })
@@ -865,36 +874,51 @@ do
         Position = UDim2.fromOffset(12, 12),
     })
 
+    local FPS = 0
+    local FrameCount = 0
+    local LastFPSUpdate = os.clock()
+
+    local FPSConnection = RunService.RenderStepped:Connect(function()
+        FrameCount += 1
+
+        local Now = os.clock()
+        local Delta = Now - LastFPSUpdate
+
+        if Delta >= 1 then
+            FPS = math.floor((FrameCount / Delta) + 0.5)
+            FrameCount = 0
+            LastFPSUpdate = Now
+        end
+    end)
+
     local Watermark = Library:AddWatermark({
         {
-            Player = LocalPlayer,
-        },
-
-        {
-            Icon = 95816097006870,
-            Text = "CreU",
+            Text = "Watermark",
             Accent = true,
         },
 
         {
-            Icon = "cpu",
+            Icon = 95816097006870,
+            Text = "CreU Showcase",
+            Accent = true,
+        },
 
+        {
+            Icon = "user",
             Text = function()
-                if type(identifyexecutor) == "function" then
-                    local Ok, Result = pcall(identifyexecutor)
+                return LocalPlayer.Name
+            end,
+        },
 
-                    if Ok and Result then
-                        return tostring(Result)
-                    end
-                end
-
-                return "Unknown"
+        {
+            Icon = "activity",
+            Text = function()
+                return string.format("%d FPS", FPS)
             end,
         },
 
         {
             Icon = "wifi",
-
             Text = function()
                 local Ping = 0
 
@@ -911,16 +935,27 @@ do
 
         {
             Icon = "clock",
-
             Text = function()
                 return os.date("%H:%M:%S")
             end,
+        },
+
+        {
+            Text = "--enjoy!",
+            Accent = true,
         },
     })
 
     if Watermark then
         Watermark.RefreshRate = 1
     end
+
+    Library.OnUnload(function()
+        if FPSConnection then
+            FPSConnection:Disconnect()
+            FPSConnection = nil
+        end
+    end)
 end
 
 do
@@ -935,6 +970,21 @@ do
 
         Callback = function(Value)
             Library.ShowCustomCursor = Value
+        end,
+    })
+
+    Menu:AddToggle("Watermark", {
+        Text = "Watermark",
+        Default = Library.WatermarkEnabled ~= false,
+
+        Callback = function(Value)
+            Library.WatermarkEnabled = Value
+
+            if Library.SetWatermarkVisibility then
+                Library:SetWatermarkVisibility(Value)
+            elseif Library.SetWatermarkVisible then
+                Library:SetWatermarkVisible(Value)
+            end
         end,
     })
 
