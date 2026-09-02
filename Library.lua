@@ -230,7 +230,7 @@ function Library:CreateLabel(Properties, IsHud)
         BackgroundTransparency = 1;
         Font = Library.Font;
         TextColor3 = Library.FontColor;
-        TextSize = Library.FontSize + 2;
+        TextSize = Library.FontSize; -- trước là FontSize+2, gây lệch cỡ chữ so với phần còn lại của UI (vd Dropdown)
         TextStrokeTransparency = 0;
     });
     Library:ApplyTextStroke(_Instance);
@@ -1063,18 +1063,42 @@ do
                 end)
             end
         end);
+        -- Cùng lỗi hệ thống: mở/đóng bảng màu ngay khi chạm xuống khiến lỡ tay
+        -- cuộn qua ô màu cũng làm nó tự bật ra. Chuột phải (mở menu ngữ cảnh) vẫn
+        -- xử lý ngay vì đó không phải cử chỉ kéo/cuộn trên cảm ứng.
         DisplayFrame.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
-                if PickerFrameOuter.Visible then
-                    ColorPicker:Hide()
-                else
-                    ContextMenu:Hide()
-                    ColorPicker:Show()
-                end;
-            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
+            if Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
                 ContextMenu:Show()
                 ColorPicker:Hide()
+                return
             end
+
+            if (Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch) or Library:MouseIsOverOpenedFrame() then return end
+
+            local PressStart = Input.Position;
+            local Moved = false;
+            local ThisInput = Input;
+            local ChangedConn, EndedConn;
+
+            ChangedConn = InputService.InputChanged:Connect(function(Change)
+                if Change ~= ThisInput and Change.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                if (Change.Position - PressStart).Magnitude > 6 then
+                    Moved = true;
+                end
+            end);
+            EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                if EndInput ~= ThisInput then return end
+                if ChangedConn then ChangedConn:Disconnect(); end
+                if EndedConn then EndedConn:Disconnect(); end
+                if not Moved and not Library:MouseIsOverOpenedFrame() then
+                    if PickerFrameOuter.Visible then
+                        ColorPicker:Hide()
+                    else
+                        ContextMenu:Hide()
+                        ColorPicker:Show()
+                    end;
+                end
+            end);
         end);
 
         if TransparencyBoxInner then
@@ -1969,21 +1993,21 @@ do
                 return bindable.Event:Wait()
             end
 
-            local function ValidateClick(Input)
+            local function ValidateClick()
                 if Library:MouseIsOverOpenedFrame() then
-                    return false
-                end
-
-                if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
                     return false
                 end
 
                 return true
             end
 
-            Button.Outer.InputBegan:Connect(function(Input)
-                if not ValidateClick(Input) then return end
- 
+            -- Dùng Activated thay vì InputBegan: Activated chỉ bắn khi cả lúc nhấn
+            -- xuống VÀ lúc thả tay đều nằm trên nút. Nếu người dùng lỡ chạm vào nút
+            -- trong lúc đang kéo/cuộn màn hình rồi thả tay ở chỗ khác, Activated sẽ
+            -- KHÔNG bắn — tránh bấm nhầm (vd bấm nhầm nút Unload khi đang kéo).
+            Button.Outer.Activated:Connect(function()
+                if not ValidateClick() then return end
+
                 if Button.Locked or Button.Disabled then return end
 
                 if Button.DoubleClick then
@@ -1994,7 +2018,7 @@ do
                     Button.Label.Text = 'Are you sure?'
                     Button.Locked = true
 
-                    local clicked = WaitForEvent(Button.Outer.InputBegan, 0.5, ValidateClick)
+                    local clicked = WaitForEvent(Button.Outer.Activated, 0.5, ValidateClick)
 
                     Library:RemoveFromRegistry(Button.Label)
                     Library:AddToRegistry(Button.Label, { TextColor3 = 'FontColor' })
@@ -2367,11 +2391,32 @@ do
             Library:SafeCallback(Toggle.Changed, Toggle.Value);
             Library:UpdateDependencyBoxes();
         end;
+        -- Cùng lỗi hệ thống: bật/tắt ngay khi chạm xuống khiến lỡ tay cuộn qua
+        -- một Toggle cũng làm nó đổi trạng thái. Chỉ đổi khi thả tay ra mà không
+        -- di chuyển quá một khoảng nhỏ (tap thật, không phải kéo/cuộn).
         ToggleRegion.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
-                Toggle:SetValue(not Toggle.Value)
-                Library:AttemptSave();
-            end;
+            if (Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch) or Library:MouseIsOverOpenedFrame() then return end
+
+            local PressStart = Input.Position;
+            local Moved = false;
+            local ThisInput = Input;
+            local ChangedConn, EndedConn;
+
+            ChangedConn = InputService.InputChanged:Connect(function(Change)
+                if Change ~= ThisInput and Change.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                if (Change.Position - PressStart).Magnitude > 6 then
+                    Moved = true;
+                end
+            end);
+            EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                if EndInput ~= ThisInput then return end
+                if ChangedConn then ChangedConn:Disconnect(); end
+                if EndedConn then EndedConn:Disconnect(); end
+                if not Moved and not Library:MouseIsOverOpenedFrame() then
+                    Toggle:SetValue(not Toggle.Value)
+                    Library:AttemptSave();
+                end
+            end);
         end);
         if Toggle.Risky then
             Library:RemoveFromRegistry(ToggleLabel)
@@ -3273,6 +3318,10 @@ do
             if not Dropdown.Multi or not Dropdown.DragSelect then return end
         end);
 
+        -- Giống lỗi "kéo xuống tự chọn" ở list item: trước đây bấm/mở dropdown xảy ra
+        -- ngay khi vừa CHẠM XUỐNG (InputBegan), nên chỉ cần lỡ tay chạm qua dropdown
+        -- lúc đang cuộn danh sách cũng làm nó tự bật ra. Giờ chỉ mở/đóng khi thả tay
+        -- ra mà không di chuyển quá một khoảng nhỏ (đúng là một cú tap, không phải kéo).
         DropdownOuter.InputBegan:Connect(function(Input)
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
             local OverOpenedFrame = false
@@ -3285,7 +3334,26 @@ do
                 end
             end
             if OverOpenedFrame then return end
-            if ListOuter.Visible then Dropdown:CloseDropdown() else Dropdown:OpenDropdown() end
+
+            local PressStart = Input.Position;
+            local Moved = false;
+            local ThisInput = Input;
+            local ChangedConn, EndedConn;
+
+            ChangedConn = InputService.InputChanged:Connect(function(Change)
+                if Change ~= ThisInput and Change.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                if (Change.Position - PressStart).Magnitude > 6 then
+                    Moved = true;
+                end
+            end);
+            EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                if EndInput ~= ThisInput then return end
+                if ChangedConn then ChangedConn:Disconnect(); end
+                if EndedConn then EndedConn:Disconnect(); end
+                if not Moved then
+                    if ListOuter.Visible then Dropdown:CloseDropdown() else Dropdown:OpenDropdown() end
+                end
+            end);
         end);
 
         InputService.InputBegan:Connect(function(Input)
@@ -3912,7 +3980,6 @@ function Library:CreateWindow(...)
     local Window = {
         Tabs = {};
         AlwaysOnTop = Config.AlwaysOnTop == true;
-        CornerRadius = tonumber(Config.CornerRadius) or 0;
         Minimizable = Config.Minimizable == true;
         Minimized = false;
     };
@@ -4124,23 +4191,9 @@ function Library:CreateWindow(...)
     end
 
     function Window:SetCornerRadius(Radius)
-        Radius = math.clamp(tonumber(Radius) or 0, 0, 20)
-        Window.CornerRadius = Radius
-        local Corner = Outer:FindFirstChild('WindowCorner')
-        if not Corner then
-            Corner = Library:Create('UICorner', { Name='WindowCorner', Parent=Outer })
-        end
-        Corner.CornerRadius = UDim.new(0, Radius)
-        Outer.ClipsDescendants = true
-        local InnerCorner = Inner:FindFirstChild('WindowInnerCorner')
-        if Radius > 0 then
-            if not InnerCorner then
-                InnerCorner = Library:Create('UICorner', { Name='WindowInnerCorner', Parent=Inner })
-            end
-            InnerCorner.CornerRadius = UDim.new(0, math.max(0, Radius - 1))
-        elseif InnerCorner then
-            InnerCorner:Destroy()
-        end
+        -- Đã xoá tính năng bo góc window theo yêu cầu — giữ hàm này lại làm no-op
+        -- thật sự (không tạo UICorner, không đổi gì) để không crash nếu code cũ
+        -- (hoặc Example.lua) còn lỡ gọi tới nó.
         return Window
     end
 
@@ -4153,7 +4206,6 @@ function Library:CreateWindow(...)
     end
     function Window:Minimize() return Window:SetMinimized(true) end
     function Window:Restore() return Window:SetMinimized(false) end
-    if Window.CornerRadius > 0 then Window:SetCornerRadius(Window.CornerRadius) end
     if Window.AlwaysOnTop then Window:SetAlwaysOnTop(true) end
     function Window:AddTab(Name, Icon)
         local TabInfo = type(Name) == 'table' and Name or { Name = Name, Icon = Icon };
@@ -4538,11 +4590,32 @@ function Library:CreateWindow(...)
 
                     BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
                 end;
+                -- Cùng lỗi hệ thống: chuyển tab ngay khi chạm xuống khiến lỡ tay
+                -- cuộn qua hàng tab cũng bị đổi tab. Chỉ đổi khi thả tay ra mà
+                -- không di chuyển quá một khoảng nhỏ (tap thật, không phải kéo).
                 Button.InputBegan:Connect(function(Input)
-                    if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame() then
-                        Tab:Show();
-                        Tab:Resize();
-                    end;
+                    if (Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch) or Library:MouseIsOverOpenedFrame() then return end
+
+                    local PressStart = Input.Position;
+                    local Moved = false;
+                    local ThisInput = Input;
+                    local ChangedConn, EndedConn;
+
+                    ChangedConn = InputService.InputChanged:Connect(function(Change)
+                        if Change ~= ThisInput and Change.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                        if (Change.Position - PressStart).Magnitude > 6 then
+                            Moved = true;
+                        end
+                    end);
+                    EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                        if EndInput ~= ThisInput then return end
+                        if ChangedConn then ChangedConn:Disconnect(); end
+                        if EndedConn then EndedConn:Disconnect(); end
+                        if not Moved and not Library:MouseIsOverOpenedFrame() then
+                            Tab:Show();
+                            Tab:Resize();
+                        end
+                    end);
                 end);
 
                 Tab.Container = Container;
@@ -4633,21 +4706,48 @@ function Library:CreateWindow(...)
                 return self
             end
             function Sub:Hide() self.Container.Visible=false; return self end
-            function Sub:Resize() local h=0; for _,c in next,Container:GetChildren() do if c:IsA('Frame') and c.Visible then h+=c.Size.Y.Offset end end; Container.CanvasSize=UDim2.fromOffset(0,h+8) end
             local SubLeft=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0,0,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
             local SubRight=Library:Create('ScrollingFrame',{BackgroundTransparency=1,BorderSizePixel=0,Position=UDim2.new(0.5,4,0,0),Size=UDim2.new(0.5,-4,1,0),CanvasSize=UDim2.new(),ScrollBarThickness=0,Parent=Container})
             Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubLeft})
             Library:Create('UIListLayout',{Padding=UDim.new(0,8),SortOrder=Enum.SortOrder.LayoutOrder,HorizontalAlignment=Enum.HorizontalAlignment.Center,Parent=SubRight})
+            function Sub:Resize()
+                local function ColumnHeight(Col)
+                    local h, n = 0, 0
+                    for _,c in next, Col:GetChildren() do
+                        if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
+                            h += c.Size.Y.Offset
+                            n += 1
+                        end
+                    end
+                    if n > 1 then h += (n - 1) * 8 end -- khoảng cách UIListLayout giữa các groupbox
+                    return h
+                end
+                -- SỬA: SubLeft/SubRight là ScrollingFrame (không phải Frame), nên
+                -- c:IsA('Frame') trước đây luôn false và CanvasSize không bao giờ
+                -- được cập nhật đúng — khiến nội dung dài không cuộn được/bị tràn.
+                local MaxHeight = math.max(ColumnHeight(SubLeft), ColumnHeight(SubRight))
+                Container.CanvasSize = UDim2.fromOffset(0, MaxHeight + 8)
+            end
             function Sub:_AddBox(Name,Side)
                 local Box={Groupboxes={}}
                 local Parent=Side==1 and SubLeft or SubRight
-                local Outer=Library:Create('Frame',{BackgroundColor3=Library.BackgroundColor,BorderColor3=Library.OutlineColor,Size=UDim2.new(1,0,0,24),Parent=Parent,ZIndex=4})
+                local Outer=Library:Create('Frame',{BackgroundColor3=Library.BackgroundColor,BorderColor3=Library.OutlineColor,Size=UDim2.new(1,0,0,24),ClipsDescendants=true,Parent=Parent,ZIndex=4})
                 Library:AddToRegistry(Outer,{BackgroundColor3='BackgroundColor',BorderColor3='OutlineColor'})
                 local Title=Library:CreateLabel({Size=UDim2.new(1,0,0,20),Text=tostring(Name or 'Groupbox'),TextXAlignment=Enum.TextXAlignment.Center,Parent=Outer,ZIndex=5})
                 local Inner=Library:Create('Frame',{BackgroundTransparency=1,Position=UDim2.new(0,4,0,21),Size=UDim2.new(1,-8,1,-21),Parent=Outer,ZIndex=5})
                 Library:Create('UIListLayout',{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder,Parent=Inner})
                 Box.Container=Inner; setmetatable(Box,BaseGroupbox)
-                function Box:Resize() local h=0; for _,c in next,Inner:GetChildren() do if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then h+=c.Size.Y.Offset end end; Outer.Size=UDim2.new(1,0,0,24+h+6) end
+                function Box:Resize()
+                    local h, n = 0, 0
+                    for _,c in next,Inner:GetChildren() do
+                        if c:IsA('GuiObject') and not c:IsA('UIListLayout') and c.Visible then
+                            h += c.Size.Y.Offset
+                            n += 1
+                        end
+                    end
+                    if n > 1 then h += (n - 1) * 4 end -- khoảng cách UIListLayout (Padding=4) giữa các item, trước đây bị thiếu nên groupbox bị tính thấp hơn thực tế -> nội dung tràn ra ngoài khung
+                    Outer.Size=UDim2.new(1,0,0,24+h+6)
+                end
                 Box:Resize(); Sub:Resize(); return Box
             end
             function Sub:AddGroupbox(Info2) Info2=type(Info2)=='table' and Info2 or {Name=tostring(Info2)}; return self:_AddBox(Info2.Name,Info2.Side or 1) end
@@ -4678,10 +4778,31 @@ function Library:CreateWindow(...)
             return Sub
         end
 
+        -- Cùng lỗi hệ thống: đổi tab chính ngay khi chạm xuống khiến lỡ tay
+        -- cuộn/kéo qua thanh tab cũng bị đổi tab. Chỉ đổi khi thả tay ra mà
+        -- không di chuyển quá một khoảng nhỏ (tap thật, không phải kéo).
         TabButton.InputBegan:Connect(function(Input)
-            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
-                Tab:ShowTab();
-            end;
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
+
+            local PressStart = Input.Position;
+            local Moved = false;
+            local ThisInput = Input;
+            local ChangedConn, EndedConn;
+
+            ChangedConn = InputService.InputChanged:Connect(function(Change)
+                if Change ~= ThisInput and Change.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+                if (Change.Position - PressStart).Magnitude > 6 then
+                    Moved = true;
+                end
+            end);
+            EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                if EndInput ~= ThisInput then return end
+                if ChangedConn then ChangedConn:Disconnect(); end
+                if EndedConn then EndedConn:Disconnect(); end
+                if not Moved then
+                    Tab:ShowTab();
+                end
+            end);
         end);
         if #TabContainer:GetChildren() == 1 then
             Tab:ShowTab();
@@ -4943,10 +5064,12 @@ if InputService.TouchEnabled then
                     if input.UserInputState == Enum.UserInputState.End then
                         dragging = false
                         connection:Disconnect()
-                        -- The Lock button itself must always be tappable to
-                        -- toggle lock state, even while the UI is locked --
-                        -- otherwise there would be no way to unlock again.
-                        if not hasMoved and (IsLockButton or not Library.UILocked) then
+                        -- Cả 2 nút (Toggle UI và Lock UI) phải LUÔN bấm được dù UI
+                        -- đang bị khoá hay không — khoá chỉ nên chặn việc KÉO DI
+                        -- CHUYỂN nút, không chặn việc BẤM nó. Trước đây nút Toggle UI
+                        -- bị chặn bấm khi Library.UILocked=true (chỉ Lock mới được ưu
+                        -- tiên), khiến người dùng tưởng nút bị "khoá cứng" luôn.
+                        if not hasMoved then
                             ClickAction()
                         end
                     end
@@ -4957,7 +5080,7 @@ if InputService.TouchEnabled then
         InputService.InputChanged:Connect(function(input)
             if input == dragInput and dragging then
                 local delta = input.Position - dragStart
-                if delta.Magnitude > 3 then
+                if delta.Magnitude > 10 then -- trước là 3px, quá nhạy khiến 1 cái chạm tay bình thường (luôn rung nhẹ vài px) bị hiểu nhầm là đang kéo, làm nút có cảm giác "không bấm được"/"bị khoá"
                     hasMoved = true
                 end
                 if (not Library.UILocked) and hasMoved then
