@@ -1,23 +1,4 @@
---[[
-    CreU — Example / feature showcase
-    LinoriaLib-compatible core with advanced CreU additions.
-
-    Layout:
-        1. Bootstrap
-        2. Window
-        3. Home
-        4. Elements
-        5. Single Column
-        6. Sub Tabs / nested Tabbox
-        7. Key System
-        8. Overlays
-        9. UI Settings
-
-    Build UI first, then wire logic. This file intentionally calls only APIs
-    exposed by the current CreU Library.lua and addons.
-]]
-
---// 1. Bootstrap \--
+--// Bootstrap
 local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
 local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
@@ -36,7 +17,6 @@ end
 Library.ForceCheckbox = false
 Library.ShowToggleFrameInKeybinds = true
 
---// 2. Window \--
 local Window = Library:CreateWindow({
     Title = "CreU Showcase",
     Icon = 95816097006870,
@@ -62,12 +42,10 @@ local Tabs = {
     Home = Window:AddTab({ Name = "Home", Icon = "user", Description = "Overview & main features" }),
     Elements = Window:AddTab({ Name = "Elements", Icon = "layout-grid", Description = "Every element type" }),
     Single = Window:AddTab({ Name = "Single Column", Icon = "square", Description = "One centered column", SingleColumn = true }),
-    SubTabs = Window:AddTab({ Name = "Sub Tabs", Icon = "layers", Description = "Tabs inside a tab" }),
     Key = Window:AddKeyTab("Key System"),
     Settings = Window:AddTab({ Name = "UI Settings", Icon = "settings", Description = "Configure the menu" }),
 }
 
---// 3. Home \--
 do
     Tabs.Home:AddPlayerInfo("HomeBanner", {
         Player = LocalPlayer,
@@ -110,12 +88,17 @@ do
         Default = 1, Multi = true, Searchable = true, SelectAllButtons = true,
     })
 
-    Toggles.SilentAim:OnChanged(function() Log("SilentAim:", Toggles.SilentAim.Value) end)
-    Toggles.EspEnabled:OnChanged(function() Log("EspEnabled:", Toggles.EspEnabled.Value) end)
-    Options.EspColor:OnChanged(function() Log("EspColor:", Options.EspColor.Value) end)
+    Toggles.SilentAim:OnChanged(function()
+        Log("SilentAim:", Toggles.SilentAim.Value)
+    end)
+    Toggles.EspEnabled:OnChanged(function()
+        Log("EspEnabled:", Toggles.EspEnabled.Value)
+    end)
+    Options.EspColor:OnChanged(function()
+        Log("EspColor:", Options.EspColor.Value)
+    end)
 end
 
---// 4. Elements \--
 do
     local Buttons = Tabs.Elements:AddLeftGroupbox("Buttons", "mouse-pointer-click")
     Buttons:AddButton({ Text = "Button", Tooltip = "Normal button", Func = function() Log("Button clicked") end })
@@ -178,7 +161,9 @@ do
         Default = "item01", Multi = true, DisabledValues = { "item05" },
     })
     local Materials = {}
-    for _, Material in ipairs(Enum.Material:GetEnumItems()) do Materials[#Materials + 1] = Material.Name end
+    for _, Material in ipairs(Enum.Material:GetEnumItems()) do
+        Materials[#Materials + 1] = Material.Name
+    end
     Dropdowns:AddDropdown("LongDropdown", {
         Text = "Long list", Values = Materials, Default = 1, Multi = true,
         Searchable = true, MaxVisibleDropdownItems = 10, ItemHeight = 20,
@@ -200,7 +185,6 @@ do
     TabTwo:AddSlider("TabboxSlider", { Text = "Tab 2 slider", Default = 5, Min = 0, Max = 10, Rounding = 0 })
 end
 
---// 5. Single Column \--
 do
     local Farm = Tabs.Single:AddGroupbox({ Name = "Auto Farm", IconName = "sprout" })
     Farm:AddToggle("SingleFarmEnabled", { Text = "Enable Auto Farm", Default = false })
@@ -212,37 +196,6 @@ do
     Notes:AddButton({ Text = "Full-width button", Func = function() Log("Single-column button") end })
 end
 
---// 6. Sub Tabs / nested layout \--
-do
-    Tabs.SubTabs:SetSubTabAlignment("Center")
-    local Overview = Tabs.SubTabs:AddSubTab({ Name = "Overview", Icon = "info" })
-    local Layout = Tabs.SubTabs:AddSubTab({ Name = "Layout", Icon = "columns-2" })
-    local Nested = Tabs.SubTabs:AddSubTab({ Name = "Nested", Icon = "layers" })
-
-    Overview:AddLeftGroupbox("About", "info"):AddLabel("This is a nested sub tab.", true)
-    Overview:AddRightGroupbox("Actions", "zap"):AddButton({
-        Text = "Notify", Func = function()
-            Library:Notify({ Title = "CreU", Description = "Hello from a sub tab.", Time = 3 })
-        end,
-    })
-
-    local Left = Layout:AddLeftGroupbox("Left column", "align-left")
-    Left:AddSlider("SubLayoutSlider", { Text = "Slider", Default = 40, Min = 0, Max = 100, Rounding = 0, Suffix = "%" })
-    Left:AddDropdown("SubLayoutDropdown", { Text = "Dropdown", Values = { "A", "B", "C" }, Default = 1 })
-
-    local Right = Layout:AddRightGroupbox("Right column", "align-right")
-    Right:AddInput("SubLayoutInput", { Text = "Textbox", Placeholder = "type here" })
-    Right:AddToggle("SubLayoutToggle", { Text = "Toggle", Default = false })
-
-    local NestedBox = Nested:AddLeftTabbox("Nested Tabbox")
-    local TabA = NestedBox:AddTab("Tab A")
-    TabA:AddToggle("SubNestedToggleA", { Text = "Tab A toggle" })
-    local TabB = NestedBox:AddTab("Tab B")
-    TabB:AddSlider("SubNestedSlider", { Text = "Tab B slider", Default = 5, Min = 0, Max = 10, Rounding = 0 })
-    Nested:AddRightGroupbox("Notes", "scroll-text"):AddLabel("Tabbox nested inside a sub tab.", true)
-end
-
---// 7. Key System \--
 do
     Tabs.Key:AddLabel({ Text = "Enter key to test the key gate.", DoesWrap = true })
     Tabs.Key:AddKeyBox(function(ReceivedKey)
@@ -254,7 +207,6 @@ do
     end)
 end
 
---// 8. Overlays \--
 do
     Library:AddDraggableLabel({ Text = "CreU Draggable Label", Position = UDim2.fromOffset(12, 12) })
     local Watermark = Library:AddWatermark({
@@ -263,15 +215,18 @@ do
         { Icon = "cpu", Text = function() return (identifyexecutor and identifyexecutor()) or "Unknown" end },
         { Icon = "wifi", Text = function()
             local Ping = 0
-            pcall(function() Ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5) end)
+            pcall(function()
+                Ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5)
+            end)
             return string.format("%d ms", Ping)
         end },
         { Icon = "clock", Text = function() return os.date("%H:%M") end },
     })
-    if Watermark then Watermark.RefreshRate = 1 end
+    if Watermark then
+        Watermark.RefreshRate = 1
+    end
 end
 
---// 9. UI Settings \--
 do
     local Menu = Tabs.Settings:AddLeftGroupbox("Menu", "wrench")
     Menu:AddToggle("ShowCustomCursor", {
@@ -288,7 +243,12 @@ do
     })
     Menu:AddDropdown("DPIScale", {
         Text = "DPI Scale", Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = "100%",
-        Callback = function(Value) Library:SetDPIScale(tonumber(Value:gsub("%%", ""))) end,
+        Callback = function(Value)
+            local NumericValue = tonumber((Value:gsub("%%", "")))
+            if NumericValue then
+                Library:SetDPIScale(NumericValue)
+            end
+        end,
     })
     Menu:AddSlider("CornerRadius", {
         Text = "Corner Radius", Default = Window.CornerRadius, Min = 0, Max = 20, Rounding = 0,
