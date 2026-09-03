@@ -1806,6 +1806,7 @@ do
         end
 
         local Picking = false;
+        local LongPressTime = Info.LongPressTime or 0.55;
         local TouchMoveThreshold = Info.TouchMoveThreshold or 10;
 
         local function OpenModeSelect()
@@ -2010,22 +2011,6 @@ do
                 return
             end
             if Input.UserInputType == Enum.UserInputType.Keyboard and Processed then
-                return
-            end
-            -- Same defensive reasoning as the Keyboard check above, extended to
-            -- Touch: MobileBindButton's own InputBegan handler (which sets
-            -- KeyPicker._MobileBindInput) is a different signal than this
-            -- global InputService.InputBegan, and Roblox does not guarantee
-            -- which of two different signals fires first for the same input,
-            -- so the _MobileBindInput comparison above can theoretically race.
-            -- No Key=='Touch' branch exists below anymore so this can't cause
-            -- a double DoClick() here, but a raced touch could still reach the
-            -- ModeSelectOuter-dismiss check further down and close that menu
-            -- spuriously. Processed is computed by the engine's own GUI
-            -- hit-test before any listener runs, so checking it is order-
-            -- independent and reliably true whenever this touch landed on
-            -- MobileBindButton (a real TextButton).
-            if Input.UserInputType == Enum.UserInputType.Touch and Processed then
                 return
             end
             if (not Picking) then
@@ -3292,8 +3277,14 @@ function Funcs:AddDropdown(Idx, Info)
         local Groupbox = self;
         local Container = Groupbox.Container;
 
+        local TitleLabel
         if not Info.Compact then
-            Library:CreateLabel({
+            -- BUG (Dropdown:SetText không đổi được chữ trên UI): trước đây
+            -- label tiêu đề này được tạo ra mà KHÔNG gán vào biến nào cả, nên
+            -- không còn cách nào trỏ lại nó để đổi .Text sau này — SetText()
+            -- bên dưới chỉ cập nhật self.Text (dữ liệu) chứ không hề đụng gì
+            -- tới UI. Giữ lại tham chiếu ở đây để SetText dùng.
+            TitleLabel = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 0, 10);
                 TextSize = Library.FontSize;
                 Text = Info.Text;
@@ -3902,7 +3893,15 @@ function Funcs:AddDropdown(Idx, Info)
 
         function Dropdown:SetText(Text)
             self.Text = Text;
-
+            -- BUG: hàm này trước đây chỉ gán self.Text rồi thôi, không có
+            -- dòng nào update UI cả — vì label tiêu đề lúc tạo (ở trên) không
+            -- hề được giữ tham chiếu lại. Giờ đã có TitleLabel, cập nhật
+            -- trực tiếp (bỏ qua an toàn nếu Dropdown được tạo ở chế độ
+            -- Compact, vốn không có label tiêu đề riêng).
+            if TitleLabel then
+                TitleLabel.Text = tostring(Text or '');
+            end
+            return self;
         end
 
         function Dropdown:SetMaxVisibleItems(Count)
@@ -4725,19 +4724,42 @@ function Library:CreateWindow(...)
     Library:AddToRegistry(TabBarInner, {
         BackgroundColor3 = 'BackgroundColor';
     });
-    local TabArea = Library:Create('Frame', {
+    -- ScrollingFrame instead of a plain Frame: when the window is resized
+    -- narrower than the total tab width, tabs no longer just get clipped and
+    -- become unreachable — the user can now click-drag (or touch-drag on
+    -- mobile) the tab bar horizontally to reveal the hidden tabs.
+    local TabArea = Library:Create('ScrollingFrame', {
         BackgroundTransparency = 1;
+        BorderSizePixel = 0;
         Position = UDim2.new(0, 4, 0, 4);
         Size = UDim2.new(1, -8, 1, -8);
+        CanvasSize = UDim2.new(0, 0, 0, 0);
+        AutomaticCanvasSize = Enum.AutomaticCanvasSize.X;
+        ScrollingDirection = Enum.ScrollingDirection.X;
+        ElasticBehavior = Enum.ElasticBehavior.Never;
+        ScrollBarThickness = 3;
+        ScrollBarImageColor3 = Library.OutlineColor;
+        TopImage = '';
+        BottomImage = '';
+        MidImage = '';
         ZIndex = 1;
         Parent = TabBarInner;
     });
+    Library:AddToRegistry(TabArea, { ScrollBarImageColor3 = 'OutlineColor' });
     local TabListLayout = Library:Create('UIListLayout', {
         Padding = UDim.new(0, Config.TabPadding);
         FillDirection = Enum.FillDirection.Horizontal;
         SortOrder = Enum.SortOrder.LayoutOrder;
         Parent = TabArea;
     });
+    -- AutomaticCanvasSize covers most executors, but some older Roblox API
+    -- shims don't implement it — keep a manual fallback in sync too so the
+    -- canvas (and therefore how far you can drag) is never stale.
+    local function RefreshTabAreaCanvas()
+        TabArea.CanvasSize = UDim2.new(0, TabListLayout.AbsoluteContentSize.X, 0, 0);
+    end;
+    Library:GiveSignal(TabListLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(RefreshTabAreaCanvas));
+    task.defer(RefreshTabAreaCanvas);
     local MainSectionOuter = Library:Create('Frame', {
         BackgroundColor3 = Library.BackgroundColor;
         BorderColor3 = Library.OutlineColor;
@@ -5881,10 +5903,22 @@ function Library:BuildWatermarkV2(Segments)
         BuildSegment(SegInfo, Idx);
     end;
 
-    Outer.Size = UDim2.new(0, Layout.AbsoluteContentSize.X + PADDING, 0, HEIGHT);
-    Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+    -- BUG (watermark trống): reading Layout.AbsoluteContentSize right after
+    -- parenting the segments does NOT work — UIListLayout only recomputes
+    -- AbsoluteContentSize on the next layout pass, so at this exact line it
+    -- is still its default Vector2.new(0, 0). That collapsed Outer to just
+    -- "PADDING" pixels wide (12px), so Inner (sized 1,0,1,0 relative to
+    -- Outer) rendered as a near-invisible sliver — the watermark looked
+    -- empty even though every segment/label was created correctly.
+    -- Fix: connect the resize FIRST, then let task.defer trigger the first
+    -- real size update once UIListLayout has actually measured the content
+    -- (task.defer runs later in the same resumption cycle, before the next
+    -- render, so there is no visible "blank then pop-in" flash either).
+    local function RefreshWatermarkSize()
         Outer.Size = UDim2.new(0, Layout.AbsoluteContentSize.X + PADDING, 0, HEIGHT);
-    end);
+    end;
+    Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(RefreshWatermarkSize);
+    task.defer(RefreshWatermarkSize);
 
     Library:MakeDraggable(Outer);
 
@@ -5992,21 +6026,49 @@ function Library:AddDraggableLabel(...)
     if type(Params) ~= 'table' then
         Params = { Text = tostring(Params or ''), Position = select(2, ...), Size = select(3, ...) }
     end
-    local Label = self:Create('TextLabel', {
-        BackgroundTransparency = 1,
+    -- BUG (drag label không có ui bọc xung quanh): the label used to be a
+    -- bare TextLabel with BackgroundTransparency = 1 parented straight to
+    -- ScreenGui — nothing but floating text, no background/border box like
+    -- every other draggable element in the library (Watermark, Notify,
+    -- Window...). It dragged fine mechanically (Active = true still catches
+    -- input), it just had no visible container to grab. Fix: wrap it in a
+    -- themed Outer frame (background + border, registered for live theme
+    -- updates) and drag that frame instead of the bare text.
+    local Outer = self:Create('Frame', {
+        BackgroundColor3 = Params.BackgroundColor3 or self.MainColor,
+        BorderColor3 = Params.BorderColor3 or self.OutlineColor,
         Size = Params.Size or UDim2.fromOffset(180, 20),
         Position = Params.Position or UDim2.fromOffset(10, 10),
+        Active = true,
+        ZIndex = Params.ZIndex or 200,
+        Parent = Params.Parent or self.ScreenGui,
+    })
+    self:AddToRegistry(Outer, {
+        BackgroundColor3 = 'MainColor',
+        BorderColor3 = 'OutlineColor',
+    })
+    Library:Create('UIPadding', {
+        PaddingLeft = UDim.new(0, 4),
+        PaddingRight = UDim.new(0, 4),
+        Parent = Outer,
+    })
+    local Label = self:Create('TextLabel', {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
         Text = Params.Text or '',
         Font = Params.Font or self.Font,
         TextSize = Params.TextSize or self.FontSize,
         TextColor3 = Params.TextColor3 or self.FontColor,
         TextXAlignment = Params.TextXAlignment or Enum.TextXAlignment.Left,
-        Active = true,
         ZIndex = Params.ZIndex or 200,
-        Parent = Params.Parent or self.ScreenGui,
+        Parent = Outer,
     })
     self:AddToRegistry(Label, { TextColor3 = 'FontColor' })
-    self:MakeDraggable(Label, Params.Cutoff or 40, false)
+    self:MakeDraggable(Outer, Params.Cutoff or 40, false)
+    -- Outer is the draggable box; Label is still returned directly so
+    -- existing calls that do `local L = Library:AddDraggableLabel(...)` and
+    -- then set `L.Text = ...` keep working unchanged. The wrapping frame is
+    -- reachable via Label.Parent if the outer box itself is ever needed.
     return Label
 end
 
