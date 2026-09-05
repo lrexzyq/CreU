@@ -1001,15 +1001,6 @@ do
         end,
     })
 
-    Library:AddDraggableImageButton({
-        Image = "rbxasset://textures/ui/GuiImagePlaceholder.png",
-        Position = UDim2.fromOffset(200, 40),
-        Size = UDim2.fromOffset(24, 24),
-        Callback = function()
-            Log("Draggable image button clicked")
-        end,
-    })
-
     local FPS = 0
     local FrameCount = 0
     local LastFPSUpdate = os.clock()
@@ -1029,7 +1020,6 @@ do
 
     local Watermark = Library:AddWatermark({
         {
-            Icon = 95816097006870,
             Text = "CreU Showcase",
             Accent = true,
         },
@@ -1069,6 +1059,11 @@ do
             Text = function()
                 return os.date("%H:%M:%S")
             end,
+        },
+
+        {
+            Text = "--enjoy!",
+            Accent = true,
         },
     })
 
@@ -1219,51 +1214,11 @@ do
         end,
     })
 
-    Utilities:AddSlider("UtilDPIScale", {
-        Text = "DPI Scale",
-        Default = 100,
-        Min = 50,
-        Max = 200,
-        Rounding = 0,
-        Suffix = "%",
-        Callback = function(Value)
-            Library:SetDPIScale(Value)
-        end,
-    })
-
-    Utilities:AddButton({
-        Text = "Randomize Accent Color",
-        Tooltip = "Demonstrates Library:SetAccentColor()",
-        Func = function()
-            Library:SetAccentColor(Color3.fromHSV(math.random(), 0.65, 1))
-        end,
-    })
-
-    Utilities:AddButton({
-        Text = "Rename Window",
-        Tooltip = "Demonstrates Window:SetWindowTitle()",
-        Func = function()
-            Window:SetWindowTitle("CreU Showcase (Renamed)")
-        end,
-    })
-
-    Utilities:AddButton({
-        Text = "Minimize / Restore Window",
-        Tooltip = "Demonstrates Window:Minimize() / Window:Restore()",
-        Func = function()
-            if Window.Minimized then
-                Window:Restore()
-            else
-                Window:Minimize()
-            end
-        end,
-    })
-
     Utilities:AddSection("Keybinds")
 
     Utilities:AddDropdown("UtilKeybindMode", {
         Text = "Keybind Mode",
-        Values = { "All", "Active", "Toggled" },
+        Values = { "All", "Toggle", "Hold", "Always" },
         Default = Library.KeybindMode or "All",
         Callback = function(Value)
             Library:SetKeybindMode(Value)

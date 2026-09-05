@@ -1585,6 +1585,31 @@ do
 
         local ModeButtons = {};
 
+        local function RefreshModeVisibility()
+            local kbMode = Library.KeybindMode or 'All'
+            local VisibleCount = 0
+            for Idx, Mode in next, Modes do
+                local ModeButton = ModeButtons[Mode]
+                if ModeButton then
+                    local Visible = (kbMode == 'All') or (kbMode == Mode)
+                    ModeButton.Frame.Visible = Visible
+                    if Visible then
+                        VisibleCount = VisibleCount + 1
+                        ModeButton.Frame.LayoutOrder = Idx
+                    end
+                end
+            end
+            ModeSelectOuter.Size = UDim2.fromOffset(92, math.max(VisibleCount, 1) * 18 + 2)
+
+            if kbMode ~= 'All' and KeyPicker.Mode ~= kbMode then
+                local ForcedButton = ModeButtons[kbMode]
+                if ForcedButton then
+                    ForcedButton:Select();
+                end
+            end
+        end
+        KeyPicker._RefreshModeVisibility = RefreshModeVisibility
+
         for Idx, Mode in next, Modes do
             local ModeButton = {};
             local Button = Library:Create('TextButton', {
@@ -1608,6 +1633,7 @@ do
                 BorderColor3 = 'OutlineColor';
                 TextColor3 = 'FontColor';
             });
+            ModeButton.Frame = Button;
             function ModeButton:Select()
                 for _, Other in next, ModeButtons do
                     Other:Deselect();
@@ -1669,24 +1695,7 @@ do
 
             local displayKey = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
             ContainerLabel.Text = string.format('[%s] %s (%s)', displayKey, Info.Text, KeyPicker.Mode);
-            local kbMode = Library.KeybindMode or 'All'
-            if kbMode == 'Active' then
-                local canOnlyBeTurnedOnHere = InputService.TouchEnabled
-                    and not (ParentObj and ParentObj.Type == 'Toggle')
-                KeybindEntry.Visible = State == true or canOnlyBeTurnedOnHere
-            elseif kbMode == 'Toggled' then
-                local parentOn = false
-                if ParentObj and ParentObj.Type == 'Toggle' then
-                    parentOn = ParentObj.Value == true
-                elseif KeyPicker.SyncToggleState and ParentObj then
-                    parentOn = ParentObj.Value == true
-                else
-                    parentOn = true
-                end
-                KeybindEntry.Visible = parentOn
-            else
-                KeybindEntry.Visible = true
-            end
+            KeybindEntry.Visible = true
 
             if InputService.TouchEnabled and KeyPicker.Value == 'None' then
                 KeybindEntry.Visible = true
@@ -1829,6 +1838,9 @@ do
         local TouchMoveThreshold = Info.TouchMoveThreshold or 10;
 
         local function OpenModeSelect()
+            if KeyPicker._RefreshModeVisibility then
+                KeyPicker._RefreshModeVisibility();
+            end
             ModeSelectOuter.Visible = true;
         end;
 
@@ -4352,10 +4364,18 @@ function Library:IsUILocked()
 end;
 
 function Library:SetKeybindMode(Mode)
-    if Mode ~= 'All' and Mode ~= 'Active' and Mode ~= 'Toggled' then
+    if Mode ~= 'All' and Mode ~= 'Toggle' and Mode ~= 'Hold' and Mode ~= 'Always' then
         return Library
     end
     Library.KeybindMode = Mode
+    for _, kp in ipairs(Library.KeyPickerList) do
+        if kp._RefreshModeVisibility then
+            local ok, err = pcall(kp._RefreshModeVisibility)
+            if not ok and Library.DebugKeybinds then
+                warn('[Library] Keybind mode refresh failed:', err)
+            end
+        end
+    end
     Library:RefreshKeybinds()
     return Library
 end
