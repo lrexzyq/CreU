@@ -20,8 +20,12 @@ ScreenGui.Parent = CoreGui;
 local Toggles = {};
 local Options = {};
 
-getgenv().Toggles = Toggles;
-getgenv().Options = Options;
+-- getgenv() chỉ tồn tại trong môi trường executor; bọc pcall để tránh crash
+-- toàn bộ thư viện ngay từ dòng đầu nếu chạy ở nơi không cung cấp getgenv.
+pcall(function()
+    getgenv().Toggles = Toggles;
+    getgenv().Options = Options;
+end);
 
 local Library = {
     Registry = {};
@@ -178,6 +182,12 @@ function Library:SafeCallback(f, ...)
 
     local success, event = pcall(f, ...);
     if not success then
+        if type(event) ~= 'string' then
+            -- error() có thể ném ra bất kỳ kiểu dữ liệu nào, không chỉ chuỗi.
+            -- Gọi event:find(...) trên giá trị không phải string sẽ văng
+            -- thêm một lỗi nữa ngay trong lúc đang xử lý lỗi đầu tiên.
+            return Library:Notify(tostring(event));
+        end;
         local _, i = event:find(":%d+: ");
         if not i then
             return Library:Notify(event);
@@ -628,6 +638,20 @@ function Library:GiveSignal(Signal)
     end
     return Signal
 end
+
+-- Dùng cho các connection NGẮN HẠN đã được GiveSignal (vd: connection tạm khi
+-- đang chờ người dùng bấm phím trong AddKeyPicker) mà code đã tự Disconnect
+-- thủ công trước khi Unload() chạy. Nếu không gỡ khỏi Library.Signals, bảng
+-- này sẽ phình to vô hạn theo số lần connection tạm được tạo trong suốt
+-- phiên chạy (rò rỉ bộ nhớ nhẹ, không crash ngay nhưng tích tụ dần).
+function Library:RemoveSignal(Signal)
+    if not Signal then return end
+    for Idx = #Library.Signals, 1, -1 do
+        if Library.Signals[Idx] == Signal then
+            table.remove(Library.Signals, Idx);
+        end;
+    end;
+end;
 
 function Library:Unload()
     if Library.Unloaded then return end
@@ -1255,6 +1279,10 @@ do
                 if EndInput ~= ThisInput then return end
                 if ChangedConn then ChangedConn:Disconnect(); end
                 if EndedConn then EndedConn:Disconnect(); end
+                -- BUG: thiếu dòng EndGesture này (lỗi lặp lại lần thứ 5, cùng
+                -- loại với ToggleRegion, TransparencyBoxInner, Dropdown item,
+                -- và Tabbox button ở các chỗ khác trong file).
+                Library:EndGesture(ThisInput)
                 if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
                     if PickerFrameOuter.Visible then
                         ColorPicker:Hide()
@@ -1296,6 +1324,13 @@ do
                         if EndInput == Input then
                             ChangedConn:Disconnect()
                             EndedConn:Disconnect()
+                            -- BUG: thiếu dòng EndGesture này khiến gesture chỉ được
+                            -- dọn dẹp trễ qua safety-net toàn cục (task.defer ở đầu
+                            -- file), để lại một khoảng hở ngắn nơi input mới có thể
+                            -- bị BeginGesture từ chối oan. Hai thanh kéo tương tự
+                            -- ngay phía trên (SatVibMap, HueSelectorInner) đều gọi
+                            -- EndGesture ở đây, nên thêm vào cho nhất quán.
+                            Library:EndGesture(Input)
                             Library:AttemptSave()
                         end
                     end)
@@ -1839,6 +1874,7 @@ do
                         DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
                         if Event then
                             Event:Disconnect()
+                            Library:RemoveSignal(Event)
                             Event = nil
                         end
                         KeyPicker:Update()
@@ -1869,6 +1905,7 @@ do
                 Library:AttemptSave()
                 if Event then
                     Event:Disconnect()
+                    Library:RemoveSignal(Event)
                     Event = nil
                 end
                 KeyPicker:Update()
@@ -2955,6 +2992,11 @@ do
                 if EndInput ~= ThisInput then return end
                 if ChangedConn then ChangedConn:Disconnect(); end
                 if EndedConn then EndedConn:Disconnect(); end
+                -- BUG: thiếu dòng EndGesture này (cùng loại lỗi đã sửa ở
+                -- TransparencyBoxInner trong ColorPicker) khiến gesture chỉ
+                -- được giải phóng trễ qua safety-net toàn cục thay vì ngay
+                -- lập tức khi thả tay ra.
+                Library:EndGesture(ThisInput)
                 if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
                     Toggle:SetValue(not Toggle.Value)
                     Library:AttemptSave();
@@ -3649,6 +3691,11 @@ function Funcs:AddDropdown(Idx, Info)
                             if EndInput ~= ThisInput then return end
                             if ChangedConn then ChangedConn:Disconnect(); end
                             if EndedConn then EndedConn:Disconnect(); end
+                            -- BUG: thiếu dòng EndGesture này (cùng loại lỗi đã
+                            -- sửa ở TransparencyBoxInner và ToggleRegion) khiến
+                            -- gesture chỉ được giải phóng trễ qua safety-net
+                            -- toàn cục thay vì ngay khi thả tay ra.
+                            Library:EndGesture(ThisInput)
                             DraggingSelection = false;
                             if not Moved then
                                 LastDragValue = Value;
@@ -3942,10 +3989,9 @@ function Funcs:AddDropdown(Idx, Info)
             RecalculateListPosition();
             if ListOuter.Visible then Dropdown:BuildDropdownList() end
         end);
-        Scrolling:GetPropertyChangedSignal('CanvasPosition'):Connect(function()
-            if not ListOuter.Visible then return end
-            if not Dropdown.Multi or not Dropdown.DragSelect then return end
-        end);
+        -- (Đã xoá 1 connection CanvasPosition không làm gì cả ở đây — thân
+        -- hàm chỉ có 2 dòng return sau guard, không có tác dụng thực tế,
+        -- chỉ tốn thêm 1 connection vô ích mỗi lần tạo dropdown.)
 
         DropdownOuter.InputBegan:Connect(function(Input)
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -4258,7 +4304,20 @@ do
     Library.WatermarkText = WatermarkLabel;
     Library.WatermarkSegmentsFrame = WatermarkSegmentsFrame;
     Library:MakeDraggable(Library.Watermark);
-    WatermarkLabel.Text = '';
+
+    -- BUG CHÍNH (watermark không có gì): WatermarkLabel.Text trước đây được
+    -- set thành chuỗi rỗng '' và WatermarkOuter.Visible mặc định false, nên
+    -- watermark hiện ra chỉ là một khung viền trống trơn không chữ nếu
+    -- người dùng không tự gọi Library:SetWatermark(...) sau đó. Đặt sẵn
+    -- chữ mặc định "Watermark Example" và hiện watermark ngay khi tạo, theo
+    -- đúng yêu cầu.
+    do
+        local DefaultText = 'Watermark Example';
+        local DX, DY = Library:GetTextBounds(DefaultText, Library.Font, Library.FontSize);
+        WatermarkOuter.Size = UDim2.new(0, DX + 15, 0, (DY * 1.5) + 3);
+        WatermarkLabel.Text = DefaultText;
+        WatermarkOuter.Visible = true;
+    end
 
     local KeybindOuter = Library:Create('Frame', {
         AnchorPoint = Vector2.new(0, 0.5);
@@ -4382,6 +4441,23 @@ function Library:SetWatermark(Text)
         if Holder and Holder.Parent then Holder:Destroy() end
         Library._WatermarkV2 = nil
     end
+    -- BUG: nếu trước đó SetWatermarkSegments() đã từng chạy, nó ẩn
+    -- WatermarkText (Visible=false) và hiện WatermarkSegmentsFrame
+    -- (Visible=true). SetWatermark() lại không đảo ngược 2 dòng đó, nên gọi
+    -- SetWatermark(text) sau SetWatermarkSegments(...) sẽ khiến watermark
+    -- hiển thị lẫn lộn (segment cũ vẫn hiện đè) hoặc trông như trống rỗng
+    -- (WatermarkText vẫn Visible=false). Dọn dẹp trạng thái segments trước.
+    Library._WatermarkSegments = nil
+    if Library.WatermarkSegmentsFrame then
+        Library.WatermarkSegmentsFrame.Visible = false
+        for _, child in next, Library.WatermarkSegmentsFrame:GetChildren() do
+            if not child:IsA('UIListLayout') then
+                child:Destroy()
+            end
+        end
+    end
+    Library.WatermarkText.Visible = true
+
     local X, Y = Library:GetTextBounds(Text, Library.Font, Library.FontSize);
     Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3);
     Library:SetWatermarkVisibility(true)
@@ -5279,6 +5355,10 @@ function Library:CreateWindow(...)
                         if EndInput ~= ThisInput then return end
                         if ChangedConn then ChangedConn:Disconnect(); end
                         if EndedConn then EndedConn:Disconnect(); end
+                        -- BUG: thiếu dòng EndGesture này (lỗi lặp lại lần thứ 4
+                        -- trong file, cùng loại với ToggleRegion,
+                        -- TransparencyBoxInner, và Dropdown item ở trên).
+                        Library:EndGesture(ThisInput)
                         if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
                             Tab:Show();
                             Tab:Resize();
@@ -5734,7 +5814,7 @@ function BaseGroupbox:AddPriorityDropdown(Idx, Info)
     return dropdown
 end
 
-getgenv().Library = Library
+pcall(function() getgenv().Library = Library end)
 
 function Library:AddWatermark(Segments)
     if Segments == nil then
