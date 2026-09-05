@@ -1029,11 +1029,6 @@ do
 
     local Watermark = Library:AddWatermark({
         {
-            Text = "Watermark",
-            Accent = true,
-        },
-
-        {
             Icon = 95816097006870,
             Text = "CreU Showcase",
             Accent = true,
@@ -1074,11 +1069,6 @@ do
             Text = function()
                 return os.date("%H:%M:%S")
             end,
-        },
-
-        {
-            Text = "--enjoy!",
-            Accent = true,
         },
     })
 
