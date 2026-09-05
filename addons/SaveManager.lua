@@ -1,9 +1,76 @@
 local HttpService = game:GetService('HttpService')
 
+local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+local function Base64Encode(data)
+    local result = {}
+    local byteCount = #data
+
+    for i = 1, byteCount, 3 do
+        local b1, b2, b3 = data:byte(i, i + 2)
+        b2 = b2 or 0
+        b3 = b3 or 0
+
+        local n = b1 * 65536 + b2 * 256 + b3
+
+        local c1 = math.floor(n / 262144) % 64
+        local c2 = math.floor(n / 4096) % 64
+        local c3 = math.floor(n / 64) % 64
+        local c4 = n % 64
+
+        result[#result + 1] = Base64Chars:sub(c1 + 1, c1 + 1)
+        result[#result + 1] = Base64Chars:sub(c2 + 1, c2 + 1)
+        result[#result + 1] = (i + 1 <= byteCount) and Base64Chars:sub(c3 + 1, c3 + 1) or '='
+        result[#result + 1] = (i + 2 <= byteCount) and Base64Chars:sub(c4 + 1, c4 + 1) or '='
+    end
+
+    return table.concat(result)
+end
+
+local Base64Lookup = {}
+for i = 1, #Base64Chars do
+    Base64Lookup[Base64Chars:sub(i, i)] = i - 1
+end
+
+local function Base64Decode(data)
+    data = data:gsub('[^%w%+%/%=]', '')
+    local result = {}
+    local i = 1
+    local len = #data
+
+    while i <= len do
+        local c1 = Base64Lookup[data:sub(i, i)]
+        local c2 = Base64Lookup[data:sub(i + 1, i + 1)]
+        local c3Char = data:sub(i + 2, i + 2)
+        local c4Char = data:sub(i + 3, i + 3)
+        local c3 = c3Char ~= '=' and Base64Lookup[c3Char] or nil
+        local c4 = c4Char ~= '=' and Base64Lookup[c4Char] or nil
+
+        if not c1 or not c2 then
+            break
+        end
+
+        local n = c1 * 262144 + c2 * 4096 + (c3 or 0) * 64 + (c4 or 0)
+
+        local b1 = math.floor(n / 65536) % 256
+        local b2 = math.floor(n / 256) % 256
+        local b3 = n % 256
+
+        result[#result + 1] = string.char(b1)
+        if c3 then result[#result + 1] = string.char(b2) end
+        if c4 then result[#result + 1] = string.char(b3) end
+
+        i = i + 4
+    end
+
+    return table.concat(result)
+end
+
 local SaveManager = {} do
     SaveManager.Folder = 'LinoriaLibSettings'
     SaveManager.Ignore = {}
     SaveManager.LoadBatchSize = 20
+    SaveManager.MaxLoadObjects = 2000
     SaveManager._ConfigListCache = nil
     SaveManager.Loading = false
     SaveManager.CurrentConfig = nil
@@ -92,12 +159,27 @@ local SaveManager = {} do
         end
     end
 
+    -- Imported/loaded config data is untrusted input (it may come from a
+    -- pasted string authored by someone else). `idx` must be a non-empty
+    -- string before it's used to index Options/Toggles, otherwise a
+    -- malformed or hand-edited config could pass a table/number/boolean
+    -- through as a key.
+    local function IsValidIdx(idx)
+        return type(idx) == 'string' and idx ~= ''
+    end
+
+    local KeyPickerModes = { Toggle = true, Always = true, Hold = true }
+
     SaveManager.Parser = {
         Toggle = {
             Save = function(idx, object)
                 return { type = 'Toggle', idx = idx, value = object.Value == true }
             end,
             Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
                 local toggles = GetToggles()
                 local toggle = toggles and toggles[idx]
                 if toggle and type(toggle.SetValue) == 'function' then
@@ -107,30 +189,126 @@ local SaveManager = {} do
         },
         Slider = {
             Save = function(idx, object)
-                return { type = 'Slider', idx = idx, value = tostring(object.Value) }
+                local value = object.Value
+                if type(value) ~= 'number' and type(value) ~= 'string' then
+                    return nil
+                end
+                return { type = 'Slider', idx = idx, value = tostring(value) }
             end,
             Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
+                -- data.value must resolve to a real number; a table, nil,
+                -- or non-numeric string from a hand-edited config should
+                -- be rejected here rather than silently passed through.
+                local numericValue = tonumber(data.value)
+                if not numericValue then
+                    return
+                end
+
                 local options = GetOptions()
                 local option = options and options[idx]
                 if option and type(option.SetValue) == 'function' then
-                    option:SetValue(data.value)
+                    option:SetValue(numericValue)
                 end
             end,
         },
         Dropdown = {
             Save = function(idx, object)
-                return {
+                local data = {
                     type = 'Dropdown',
                     idx = idx,
                     value = object.Value,
                     multi = object.Multi == true,
                 }
+
+                -- PriorityDropdown (AddPriorityDropdown) reuses Type ==
+                -- 'Dropdown' but tracks an additional ordered list
+                -- (`Order`) on top of the plain selection set, and its
+                -- overridden `SetValue` expects that ordered array back,
+                -- not the unordered `{[value]=true}` set. Persist `Order`
+                -- separately so re-ordering survives a save/load round
+                -- trip instead of silently collapsing to whatever order
+                -- `next()` happens to iterate the set in.
+                if object.Priority == true and type(object.Order) == 'table' then
+                    local order = {}
+                    for i, v in ipairs(object.Order) do
+                        order[i] = v
+                    end
+                    data.order = order
+                    data.priority = true
+                end
+
+                return data
             end,
             Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
                 local options = GetOptions()
                 local option = options and options[idx]
-                if option and type(option.SetValue) == 'function' then
-                    option:SetValue(data.value)
+                if not option or type(option.SetValue) ~= 'function' then
+                    return
+                end
+
+                local isMulti = data.multi == true
+
+                -- PriorityDropdown: prefer the ordered `order` list when
+                -- present (current-format configs). `SetValue` on a
+                -- PriorityDropdown accepts either an ordered array or an
+                -- unordered set, so a config saved before this field
+                -- existed still falls through to the normal multi-select
+                -- handling below instead of failing to load.
+                if data.priority == true and type(data.order) == 'table' then
+                    local cleanedOrder = {}
+                    for _, v in ipairs(data.order) do
+                        if type(v) == 'string' then
+                            cleanedOrder[#cleanedOrder + 1] = v
+                        end
+                    end
+                    option:SetValue(cleanedOrder)
+                    return
+                end
+
+                local value = data.value
+
+                if isMulti then
+                    -- Multi-select expects a set table of { [string] = true }.
+                    -- A pasted/edited config could hand us a plain string,
+                    -- a number, or a set with non-string/non-boolean
+                    -- entries (e.g. after a lossy JSON round-trip); rebuild
+                    -- a clean set instead of forwarding it as-is.
+                    if type(value) ~= 'table' then
+                        return
+                    end
+
+                    local cleaned = {}
+                    local any = false
+                    for key, flag in next, value do
+                        if type(key) == 'string' and flag == true then
+                            cleaned[key] = true
+                            any = true
+                        end
+                    end
+
+                    -- An explicitly empty multi-selection is valid (clears
+                    -- the dropdown); only bail out if nothing usable came
+                    -- through AND the source table wasn't already empty.
+                    if not any and next(value) ~= nil then
+                        return
+                    end
+
+                    option:SetValue(cleaned)
+                else
+                    -- Single-select expects a bare string, or nil to clear.
+                    if value ~= nil and type(value) ~= 'string' then
+                        return
+                    end
+
+                    option:SetValue(value)
                 end
             end,
         },
@@ -149,16 +327,33 @@ local SaveManager = {} do
                 }
             end,
             Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
                 local options = GetOptions()
                 local option = options and options[idx]
                 if not option or type(option.SetValueRGB) ~= 'function' or type(data.value) ~= 'string' then
                     return
                 end
 
-                local ok, color = pcall(Color3.fromHex, data.value)
-                if ok and color then
-                    option:SetValueRGB(color, tonumber(data.transparency) or 0)
+                -- Require a plausible hex string (3-8 hex digits, optional
+                -- leading '#') before handing it to Color3.fromHex, rather
+                -- than relying solely on pcall to catch malformed input.
+                local hex = data.value
+                if not hex:match('^#?%x+$') or #(hex:gsub('^#', '')) < 3 then
+                    return
                 end
+
+                local ok, color = pcall(Color3.fromHex, hex)
+                if not ok or not color then
+                    return
+                end
+
+                local transparency = tonumber(data.transparency) or 0
+                transparency = math.clamp(transparency, 0, 1)
+
+                option:SetValueRGB(color, transparency)
             end,
         },
         KeyPicker = {
@@ -171,18 +366,46 @@ local SaveManager = {} do
                 }
             end,
             Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
                 local options = GetOptions()
                 local option = options and options[idx]
-                if option and type(option.SetValue) == 'function' then
-                    option:SetValue({ data.key or data.value or 'None', data.mode or 'Toggle' })
+                if not option or type(option.SetValue) ~= 'function' then
+                    return
                 end
+
+                -- key must be a non-empty string (or 'None'); mode must be
+                -- one of the three modes Library actually recognizes.
+                -- `data.value` is kept only as a legacy fallback for
+                -- configs written before `key` existed.
+                local key = data.key or data.value
+                if type(key) ~= 'string' or key == '' then
+                    key = 'None'
+                end
+
+                local mode = data.mode
+                if type(mode) ~= 'string' or not KeyPickerModes[mode] then
+                    mode = 'Toggle'
+                end
+
+                option:SetValue({ key, mode })
             end,
         },
         Input = {
             Save = function(idx, object)
-                return { type = 'Input', idx = idx, text = tostring(object.Value or '') }
+                local value = object.Value
+                if value ~= nil and type(value) ~= 'string' and type(value) ~= 'number' and type(value) ~= 'boolean' then
+                    return nil
+                end
+                return { type = 'Input', idx = idx, text = tostring(value or '') }
             end,
             Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
                 local options = GetOptions()
                 local option = options and options[idx]
                 if option and type(data.text) == 'string' and type(option.SetValue) == 'function' then
@@ -237,6 +460,60 @@ local SaveManager = {} do
         return self.Folder
     end
 
+    function SaveManager:_BuildData()
+        local options = GetOptions()
+        local toggles = GetToggles()
+        if not options or not toggles then
+            return nil, 'Library.Options/Toggles unavailable'
+        end
+
+        local data = { objects = {} }
+
+        local library = self.Library
+        if library and type(library.ThemeManager) == 'table' then
+            local currentTheme = library.ThemeManager.CurrentTheme
+            if type(currentTheme) == 'string' and currentTheme ~= '' then
+                data.theme = currentTheme
+            end
+        end
+
+        for idx, toggle in next, toggles do
+            if type(idx) ~= 'string' or self.Ignore[idx] then
+                continue
+            end
+
+            local parser = type(toggle) == 'table' and self.Parser[toggle.Type]
+            if parser and type(parser.Save) == 'function' then
+                local ok, object = pcall(parser.Save, idx, toggle)
+                if not ok then
+                    return nil, 'failed to serialize toggle ' .. tostring(idx)
+                end
+                if object then
+                    data.objects[#data.objects + 1] = object
+                end
+            end
+        end
+
+        for idx, option in next, options do
+            if type(idx) ~= 'string' or self.Ignore[idx] then
+                continue
+            end
+
+            local parser = type(option) == 'table' and self.Parser[option.Type]
+            if parser and type(parser.Save) == 'function' then
+                local ok, object = pcall(parser.Save, idx, option)
+                if not ok then
+                    return nil, 'failed to serialize option ' .. tostring(idx)
+                end
+                if object then
+                    data.objects[#data.objects + 1] = object
+                end
+            end
+        end
+
+        return data
+    end
+
     function SaveManager:Save(name)
         if name == nil then
             name = self.CurrentConfig
@@ -251,57 +528,13 @@ local SaveManager = {} do
             return false, 'config loading already in progress'
         end
 
-        local options = GetOptions()
-        local toggles = GetToggles()
-        if not options or not toggles then
-            return false, 'Library.Options/Toggles unavailable'
+        local data, buildErr = self:_BuildData()
+        if not data then
+            return false, buildErr
         end
 
         EnsureFolderTree(self.Folder .. '/settings')
         local fullPath = self.Folder .. '/settings/' .. name .. '.json'
-        local data = { objects = {} }
-
-        local library = self.Library
-        if library and type(library.ThemeManager) == 'table' then
-            local currentTheme = library.ThemeManager.CurrentTheme
-            if type(currentTheme) == 'string' and currentTheme ~= '' then
-                data.theme = currentTheme
-            end
-        end
-
-        for idx, toggle in next, toggles do
-            if self.Ignore[idx] then
-                continue
-            end
-
-            local parser = type(toggle) == 'table' and self.Parser[toggle.Type]
-            if parser and type(parser.Save) == 'function' then
-                local ok, object = pcall(parser.Save, idx, toggle)
-                if not ok then
-                    return false, 'failed to serialize toggle ' .. tostring(idx)
-                end
-                if object then
-                    data.objects[#data.objects + 1] = object
-                end
-            end
-        end
-
-        for idx, option in next, options do
-            if self.Ignore[idx] then
-                continue
-            end
-
-            local parser = type(option) == 'table' and self.Parser[option.Type]
-            if parser and type(parser.Save) == 'function' then
-                local ok, object = pcall(parser.Save, idx, option)
-                if not ok then
-                    return false, 'failed to serialize option ' .. tostring(idx)
-                end
-                if object then
-                    data.objects[#data.objects + 1] = object
-                end
-            end
-        end
 
         local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
         if not success then
@@ -352,30 +585,26 @@ local SaveManager = {} do
         return true
     end
 
-    function SaveManager:Load(name)
-        name = Trim(name)
-        if not IsSafeName(name) then
-            return false, 'invalid config name'
-        end
-
+    function SaveManager:_ApplyData(decoded, onDone)
         if self.Loading then
+            if onDone then onDone(false, 'config loading already in progress') end
             return false, 'config loading already in progress'
         end
 
-        local file = self.Folder .. '/settings/' .. name .. '.json'
-        local okExists, exists = pcall(isfile, file)
-        if not okExists or not exists then
-            return false, 'invalid file'
-        end
-
-        local okRead, raw = pcall(readfile, file)
-        if not okRead or type(raw) ~= 'string' then
-            return false, 'read error'
-        end
-
-        local success, decoded = pcall(HttpService.JSONDecode, HttpService, raw)
-        if not success or type(decoded) ~= 'table' or type(decoded.objects) ~= 'table' then
+        if type(decoded) ~= 'table' or type(decoded.objects) ~= 'table' then
+            if onDone then onDone(false, 'decode error') end
             return false, 'decode error'
+        end
+
+        -- Guard against a malformed/malicious config claiming an
+        -- unreasonable number of objects (e.g. a huge array of junk
+        -- entries), which would otherwise stall the UI thread across many
+        -- batches even though each individual entry is cheap to skip.
+        local maxObjects = math.max(1, math.floor(tonumber(self.MaxLoadObjects) or 2000))
+        if #decoded.objects > maxObjects then
+            local err = string.format('config has too many entries (%d > %d)', #decoded.objects, maxObjects)
+            if onDone then onDone(false, err) end
+            return false, err
         end
 
         self.Loading = true
@@ -411,7 +640,13 @@ local SaveManager = {} do
                     end
                 end
 
-                local savedTheme = type(decoded.theme) == 'string' and decoded.theme or nil
+                -- Normalize a missing/blank theme to nil so we don't call
+                -- ApplyTheme('') and surface a spurious "theme unavailable"
+                -- notification for configs that simply have no theme set.
+                local savedTheme = type(decoded.theme) == 'string' and Trim(decoded.theme) or nil
+                if savedTheme == '' then
+                    savedTheme = nil
+                end
                 local manager = library and library.ThemeManager
                 if manager and savedTheme and type(manager.ApplyTheme) == 'function' then
                     local themeOk, applied = pcall(manager.ApplyTheme, manager, savedTheme)
@@ -428,10 +663,6 @@ local SaveManager = {} do
                 loadError = 'one or more config entries failed: ' .. table.concat(parserErrors, '; ')
             end
 
-            if ok then
-                self.CurrentConfig = name
-            end
-
             if library then
                 library.BatchUpdating = previousBatch
                 if type(library.RefreshBatchedUI) == 'function' then
@@ -445,15 +676,133 @@ local SaveManager = {} do
             if not ok then
                 Notify('Failed to finish loading config: ' .. tostring(loadError), 3)
             end
+            if onDone then onDone(ok, loadError) end
         end)
 
         return true
+    end
+
+    function SaveManager:Load(name)
+        name = Trim(name)
+        if not IsSafeName(name) then
+            return false, 'invalid config name'
+        end
+
+        if self.Loading then
+            return false, 'config loading already in progress'
+        end
+
+        local file = self.Folder .. '/settings/' .. name .. '.json'
+        local okExists, exists = pcall(isfile, file)
+        if not okExists or not exists then
+            return false, 'invalid file'
+        end
+
+        local okRead, raw = pcall(readfile, file)
+        if not okRead or type(raw) ~= 'string' then
+            return false, 'read error'
+        end
+
+        local success, decoded = pcall(HttpService.JSONDecode, HttpService, raw)
+        if not success or type(decoded) ~= 'table' or type(decoded.objects) ~= 'table' then
+            return false, 'decode error'
+        end
+
+        return self:_ApplyData(decoded, function(ok)
+            if ok then
+                self.CurrentConfig = name
+            end
+        end)
+    end
+
+    function SaveManager:Export()
+        local data, buildErr = self:_BuildData()
+        if not data then
+            return nil, buildErr
+        end
+
+        local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
+        if not success then
+            return nil, 'failed to encode data'
+        end
+
+        local okEncode, b64 = pcall(Base64Encode, encoded)
+        if not okEncode then
+            return nil, 'failed to encode string'
+        end
+
+        local exportString = 'CREU1:' .. b64
+
+        local clip = setclipboard or toclipboard
+        if type(clip) == 'function' then
+            pcall(clip, exportString)
+        end
+
+        return exportString
+    end
+
+    -- Only version prefixes this SaveManager actually knows how to read.
+    -- A future/foreign prefix (e.g. 'CREU2:') must be rejected explicitly
+    -- rather than silently accepted and decoded as if it were CREU1 --
+    -- schema drift between versions could otherwise apply garbage values.
+    local KnownExportPrefixes = { CREU1 = true }
+
+    -- Hard ceiling on the raw import string length, before any decoding
+    -- work happens. This is a cheap first line of defense against being
+    -- handed an absurdly large paste (accidental or otherwise) that would
+    -- waste time/memory in Base64Decode/JSONDecode before validation.
+    SaveManager.MaxImportStringLength = 200000
+
+    function SaveManager:Import(exportString)
+        if type(exportString) ~= 'string' then
+            return false, 'no config string provided'
+        end
+
+        exportString = Trim(exportString)
+        if exportString == '' then
+            return false, 'no config string provided'
+        end
+
+        local maxLen = math.max(1, math.floor(tonumber(self.MaxImportStringLength) or 200000))
+        if #exportString > maxLen then
+            return false, 'config string is too long'
+        end
+
+        local payload = exportString
+        local prefix = exportString:match('^(CREU%d+):')
+        if prefix then
+            if not KnownExportPrefixes[prefix] then
+                return false, 'unsupported config version: ' .. prefix
+            end
+            payload = exportString:sub(#prefix + 2)
+        end
+
+        if payload == '' then
+            return false, 'invalid config string'
+        end
+
+        local okDecode64, raw = pcall(Base64Decode, payload)
+        if not okDecode64 or type(raw) ~= 'string' or raw == '' then
+            return false, 'invalid config string'
+        end
+
+        local okDecode, decoded = pcall(HttpService.JSONDecode, HttpService, raw)
+        if not okDecode or type(decoded) ~= 'table' or type(decoded.objects) ~= 'table' then
+            return false, 'invalid or corrupted config string'
+        end
+
+        return self:_ApplyData(decoded, function(ok)
+            if ok then
+                self.CurrentConfig = nil
+            end
+        end)
     end
 
     function SaveManager:IgnoreThemeSettings()
         return self:SetIgnoreIndexes({
             'BackgroundColor', 'MainColor', 'AccentColor', 'OutlineColor', 'FontColor',
             'ThemeManager_ThemeList', 'ThemeManager_CustomThemeList', 'ThemeManager_CustomThemeName',
+            'ThemeManager_ImportString',
         })
     end
 
@@ -656,229 +1005,77 @@ local SaveManager = {} do
             self.AutoloadLabel:SetText('Current autoload config: ' .. Trim(name))
         end
 
-        self:BuildUploadSection(tab)
+        self:BuildImportExportSection(tab)
+        -- REMOVED: BuildUploadSection (config-hub--z1bje.replit.app upload
+        -- feature) — the backing web service is down, so this was removed
+        -- rather than left as a dead "Upload" button.
         self:SetIgnoreIndexes({ 'SaveManager_ConfigList', 'SaveManager_ConfigName' })
 
         return section
     end
 
-    local STORE_URL = 'https://config-hub--z1bje.replit.app/api'
-    local RATE_FILE = 'creepcc/entities/zone_last_upload.txt'
-    local HWID_FILE = 'creepcc/entities/zone_hwid.txt'
-
-    local function ensureDirectories()
-        pcall(function()
-            if not isfolder('creepcc') then makefolder('creepcc') end
-            if not isfolder('creepcc/entities') then makefolder('creepcc/entities') end
-        end)
-    end
-
-    local function execRequest(options)
-        local fn = (syn and syn.request) or (http and http.request) or (type(request) == 'function' and request) or nil
-        if not fn then return nil end
-        local ok, result = pcall(fn, options)
-        return ok and result or nil
-    end
-
-    local function storePost(path, body)
-        local encoded
-        local okEncode, result = pcall(HttpService.JSONEncode, HttpService, body)
-        if not okEncode then return nil, nil end
-        encoded = result
-
-        local response = execRequest({
-            Url = STORE_URL .. path,
-            Method = 'POST',
-            Headers = { ['Content-Type'] = 'application/json' },
-            Body = encoded,
-        })
-
-        if response then
-            return response.StatusCode, response.Body
-        end
-        return nil, nil
-    end
-
-    local function getHWID()
-        ensureDirectories()
-
-        local okCached, cached = pcall(readfile, HWID_FILE)
-        if okCached and type(cached) == 'string' and #cached > 4 then
-            return cached
-        end
-
-        local id
-        if type(syn) == 'table' and type(syn.get_hwid) == 'function' then
-            local ok, value = pcall(syn.get_hwid)
-            if ok then id = value end
-        elseif type(get_hwid) == 'function' then
-            local ok, value = pcall(get_hwid)
-            if ok then id = value end
-        end
-
-        if id == nil then
-            local players = game:GetService('Players')
-            id = players.LocalPlayer and players.LocalPlayer.UserId or game.PlaceId
-        end
-
-        id = tostring(id)
-        pcall(writefile, HWID_FILE, id)
-        return id
-    end
-
-    local HOUR = 3600
-
-    local function getSecondsUntilNextUpload()
-        ensureDirectories()
-        local okRead, raw = pcall(readfile, RATE_FILE)
-        if not okRead then return 0 end
-
-        local lastTime = tonumber(raw)
-        if not lastTime then return 0 end
-
-        local elapsed = os.time() - lastTime
-        return elapsed >= HOUR and 0 or (HOUR - elapsed)
-    end
-
-    local function markUploadTime()
-        ensureDirectories()
-        pcall(writefile, RATE_FILE, tostring(os.time()))
-    end
-
-    function SaveManager:BuildUploadSection(tab)
+    function SaveManager:BuildImportExportSection(tab)
         assert(self.Library, 'Must set SaveManager.Library')
         assert(tab, 'Must set a valid tab')
 
-        local UploadGroup = tab:AddRightGroupbox('Upload')
+        local IOGroup = tab:AddLeftGroupbox('Import / Export')
 
-        UploadGroup:AddInput('UploadName', {
-            Text = 'Config Name',
-            Default = '',
-            Placeholder = 'e.g. my_rage_config',
-        })
-        UploadGroup:AddInput('UploadAuthor', {
-            Text = 'Your Name',
-            Default = '',
-            Placeholder = 'your username',
-        })
-        UploadGroup:AddInput('UploadDesc', {
-            Text = 'Description',
-            Default = '',
-            Placeholder = 'optional',
-        })
-
-        local localCfgDropdown
-        local function refreshLocalConfigs()
-            local configs = self:RefreshConfigList(true)
-            if localCfgDropdown then
-                pcall(localCfgDropdown.SetValues, localCfgDropdown, configs)
-                if #configs > 0 then
-                    pcall(localCfgDropdown.SetValue, localCfgDropdown, configs[1])
-                else
-                    pcall(localCfgDropdown.SetValue, localCfgDropdown, nil)
-                end
+        IOGroup:AddButton('Export current config to clipboard', function()
+            local exportString, err = self:Export()
+            if not exportString then
+                return Notify('Failed to export config: ' .. tostring(err), 3)
             end
-        end
 
-        local configs = self:RefreshConfigList()
-        localCfgDropdown = UploadGroup:AddDropdown('UploadLocalDropdown', {
-            Text = 'Select Config',
-            Default = nil,
-            Values = configs,
-            AllowNull = true,
-            Searchable = true,
-            MaxVisibleItems = 8,
-            ItemHeight = 18,
-        })
+            local clip = setclipboard or toclipboard
+            if type(clip) ~= 'function' then
+                return Notify('Config exported, but your executor lacks clipboard support. Copy it from the Import box below.', 4)
+            end
 
-        UploadGroup:AddButton('Refresh Configs', function()
-            refreshLocalConfigs()
-            Notify('Local config list refreshed')
+            Notify('Config copied to clipboard! Share it with anyone.')
         end)
 
-        UploadGroup:AddButton('Upload to Store', function()
+        IOGroup:AddInput('SaveManager_ImportString', {
+            Text = 'Config string',
+            Placeholder = 'Paste an exported config string here...',
+            Default = '',
+        })
+
+        IOGroup:AddButton('Import from string', function()
             local options = GetOptions()
-            local selectedOption = options and options.UploadLocalDropdown
-            local nameOption = options and options.UploadName
-            local authorOption = options and options.UploadAuthor
-            local descOption = options and options.UploadDesc
+            local input = options and options.SaveManager_ImportString
+            local raw = input and input.Value
 
-            local selectedCfg = Trim(selectedOption and selectedOption.Value or '')
-            local name = Trim(nameOption and nameOption.Value or '')
-            local author = Trim(authorOption and authorOption.Value or '')
-            local desc = descOption and tostring(descOption.Value or '') or ''
-
-            if not IsSafeName(selectedCfg) then
-                return Notify('Select a local config first', 2)
-            end
-            if not IsSafeName(name) then
-                return Notify('Enter a valid config name', 2)
-            end
-            if author == '' then
-                return Notify('Enter your name', 2)
+            local success, err = self:Import(raw)
+            if not success then
+                return Notify('Failed to import config: ' .. tostring(err), 3)
             end
 
-            local waitTime = getSecondsUntilNextUpload()
-            if waitTime > 0 then
-                local mins = math.ceil(waitTime / 60)
-                return Notify(string.format('Rate limited — wait %d more minute%s', mins, mins == 1 and '' or 's'), 3)
-            end
-
-            local filePath = self.Folder .. '/settings/' .. selectedCfg .. '.json'
-            local okFile, exists = pcall(isfile, filePath)
-            if not okFile or not exists then
-                return Notify('Config file not found: ' .. selectedCfg, 3)
-            end
-
-            local okRead, raw = pcall(readfile, filePath)
-            if not okRead or type(raw) ~= 'string' then
-                return Notify('Failed to read config file', 3)
-            end
-
-            local okDecode, configData = pcall(HttpService.JSONDecode, HttpService, raw)
-            if not okDecode or type(configData) ~= 'table' then
-                return Notify('Failed to decode config file', 3)
-            end
-
-            local status, responseBody = storePost('/configs', {
-                name = name,
-                author = author,
-                description = desc,
-                hwid = getHWID(),
-                data = configData,
-            })
-
-            if not responseBody then
-                return Notify('Upload failed — no response', 3)
-            end
-
-            local okResponse, decoded = pcall(HttpService.JSONDecode, HttpService, responseBody)
-            if status == 429 then
-                return Notify((okResponse and decoded and decoded.error) or 'Rate limited', 3)
-            end
-
-            if status == 201 and okResponse and type(decoded) == 'table' and decoded.id then
-                markUploadTime()
-                return Notify(string.format('Uploaded! ID %s — share with friends', tostring(decoded.id)))
-            end
-
-            Notify((okResponse and decoded and decoded.error) or 'Upload failed', 3)
+            Notify('Importing config...')
         end)
 
-        UploadGroup:AddButton('Copy Config Hub URL', function()
-            local fn = setclipboard or toclipboard
-            if type(fn) == 'function' then
-                local ok = pcall(fn, 'https://config-hub--z1bje.replit.app')
-                if ok then
-                    return Notify('Copied Config Hub URL to clipboard!')
-                end
+        IOGroup:AddButton('Import from clipboard', function()
+            local getClip = getclipboard or readclipboard
+            if type(getClip) ~= 'function' then
+                return Notify('Your executor does not support reading the clipboard. Paste it into the box instead.', 3)
             end
-            Notify('Your executor does not support clipboard copying.', 3)
+
+            local okRead, clipContent = pcall(getClip)
+            if not okRead or type(clipContent) ~= 'string' or clipContent == '' then
+                return Notify('Clipboard is empty or unreadable', 3)
+            end
+
+            local success, err = self:Import(clipContent)
+            if not success then
+                return Notify('Failed to import config: ' .. tostring(err), 3)
+            end
+
+            Notify('Importing config from clipboard...')
         end)
 
-        self:SetIgnoreIndexes({ 'UploadName', 'UploadAuthor', 'UploadDesc', 'UploadLocalDropdown' })
-        return UploadGroup
+        self:SetIgnoreIndexes({ 'SaveManager_ImportString' })
+        return IOGroup
     end
+
 
     function SaveManager:BuildFullConfigTab(window)
         assert(window, 'Must set a valid window')
