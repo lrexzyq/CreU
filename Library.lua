@@ -4184,7 +4184,20 @@ function Funcs:AddDropdown(Idx, Info)
     end
 
     function Funcs:AddKeybind(Idx, Info)
-        return self:AddKeyPicker(Idx, Info)
+        -- BUG: AddKeybind is documented (see Example.lua) as an alias of
+        -- AddKeyPicker callable directly on a Groupbox, but Groupbox
+        -- (BaseGroupbox/Funcs) has no AddKeyPicker of its own — that name
+        -- only exists on the addon-level Funcs table (used via
+        -- BaseAddons.__namecall on a Label/Toggle host, e.g.
+        -- Groupbox:AddLabel(...):AddKeyPicker(...)). Calling
+        -- self:AddKeyPicker(...) with self = Groupbox therefore looked up a
+        -- missing method and threw ("attempt to call missing method
+        -- 'AddKeyPicker' of table"). Fix: build the label host ourselves
+        -- (mirroring the normal AddLabel():AddKeyPicker() pattern) using
+        -- Info.Text as the label text, then invoke the addon on that host.
+        Info = type(Info) == 'table' and Info or {}
+        local LabelHost = self:AddLabel(Info.Text or '')
+        return LabelHost:AddKeyPicker(Idx, Info)
     end
 
     BaseGroupbox.__index = Funcs;
@@ -5073,7 +5086,11 @@ function Library:CreateWindow(...)
         function Tab:AddDivider(...) return Tab._Root:AddDivider(...) end
         function Tab:AddBlank(...) return Tab._Root:AddBlank(...) end
         function Tab:AddColorPicker(...) return Tab._Root:AddColorPicker(...) end
-        function Tab:AddKeyPicker(...) return Tab._Root:AddKeyPicker(...) end
+        -- BUG: same missing-method issue as Funcs:AddKeybind above —
+        -- Tab._Root is a Groupbox, which has no AddKeyPicker of its own
+        -- (only Groupbox:AddKeybind builds the label host now). Route
+        -- through AddKeybind so Tab:AddKeyPicker(...) doesn't crash either.
+        function Tab:AddKeyPicker(...) return Tab._Root:AddKeybind(...) end
         function Tab:AddKeybind(...) return Tab._Root:AddKeybind(...) end
 
         function Tab:ShowTab()
@@ -6221,7 +6238,17 @@ function BaseGroupbox:AddSection(Text)
 end
 
 function BaseGroupbox:AddKeybind(Idx, Info)
-    return self:AddKeyPicker(Idx, Info)
+    -- BUG: this later patch was overriding the earlier, correct
+    -- Funcs:AddKeybind (set as BaseGroupbox.__index) with a direct field on
+    -- BaseGroupbox itself — direct fields win over __index lookups, so this
+    -- version is what actually ran, and it reintroduced the exact
+    -- missing-method crash ("attempt to call missing method 'AddKeyPicker'
+    -- of table") since Groupbox has no AddKeyPicker of its own. Fix: build
+    -- the label host the same way Funcs:AddKeybind does, then invoke the
+    -- addon-level AddKeyPicker on that host instead of on the Groupbox.
+    Info = type(Info) == 'table' and Info or {}
+    local LabelHost = self:AddLabel(Info.Text or '')
+    return LabelHost:AddKeyPicker(Idx, Info)
 end
 
 function Library:SetNotifySide(Side)
