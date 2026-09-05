@@ -1276,11 +1276,12 @@ do
     SaveManager:SetFolder("CreU/specific-game")
     SaveManager:SetSubFolder("specific-place")
 
+    -- NOTE: the old duplicate call to SaveManager:BuildUploadSection() was
+    -- removed here (it was called a second time even though
+    -- BuildConfigSection already called it once, creating two "Upload"
+    -- groupboxes). The upload feature itself has since been removed from
+    -- SaveManager.lua because its backing web service is offline.
     SaveManager:BuildConfigSection(
-        Tabs.Settings
-    )
-
-    SaveManager:BuildUploadSection(
         Tabs.Settings
     )
 

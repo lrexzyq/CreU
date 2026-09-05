@@ -471,6 +471,18 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         IsHovering = false
         Tooltip.Visible = false
     end)
+
+    -- FIX: return a handle so callers (e.g. Funcs:SetTooltip) can update the
+    -- tooltip text live instead of it being frozen at creation time.
+    local Handle = { Frame = Tooltip, Label = Label }
+    function Handle:SetText(NewText)
+        NewText = tostring(NewText or '')
+        local NX, NY = Library:GetTextBounds(NewText, Library.Font, Library.FontSize)
+        Label.Text = NewText
+        Label.Size = UDim2.fromOffset(NX, NY)
+        Tooltip.Size = UDim2.fromOffset(NX + 5, NY + 4)
+    end
+    return Handle
 end
 
 function Library:OnHighlight(HighlightInstance, Instance, Properties, PropertiesDefault)
@@ -2147,8 +2159,17 @@ do
     end
 
     function Funcs:SetTooltip(Text)
-
         self.Tooltip = Text
+
+        -- FIX: previously this only stored the text on the object without
+        -- touching the UI, so the on-screen tooltip never changed. If a
+        -- tooltip handle exists (control was created with `Info.Tooltip`),
+        -- update its live text too.
+        if self._TooltipHandle and type(self._TooltipHandle.SetText) == 'function' then
+            self._TooltipHandle:SetText(Text)
+        end
+
+        return self
     end
 
     function Funcs:SetMin(Min)
@@ -2742,7 +2763,7 @@ do
             { BorderColor3 = 'Black' }
         );
         if type(Info.Tooltip) == 'string' then
-            Library:AddToolTip(Info.Tooltip, TextBoxOuter)
+            Textbox._TooltipHandle = Library:AddToolTip(Info.Tooltip, TextBoxOuter)
         end
 
         Library:Create('UIGradient', {
@@ -2931,7 +2952,7 @@ do
             Toggle:Display();
         end;
         if type(Info.Tooltip) == 'string' then
-            Library:AddToolTip(Info.Tooltip, ToggleRegion)
+            Toggle._TooltipHandle = Library:AddToolTip(Info.Tooltip, ToggleRegion)
         end
 
         function Toggle:Display()
@@ -3122,7 +3143,7 @@ do
             { BorderColor3 = 'Black' }
         );
         if type(Info.Tooltip) == 'string' then
-            Library:AddToolTip(Info.Tooltip, SliderOuter)
+            Slider._TooltipHandle = Library:AddToolTip(Info.Tooltip, SliderOuter)
         end
 
         function Slider:UpdateColors()
@@ -3378,7 +3399,7 @@ function Funcs:AddDropdown(Idx, Info)
             { BorderColor3 = 'Black' }
         );
         if type(Info.Tooltip) == 'string' then
-            Library:AddToolTip(Info.Tooltip, DropdownOuter);
+            Dropdown._TooltipHandle = Library:AddToolTip(Info.Tooltip, DropdownOuter);
         end
 
         local ListOuter = Library:Create('Frame', {
@@ -5490,20 +5511,25 @@ function Library:CreateWindow(...)
         if Processed then
             return
         end
+        -- FIX: `Library.Toggle` was passed to task.spawn without `:` syntax,
+        -- so `self` would be nil when the function ran. It happened not to
+        -- crash only because the body reads the `Library` upvalue instead
+        -- of `self`, but that's fragile — wrap in a closure that calls it
+        -- properly with `:` so it stays correct even if the method changes.
         if type(Library.ToggleKeybind) == 'table' and Library.ToggleKeybind.Type == 'KeyPicker' then
             if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind.Value then
-                task.spawn(Library.Toggle)
+                task.spawn(function() Library:Toggle() end)
             end
         elseif type(Library.ToggleKeybind) == 'string' then
             if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind then
-                task.spawn(Library.Toggle)
+                task.spawn(function() Library:Toggle() end)
             end
         elseif Input.KeyCode == Enum.KeyCode.RightControl or (Input.KeyCode == Enum.KeyCode.RightShift and (not Processed)) then
-            task.spawn(Library.Toggle)
+            task.spawn(function() Library:Toggle() end)
         end
     end))
 
-    if Config.AutoShow then task.spawn(Library.Toggle) end
+    if Config.AutoShow then task.spawn(function() Library:Toggle() end) end
 
     if Config.Resizable ~= false then
         local ResizeHandle = Library:Create('Frame', {
