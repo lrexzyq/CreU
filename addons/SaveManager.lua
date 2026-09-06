@@ -1018,7 +1018,10 @@ local SaveManager = {} do
         assert(self.Library, 'Must set SaveManager.Library')
         assert(tab, 'Must set a valid tab')
 
-        local IOGroup = tab:AddLeftGroupbox('Import / Export')
+        -- Right column: stacks under the "Configuration" groupbox
+        -- (also right column) instead of under ThemeManager's "Themes"
+        -- groupbox on the left, since Import/Export belongs with Config.
+        local IOGroup = tab:AddRightGroupbox('Import / Export')
 
         IOGroup:AddButton('Export current config to clipboard', function()
             local exportString, err = self:Export()
@@ -1087,4 +1090,3 @@ local SaveManager = {} do
 end
 
 return SaveManager
-
