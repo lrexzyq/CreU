@@ -1,8 +1,12 @@
 local HttpService = game:GetService('HttpService')
 
+-- Fallback Base64 codec, used only if SaveManager.Library isn't set or
+-- doesn't expose Base64Encode/Base64Decode (Library.lua defines the
+-- canonical copy and exposes it as Library.Base64Encode/Base64Decode so
+-- both addon files share one implementation instead of duplicating it).
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
-local function Base64Encode(data)
+local function LocalBase64Encode(data)
     local result = {}
     local byteCount = #data
 
@@ -32,7 +36,7 @@ for i = 1, #Base64Chars do
     Base64Lookup[Base64Chars:sub(i, i)] = i - 1
 end
 
-local function Base64Decode(data)
+local function LocalBase64Decode(data)
     data = data:gsub('[^%w%+%/%=]', '')
     local result = {}
     local i = 1
@@ -66,7 +70,30 @@ local function Base64Decode(data)
     return table.concat(result)
 end
 
-local SaveManager = {} do
+-- Forward-declared so the wrapper functions below close over this local
+-- (and see SaveManager.Library once SetLibrary runs), not a stray global.
+local SaveManager
+
+-- Prefer the Library's shared codec (set once SaveManager:SetLibrary has
+-- run); these wrappers still work before that, via the local fallback
+-- above, so nothing here depends on call order.
+local function Base64Encode(data)
+    local library = SaveManager and SaveManager.Library
+    if library and type(library.Base64Encode) == 'function' then
+        return library.Base64Encode(data)
+    end
+    return LocalBase64Encode(data)
+end
+
+local function Base64Decode(data)
+    local library = SaveManager and SaveManager.Library
+    if library and type(library.Base64Decode) == 'function' then
+        return library.Base64Decode(data)
+    end
+    return LocalBase64Decode(data)
+end
+
+SaveManager = {} do
     SaveManager.Folder = 'LinoriaLibSettings'
     SaveManager.Ignore = {}
     SaveManager.LoadBatchSize = 20
@@ -470,7 +497,14 @@ local SaveManager = {} do
         local data = { objects = {} }
 
         local library = self.Library
-        if library and type(library.ThemeManager) == 'table' then
+        -- Respect IgnoreThemeSettings(): if theme-related indexes are
+        -- ignored, don't save/restore the theme name either. Previously
+        -- this saved `data.theme` unconditionally even when the five
+        -- color fields were ignored, so an autoload config saved before
+        -- "Set as default" was clicked could silently overwrite the
+        -- ThemeManager default theme on the next join with whatever
+        -- theme was current at save time (e.g. "Default").
+        if library and type(library.ThemeManager) == 'table' and not self.Ignore['ThemeManager_ThemeList'] then
             local currentTheme = library.ThemeManager.CurrentTheme
             if type(currentTheme) == 'string' and currentTheme ~= '' then
                 data.theme = currentTheme
@@ -1090,3 +1124,4 @@ local SaveManager = {} do
 end
 
 return SaveManager
+

@@ -1,8 +1,12 @@
 local HttpService = game:GetService("HttpService")
 
+-- Fallback Base64 codec, used only if ThemeManager.Library isn't set or
+-- doesn't expose Base64Encode/Base64Decode (Library.lua defines the
+-- canonical copy and exposes it as Library.Base64Encode/Base64Decode so
+-- both addon files share one implementation instead of duplicating it).
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
-local function Base64Encode(data)
+local function LocalBase64Encode(data)
     local result = {}
     local byteCount = #data
 
@@ -32,7 +36,7 @@ for i = 1, #Base64Chars do
     Base64Lookup[Base64Chars:sub(i, i)] = i - 1
 end
 
-local function Base64Decode(data)
+local function LocalBase64Decode(data)
     data = data:gsub('[^%w%+%/%=]', '')
     local result = {}
     local i = 1
@@ -66,7 +70,30 @@ local function Base64Decode(data)
     return table.concat(result)
 end
 
-local ThemeManager = {}
+-- Forward-declared so the wrapper functions below close over this local
+-- (and see ThemeManager.Library once SetLibrary runs), not a stray global.
+local ThemeManager
+
+-- Prefer the Library's shared codec (set once ThemeManager:SetLibrary has
+-- run); these wrappers still work before that, via the local fallback
+-- above, so nothing here depends on call order.
+local function Base64Encode(data)
+    local library = ThemeManager and ThemeManager.Library
+    if library and type(library.Base64Encode) == 'function' then
+        return library.Base64Encode(data)
+    end
+    return LocalBase64Encode(data)
+end
+
+local function Base64Decode(data)
+    local library = ThemeManager and ThemeManager.Library
+    if library and type(library.Base64Decode) == 'function' then
+        return library.Base64Decode(data)
+    end
+    return LocalBase64Decode(data)
+end
+
+ThemeManager = {}
 
 do
     local ThemeFields = {
@@ -480,6 +507,36 @@ do
             end
         end)
 
+        Groupbox:AddButton({
+            Text = "Delete theme",
+            DoubleClick = true,
+            Func = function()
+                local List = self:GetOption("ThemeManager_CustomThemeList")
+                local Name = List and List.Value
+
+                if type(Name) ~= "string" or Name == "" then
+                    Notify(self, "Select a custom theme first", 3)
+                    return
+                end
+
+                local Ok, Err = self:DeleteCustomTheme(Name)
+
+                if not Ok then
+                    Notify(self, tostring(Err), 3)
+                    return
+                end
+
+                if List and type(List.SetValues) == "function" then
+                    pcall(List.SetValues, List, self:ReloadCustomThemes())
+                end
+                if List and type(List.SetValue) == "function" then
+                    pcall(List.SetValue, List, nil)
+                end
+
+                Notify(self, string.format("Deleted theme %q", Name))
+            end,
+        })
+
         Groupbox:AddButton("Refresh list", function()
             local List = self:GetOption("ThemeManager_CustomThemeList")
             if List and type(List.SetValues) == "function" then
@@ -709,6 +766,42 @@ do
 
         if not OkWrite then
             return false, "failed to save theme: " .. tostring(Err)
+        end
+
+        return true
+    end
+
+    -- Mirrors SaveManager:Delete: validate the name, refuse to touch
+    -- built-in themes, confirm the file actually exists before attempting
+    -- delfile, and clear default.txt if the deleted theme was the default
+    -- (otherwise LoadDefault would keep pointing at a file that no longer
+    -- exists).
+    function ThemeManager:DeleteCustomTheme(File)
+        File = Trim(File)
+
+        if type(File) ~= "string" or not IsSafeThemeName(File) then
+            return false, "invalid theme name"
+        end
+
+        if self.BuiltInThemes[File] then
+            return false, "cannot delete a built-in theme"
+        end
+
+        local Path = self.Folder .. "/themes/" .. File .. ".json"
+        local OkExists, Exists = pcall(isfile, Path)
+        if not OkExists or not Exists then
+            return false, "theme does not exist"
+        end
+
+        local OkDelete, Err = pcall(delfile, Path)
+        if not OkDelete then
+            return false, "failed to delete theme: " .. tostring(Err)
+        end
+
+        local DefaultPath = self.Folder .. "/themes/default.txt"
+        local OkRead, Current = pcall(readfile, DefaultPath)
+        if OkRead and Trim(Current) == File then
+            pcall(delfile, DefaultPath)
         end
 
         return true
