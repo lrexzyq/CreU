@@ -10,6 +10,78 @@ local RenderStepped = RunService.RenderStepped;
 local LocalPlayer = Players.LocalPlayer;
 local Mouse = LocalPlayer:GetMouse();
 
+-- Shared Base64 codec, used by SaveManager/ThemeManager for their
+-- Export/Import strings. Defined once here instead of duplicated in both
+-- addon files; exposed below as Library.Base64Encode/Base64Decode so those
+-- files can call Library.Base64Encode/Base64Decode when a Library is set,
+-- and fall back to their own local copy otherwise (e.g. if someone loads
+-- SaveManager/ThemeManager standalone without a Library instance).
+local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+local function Base64Encode(data)
+    local result = {}
+    local byteCount = #data
+
+    for i = 1, byteCount, 3 do
+        local b1, b2, b3 = data:byte(i, i + 2)
+        b2 = b2 or 0
+        b3 = b3 or 0
+
+        local n = b1 * 65536 + b2 * 256 + b3
+
+        local c1 = math.floor(n / 262144) % 64
+        local c2 = math.floor(n / 4096) % 64
+        local c3 = math.floor(n / 64) % 64
+        local c4 = n % 64
+
+        result[#result + 1] = Base64Chars:sub(c1 + 1, c1 + 1)
+        result[#result + 1] = Base64Chars:sub(c2 + 1, c2 + 1)
+        result[#result + 1] = (i + 1 <= byteCount) and Base64Chars:sub(c3 + 1, c3 + 1) or '='
+        result[#result + 1] = (i + 2 <= byteCount) and Base64Chars:sub(c4 + 1, c4 + 1) or '='
+    end
+
+    return table.concat(result)
+end
+
+local Base64Lookup = {}
+for i = 1, #Base64Chars do
+    Base64Lookup[Base64Chars:sub(i, i)] = i - 1
+end
+
+local function Base64Decode(data)
+    data = data:gsub('[^%w%+%/%=]', '')
+    local result = {}
+    local i = 1
+    local len = #data
+
+    while i <= len do
+        local c1 = Base64Lookup[data:sub(i, i)]
+        local c2 = Base64Lookup[data:sub(i + 1, i + 1)]
+        local c3Char = data:sub(i + 2, i + 2)
+        local c4Char = data:sub(i + 3, i + 3)
+        local c3 = c3Char ~= '=' and Base64Lookup[c3Char] or nil
+        local c4 = c4Char ~= '=' and Base64Lookup[c4Char] or nil
+
+        if not c1 or not c2 then
+            break
+        end
+
+        local n = c1 * 262144 + c2 * 4096 + (c3 or 0) * 64 + (c4 or 0)
+
+        local b1 = math.floor(n / 65536) % 256
+        local b2 = math.floor(n / 256) % 256
+        local b3 = n % 256
+
+        result[#result + 1] = string.char(b1)
+        if c3 then result[#result + 1] = string.char(b2) end
+        if c4 then result[#result + 1] = string.char(b3) end
+
+        i = i + 4
+    end
+
+    return table.concat(result)
+end
+
 local ProtectGui = protectgui or (syn and syn.protect_gui) or (function() end);
 
 local ScreenGui = Instance.new('ScreenGui');
@@ -81,6 +153,11 @@ local Library = {
 
 Library.Options = Options;
 Library.Toggles = Toggles;
+
+-- Exposed so addons (SaveManager/ThemeManager) can share one Base64
+-- implementation instead of each keeping their own copy.
+Library.Base64Encode = Base64Encode;
+Library.Base64Decode = Base64Decode;
 
 Library.KeyPickerList = {};
 
@@ -236,7 +313,67 @@ function Library:ApplyTextStroke(Inst)
 end;
 
 function Library:ApplyGlow(Inst)
+    -- Soft outer glow used behind the on-screen keybind list, built from
+    -- plain Frame/UIStroke/UIGradient instances only (no external asset
+    -- id), so it can't silently stop rendering if a remote asset is ever
+    -- taken down. Layered translucent frames, each slightly larger than
+    -- Inst and centered on it, approximate a glow falloff.
+    --
+    -- Parented as a SIBLING of Inst (not a child): a child's ZIndex only
+    -- orders it against other children of the same parent, so a lower
+    -- ZIndex than Inst itself would NOT push it behind Inst - it would
+    -- still draw on top, just behind other children. Sitting next to Inst
+    -- with a lower ZIndex actually renders it behind.
+    local GlowHolder = Library:Create('Frame', {
+        AnchorPoint = Inst.AnchorPoint;
+        BackgroundTransparency = 1;
+        Position = Inst.Position;
+        Size = Inst.Size;
+        ZIndex = Inst.ZIndex - 1;
+        Parent = Inst.Parent;
+    });
 
+    local Layers = { 6, 4, 2 }
+    for _, Padding in ipairs(Layers) do
+        local Layer = Library:Create('Frame', {
+            AnchorPoint = Vector2.new(0.5, 0.5);
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BackgroundTransparency = 0.85;
+            BorderSizePixel = 0;
+            Position = UDim2.new(0.5, 0, 0.5, 0);
+            Size = UDim2.new(1, Padding * 2, 1, Padding * 2);
+            ZIndex = GlowHolder.ZIndex;
+            Parent = GlowHolder;
+        });
+
+        Library:Create('UIGradient', {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(0, 0, 0));
+                ColorSequenceKeypoint.new(1, Color3.new(0, 0, 0));
+            });
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.4);
+                NumberSequenceKeypoint.new(1, 1);
+            });
+            Rotation = 90;
+            Parent = Layer;
+        });
+    end
+
+    -- Inst may move (it's draggable) after this runs; keep the glow glued
+    -- to it instead of freezing at its position/size/anchor at call time.
+    Inst:GetPropertyChangedSignal('Position'):Connect(function()
+        GlowHolder.Position = Inst.Position;
+    end);
+    Inst:GetPropertyChangedSignal('Size'):Connect(function()
+        GlowHolder.Size = Inst.Size;
+    end);
+    Inst:GetPropertyChangedSignal('Visible'):Connect(function()
+        GlowHolder.Visible = Inst.Visible;
+    end);
+    GlowHolder.Visible = Inst.Visible;
+
+    return GlowHolder
 end;
 
 function Library:CreateLabel(Properties, IsHud)
@@ -1429,6 +1566,17 @@ do
             _Initializing = true;
         };
 
+        -- NoUI keybinds never show in the on-screen Keybinds panel: Update()
+        -- returns immediately for them (see below), by design, for things
+        -- like a menu-toggle key that shouldn't clutter the list. This is a
+        -- common source of "I bound a key but it's not on the Keybinds
+        -- list" confusion when NoUI is copied from an example alongside a
+        -- real feature keybind. Surface it once, opt-in via
+        -- Library.DebugKeybinds, instead of failing silently.
+        if KeyPicker.NoUI and Library.DebugKeybinds then
+            warn(string.format('[Library] KeyPicker %q created with NoUI = true; it will never appear in the Keybinds panel.', tostring(Idx)))
+        end
+
         local PickOuter = Library:Create('Frame', {
             BackgroundTransparency = 1;
             BorderSizePixel = 0;
@@ -1979,7 +2127,19 @@ do
             if Library:MouseIsOverOpenedFrame(Input.Position) then
                 return;
             end;
-            if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then
+            -- FIX: previously this only listened for MouseButton1 or Touch,
+            -- so MouseButton2 (right-click, meant to clear the bind on PC)
+            -- was never handled at all here -- right-clicking did nothing.
+            -- Touch fell into the same "else" branch that was written for
+            -- MouseButton2, so on mobile, tapping the key display cleared
+            -- the bind instead of opening picking (unlike GearButton just
+            -- above, which correctly treats a tap-without-move as a left
+            -- click). Now: MouseButton1 or a non-moving Touch tap opens
+            -- picking (Touch can't type a specific key, but at least it no
+            -- longer wipes the bind); MouseButton2 clears it, as intended.
+            if Input.UserInputType ~= Enum.UserInputType.MouseButton1
+                and Input.UserInputType ~= Enum.UserInputType.MouseButton2
+                and Input.UserInputType ~= Enum.UserInputType.Touch then
                 return;
             end;
             if not Library:BeginGesture(Input) then
@@ -1987,16 +2147,40 @@ do
             end;
             MarkControlInput(Input)
 
-            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                Library:EndGesture(Input)
-                BeginPicking();
-            else
-
+            if Input.UserInputType == Enum.UserInputType.MouseButton2 then
                 Library:EndGesture(Input)
                 KeyPicker:SetValue({ 'None', KeyPicker.Mode });
                 Library:SafeCallback(KeyPicker.ChangedCallback, 'None');
                 Library:SafeCallback(KeyPicker.Changed, 'None');
                 Library:AttemptSave();
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                Library:EndGesture(Input)
+                BeginPicking();
+            else
+                -- Touch: only open picking on a tap that doesn't move (a
+                -- drag/swipe shouldn't trigger it), mirroring GearButton's
+                -- touch handling above.
+                local StartPosition = Input.Position;
+                local TouchMoved = false;
+                local ChangedConn, EndedConn;
+                local function cleanup()
+                    if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+                    if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+                end
+                ChangedConn = InputService.InputChanged:Connect(function(Change)
+                    if Change == Input and (Change.Position - StartPosition).Magnitude > TouchMoveThreshold then
+                        TouchMoved = true;
+                    end
+                end)
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput ~= Input then return end
+                    cleanup()
+                    Library:EndGesture(Input)
+                    if not TouchMoved then
+                        BeginPicking();
+                    end
+                end)
+                Library:RegisterGestureCleanup(Input, cleanup)
             end
         end);
 
@@ -4691,6 +4875,21 @@ function Library:CreateWindow(...)
 
         local maxHeight = math.min(Config.Size.Y.Offset, vp.Y - 60)
         Config.Size = UDim2.fromOffset(maxWidth, maxHeight)
+
+        -- FIX: only Size was being clamped to the viewport above; Position
+        -- (the caller's value, or the UDim2.fromOffset(175, 50) default a
+        -- few lines up) was left untouched. On a narrow phone viewport,
+        -- 175 + maxWidth can exceed vp.X entirely, pushing the window
+        -- partly or fully off-screen with no way to drag it back (the drag
+        -- handle is on the window itself). Clamp the offset position (for
+        -- AnchorPoint (0,0) windows -- Config.Center below overrides
+        -- Position/AnchorPoint anyway, so this only affects the
+        -- non-centered default) so the whole window stays reachable.
+        if Config.AnchorPoint == Vector2.zero and typeof(Config.Position) == 'UDim2' then
+            local PosX = math.clamp(Config.Position.X.Offset, 0, math.max(0, vp.X - maxWidth))
+            local PosY = math.clamp(Config.Position.Y.Offset, 0, math.max(0, vp.Y - maxHeight))
+            Config.Position = UDim2.fromOffset(PosX, PosY)
+        end
     end
 
     if Config.Center then
