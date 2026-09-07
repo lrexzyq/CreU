@@ -440,6 +440,35 @@ SaveManager = {} do
                 end
             end,
         },
+        RangeSlider = {
+            Save = function(idx, object)
+                local low, high = object.Low, object.High
+                if type(low) ~= 'number' or type(high) ~= 'number' then
+                    return nil
+                end
+                return { type = 'RangeSlider', idx = idx, low = tostring(low), high = tostring(high) }
+            end,
+            Load = function(idx, data)
+                if not IsValidIdx(idx) or type(data) ~= 'table' then
+                    return
+                end
+
+                -- Both bounds must resolve to real numbers; reject the
+                -- whole entry (rather than applying a half-valid range)
+                -- if either one is missing or non-numeric.
+                local low = tonumber(data.low)
+                local high = tonumber(data.high)
+                if not low or not high then
+                    return
+                end
+
+                local options = GetOptions()
+                local option = options and options[idx]
+                if option and type(option.SetValue) == 'function' then
+                    option:SetValue(low, high)
+                end
+            end,
+        },
     }
 
     function SaveManager:SetIgnoreIndexes(list)
