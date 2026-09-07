@@ -7836,6 +7836,206 @@ Library.CreateWindow = function(self,...)
                 Box:AddButton('Submit',function() local value=Options[InputIdx] and Options[InputIdx].Value or ''; if Callback then Library:SafeCallback(Callback,value) end end)
                 return Box
             end
+
+            -- ================= AddKeyBoxUnlock =================
+            -- Adds a Key/Submit/Get Key groupbox at the top of this tab,
+            -- then locks every OTHER groupbox added to the SAME tab from
+            -- this point on: they stay hidden (like AddDependencyBox
+            -- content) until a valid key is submitted, at which point
+            -- they're revealed in place -- no separate "locked box"
+            -- object to route controls through, the caller just keeps
+            -- calling Tab:AddLeftGroupbox/AddRightGroupbox/AddToggle/etc
+            -- as normal and everything downstream is gated automatically.
+            --
+            -- Config:
+            --   Key          string | {string, ...} -- accepted key(s)
+            --   Note         string?  -- small helper text under the box
+            --   SaveKey      boolean? -- persist a passing key to disk so
+            --                            future sessions unlock instantly
+            --   FolderName   string?  -- defaults to 'LinoriaLibSettings'
+            --   FileName     string?  -- defaults to 'tabkey'
+            --   GetKeyLink   string?  -- if set, shows a "Get Key" button
+            --                            that copies this to clipboard
+            --   Callback     function(Key)? -- fires once, on success
+            --
+            -- Only gates Tab:AddLeftGroupbox / Tab:AddRightGroupbox calls
+            -- made after this one on the same tab -- Tab:AddTabbox isn't
+            -- wrapped, so a tabbox added afterward would stay visible.
+            -- Call this once per tab, before adding the groupboxes you
+            -- want locked.
+            function Tab:AddKeyBoxUnlock(Config)
+                Config = type(Config) == 'table' and Config or {}
+
+                local function TrimStr(v)
+                    if type(v) ~= 'string' then return v end
+                    return v:gsub('^%s+', ''):gsub('%s+$', '')
+                end
+                local function IsSafeName(name)
+                    if type(name) ~= 'string' then return false end
+                    name = TrimStr(name)
+                    if name == '' then return false end
+                    if name:find('[/\\]') or name:find('%.%.', 1, true) or name:find('[<>:"|%?%*]') then return false end
+                    return true
+                end
+                -- Same constant-time-ish byte comparison as
+                -- CreateKeySystem's KS_SecureCompare (kept as a separate
+                -- local copy since this block doesn't have access to
+                -- that upvalue -- it's defined inside CreateKeySystem's
+                -- own do...end scope further up the file).
+                local function SecureCompare(a, b)
+                    if type(a) ~= 'string' or type(b) ~= 'string' then return false end
+                    if #a ~= #b then return false end
+                    local diff = 0
+                    for i = 1, #a do
+                        if a:byte(i) ~= b:byte(i) then diff = diff + 1 end
+                    end
+                    return diff == 0
+                end
+
+                local Keys = {}
+                if type(Config.Key) == 'string' then
+                    Keys[#Keys + 1] = Config.Key
+                elseif type(Config.Key) == 'table' then
+                    for _, K in ipairs(Config.Key) do
+                        if type(K) == 'string' and K ~= '' then Keys[#Keys + 1] = K end
+                    end
+                end
+                if #Keys == 0 then
+                    warn('[CreU] AddKeyBoxUnlock: no valid Key(s) configured -- groupboxes on this tab will stay locked forever. Pass Config.Key as a string or array of strings.')
+                end
+
+                local SaveKey = Config.SaveKey == true
+                local FolderName = IsSafeName(Config.FolderName) and Config.FolderName or 'LinoriaLibSettings'
+                local FileName = IsSafeName(Config.FileName) and Config.FileName or 'tabkey'
+                local GetKeyLink = type(Config.GetKeyLink) == 'string' and Config.GetKeyLink or nil
+
+                local function SavedKeyPath()
+                    return FolderName .. '/' .. FileName .. '.txt'
+                end
+                local function TryLoadSavedPass()
+                    if not SaveKey then return false end
+                    local ok, exists = pcall(isfile, SavedKeyPath())
+                    if not ok or not exists then return false end
+                    local okRead, content = pcall(readfile, SavedKeyPath())
+                    if not okRead or type(content) ~= 'string' then return false end
+                    content = TrimStr(content)
+                    for _, K in ipairs(Keys) do
+                        if SecureCompare(content, K) then return true end
+                    end
+                    return false
+                end
+                local function PersistPass(Key)
+                    if not SaveKey then return end
+                    pcall(function()
+                        if not isfolder(FolderName) then makefolder(FolderName) end
+                    end)
+                    pcall(writefile, SavedKeyPath(), Key)
+                end
+
+                -- Tracks every groupbox created on this tab AFTER this
+                -- call, so they can all be shown/hidden together. Each
+                -- entry is the groupbox's outer frame (Container's
+                -- grandparent -- see AddGroupbox: Container -> BoxInner
+                -- -> BoxOuter).
+                local LockedOuters = {}
+                local Unlocked = TryLoadSavedPass()
+
+                local function ApplyLockState()
+                    for _, Outer in ipairs(LockedOuters) do
+                        Outer.Visible = Unlocked
+                    end
+                end
+
+                -- Wrap AddLeftGroupbox/AddRightGroupbox on THIS Tab
+                -- instance only (not Funcs/BaseGroupbox, so every other
+                -- tab in the window is completely unaffected): any
+                -- groupbox created here from now on gets hidden until
+                -- Unlocked flips true, exactly mirroring how
+                -- AddDependencyBox content stays hidden until its
+                -- condition is met.
+                local OrigAddLeft = Tab.AddLeftGroupbox
+                local OrigAddRight = Tab.AddRightGroupbox
+                function Tab:AddLeftGroupbox(...)
+                    local Groupbox = OrigAddLeft(Tab, ...)
+                    local Outer = Groupbox.Container.Parent.Parent
+                    table.insert(LockedOuters, Outer)
+                    Outer.Visible = Unlocked
+                    return Groupbox
+                end
+                function Tab:AddRightGroupbox(...)
+                    local Groupbox = OrigAddRight(Tab, ...)
+                    local Outer = Groupbox.Container.Parent.Parent
+                    table.insert(LockedOuters, Outer)
+                    Outer.Visible = Unlocked
+                    return Groupbox
+                end
+
+                -- The key-entry groupbox itself is built with the
+                -- ORIGINAL (unwrapped) AddLeftGroupbox, so it's never
+                -- hidden by its own lock.
+                local KeyBoxGroup = OrigAddLeft(Tab, Config.Title or 'Key System', 'key')
+
+                local InputIdx = 'TabKeyInput_' .. tostring(math.random(100000, 999999))
+                KeyBoxGroup:AddInput(InputIdx, {
+                    Text = Config.Text or 'Key',
+                    Placeholder = Config.Placeholder or 'Enter key...',
+                    Finished = false,
+                })
+
+                local StatusLabel = KeyBoxGroup:AddLabel({ Text = '', DoesWrap = true })
+
+                local function DoSubmit()
+                    local Attempt = TrimStr(Options[InputIdx] and Options[InputIdx].Value or '')
+                    if Attempt == '' then
+                        if StatusLabel.SetText then StatusLabel:SetText('Please enter a key.') end
+                        return
+                    end
+                    local Pass = false
+                    for _, K in ipairs(Keys) do
+                        if SecureCompare(Attempt, K) then Pass = true; break end
+                    end
+                    if not Pass then
+                        if StatusLabel.SetText then StatusLabel:SetText('Invalid key. Please try again.') end
+                        return
+                    end
+                    if StatusLabel.SetText then StatusLabel:SetText('Key accepted!') end
+                    PersistPass(Attempt)
+                    Unlocked = true
+                    ApplyLockState()
+                    Library:SafeCallback(Config.Callback, Attempt)
+                end
+
+                if GetKeyLink then
+                    KeyBoxGroup:AddButton({
+                        Text = 'Get Key',
+                        Func = function()
+                            local clip = setclipboard or toclipboard
+                            if type(clip) == 'function' then
+                                pcall(clip, GetKeyLink)
+                                Library:Notify('Key link copied to clipboard!', 3)
+                            else
+                                Library:Notify('Link: ' .. GetKeyLink, 5)
+                            end
+                        end,
+                    })
+                end
+
+                KeyBoxGroup:AddButton({ Text = 'Submit', Func = DoSubmit })
+
+                if type(Config.Note) == 'string' and Config.Note ~= '' then
+                    KeyBoxGroup:AddLabel({ Text = Config.Note, DoesWrap = true })
+                end
+
+                -- If a saved key already passed, reflect that immediately
+                -- (any groupbox added above the check, i.e. none besides
+                -- KeyBoxGroup which is never locked, is unaffected).
+                ApplyLockState()
+
+                return {
+                    IsUnlocked = function() return Unlocked end;
+                }
+            end
+
             return Tab
         end
     end

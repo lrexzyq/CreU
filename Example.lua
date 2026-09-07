@@ -1080,13 +1080,75 @@ do
 end
 
 do
-    -- NOTE: this AddKeyTab/AddKeyBox widget is the original *in-window*
-    -- key box (a control living inside a normal tab, purely
-    -- illustrative -- it doesn't gate anything). It's independent of the
-    -- full-screen Config.KeySystem gate set up in CreateWindow above,
-    -- which actually locks the whole window until a real key is entered.
+    -- NOTE: AddKeyBox (used further below) is the original simple
+    -- key-entry widget -- a control living inside a normal tab that just
+    -- reports the submitted key via callback; it doesn't hide/gate
+    -- anything on its own. It's independent of the full-screen
+    -- Config.KeySystem gate set up in CreateWindow above (which locks
+    -- the whole window) and of AddKeyBoxUnlock below (which locks only
+    -- the groupboxes on this specific tab).
+    --
+    -- AddKeyBoxUnlock: everything added to THIS tab via
+    -- Tab:AddLeftGroupbox/AddRightGroupbox AFTER this call starts out
+    -- hidden -- exactly like AddDependencyBox content -- and is revealed
+    -- once a valid key is submitted (or GetKeyLink is used to copy a
+    -- link for where to obtain one, mirroring how key-system provider
+    -- links usually work: the accepted key(s) live in the script, while
+    -- the public-facing "get key" link can point anywhere, e.g. Discord).
+    Tabs.Key:AddKeyBoxUnlock({
+        Title = "Unlock Features",
+        Text = "Key",
+        Placeholder = "Enter key to unlock...",
+        Note = "Demo keys: \"Banana\" or \"Coconut\"",
+        Key = { "Banana", "Coconut" },
+        SaveKey = true,
+        FolderName = "CreUShowcase",
+        FileName = "tabkey",
+        GetKeyLink = "https://discord.gg/NdpYnJuuN4",
+        Callback = function(ReceivedKey)
+            Library:Notify("Unlocked with key: " .. tostring(ReceivedKey), 4)
+        end,
+    })
+
+    -- Added AFTER AddKeyBoxUnlock, so this whole groupbox (and every
+    -- control in it) stays hidden until the key above is accepted.
+    local Locked = Tabs.Key:AddLeftGroupbox("Unlocked Controls", "unlock")
+
+    Locked:AddToggle("KeyUnlockedToggle", {
+        Text = "Feature Toggle",
+        Default = false,
+    })
+
+    Locked:AddSlider("KeyUnlockedSlider", {
+        Text = "Feature Slider",
+        Default = 50,
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+    })
+
+    Locked:AddDropdown("KeyUnlockedDropdown", {
+        Text = "Feature Dropdown",
+        Values = { "Option A", "Option B", "Option C" },
+        Default = 1,
+    })
+
+    Locked:AddInput("KeyUnlockedInput", {
+        Text = "Feature Input",
+        Placeholder = "Type here...",
+    })
+
+    Locked:AddButton({
+        Text = "Feature Button",
+        Func = function()
+            Library:Notify("This button was behind the key lock!", 3)
+        end,
+    })
+
+    -- The plain, non-gating key box for comparison -- always visible,
+    -- just reports whatever was typed.
     Tabs.Key:AddLabel({
-        Text = "Enter the key below. The demo accepts: Banana",
+        Text = "Below is the original AddKeyBox (no locking, just reports the key). The demo accepts: Banana",
         DoesWrap = true,
     })
 
