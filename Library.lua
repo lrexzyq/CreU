@@ -461,6 +461,55 @@ function Library:CancelGesture()
     end
 end
 
+-- Wires up a press/release click on Instance the same way AddButton does
+-- internally: BeginGesture on InputBegan, then wait for the matching
+-- InputEnded before calling EndGesture and firing Callback, and only if
+-- the pointer didn't move more than a few pixels away (so a
+-- press-drag-release off the button doesn't count as a click, and the
+-- global gesture lock stays held for the button's full press instead of
+-- being released the instant it's pressed). Used by every plain
+-- click-button built outside of AddButton (KeySystem, Confirm,
+-- NotifyWithActions) so they share the same input semantics as the
+-- rest of the library instead of firing on mouse-down.
+function Library:SimpleClick(Instance, Callback)
+    Instance.InputBegan:Connect(function(Input)
+        local InputType = Input.UserInputType
+        if InputType ~= Enum.UserInputType.MouseButton1 and InputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        if not Library:BeginGesture(Input) then return end
+
+        local PressStart = Input.Position
+        local Moved = false
+        local ThisInput = Input
+        local ChangedConn, EndedConn
+
+        ChangedConn = InputService.InputChanged:Connect(function(Change)
+            if Change ~= ThisInput and not (Change.UserInputType == Enum.UserInputType.MouseMovement and ThisInput.UserInputType == Enum.UserInputType.MouseButton1) then
+                return
+            end
+            if (Change.Position - PressStart).Magnitude > 6 then
+                Moved = true
+            end
+        end)
+
+        EndedConn = InputService.InputEnded:Connect(function(EndInput)
+            if EndInput ~= ThisInput then return end
+            if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+            if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+            Library:EndGesture(ThisInput)
+            if not Moved then
+                Library:SafeCallback(Callback)
+            end
+        end)
+
+        Library:RegisterGestureCleanup(ThisInput, function()
+            if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+            if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+        end)
+    end)
+end
+
 function Library:MakeDraggable(Instance, Cutoff, IsWindow)
     Instance.Active = true;
     Instance.InputBegan:Connect(function(Input)
@@ -3069,6 +3118,138 @@ do
         return Textbox;
     end;
 
+    -- ================= Multi-line Textbox =================
+    -- Same Value/SetValue/OnChanged/Callback contract as AddInput, but
+    -- backed by a taller, MultiLine=true TextBox (notes, scripts, JSON
+    -- blobs, etc). Registered in Options like AddInput so SaveManager's
+    -- existing 'Input' parser can save/load it without changes.
+    function Funcs:AddMultiTextbox(Idx, Info)
+        Info = type(Info) == 'table' and Info or {}
+        assert(Info.Text, 'AddMultiTextbox: Missing `Text` string.')
+
+        local Textbox = {
+            Value = Info.Default or '';
+            Finished = Info.Finished ~= false;
+            Type = 'Input';
+            Callback = Info.Callback or function(Value) end;
+        };
+        local Groupbox = self;
+        local Container = Groupbox.Container;
+
+        local Height = tonumber(Info.Height) or 80
+
+        Library:CreateLabel({
+            Size = UDim2.new(1, 0, 0, 15);
+            TextSize = Library.FontSize;
+            Text = Info.Text;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            ZIndex = 5;
+            Parent = Container;
+        });
+
+        Groupbox:AddBlank(1);
+
+        local BoxOuter = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Size = UDim2.new(1, -4, 0, Height);
+            ZIndex = 5;
+            Parent = Container;
+        });
+        local BoxInner = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ZIndex = 6;
+            Parent = BoxOuter;
+        });
+        Library:AddToRegistry(BoxInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+        Library:OnHighlight(BoxOuter, BoxOuter, { BorderColor3 = 'AccentColor' }, { BorderColor3 = 'Black' });
+        if type(Info.Tooltip) == 'string' then
+            Textbox._TooltipHandle = Library:AddToolTip(Info.Tooltip, BoxOuter)
+        end
+
+        local Scrolling = Library:Create('ScrollingFrame', {
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Position = UDim2.fromOffset(4, 3);
+            Size = UDim2.new(1, -8, 1, -6);
+            CanvasSize = UDim2.new(0, 0, 0, 0);
+            AutomaticCanvasSize = Enum.AutomaticSize.Y;
+            ScrollBarThickness = 3;
+            ScrollBarImageColor3 = Library.AccentColor;
+            VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Right;
+            ZIndex = 7;
+            Parent = BoxInner;
+        });
+        Library:AddToRegistry(Scrolling, { ScrollBarImageColor3 = 'AccentColor' });
+
+        local Box = Library:Create('TextBox', {
+            BackgroundTransparency = 1;
+            Size = UDim2.new(1, 0, 0, 0);
+            AutomaticSize = Enum.AutomaticSize.Y;
+            Font = Library.Font;
+            MultiLine = true;
+            TextWrapped = true;
+            PlaceholderColor3 = Color3.fromRGB(190, 190, 190);
+            PlaceholderText = Info.Placeholder or '';
+            Text = Info.Default or '';
+            TextColor3 = Library.FontColor;
+            TextSize = Library.FontSize;
+            TextStrokeTransparency = 0;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextYAlignment = Enum.TextYAlignment.Top;
+            ZIndex = 8;
+            Parent = Scrolling;
+        });
+        Library:ApplyTextStroke(Box);
+        Library:AddToRegistry(Box, { TextColor3 = 'FontColor' });
+
+        function Textbox:SetValue(Text)
+            Text = tostring(Text or '')
+            if Info.MaxLength and #Text > Info.MaxLength then
+                Text = Text:sub(1, Info.MaxLength)
+            end
+            Textbox.Value = Text
+            -- Only reassign Box.Text when it actually changed (e.g. after
+            -- truncating to MaxLength): the live GetPropertyChangedSignal
+            -- listener below calls SetValue on every keystroke, so an
+            -- unconditional Box.Text = Text here would refire that signal
+            -- and run the whole callback chain a second time for the same
+            -- final value.
+            if Box.Text ~= Text then
+                Box.Text = Text
+            end
+            Library:SafeCallback(Textbox.Callback, Textbox.Value)
+            Library:SafeCallback(Textbox.Changed, Textbox.Value)
+        end;
+
+        if Textbox.Finished then
+            Box.FocusLost:Connect(function(enter)
+                Textbox:SetValue(Box.Text)
+                Library:AttemptSave()
+            end)
+        else
+            Box:GetPropertyChangedSignal('Text'):Connect(function()
+                Textbox:SetValue(Box.Text)
+                Library:AttemptSave()
+            end)
+        end
+
+        function Textbox:OnChanged(Func)
+            Textbox.Changed = Func;
+            Library:SafeCallback(Func, Textbox.Value);
+        end;
+
+        Groupbox:AddBlank(5);
+        Groupbox:Resize();
+
+        Options[Idx] = Textbox;
+
+        return Textbox;
+    end;
+
     function Funcs:AddToggle(Idx, Info)
         Info = type(Info) == 'table' and Info or {}
         assert(Info.Text, 'AddToggle: Missing `Text` string.')
@@ -4342,6 +4523,389 @@ function Funcs:AddDropdown(Idx, Info)
         return Depbox;
     end;
 
+    -- ================= RangeSlider (two-handle Min/Max slider) =================
+    -- Mirrors AddSlider's structure/behaviour (same drag pattern, Prefix/
+    -- Suffix, Rounding, Display callback) but tracks two values instead of
+    -- one, returned as {Low, High}.
+    function Funcs:AddRangeSlider(Idx, Info)
+        Info = type(Info) == 'table' and Info or {}
+        assert(Info.Text, 'AddRangeSlider: Missing slider text.');
+        assert(Info.Min ~= nil, 'AddRangeSlider: Missing minimum value.');
+        assert(Info.Max ~= nil, 'AddRangeSlider: Missing maximum value.');
+        assert(Info.Rounding ~= nil, 'AddRangeSlider: Missing rounding value.');
+
+        local MinValue = tonumber(Info.Min) or 0
+        local MaxValue = tonumber(Info.Max) or MinValue
+        if MaxValue < MinValue then MinValue, MaxValue = MaxValue, MinValue end
+
+        local DefaultLow, DefaultHigh = MinValue, MaxValue
+        if type(Info.Default) == 'table' then
+            DefaultLow = tonumber(Info.Default[1]) or MinValue
+            DefaultHigh = tonumber(Info.Default[2]) or MaxValue
+        end
+        DefaultLow = math.clamp(DefaultLow, MinValue, MaxValue)
+        DefaultHigh = math.clamp(DefaultHigh, MinValue, MaxValue)
+        if DefaultLow > DefaultHigh then DefaultLow, DefaultHigh = DefaultHigh, DefaultLow end
+
+        local RangeSlider = {
+            Low = DefaultLow;
+            High = DefaultHigh;
+            Min = MinValue;
+            Max = MaxValue;
+            Rounding = tonumber(Info.Rounding) or 0;
+            Type = 'RangeSlider';
+            Callback = Info.Callback or function(Low, High) end;
+            SupportsAddons = false;
+        };
+
+        local Groupbox = self;
+        local Container = Groupbox.Container;
+
+        if not Info.Compact then
+            Library:CreateLabel({
+                Size = UDim2.new(1, 0, 0, 10);
+                TextSize = Library.FontSize;
+                Text = Info.Text;
+                TextXAlignment = Enum.TextXAlignment.Left;
+                TextYAlignment = Enum.TextYAlignment.Bottom;
+                ZIndex = 5;
+                Parent = Container;
+            });
+            Groupbox:AddBlank(3);
+        end
+
+        local SliderOuter = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Size = UDim2.new(1, -4, 0, 13);
+            ZIndex = 5;
+            Parent = Container;
+        });
+        Library:AddToRegistry(SliderOuter, { BorderColor3 = 'Black' });
+        local SliderInner = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ZIndex = 6;
+            Parent = SliderOuter;
+        });
+        Library:AddToRegistry(SliderInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+
+        local Fill = Library:Create('Frame', {
+            BackgroundColor3 = Library.AccentColor;
+            BorderColor3 = Library.AccentColorDark;
+            Size = UDim2.new(0, 0, 1, 0);
+            ZIndex = 7;
+            Parent = SliderInner;
+        });
+        Library:AddToRegistry(Fill, { BackgroundColor3 = 'AccentColor', BorderColor3 = 'AccentColorDark' });
+
+        local DisplayLabel = Library:CreateLabel({
+            Size = UDim2.new(1, 0, 1, 0);
+            TextSize = Library.FontSize;
+            Text = '';
+            ZIndex = 9;
+            Parent = SliderInner;
+        });
+        Library:OnHighlight(SliderOuter, SliderOuter, { BorderColor3 = 'AccentColor' }, { BorderColor3 = 'Black' });
+        if type(Info.Tooltip) == 'string' then
+            RangeSlider._TooltipHandle = Library:AddToolTip(Info.Tooltip, SliderOuter)
+        end
+
+        local function Round(Value)
+            if RangeSlider.Rounding == 0 then return math.floor(Value) end
+            return tonumber(string.format('%.' .. RangeSlider.Rounding .. 'f', Value))
+        end
+
+        function RangeSlider:Display()
+            local Prefix = Info.Prefix or ''
+            local Suffix = Info.Suffix or ''
+            local Text = string.format('%s%s%s - %s%s%s', Prefix, tostring(RangeSlider.Low), Suffix, Prefix, tostring(RangeSlider.High), Suffix)
+            if type(Info.FormatDisplayValue) == 'function' then
+                local Ok, Result = pcall(Info.FormatDisplayValue, RangeSlider, RangeSlider.Low, RangeSlider.High)
+                if Ok and Result ~= nil then Text = tostring(Result) end
+            end
+            DisplayLabel.Text = Text
+
+            local Range = RangeSlider.Max - RangeSlider.Min
+            local LowAlpha = Range ~= 0 and ((RangeSlider.Low - RangeSlider.Min) / Range) or 0
+            local HighAlpha = Range ~= 0 and ((RangeSlider.High - RangeSlider.Min) / Range) or 0
+            LowAlpha = math.clamp(LowAlpha, 0, 1)
+            HighAlpha = math.clamp(HighAlpha, 0, 1)
+            Fill.Position = UDim2.new(LowAlpha, 0, 0, 0)
+            Fill.Size = UDim2.new(HighAlpha - LowAlpha, 0, 1, 0)
+        end
+
+        function RangeSlider:OnChanged(Func)
+            RangeSlider.Changed = Func
+            Library:SafeCallback(Func, RangeSlider.Low, RangeSlider.High)
+        end
+
+        local function GetValueFromXOffset(X)
+            local Width = SliderInner.AbsoluteSize.X
+            if Width <= 0 then return RangeSlider.Min end
+            return Round(Library:MapValue(math.clamp(X, 0, Width), 0, Width, RangeSlider.Min, RangeSlider.Max))
+        end
+
+        function RangeSlider:SetValue(Low, High)
+            local NLow = tonumber(Low)
+            local NHigh = tonumber(High)
+            if not NLow or not NHigh then return end
+            NLow = math.clamp(NLow, RangeSlider.Min, RangeSlider.Max)
+            NHigh = math.clamp(NHigh, RangeSlider.Min, RangeSlider.Max)
+            if NLow > NHigh then NLow, NHigh = NHigh, NLow end
+            RangeSlider.Low, RangeSlider.High = NLow, NHigh
+            RangeSlider:Display()
+            Library:SafeCallback(RangeSlider.Callback, RangeSlider.Low, RangeSlider.High)
+            Library:SafeCallback(RangeSlider.Changed, RangeSlider.Low, RangeSlider.High)
+        end
+
+        -- Whichever handle (Low or High) is nearer to the press point gets
+        -- dragged; matches the common two-thumb range-slider convention.
+        SliderInner.InputBegan:Connect(function(Input)
+            if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
+                if not Library:BeginGesture(Input) then return end
+
+                local gPos = SliderInner.AbsolutePosition.X
+                local Width = SliderInner.AbsoluteSize.X
+                local PressX = Input.Position.X - gPos
+                local PressValue = GetValueFromXOffset(PressX)
+                local DraggingLow = math.abs(PressValue - RangeSlider.Low) <= math.abs(PressValue - RangeSlider.High)
+
+                local function UpdateDrag(PosX)
+                    local Diff = PosX - gPos
+                    local nX = math.clamp(Diff, 0, math.max(0, Width))
+                    local nValue = GetValueFromXOffset(nX)
+                    local OldLow, OldHigh = RangeSlider.Low, RangeSlider.High
+
+                    if DraggingLow then
+                        RangeSlider.Low = math.min(nValue, RangeSlider.High)
+                    else
+                        RangeSlider.High = math.max(nValue, RangeSlider.Low)
+                    end
+
+                    -- Matches AddSlider's convention of only firing
+                    -- callbacks when the value actually moved -- without
+                    -- this, dragging past the other handle (where the
+                    -- min/max clamp above holds the value steady) would
+                    -- still re-fire the callback on every InputChanged
+                    -- event for no actual change.
+                    if RangeSlider.Low ~= OldLow or RangeSlider.High ~= OldHigh then
+                        RangeSlider:Display()
+                        Library:SafeCallback(RangeSlider.Callback, RangeSlider.Low, RangeSlider.High)
+                        Library:SafeCallback(RangeSlider.Changed, RangeSlider.Low, RangeSlider.High)
+                    end
+                end
+
+                UpdateDrag(Input.Position.X)
+
+                local ChangedConn = InputService.InputChanged:Connect(function(Change)
+                    if Change == Input or (Change.UserInputType == Enum.UserInputType.MouseMovement and Input.UserInputType == Enum.UserInputType.MouseButton1) then
+                        UpdateDrag(Change.Position.X)
+                    end
+                end)
+
+                local EndedConn
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput == Input then
+                        ChangedConn:Disconnect()
+                        EndedConn:Disconnect()
+                        Library:EndGesture(Input)
+                        Library:AttemptSave()
+                    end
+                end)
+                Library:RegisterGestureCleanup(Input, function()
+                    if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+                    if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+                end)
+            end
+        end)
+
+        RangeSlider:Display()
+        RangeSlider._UI = { Outer = SliderOuter, Inner = SliderInner, Fill = Fill, Label = DisplayLabel }
+        RangeSlider.Disabled = false
+        Groupbox:AddBlank(Info.BlankSize or 6)
+        Groupbox:Resize()
+
+        Options[Idx] = RangeSlider
+        setmetatable(RangeSlider, BaseAddons)
+
+        return RangeSlider
+    end;
+
+    -- ================= ProgressBar (read-only, no user input) =================
+    -- Visual-only indicator (download/health/progress). Not registered in
+    -- Options since it has no user-settable Value to persist; exposes
+    -- SetProgress(value) for scripts to drive it directly. SetProgress
+    -- auto-detects scale: pass 0-1 for a fraction, or >1 to be treated as
+    -- a 0-100 percentage (e.g. SetProgress(45) and SetProgress(0.45) are
+    -- equivalent) -- there's no separate config flag for this.
+    function Funcs:AddProgressBar(Info)
+        Info = type(Info) == 'table' and Info or {}
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        local ProgressBar = {
+            Value = math.clamp(tonumber(Info.Default) or 0, 0, 1);
+            Type = 'ProgressBar';
+        }
+
+        if type(Info.Text) == 'string' and Info.Text ~= '' then
+            Library:CreateLabel({
+                Size = UDim2.new(1, 0, 0, 10);
+                TextSize = Library.FontSize;
+                Text = Info.Text;
+                TextXAlignment = Enum.TextXAlignment.Left;
+                TextYAlignment = Enum.TextYAlignment.Bottom;
+                ZIndex = 5;
+                Parent = Container;
+            })
+            Groupbox:AddBlank(3)
+        end
+
+        local BarOuter = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Size = UDim2.new(1, -4, 0, 13);
+            ZIndex = 5;
+            Parent = Container;
+        })
+        Library:AddToRegistry(BarOuter, { BorderColor3 = 'Black' })
+        local BarInner = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ZIndex = 6;
+            Parent = BarOuter;
+        })
+        Library:AddToRegistry(BarInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' })
+
+        local Fill = Library:Create('Frame', {
+            BackgroundColor3 = Library.AccentColor;
+            BorderColor3 = Library.AccentColorDark;
+            Size = UDim2.new(0, 0, 1, 0);
+            ZIndex = 7;
+            Parent = BarInner;
+        })
+        Library:AddToRegistry(Fill, { BackgroundColor3 = 'AccentColor', BorderColor3 = 'AccentColorDark' })
+
+        local ShowLabel = Info.ShowPercentage ~= false
+        local DisplayLabel
+        if ShowLabel then
+            DisplayLabel = Library:CreateLabel({
+                Size = UDim2.new(1, 0, 1, 0);
+                TextSize = Library.FontSize;
+                Text = '';
+                ZIndex = 9;
+                Parent = BarInner;
+            })
+        end
+
+        function ProgressBar:Display()
+            local Alpha = math.clamp(ProgressBar.Value, 0, 1)
+            Fill.Size = UDim2.new(Alpha, 0, 1, 0)
+            if DisplayLabel then
+                local Text = string.format('%d%%', math.floor(Alpha * 100 + 0.5))
+                if type(Info.FormatDisplayValue) == 'function' then
+                    local Ok, Result = pcall(Info.FormatDisplayValue, ProgressBar, Alpha)
+                    if Ok and Result ~= nil then Text = tostring(Result) end
+                end
+                DisplayLabel.Text = Text
+            end
+        end
+
+        -- Accepts either a 0-1 fraction or, if Percent is passed >1, treats
+        -- it as a 0-100 percentage for convenience.
+        function ProgressBar:SetProgress(Value)
+            Value = tonumber(Value) or 0
+            if Value > 1 then Value = Value / 100 end
+            ProgressBar.Value = math.clamp(Value, 0, 1)
+            ProgressBar:Display()
+            return ProgressBar
+        end
+
+        function ProgressBar:GetProgress()
+            return ProgressBar.Value
+        end
+
+        ProgressBar:Display()
+        ProgressBar._UI = { Outer = BarOuter, Inner = BarInner, Fill = Fill }
+        Groupbox:AddBlank(Info.BlankSize or 6)
+        Groupbox:Resize()
+
+        return ProgressBar
+    end;
+
+    -- ================= Image / Icon display =================
+    -- Static image control (banners, icons, previews). Accepts a Roblox
+    -- asset id (number or 'rbxassetid://...' string) or a raw image URL.
+    function Funcs:AddImage(Info)
+        Info = type(Info) == 'table' and Info or {}
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        local Height = tonumber(Info.Height) or 100
+
+        local function ResolveImage(Value)
+            if type(Value) == 'number' then
+                return 'rbxassetid://' .. tostring(Value)
+            elseif type(Value) == 'string' then
+                return Value
+            end
+            return ''
+        end
+
+        local Outer = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Size = UDim2.new(1, -4, 0, Height);
+            ZIndex = 5;
+            Parent = Container;
+        })
+        Library:AddToRegistry(Outer, { BorderColor3 = 'Black' })
+        local Inner = Library:Create('Frame', {
+            BackgroundColor3 = Library.BackgroundColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ClipsDescendants = true;
+            ZIndex = 6;
+            Parent = Outer;
+        })
+        Library:AddToRegistry(Inner, { BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor' })
+
+        local ImageLabel = Library:Create('ImageLabel', {
+            BackgroundTransparency = 1;
+            Size = UDim2.new(1, 0, 1, 0);
+            Image = ResolveImage(Info.Image);
+            ScaleType = Info.ScaleType or Enum.ScaleType.Fit;
+            ZIndex = 7;
+            Parent = Inner;
+        })
+
+        local Image = { Type = 'Image' }
+        Image._UI = { Outer = Outer, Inner = Inner, ImageLabel = ImageLabel }
+
+        function Image:SetImage(Value)
+            ImageLabel.Image = ResolveImage(Value)
+            return Image
+        end
+
+        function Image:SetHeight(NewHeight)
+            NewHeight = tonumber(NewHeight) or Height
+            Outer.Size = UDim2.new(1, -4, 0, NewHeight)
+            Groupbox:Resize()
+            return Image
+        end
+
+        Groupbox:AddBlank(Info.BlankSize or 5)
+        Groupbox:Resize()
+
+        return Image
+    end;
+
     function Funcs:SetCollapsed(Collapsed)
         self.Collapsed = not not Collapsed
         if self.Container then
@@ -4382,7 +4946,9 @@ end;
 do
     Library.NotificationArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        Position = UDim2.new(0, Library.NotifyConfig.PositionX, 0, Library.NotifyConfig.PositionY);
+        -- Position/AnchorPoint set below by Library_UpdateNotifAlignment(),
+        -- which runs once immediately after setup -- no need to compute
+        -- them twice here.
         Size = UDim2.new(0, 300, 1, -Library.NotifyConfig.PositionY);
         ZIndex = 100;
         Parent = ScreenGui;
@@ -4402,19 +4968,33 @@ do
         local area = Library.NotificationArea
         local layout = Library.NotifLayout
 
-        area.Position = UDim2.new(0, cfg.PositionX, 0, cfg.PositionY)
-        area.Size     = UDim2.new(0, 300, 1, -cfg.PositionY)
+        area.Size = UDim2.new(0, 300, 1, -cfg.PositionY)
 
+        -- FIX: previously area.Position/AnchorPoint were set the same
+        -- way (AnchorPoint (0,0), Position from the left edge) for every
+        -- Alignment value, and only layout.HorizontalAlignment changed.
+        -- That only re-arranges notifications *inside* the fixed
+        -- 300px-wide area sitting at the left edge -- it never actually
+        -- moved the area itself to the right side or center of the
+        -- screen, so SetNotifySide('Right') looked like it did nothing
+        -- (or left things stuck near center-left) on a normal PC-width
+        -- viewport. The area's anchor/position now follows Alignment so
+        -- it actually docks to the requested screen edge, while
+        -- HorizontalAlignment keeps stacked notifications of different
+        -- widths lined up on the correct inner edge of that area.
         local align = cfg.Alignment or 'Left'
         if align == 'Left' then
             layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
             area.AnchorPoint = Vector2.new(0, 0)
+            area.Position = UDim2.new(0, cfg.PositionX, 0, cfg.PositionY)
         elseif align == 'Right' then
             layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-            area.AnchorPoint = Vector2.new(0, 0)
+            area.AnchorPoint = Vector2.new(1, 0)
+            area.Position = UDim2.new(1, -cfg.PositionX, 0, cfg.PositionY)
         elseif align == 'Center' then
             layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            area.AnchorPoint = Vector2.new(0, 0)
+            area.AnchorPoint = Vector2.new(0.5, 0)
+            area.Position = UDim2.new(0.5, 0, 0, cfg.PositionY)
         end
     end
     Library.UpdateNotifAlignment = Library_UpdateNotifAlignment
@@ -4714,6 +5294,438 @@ function Library:SetNotificationConfig(Config)
     if Library.UpdateNotifAlignment then Library.UpdateNotifAlignment() end
 end
 
+-- ================= Notification with action buttons =================
+-- Same visual shell as Notify, but adds up to 2 buttons under the text
+-- that invoke a callback and then dismiss the toast. Time is optional;
+-- pass nil/0 to keep the notification up until a button is pressed
+-- (useful for "Undo" / "Confirm" style toasts).
+function Library:NotifyWithActions(Text, Buttons, Time)
+    Buttons = type(Buttons) == 'table' and Buttons or {}
+    Library._NotificationHistory = Library._NotificationHistory or {}
+    table.insert(Library._NotificationHistory, { Text = tostring(Text), Time = os.clock() })
+    if #Library._NotificationHistory > 100 then table.remove(Library._NotificationHistory, 1) end
+
+    local cfg = Library.NotifyConfig
+    local barSide = cfg.BarSide or 'Left'
+    local align = cfg.Alignment or 'Left'
+
+    local XSize, TextHeight = Library:GetTextBounds(Text, Library.Font, Library.FontSize)
+    TextHeight = TextHeight + 7
+
+    local ButtonRowHeight = (#Buttons > 0) and 26 or 0
+    local YSize = TextHeight + ButtonRowHeight
+
+    -- Width needs to fit the longer of: the text, or all buttons laid
+    -- out side by side with padding -- otherwise labels get clipped.
+    local ButtonsWidth = 0
+    for _, Btn in ipairs(Buttons) do
+        local bw = Library:GetTextBounds(Btn.Text or 'Button', Library.Font, Library.FontSize)
+        ButtonsWidth = ButtonsWidth + bw + 24
+    end
+    local FinalTextWidth = math.max(XSize, ButtonsWidth) + 8
+
+    local BAR_THIN = 3
+    local BAR_THICK = 3
+    local innerPosX = (barSide == 'Right') and (BAR_THIN + 1) or 1
+    local innerPosY = (barSide == 'Top') and BAR_THICK or 1
+    local innerSizeW = (barSide == 'Left' or barSide == 'Right') and -(BAR_THIN + 2) or -2
+    local innerSizeH = (barSide == 'Top' or barSide == 'Bottom') and -(BAR_THICK + 1) or -2
+    local labelPosX = (barSide == 'Left') and BAR_THIN + 2 or 4
+    local labelSizeW = (barSide == 'Left' or barSide == 'Right') and -(BAR_THIN + 4) or -4
+
+    local outerAnchor = Vector2.new(0, 0)
+    if align == 'Center' then outerAnchor = Vector2.new(0.5, 0)
+    elseif align == 'Right' then outerAnchor = Vector2.new(1, 0) end
+
+    local NotifyOuter = Library:Create('Frame', {
+        BackgroundTransparency = 1;
+        AnchorPoint = outerAnchor;
+        BorderColor3 = Color3.new(0, 0, 0);
+        Position = (align == 'Center') and UDim2.new(0.5, 0, 0, 0)
+            or (align == 'Right' and UDim2.new(1, 0, 0, 0) or UDim2.new(0, 0, 0, 0));
+        Size = UDim2.new(0, 0, 0, YSize);
+        ClipsDescendants = true;
+        ZIndex = 100;
+        Parent = Library.NotificationArea;
+    });
+    local NotifyInner = Library:Create('Frame', {
+        BackgroundColor3 = Library.MainColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Size = UDim2.new(1, 0, 1, 0);
+        ZIndex = 101;
+        Parent = NotifyOuter;
+    });
+    Library:AddToRegistry(NotifyInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' }, true);
+
+    local InnerFrame = Library:Create('Frame', {
+        BackgroundColor3 = Color3.new(1, 1, 1);
+        BorderSizePixel = 0;
+        Position = UDim2.new(0, innerPosX, 0, innerPosY);
+        Size = UDim2.new(1, innerSizeW, 1, innerSizeH);
+        ZIndex = 102;
+        Parent = NotifyInner;
+    });
+    local Gradient = Library:Create('UIGradient', {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)),
+            ColorSequenceKeypoint.new(1, Library.MainColor),
+        });
+        Rotation = -90;
+        Parent = InnerFrame;
+    });
+    Library:AddToRegistry(Gradient, {
+        Color = function()
+            return ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Library:GetDarkerColor(Library.MainColor)),
+                ColorSequenceKeypoint.new(1, Library.MainColor),
+            });
+        end
+    });
+
+    local NotifyLabel = Library:CreateLabel({
+        Position = UDim2.new(0, labelPosX, 0, 0);
+        Size = UDim2.new(1, labelSizeW, 0, TextHeight);
+        Text = Text;
+        TextXAlignment = (align == 'Center') and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left;
+        TextSize = Library.FontSize;
+        ZIndex = 103;
+        Parent = InnerFrame;
+    });
+
+    local AccentBar = Library:Create('Frame', {
+        BackgroundColor3 = Library.AccentColor;
+        BorderSizePixel = 0;
+        ZIndex = 104;
+        Parent = NotifyOuter;
+    });
+    if barSide == 'Left' then
+        AccentBar.Position = UDim2.new(0, -1, 0, -1); AccentBar.Size = UDim2.new(0, BAR_THIN, 1, 2)
+    elseif barSide == 'Right' then
+        AccentBar.Position = UDim2.new(1, -BAR_THIN + 1, 0, -1); AccentBar.Size = UDim2.new(0, BAR_THIN, 1, 2)
+    elseif barSide == 'Top' then
+        AccentBar.Position = UDim2.new(0, -1, 0, -1); AccentBar.Size = UDim2.new(1, 2, 0, BAR_THICK)
+    elseif barSide == 'Bottom' then
+        AccentBar.Position = UDim2.new(0, -1, 1, -BAR_THICK + 1); AccentBar.Size = UDim2.new(1, 2, 0, BAR_THICK)
+    end
+    Library:AddToRegistry(AccentBar, { BackgroundColor3 = 'AccentColor' }, true);
+
+    local function Dismiss()
+        pcall(NotifyOuter.TweenSize, NotifyOuter,
+            UDim2.new(0, 0, 0, YSize), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true);
+        task.wait(0.3);
+        if NotifyOuter and NotifyOuter.Parent then NotifyOuter:Destroy() end
+    end
+
+    if #Buttons > 0 then
+        local RowY = TextHeight
+        local X = labelPosX
+        for _, Btn in ipairs(Buttons) do
+            local bw = Library:GetTextBounds(Btn.Text or 'Button', Library.Font, Library.FontSize) + 20
+            local BtnOuter = Library:Create('Frame', {
+                BackgroundColor3 = Color3.new(0, 0, 0);
+                BorderColor3 = Color3.new(0, 0, 0);
+                Position = UDim2.new(0, X, 0, RowY + 2);
+                Size = UDim2.new(0, bw, 0, 20);
+                Active = true;
+                ZIndex = 103;
+                Parent = InnerFrame;
+            })
+            local BtnInner = Library:Create('Frame', {
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Library.OutlineColor;
+                BorderMode = Enum.BorderMode.Inset;
+                Size = UDim2.new(1, 0, 1, 0);
+                ZIndex = 104;
+                Parent = BtnOuter;
+            })
+            Library:CreateLabel({
+                Size = UDim2.new(1, 0, 1, 0);
+                Text = Btn.Text or 'Button';
+                TextSize = Library.FontSize;
+                ZIndex = 105;
+                Parent = BtnInner;
+            })
+            Library:AddToRegistry(BtnInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' }, true)
+            Library:OnHighlight(BtnOuter, BtnOuter, { BorderColor3 = 'AccentColor' }, { BorderColor3 = 'Black' })
+
+            Library:SimpleClick(BtnOuter, function()
+                Library:SafeCallback(Btn.Callback)
+                task.spawn(Dismiss)
+            end)
+
+            X = X + bw + 6
+        end
+    end
+
+    local finalWidth = FinalTextWidth + ((barSide == 'Left' or barSide == 'Right') and BAR_THIN or 0)
+    pcall(NotifyOuter.TweenSize, NotifyOuter,
+        UDim2.new(0, finalWidth, 0, YSize), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.4, true);
+
+    if Time and Time > 0 then
+        task.spawn(function()
+            task.wait(Time)
+            if NotifyOuter and NotifyOuter.Parent then
+                task.spawn(Dismiss)
+            end
+        end)
+    end
+
+    return { Dismiss = function() task.spawn(Dismiss) end }
+end;
+
+-- ================= Confirm dialog (modal Yes/No) =================
+-- Blocking-style confirm box: shows a centered modal with a message and
+-- Confirm/Cancel buttons, and invokes Callback(true) or Callback(false)
+-- once the user picks one. If Callback is omitted, the calling coroutine
+-- yields until the dialog is answered and Confirm() returns the boolean
+-- result directly (promise-like usage) -- only safe to call this way
+-- from a coroutine that can yield (e.g. inside task.spawn).
+function Library:Confirm(Info, Callback)
+    if type(Info) == 'string' then Info = { Text = Info } end
+    Info = type(Info) == 'table' and Info or {}
+
+    local Title = Info.Title or 'Confirm'
+    local Text = Info.Text or 'Are you sure?'
+    local ConfirmText = Info.ConfirmText or 'Confirm'
+    local CancelText = Info.CancelText or 'Cancel'
+
+    local Thread = nil
+    if not Callback then
+        Thread = coroutine.running()
+    end
+
+    -- Wrap width is a Vector2 (max width, max height), not a bare
+    -- number -- pass a tall Y so only width constrains the wrap.
+    local _, TextHeight = Library:GetTextBounds(Text, Library.Font, Library.FontSize, Vector2.new(260, 2000))
+
+    local Holder = Library:Create('Frame', {
+        Name = 'ConfirmDialog';
+        AnchorPoint = Vector2.new(0.5, 0.5);
+        BackgroundColor3 = Color3.new(0, 0, 0);
+        BorderSizePixel = 0;
+        Position = UDim2.fromScale(0.5, 0.5);
+        Size = UDim2.fromOffset(300, 90 + math.max(TextHeight, 16));
+        ZIndex = 600;
+        Parent = ScreenGui;
+    });
+    local Inner = Library:Create('Frame', {
+        BackgroundColor3 = Library.MainColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Position = UDim2.new(0, 1, 0, 1);
+        Size = UDim2.new(1, -2, 1, -2);
+        ZIndex = 600;
+        Parent = Holder;
+    });
+    Library:AddToRegistry(Inner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+
+    local AccentBar = Library:Create('Frame', {
+        BackgroundColor3 = Library.AccentColor;
+        BorderSizePixel = 0;
+        Size = UDim2.new(1, 0, 0, 2);
+        ZIndex = 601;
+        Parent = Inner;
+    });
+    Library:AddToRegistry(AccentBar, { BackgroundColor3 = 'AccentColor' });
+
+    Library:CreateLabel({
+        Position = UDim2.new(0, 10, 0, 10);
+        Size = UDim2.new(1, -20, 0, 18);
+        Text = Title;
+        TextSize = Library.FontSize + 2;
+        TextXAlignment = Enum.TextXAlignment.Left;
+        ZIndex = 601;
+        Parent = Inner;
+    });
+
+    Library:CreateLabel({
+        Position = UDim2.new(0, 10, 0, 32);
+        Size = UDim2.new(1, -20, 0, math.max(TextHeight, 16));
+        Text = Text;
+        TextSize = Library.FontSize;
+        TextWrapped = true;
+        TextXAlignment = Enum.TextXAlignment.Left;
+        TextYAlignment = Enum.TextYAlignment.Top;
+        ZIndex = 601;
+        Parent = Inner;
+    });
+
+    -- Modal backdrop: blocks clicks from reaching whatever is behind the
+    -- dialog until it's answered, same trick used by the main Toggle().
+    local Modal = Library:Create('TextButton', {
+        BackgroundTransparency = 1;
+        Size = UDim2.new(0, 0, 0, 0);
+        Modal = true;
+        Text = '';
+        Parent = ScreenGui;
+    });
+
+    local ButtonY = Holder.Size.Y.Offset - 34
+    local Answered = false
+    local function Answer(Result)
+        if Answered then return end
+        Answered = true
+        Modal:Destroy()
+        if Holder and Holder.Parent then Holder:Destroy() end
+        if Callback then
+            Library:SafeCallback(Callback, Result)
+        elseif Thread then
+            task.spawn(function() coroutine.resume(Thread, Result) end)
+        end
+    end
+
+    local function MakeBtn(Text2, X, W, IsPrimary)
+        local BOuter = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Position = UDim2.new(0, X, 0, ButtonY);
+            Size = UDim2.new(0, W, 0, 24);
+            Active = true;
+            ZIndex = 601;
+            Parent = Inner;
+        });
+        local BInner = Library:Create('Frame', {
+            BackgroundColor3 = IsPrimary and Library.AccentColor or Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ZIndex = 602;
+            Parent = BOuter;
+        });
+        Library:CreateLabel({
+            Size = UDim2.new(1, 0, 1, 0);
+            Text = Text2;
+            TextSize = Library.FontSize;
+            TextColor3 = IsPrimary and Color3.new(1, 1, 1) or nil;
+            ZIndex = 603;
+            Parent = BInner;
+        });
+        if IsPrimary then
+            Library:AddToRegistry(BInner, { BackgroundColor3 = 'AccentColor', BorderColor3 = 'OutlineColor' });
+        else
+            Library:AddToRegistry(BInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+        end
+        Library:OnHighlight(BOuter, BOuter, { BorderColor3 = 'AccentColor' }, { BorderColor3 = 'Black' });
+        return BOuter
+    end
+
+    local CancelBtn = MakeBtn(CancelText, 10, 135, false)
+    local ConfirmBtn = MakeBtn(ConfirmText, 155, 135, true)
+
+    -- Uses SimpleClick (press+release, drag-to-cancel) instead of firing
+    -- on InputBegan directly, matching how every other button in the
+    -- library behaves -- see the SimpleClick definition for why firing
+    -- immediately on press was wrong here.
+    Library:SimpleClick(CancelBtn, function() Answer(false) end)
+    Library:SimpleClick(ConfirmBtn, function() Answer(true) end)
+
+    Library:MakeDraggable(Holder, 30, true)
+
+    if Thread then
+        -- coroutine.yield() only works from a thread that can actually
+        -- yield (e.g. one created by task.spawn/coroutine.wrap); calling
+        -- Library:Confirm with no Callback directly from the main script
+        -- thread would otherwise throw here and potentially take down
+        -- the caller's whole script. Guard it so a misuse like that
+        -- degrades to a clear warning instead of an uncaught error, and
+        -- still cleans up the dialog it already built.
+        local Ok, ResultOrErr = pcall(coroutine.yield)
+        if Ok then
+            return ResultOrErr
+        else
+            warn('[CreU] Library:Confirm was called without a Callback from a thread that cannot yield (' ..
+                tostring(ResultOrErr) .. '). Pass a Callback function instead, or call from task.spawn().')
+            Answer(false)
+            return false
+        end
+    end
+end;
+
+-- ================= Loading overlay (indeterminate spinner) =================
+-- Simple centered blocking overlay with a rotating ring and an optional
+-- status label; ShowLoading returns a handle exposing SetText/Hide so
+-- callers can update progress text or dismiss it once their async work
+-- finishes. Only one loading overlay is tracked at a time via
+-- Library._LoadingHandle (calling ShowLoading again replaces the
+-- previous one) to avoid stacking overlays if a caller forgets to hide
+-- theirs.
+function Library:ShowLoading(Text)
+    if Library._LoadingHandle then
+        pcall(Library._LoadingHandle.Hide)
+    end
+
+    local Holder = Library:Create('Frame', {
+        Name = 'LoadingOverlay';
+        AnchorPoint = Vector2.new(0.5, 0.5);
+        BackgroundColor3 = Color3.new(0, 0, 0);
+        BorderSizePixel = 0;
+        Position = UDim2.fromScale(0.5, 0.5);
+        Size = UDim2.fromOffset(160, 100);
+        ZIndex = 700;
+        Parent = ScreenGui;
+    });
+    local Inner = Library:Create('Frame', {
+        BackgroundColor3 = Library.MainColor;
+        BorderColor3 = Library.OutlineColor;
+        BorderMode = Enum.BorderMode.Inset;
+        Position = UDim2.new(0, 1, 0, 1);
+        Size = UDim2.new(1, -2, 1, -2);
+        ZIndex = 700;
+        Parent = Holder;
+    });
+    Library:AddToRegistry(Inner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+
+    local Ring = Library:Create('Frame', {
+        AnchorPoint = Vector2.new(0.5, 0.5);
+        BackgroundTransparency = 1;
+        Position = UDim2.new(0.5, 0, 0, 34);
+        Size = UDim2.fromOffset(28, 28);
+        ZIndex = 701;
+        Parent = Inner;
+    });
+    local RingImage = Library:Create('ImageLabel', {
+        BackgroundTransparency = 1;
+        Size = UDim2.new(1, 0, 1, 0);
+        Image = 'http://www.roblox.com/asset/?id=4990968531'; -- generic ring/loading glyph
+        ImageColor3 = Library.AccentColor;
+        ZIndex = 701;
+        Parent = Ring;
+    });
+    Library:AddToRegistry(RingImage, { ImageColor3 = 'AccentColor' });
+
+    local StatusLabel = Library:CreateLabel({
+        Position = UDim2.new(0, 8, 0, 66);
+        Size = UDim2.new(1, -16, 0, 16);
+        Text = Text or 'Loading...';
+        TextSize = Library.FontSize;
+        ZIndex = 701;
+        Parent = Inner;
+    });
+
+    local Spinning = true
+    task.spawn(function()
+        while Spinning and Ring.Parent do
+            Ring.Rotation = (Ring.Rotation + 6) % 360
+            RenderStepped:Wait()
+        end
+    end)
+
+    local Handle = {}
+    Handle.SetText = function(_, NewText)
+        StatusLabel.Text = tostring(NewText)
+    end;
+    Handle.Hide = function()
+        Spinning = false
+        if Holder and Holder.Parent then Holder:Destroy() end
+        if Library._LoadingHandle == Handle then
+            Library._LoadingHandle = nil
+        end
+    end;
+    Library._LoadingHandle = Handle
+    return Handle
+end;
+
 function Library:NotifyHistory()
     return Library._NotificationHistory or {}
 end
@@ -4850,6 +5862,342 @@ function Library:Notify(Text, Time)
         NotifyOuter:Destroy();
     end);
 end;
+
+-- ================= Key System (Rayfield/Fluent-style) =================
+-- Full-screen gate shown BEFORE the main window: the caller supplies a
+-- list of valid keys (and optional note/links); until the player submits
+-- a matching key, the main Window stays hidden/locked (see the
+-- Config.KeySystem branch inside CreateWindow below). Optionally
+-- remembers a successful key on disk (Config.SaveKey) so returning
+-- players aren't asked again, mirroring Rayfield's behaviour.
+do
+    local function KS_Trim(v)
+        if type(v) ~= 'string' then return v end
+        return v:gsub('^%s+', ''):gsub('%s+$', '')
+    end
+
+    local function KS_IsSafeName(name)
+        if type(name) ~= 'string' then return false end
+        name = KS_Trim(name)
+        if name == '' then return false end
+        if name:find('[/\\]') or name:find('%.%.', 1, true) or name:find('[<>:"|%?%*]') then return false end
+        return true
+    end
+
+    -- Constant-time-ish string compare: avoids leaking key length/prefix
+    -- via early-exit timing on the (client-side, so limited value, but
+    -- cheap to do right) comparison. Uses only string.byte/plain
+    -- arithmetic (no bit32 dependency) since some executors trim global
+    -- libraries down; XOR-ing byte values and OR-ing the accumulator
+    -- with plain +/~= avoids needing bitwise ops at all for this check.
+    local function KS_SecureCompare(a, b)
+        if type(a) ~= 'string' or type(b) ~= 'string' then return false end
+        if #a ~= #b then return false end
+        local diff = 0
+        for i = 1, #a do
+            local byteA, byteB = a:byte(i), b:byte(i)
+            if byteA ~= byteB then
+                diff = diff + 1
+            end
+        end
+        return diff == 0
+    end
+
+    function Library:CreateKeySystem(Config)
+        Config = type(Config) == 'table' and Config or {}
+
+        local Keys = {}
+        if type(Config.Key) == 'string' then
+            Keys[#Keys + 1] = Config.Key
+        elseif type(Config.Key) == 'table' then
+            for _, K in ipairs(Config.Key) do
+                if type(K) == 'string' and K ~= '' then Keys[#Keys + 1] = K end
+            end
+        end
+
+        if #Keys == 0 then
+            -- No valid key was configured: DoSubmit below can never
+            -- succeed, permanently locking the window behind a prompt
+            -- nothing can pass. Warn loudly at setup time instead of
+            -- leaving the caller to figure out why the key box always
+            -- says "Invalid key" -- this is virtually always a config
+            -- mistake (Config.Key omitted or empty), not intended UX.
+            warn('[CreU] CreateKeySystem: no valid Key(s) configured -- the key prompt will never accept an answer. Pass Config.Key as a string or array of strings.')
+        end
+
+        local Title = type(Config.Title) == 'string' and Config.Title or 'Key System'
+        local Subtitle = type(Config.Subtitle) == 'string' and Config.Subtitle or 'Enter your key to continue'
+        local Note = type(Config.Note) == 'string' and Config.Note or nil
+        local SaveKey = Config.SaveKey == true
+        local FolderName = KS_IsSafeName(Config.FolderName) and Config.FolderName or 'LinoriaLibSettings'
+        local FileName = KS_IsSafeName(Config.FileName) and Config.FileName or 'keysystem'
+        local GetKeyLink = type(Config.GetKeyLink) == 'string' and Config.GetKeyLink or nil
+
+        local KeySystem = {
+            Verified = false;
+            _OnSuccessCallbacks = {};
+        }
+
+        local function SavedKeyPath()
+            return FolderName .. '/' .. FileName .. '.txt'
+        end
+
+        local function TryLoadSavedPass()
+            if not SaveKey then return false end
+            local ok, exists = pcall(isfile, SavedKeyPath())
+            if not ok or not exists then return false end
+            local okRead, content = pcall(readfile, SavedKeyPath())
+            if not okRead or type(content) ~= 'string' then return false end
+            content = KS_Trim(content)
+            for _, K in ipairs(Keys) do
+                if KS_SecureCompare(content, K) then
+                    return true
+                end
+            end
+            return false
+        end
+
+        local function PersistPass(Key)
+            if not SaveKey then return end
+            pcall(function()
+                if not isfolder(FolderName) then makefolder(FolderName) end
+            end)
+            pcall(writefile, SavedKeyPath(), Key)
+        end
+
+        -- Outer container: its own ScreenGui-parented frame, independent
+        -- of any particular Window (CreateWindow may not have run yet).
+        local Holder = Library:Create('Frame', {
+            Name = 'KeySystem';
+            AnchorPoint = Vector2.new(0.5, 0.5);
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderSizePixel = 0;
+            Position = UDim2.fromScale(0.5, 0.5);
+            Size = UDim2.fromOffset(340, 210 + (Note and 22 or 0));
+            ZIndex = 500;
+            Parent = ScreenGui;
+        });
+
+        local Inner = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Position = UDim2.new(0, 1, 0, 1);
+            Size = UDim2.new(1, -2, 1, -2);
+            ZIndex = 500;
+            Parent = Holder;
+        });
+        Library:AddToRegistry(Inner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+
+        local AccentBar = Library:Create('Frame', {
+            BackgroundColor3 = Library.AccentColor;
+            BorderSizePixel = 0;
+            Size = UDim2.new(1, 0, 0, 2);
+            ZIndex = 501;
+            Parent = Inner;
+        });
+        Library:AddToRegistry(AccentBar, { BackgroundColor3 = 'AccentColor' });
+
+        Library:CreateLabel({
+            Position = UDim2.new(0, 12, 0, 12);
+            Size = UDim2.new(1, -24, 0, 22);
+            Text = Title;
+            TextSize = Library.FontSize + 4;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            ZIndex = 501;
+            Parent = Inner;
+        });
+
+        Library:CreateLabel({
+            Position = UDim2.new(0, 12, 0, 36);
+            Size = UDim2.new(1, -24, 0, 16);
+            Text = Subtitle;
+            TextSize = Library.FontSize - 1;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            ZIndex = 501;
+            Parent = Inner;
+        });
+
+        local StatusLabel = Library:CreateLabel({
+            Position = UDim2.new(0, 12, 0, 56);
+            Size = UDim2.new(1, -24, 0, 14);
+            Text = '';
+            TextSize = Library.FontSize - 2;
+            TextColor3 = Library.RiskColor;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            ZIndex = 501;
+            Parent = Inner;
+        });
+        Library:RemoveFromRegistry(StatusLabel)
+
+        local BoxOuter = Library:Create('Frame', {
+            BackgroundColor3 = Color3.new(0, 0, 0);
+            BorderColor3 = Color3.new(0, 0, 0);
+            Position = UDim2.new(0, 12, 0, 74);
+            Size = UDim2.new(1, -24, 0, 26);
+            ZIndex = 501;
+            Parent = Inner;
+        });
+        local BoxInner = Library:Create('Frame', {
+            BackgroundColor3 = Library.BackgroundColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 1, 0);
+            ZIndex = 502;
+            Parent = BoxOuter;
+        });
+        Library:AddToRegistry(BoxInner, { BackgroundColor3 = 'BackgroundColor', BorderColor3 = 'OutlineColor' });
+
+        local KeyBox = Library:Create('TextBox', {
+            BackgroundTransparency = 1;
+            Position = UDim2.new(0, 6, 0, 0);
+            Size = UDim2.new(1, -12, 1, 0);
+            Font = Library.Font;
+            PlaceholderText = 'Enter key here...';
+            PlaceholderColor3 = Color3.fromRGB(150, 150, 150);
+            Text = '';
+            TextColor3 = Library.FontColor;
+            TextSize = Library.FontSize;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            ClearTextOnFocus = false;
+            ZIndex = 503;
+            Parent = BoxInner;
+        });
+        Library:ApplyTextStroke(KeyBox)
+        Library:AddToRegistry(KeyBox, { TextColor3 = 'FontColor' });
+
+        local ButtonsY = 74 + 26 + 10
+
+        local function MakeBottomButton(Text, X, W)
+            local BOuter = Library:Create('Frame', {
+                BackgroundColor3 = Color3.new(0, 0, 0);
+                BorderColor3 = Color3.new(0, 0, 0);
+                Position = UDim2.new(0, X, 0, ButtonsY);
+                Size = UDim2.new(0, W, 0, 24);
+                Active = true;
+                ZIndex = 501;
+                Parent = Inner;
+            });
+            local BInner = Library:Create('Frame', {
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Library.OutlineColor;
+                BorderMode = Enum.BorderMode.Inset;
+                Size = UDim2.new(1, 0, 1, 0);
+                ZIndex = 502;
+                Parent = BOuter;
+            });
+            local BLabel = Library:CreateLabel({
+                Size = UDim2.new(1, 0, 1, 0);
+                Text = Text;
+                TextSize = Library.FontSize;
+                ZIndex = 503;
+                Parent = BInner;
+            });
+            Library:AddToRegistry(BInner, { BackgroundColor3 = 'MainColor', BorderColor3 = 'OutlineColor' });
+            Library:OnHighlight(BOuter, BOuter, { BorderColor3 = 'AccentColor' }, { BorderColor3 = 'Black' });
+            return BOuter, BLabel
+        end
+
+        local HasLink = GetKeyLink ~= nil
+        local SubmitOuter, SubmitLabel = MakeBottomButton('Submit', 12, HasLink and 158 or 316)
+        local LinkOuter
+        if HasLink then
+            LinkOuter = MakeBottomButton('Get Key', 178, 150)
+        end
+
+        if Note then
+            Library:CreateLabel({
+                Position = UDim2.new(0, 12, 0, ButtonsY + 34);
+                Size = UDim2.new(1, -24, 0, 16);
+                Text = Note;
+                TextSize = Library.FontSize - 2;
+                TextColor3 = Color3.fromRGB(170, 170, 170);
+                TextXAlignment = Enum.TextXAlignment.Left;
+                ZIndex = 501;
+                Parent = Inner;
+            })
+        end
+
+        Library:MakeDraggable(Holder, 30, true)
+
+        local function DoSubmit()
+            local Attempt = KS_Trim(KeyBox.Text)
+            if Attempt == '' then
+                StatusLabel.Text = 'Please enter a key.'
+                return
+            end
+
+            local Pass = false
+            for _, K in ipairs(Keys) do
+                if KS_SecureCompare(Attempt, K) then
+                    Pass = true
+                    break
+                end
+            end
+
+            if not Pass then
+                StatusLabel.Text = 'Invalid key. Please try again.'
+                KeyBox.Text = ''
+                return
+            end
+
+            StatusLabel.TextColor3 = Library.AccentColor
+            StatusLabel.Text = 'Key accepted!'
+            PersistPass(Attempt)
+            KeySystem.Verified = true
+
+            task.delay(0.3, function()
+                if Holder and Holder.Parent then Holder:Destroy() end
+                for _, cb in ipairs(KeySystem._OnSuccessCallbacks) do
+                    Library:SafeCallback(cb)
+                end
+            end)
+        end
+
+        Library:SimpleClick(SubmitOuter, DoSubmit)
+
+        KeyBox.FocusLost:Connect(function(enter)
+            if enter then DoSubmit() end
+        end)
+
+        if LinkOuter then
+            Library:SimpleClick(LinkOuter, function()
+                local clip = setclipboard or toclipboard
+                if type(clip) == 'function' then
+                    pcall(clip, GetKeyLink)
+                    Library:Notify('Key link copied to clipboard!', 3)
+                else
+                    Library:Notify('Link: ' .. GetKeyLink, 5)
+                end
+            end)
+        end
+
+        function KeySystem:OnSuccess(Callback)
+            if type(Callback) == 'function' then
+                table.insert(self._OnSuccessCallbacks, Callback)
+                if self.Verified then
+                    Library:SafeCallback(Callback)
+                end
+            end
+            return self
+        end
+
+        function KeySystem:Destroy()
+            if Holder and Holder.Parent then Holder:Destroy() end
+        end
+
+        -- Auto-pass immediately if a previously saved key is still valid,
+        -- skipping the prompt entirely.
+        if TryLoadSavedPass() then
+            KeySystem.Verified = true
+            Holder:Destroy()
+        end
+
+        KeySystem.Holder = Holder
+        return KeySystem
+    end
+end
+-- ============================================================
 
 function Library:CreateWindow(...)
     local Arguments = { ... }
@@ -5651,6 +6999,13 @@ function Library:CreateWindow(...)
         Parent = ScreenGui;
     });
     function Library:Toggle()
+        -- Key system gate: while Window._KeyLocked is true, refuse to show
+        -- the window at all (closing it is still allowed). Cleared once
+        -- the attached KeySystem reports success -- see the
+        -- Config.KeySystem block below.
+        if Window._KeyLocked and not Library.Toggled then
+            return
+        end
         Library.Toggled = not Library.Toggled;
         ModalElement.Modal = Library.Toggled;
         Outer.Visible = Library.Toggled;
@@ -5728,7 +7083,25 @@ function Library:CreateWindow(...)
         end
     end))
 
-    if Config.AutoShow then task.spawn(function() Library:Toggle() end) end
+    -- Rayfield/Fluent-style key system gate: if Config.KeySystem was
+    -- supplied, the window is locked (Toggle() refuses to open it, see
+    -- above) until KeySystem:OnSuccess fires. AutoShow is deferred the
+    -- same way -- it only actually opens the window once the key has
+    -- been verified, instead of racing the key prompt.
+    Window._KeyLocked = false
+    if type(Config.KeySystem) == 'table' then
+        Window._KeyLocked = true
+        local KS = Library:CreateKeySystem(Config.KeySystem)
+        Window.KeySystem = KS
+        KS:OnSuccess(function()
+            Window._KeyLocked = false
+            if Config.AutoShow then
+                task.spawn(function() Library:Toggle() end)
+            end
+        end)
+    elseif Config.AutoShow then
+        task.spawn(function() Library:Toggle() end)
+    end
 
     if Config.Resizable ~= false then
         local ResizeHandle = Library:Create('Frame', {

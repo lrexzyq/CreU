@@ -33,6 +33,20 @@ local Window = Library:CreateWindow({
     MinimizeKeybind = Enum.KeyCode.RightBracket,
     Center = true,
     Size = UDim2.fromOffset(700, 600),
+    AutoShow = true,
+    -- Key System: the window stays hidden (Library:Toggle() refuses to
+    -- open it) until one of these keys is submitted. SaveKey remembers a
+    -- successful key on disk so returning players skip the prompt.
+    KeySystem = {
+        Title = "CreU Showcase - Key System",
+        Subtitle = "Enter a key to unlock the menu",
+        Note = "Demo keys: \"Banana\" or \"Coconut\"",
+        Key = { "Banana", "Coconut" },
+        SaveKey = true,
+        FolderName = "CreUShowcase",
+        FileName = "keysystem",
+        GetKeyLink = "https://example.com/get-key",
+    },
     Footer = {
         "CreU | ",
         {
@@ -363,6 +377,104 @@ do
         Placeholder = "Numbers only",
         Numeric = true,
         Finished = false,
+    })
+
+    Inputs:AddMultiTextbox("NotesInput", {
+        Text = "Multi-line Notes",
+        Default = "Type multiple lines here...",
+        Placeholder = "Notes, scripts, JSON, etc.",
+        Height = 70,
+        Finished = false,
+        Tooltip = "Same Value/SetValue contract as AddInput, saved the same way",
+    })
+
+    local NewControls = Tabs.Elements:AddRightGroupbox(
+        "New Controls",
+        "sparkles"
+    )
+
+    NewControls:AddRangeSlider("PriceRange", {
+        Text = "Price Range",
+        Min = 0,
+        Max = 1000,
+        Rounding = 0,
+        Prefix = "$",
+        Default = { 100, 400 },
+        Callback = function(Low, High)
+            Log("PriceRange changed:", Low, "-", High)
+        end,
+    })
+
+    local Progress = NewControls:AddProgressBar({
+        Text = "Download Progress",
+        Default = 0,
+    })
+
+    NewControls:AddButton({
+        Text = "Simulate Progress",
+        Tooltip = "Animates the progress bar above from 0% to 100%",
+        Func = function()
+            task.spawn(function()
+                for i = 0, 100, 5 do
+                    Progress:SetProgress(i)
+                    task.wait(0.05)
+                end
+            end)
+        end,
+    })
+
+    NewControls:AddImage({
+        Text = "Preview Image",
+        Image = "rbxassetid://6031302930",
+        Height = 90,
+    })
+
+    NewControls:AddButton({
+        Text = "Show Toast With Actions",
+        Tooltip = "Demonstrates Library:NotifyWithActions",
+        Func = function()
+            Library:NotifyWithActions("Delete this config?", {
+                {
+                    Text = "Undo",
+                    Callback = function() Log("Undo pressed") end,
+                },
+                {
+                    Text = "Confirm",
+                    Callback = function() Log("Confirm pressed") end,
+                },
+            }, 8)
+        end,
+    })
+
+    NewControls:AddButton({
+        Text = "Show Confirm Dialog",
+        Tooltip = "Demonstrates Library:Confirm (modal Yes/No)",
+        Func = function()
+            Library:Confirm({
+                Title = "Reset Settings",
+                Text = "This will reset all settings to their defaults. Continue?",
+                ConfirmText = "Reset",
+                CancelText = "Cancel",
+            }, function(Result)
+                Log("Confirm dialog result:", Result)
+                Library:Notify(Result and "Settings reset!" or "Cancelled.", 3)
+            end)
+        end,
+    })
+
+    NewControls:AddButton({
+        Text = "Show Loading Overlay",
+        Tooltip = "Demonstrates Library:ShowLoading / Handle:Hide",
+        Func = function()
+            task.spawn(function()
+                local Loading = Library:ShowLoading("Fetching data...")
+                task.wait(1)
+                Loading:SetText("Almost done...")
+                task.wait(1)
+                Loading:Hide()
+                Library:Notify("Done!", 2)
+            end)
+        end,
     })
 end
 
@@ -968,6 +1080,11 @@ do
 end
 
 do
+    -- NOTE: this AddKeyTab/AddKeyBox widget is the original *in-window*
+    -- key box (a control living inside a normal tab, purely
+    -- illustrative -- it doesn't gate anything). It's independent of the
+    -- full-screen Config.KeySystem gate set up in CreateWindow above,
+    -- which actually locks the whole window until a real key is entered.
     Tabs.Key:AddLabel({
         Text = "Enter the key below. The demo accepts: Banana",
         DoesWrap = true,
