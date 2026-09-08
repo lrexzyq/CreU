@@ -808,11 +808,15 @@ do
     end
 
     -- Only version prefixes this ThemeManager actually knows how to read.
-    -- Deliberately a different prefix from SaveManager's 'CREU' export
-    -- strings, so a string copy-pasted into the wrong box (theme string
-    -- into config import, or vice versa) is rejected immediately instead
-    -- of being decoded as if it were the right kind of data.
-    local KnownThemeExportPrefixes = { CRUT1 = true }
+    --
+    -- Prefix scheme shared across this whole library: CREU1 = Library,
+    -- CREU2 = SaveManager (config), CREU3 = ThemeManager (theme). Using
+    -- the same 'CREU' family (instead of a separate 'CRUT' prefix) means
+    -- a string copy-pasted into the wrong box (theme string into config
+    -- import, or vice versa) is still rejected immediately -- the number
+    -- right after CREU tells them apart (2 vs 3), so decoding as the
+    -- wrong kind of data can't happen either way.
+    local KnownThemeExportPrefixes = { CREU3 = true }
     ThemeManager.MaxImportStringLength = 20000
 
     function ThemeManager:Export(Theme)
@@ -881,7 +885,7 @@ do
             return nil, "failed to encode string"
         end
 
-        local ExportString = "CRUT1:" .. B64
+        local ExportString = "CREU3:" .. B64
 
         local Clip = setclipboard or toclipboard
         if type(Clip) == "function" then
@@ -907,7 +911,7 @@ do
         end
 
         local Payload = ExportString
-        local Prefix = ExportString:match("^(CRUT%d+):")
+        local Prefix = ExportString:match("^(CREU%d+):")
         if Prefix then
             if not KnownThemeExportPrefixes[Prefix] then
                 return false, "unsupported theme version: " .. Prefix

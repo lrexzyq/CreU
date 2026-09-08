@@ -794,7 +794,7 @@ SaveManager = {} do
             return nil, 'failed to encode string'
         end
 
-        local exportString = 'CREU1:' .. b64
+        local exportString = 'CREU2:' .. b64
 
         local clip = setclipboard or toclipboard
         if type(clip) == 'function' then
@@ -805,10 +805,14 @@ SaveManager = {} do
     end
 
     -- Only version prefixes this SaveManager actually knows how to read.
-    -- A future/foreign prefix (e.g. 'CREU2:') must be rejected explicitly
-    -- rather than silently accepted and decoded as if it were CREU1 --
-    -- schema drift between versions could otherwise apply garbage values.
-    local KnownExportPrefixes = { CREU1 = true }
+    -- A future/foreign prefix (e.g. 'CREU3:' -- that's ThemeManager's,
+    -- see below) must be rejected explicitly rather than silently
+    -- accepted and decoded as if it were CREU2 -- schema drift between
+    -- versions could otherwise apply garbage values.
+    --
+    -- Prefix scheme shared across this whole library: CREU1 = Library,
+    -- CREU2 = SaveManager (config), CREU3 = ThemeManager (theme).
+    local KnownExportPrefixes = { CREU2 = true }
 
     -- Hard ceiling on the raw import string length, before any decoding
     -- work happens. This is a cheap first line of defense against being
