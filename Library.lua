@@ -159,6 +159,16 @@ Library.Toggles = Toggles;
 Library.Base64Encode = Base64Encode;
 Library.Base64Decode = Base64Decode;
 
+-- Shared export-string prefix family used across this whole library, so
+-- a string copy-pasted into the wrong box is rejected immediately
+-- instead of being decoded as if it were the right kind of data:
+--   CREU1 = Library   (reserved; Library itself doesn't export a string
+--                       today, but the number is reserved so nothing
+--                       else ever reuses it)
+--   CREU2 = SaveManager (config export/import, see SaveManager.lua)
+--   CREU3 = ThemeManager (theme export/import, see ThemeManager.lua)
+Library.ExportPrefix = 'CREU1';
+
 Library.KeyPickerList = {};
 
 Library.BlurEffect = Instance.new("BlurEffect")
@@ -414,10 +424,25 @@ function Library:BeginGesture(Input, AllowCurrent)
         return false
     end
     if Library.ActiveGestureInput ~= nil then
-
-        return AllowCurrent == true and Library.ActiveGestureInput == Input
+        -- FIX (kẹt UI vĩnh viễn trên mobile): nếu ứng dụng bị chuyển nền
+        -- (cuộc gọi đến, Home button, thông báo che màn hình...) trong lúc
+        -- đang giữ 1 gesture, một số thiết bị/phiên bản Roblox không phát
+        -- InputEnded cho input đó khi quay lại app. Safety-net toàn cục cũ
+        -- (ở dưới, lắng nghe InputEnded) chỉ giải phóng đúng input đang bị
+        -- kẹt, nhưng nếu input đó không bao giờ nhận InputEnded thì khoá
+        -- không bao giờ được gỡ -> mọi BeginGesture() sau đó luôn trả về
+        -- false, toàn bộ nút/kéo/resize trong UI ngừng phản hồi vĩnh viễn.
+        -- Đặt hạn 15 giây: không thao tác kéo/giữ bình thường nào của con
+        -- người kéo dài như vậy, nên quá hạn thì coi như input cũ đã "chết"
+        -- và tự động giải phóng để input mới có thể chiếm gesture.
+        if Library.ActiveGestureStartedAt and (os.clock() - Library.ActiveGestureStartedAt) > 15 then
+            Library:CancelGesture()
+        else
+            return AllowCurrent == true and Library.ActiveGestureInput == Input
+        end
     end
     Library.ActiveGestureInput = Input
+    Library.ActiveGestureStartedAt = os.clock()
     Library.ActiveGestureCleanups[Input] = Library.ActiveGestureCleanups[Input] or {}
     return true
 end
@@ -447,6 +472,7 @@ end
 function Library:EndGesture(Input)
     if Library.ActiveGestureInput == Input then
         Library.ActiveGestureInput = nil
+        Library.ActiveGestureStartedAt = nil
         Library:_CleanupGesture(Input)
         return true
     end
@@ -456,6 +482,7 @@ end
 function Library:CancelGesture()
     local Input = Library.ActiveGestureInput
     Library.ActiveGestureInput = nil
+    Library.ActiveGestureStartedAt = nil
     if Input then
         Library:_CleanupGesture(Input)
     end
@@ -6187,7 +6214,10 @@ do
         end
 
         -- Auto-pass immediately if a previously saved key is still valid,
-        -- skipping the prompt entirely.
+        -- skipping the prompt entirely. Verified is set here; the actual
+        -- success callback run happens inside KeySystem:OnSuccess below
+        -- (it checks self.Verified and fires immediately for callbacks
+        -- registered after the fact), so nothing else is needed here.
         if TryLoadSavedPass() then
             KeySystem.Verified = true
             Holder:Destroy()
@@ -6218,7 +6248,16 @@ function Library:CreateWindow(...)
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
 
     if InputService.TouchEnabled then
-        local vp = workspace.CurrentCamera.ViewportSize
+        -- FIX (crash khi mở UI): workspace.CurrentCamera có thể là nil trong
+        -- một số trường hợp (script chạy rất sớm trước khi camera khởi tạo
+        -- xong, hoặc CurrentCamera bị đổi/respawn sau khi teleport giữa các
+        -- map). Truy cập .ViewportSize thẳng trên nil sẽ ném lỗi ngay tại
+        -- đây, làm crash toàn bộ CreateWindow() -- tức là UI không bao giờ
+        -- mở được. Dùng cùng cách xử lý an toàn đã có sẵn ở
+        -- RecalculateListPosition (Dropdown) cho nhất quán: nếu không có
+        -- camera thì tạm coi màn hình là 1920x1080.
+        local Camera = workspace.CurrentCamera
+        local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
         local maxWidth = math.min(Config.Size.X.Offset, vp.X - 20)
 
         local maxHeight = math.min(Config.Size.Y.Offset, vp.Y - 60)
@@ -7011,40 +7050,68 @@ function Library:CreateWindow(...)
         Outer.Visible = Library.Toggled;
         if Library.Toggled then
             task.spawn(function()
+                -- FIX (crash trên mobile/executor không hỗ trợ Drawing API):
+                -- 'Drawing' chỉ tồn tại trên một số executor PC. Rất nhiều
+                -- executor mobile tắt hẳn API này (lý do hiệu năng/bảo mật),
+                -- nên Drawing.new(...) sẽ ném lỗi "attempt to index nil
+                -- value (global 'Drawing')" ngay lập tức. Trước đây lỗi này
+                -- không được bọc pcall, nên: (1) toàn bộ vòng lặp con trỏ
+                -- tùy chỉnh bên dưới không bao giờ chạy được trên các máy
+                -- đó, và (2) nếu lỗi xảy ra sau khi InputService.MouseIconEnabled
+                -- đã bị tắt ở dòng dưới nhưng trước khi được khôi phục lại,
+                -- con trỏ chuột hệ thống sẽ bị ẩn VĨNH VIỄN vì đoạn code khôi
+                -- phục không bao giờ chạy tới. Bọc pcall để dùng con trỏ hệ
+                -- thống mặc định một cách an toàn khi Drawing không khả dụng.
+                local HasDrawing = typeof(Drawing) == 'table' or typeof(Drawing) == 'userdata'
+                if not HasDrawing then
+                    return
+                end
+
                 local State = InputService.MouseIconEnabled;
 
-                local Cursor = Drawing.new('Triangle');
-                Cursor.Thickness = 1;
-                Cursor.Filled = true;
-                Cursor.Visible = true;
+                local ok = pcall(function()
+                    local Cursor = Drawing.new('Triangle');
+                    Cursor.Thickness = 1;
+                    Cursor.Filled = true;
+                    Cursor.Visible = true;
 
-                local CursorOutline = Drawing.new('Triangle');
-                CursorOutline.Thickness = 1;
-                CursorOutline.Filled = false;
-                CursorOutline.Color = Color3.new(0, 0, 0);
-                CursorOutline.Visible = true;
+                    local CursorOutline = Drawing.new('Triangle');
+                    CursorOutline.Thickness = 1;
+                    CursorOutline.Filled = false;
+                    CursorOutline.Color = Color3.new(0, 0, 0);
+                    CursorOutline.Visible = true;
 
-                while Library.Toggled and ScreenGui.Parent do
-                    InputService.MouseIconEnabled = false;
+                    while Library.Toggled and ScreenGui.Parent do
+                        InputService.MouseIconEnabled = false;
 
-                    local mPos = InputService:GetMouseLocation();
+                        local mPos = InputService:GetMouseLocation();
 
-                    Cursor.Color = Library.AccentColor;
+                        Cursor.Color = Library.AccentColor;
 
-                    Cursor.PointA = Vector2.new(mPos.X, mPos.Y);
-                    Cursor.PointB = Vector2.new(mPos.X + 16, mPos.Y + 6);
-                    Cursor.PointC = Vector2.new(mPos.X + 6, mPos.Y + 16);
-                    CursorOutline.PointA = Cursor.PointA;
-                    CursorOutline.PointB = Cursor.PointB;
-                    CursorOutline.PointC = Cursor.PointC;
+                        Cursor.PointA = Vector2.new(mPos.X, mPos.Y);
+                        Cursor.PointB = Vector2.new(mPos.X + 16, mPos.Y + 6);
+                        Cursor.PointC = Vector2.new(mPos.X + 6, mPos.Y + 16);
+                        CursorOutline.PointA = Cursor.PointA;
+                        CursorOutline.PointB = Cursor.PointB;
+                        CursorOutline.PointC = Cursor.PointC;
 
-                    RenderStepped:Wait();
-                end;
+                        RenderStepped:Wait();
+                    end;
 
+                    Cursor:Remove();
+                    CursorOutline:Remove();
+                end)
+
+                -- Luôn khôi phục con trỏ chuột hệ thống dù pcall ở trên
+                -- thành công hay lỗi giữa chừng -- đây chính là phần bị bỏ
+                -- sót ở bug gốc, gây ẩn con trỏ vĩnh viễn khi crash.
                 InputService.MouseIconEnabled = State;
 
-                Cursor:Remove();
-                CursorOutline:Remove();
+                if not ok then
+                    -- Không Notify ở đây để tránh làm phiền người dùng mỗi
+                    -- lần mở UI trên máy không có Drawing; tắt con trỏ tùy
+                    -- chỉnh và dùng con trỏ hệ thống mặc định là đủ.
+                end
             end);
         end;
         if Library.UseBlur then
@@ -7085,9 +7152,20 @@ function Library:CreateWindow(...)
 
     -- Rayfield/Fluent-style key system gate: if Config.KeySystem was
     -- supplied, the window is locked (Toggle() refuses to open it, see
-    -- above) until KeySystem:OnSuccess fires. AutoShow is deferred the
-    -- same way -- it only actually opens the window once the key has
-    -- been verified, instead of racing the key prompt.
+    -- above) until KeySystem:OnSuccess fires.
+    --
+    -- FIX: this used to only auto-open the window on success when
+    -- Config.AutoShow was ALSO explicitly set to true. If a script
+    -- attached a KeySystem but didn't separately set AutoShow (a very
+    -- easy thing to forget -- "the key system opens the UI" feels like
+    -- it should be automatic), entering the correct key would close the
+    -- key prompt and then... nothing. The full Window (every tab,
+    -- Toggle/Slider/Dropdown/Input/dependency box/etc.) never appeared,
+    -- leaving whatever else happened to be on screen. A key system is
+    -- only ever attached because the window should be gated behind it,
+    -- so a verified key should always reveal the full window -- that's
+    -- the entire point of a key system. AutoShow now only controls
+    -- whether the window opens immediately when there's NO key system.
     Window._KeyLocked = false
     if type(Config.KeySystem) == 'table' then
         Window._KeyLocked = true
@@ -7095,7 +7173,7 @@ function Library:CreateWindow(...)
         Window.KeySystem = KS
         KS:OnSuccess(function()
             Window._KeyLocked = false
-            if Config.AutoShow then
+            if not Library.Toggled then
                 task.spawn(function() Library:Toggle() end)
             end
         end)
