@@ -7918,10 +7918,12 @@ Library.CreateWindow = function(self,...)
             -- ================= AddKeyBoxUnlock =================
             -- Adds a Key/Submit/Get Key groupbox at the top of this tab,
             -- then locks every OTHER groupbox added to the SAME tab from
-            -- this point on: they stay hidden (like AddDependencyBox
-            -- content) until a valid key is submitted, at which point
-            -- they're revealed in place -- no separate "locked box"
-            -- object to route controls through, the caller just keeps
+            -- this point on: they stay hidden until a valid key is
+            -- submitted. Unlike AddDependencyBox, the key-entry box is
+            -- not left sitting on screen once unlocked -- it's destroyed
+            -- outright the moment a valid key is accepted (or on load,
+            -- if a previously saved key already passes), and the real
+            -- API groupboxes take its place. The caller just keeps
             -- calling Tab:AddLeftGroupbox/AddRightGroupbox/AddToggle/etc
             -- as normal and everything downstream is gated automatically.
             --
@@ -8050,8 +8052,15 @@ Library.CreateWindow = function(self,...)
 
                 -- The key-entry groupbox itself is built with the
                 -- ORIGINAL (unwrapped) AddLeftGroupbox, so it's never
-                -- hidden by its own lock.
+                -- hidden by the lock loop above (it's not in
+                -- LockedOuters). Its Outer is grabbed separately so it
+                -- can be destroyed outright once a key is accepted (see
+                -- DoSubmit below) -- unlocking now removes the key-entry
+                -- box entirely and reveals the real API groupboxes in
+                -- its place, instead of leaving the key box sitting
+                -- there next to Dependency-box-style show/hide toggles.
                 local KeyBoxGroup = OrigAddLeft(Tab, Config.Title or 'Key System', 'key')
+                local KeyBoxOuter = KeyBoxGroup.Container.Parent.Parent
 
                 local InputIdx = 'TabKeyInput_' .. tostring(math.random(100000, 999999))
                 KeyBoxGroup:AddInput(InputIdx, {
@@ -8076,10 +8085,16 @@ Library.CreateWindow = function(self,...)
                         if StatusLabel.SetText then StatusLabel:SetText('Invalid key. Please try again.') end
                         return
                     end
-                    if StatusLabel.SetText then StatusLabel:SetText('Key accepted!') end
                     PersistPass(Attempt)
                     Unlocked = true
                     ApplyLockState()
+                    -- Xoá hẳn ô nhập key khỏi tab (không chỉ ẩn) ngay khi
+                    -- key được chấp nhận, để các groupbox API phía dưới
+                    -- chiếm luôn vị trí đó, thay vì để khung nhập key nằm
+                    -- lại màn hình.
+                    if KeyBoxOuter and KeyBoxOuter.Parent then
+                        KeyBoxOuter:Destroy()
+                    end
                     Library:SafeCallback(Config.Callback, Attempt)
                 end
 
@@ -8104,10 +8119,13 @@ Library.CreateWindow = function(self,...)
                     KeyBoxGroup:AddLabel({ Text = Config.Note, DoesWrap = true })
                 end
 
-                -- If a saved key already passed, reflect that immediately
-                -- (any groupbox added above the check, i.e. none besides
-                -- KeyBoxGroup which is never locked, is unaffected).
+                -- If a saved key already passed, reflect that immediately:
+                -- destroy the key-entry box right away instead of letting
+                -- it flash on screen for a frame before being removed.
                 ApplyLockState()
+                if Unlocked and KeyBoxOuter and KeyBoxOuter.Parent then
+                    KeyBoxOuter:Destroy()
+                end
 
                 return {
                     IsUnlocked = function() return Unlocked end;

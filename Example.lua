@@ -1090,11 +1090,16 @@ do
     --
     -- AddKeyBoxUnlock: everything added to THIS tab via
     -- Tab:AddLeftGroupbox/AddRightGroupbox AFTER this call starts out
-    -- hidden -- exactly like AddDependencyBox content -- and is revealed
-    -- once a valid key is submitted (or GetKeyLink is used to copy a
-    -- link for where to obtain one, mirroring how key-system provider
-    -- links usually work: the accepted key(s) live in the script, while
-    -- the public-facing "get key" link can point anywhere, e.g. Discord).
+    -- hidden, and is revealed once a valid key is submitted (or GetKeyLink
+    -- is used to copy a link for where to obtain one, mirroring how
+    -- key-system provider links usually work: the accepted key(s) live in
+    -- the script, while the public-facing "get key" link can point
+    -- anywhere, e.g. Discord). Unlike AddDependencyBox, the key-entry box
+    -- itself doesn't stick around once unlocked -- it's removed outright
+    -- (destroyed, not just hidden) the moment the key is accepted, or
+    -- immediately on load if SaveKey already has a passing key on disk --
+    -- so the unlocked groupboxes below take its place instead of sitting
+    -- next to a leftover key prompt.
     Tabs.Key:AddKeyBoxUnlock({
         Title = "Unlock Features",
         Text = "Key",
