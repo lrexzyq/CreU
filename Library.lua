@@ -1786,7 +1786,12 @@ do
             Text = '',
             AutoButtonColor = false,
             Active = InputService.TouchEnabled,
-            ZIndex = 112,
+            -- FIX: was ZIndex 112, lower than ContainerLabel's 113 below.
+            -- Reported as "tapping the mobile Show Keybinds entry does
+            -- nothing" -- raising this above the label removes any chance
+            -- of the label's Z-order stealing the tap before this button
+            -- sees it.
+            ZIndex = 114,
             Parent = KeybindEntry,
         })
 
@@ -2091,6 +2096,34 @@ do
             DisplayLabel.Text = ''
 
             local Event
+            local PollConn
+
+            local function StopPicking()
+                Break = true
+                Picking = false
+                if Event then
+                    Event:Disconnect()
+                    Library:RemoveSignal(Event)
+                    Event = nil
+                end
+                if PollConn then
+                    PollConn:Disconnect()
+                    Library:RemoveSignal(PollConn)
+                    PollConn = nil
+                end
+            end
+
+            local function ApplyPickedKey(Key, ChangedValue)
+                StopPicking()
+                KeyPicker.DisplayUnknown = Key == 'None' or (InputService.TouchEnabled and Key == 'None')
+                KeyPicker.Value = Key
+                RefreshKeyDisplay()
+                Library:SafeCallback(KeyPicker.ChangedCallback, ChangedValue)
+                Library:SafeCallback(KeyPicker.Changed, ChangedValue)
+                Library:AttemptSave()
+                KeyPicker:Update()
+            end
+
             Event = InputService.InputBegan:Connect(function(Input)
                 if Library.Unloaded or not Picking then
                     return
@@ -2101,14 +2134,8 @@ do
                     if Input.KeyCode == Enum.KeyCode.Delete or Input.KeyCode == Enum.KeyCode.Backspace then
                         Key = 'None'
                     elseif Input.KeyCode == Enum.KeyCode.Escape then
-                        Break = true
-                        Picking = false
+                        StopPicking()
                         DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
-                        if Event then
-                            Event:Disconnect()
-                            Library:RemoveSignal(Event)
-                            Event = nil
-                        end
                         KeyPicker:Update()
                         return
                     else
@@ -2119,6 +2146,14 @@ do
                 elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
                     Key = 'MB2'
                 elseif Input.UserInputType == Enum.UserInputType.Touch then
+                    -- FIX: on mobile there's no physical key to press, so
+                    -- Picking previously stayed true forever after tapping
+                    -- the box -- the "..." animation just ran with no way
+                    -- out ("bấm vô chẳng có gì"). A tap here cancels picking
+                    -- (same as Escape) instead of hanging indefinitely.
+                    StopPicking()
+                    DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
+                    KeyPicker:Update()
                     return
                 end
 
@@ -2126,23 +2161,58 @@ do
                     return
                 end
 
-                Break = true
-                Picking = false
-                KeyPicker.DisplayUnknown = Key == 'None' or (InputService.TouchEnabled and Key == 'None')
-                KeyPicker.Value = Key
-                RefreshKeyDisplay()
                 local ChangedValue = Key == 'None' and 'None' or (Input.KeyCode or Input.UserInputType)
-                Library:SafeCallback(KeyPicker.ChangedCallback, ChangedValue)
-                Library:SafeCallback(KeyPicker.Changed, ChangedValue)
-                Library:AttemptSave()
-                if Event then
-                    Event:Disconnect()
-                    Library:RemoveSignal(Event)
-                    Event = nil
-                end
-                KeyPicker:Update()
+                ApplyPickedKey(Key, ChangedValue)
             end)
             Library:GiveSignal(Event)
+
+            -- FIX: some environments/executors don't fire InputBegan
+            -- reliably for keyboard keys while a control (like this
+            -- TextButton) has just received a mouse click -- reported as
+            -- "the box shows the picking animation but pressing a key does
+            -- nothing." InputBegan continues to work fine for keys that are
+            -- already bound (that's a separate, always-connected listener
+            -- below), so this only patches the picking moment itself.
+            -- Poll every Heartbeat with IsKeyDown as a keyboard fallback;
+            -- it does not depend on InputBegan firing at all.
+            local KeyboardKeys
+            local function GetKeyboardKeys()
+                if not KeyboardKeys then
+                    KeyboardKeys = {}
+                    for _, EnumItem in ipairs(Enum.KeyCode:GetEnumItems()) do
+                        if EnumItem ~= Enum.KeyCode.Unknown
+                            and EnumItem ~= Enum.KeyCode.Delete
+                            and EnumItem ~= Enum.KeyCode.Backspace
+                            and EnumItem ~= Enum.KeyCode.Escape then
+                            table.insert(KeyboardKeys, EnumItem)
+                        end
+                    end
+                end
+                return KeyboardKeys
+            end
+
+            PollConn = RunService.Heartbeat:Connect(function()
+                if Library.Unloaded or not Picking then
+                    return
+                end
+                if InputService:IsKeyDown(Enum.KeyCode.Delete) or InputService:IsKeyDown(Enum.KeyCode.Backspace) then
+                    ApplyPickedKey('None', 'None')
+                    return
+                end
+                if InputService:IsKeyDown(Enum.KeyCode.Escape) then
+                    StopPicking()
+                    DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
+                    KeyPicker:Update()
+                    return
+                end
+                for _, EnumItem in ipairs(GetKeyboardKeys()) do
+                    if InputService:IsKeyDown(EnumItem) then
+                        ApplyPickedKey(EnumItem.Name, EnumItem)
+                        return
+                    end
+                end
+            end)
+            Library:GiveSignal(PollConn)
 
             task.spawn(function()
                 while not Break and not Library.Unloaded and Picking and DisplayLabel.Parent do
@@ -7918,12 +7988,10 @@ Library.CreateWindow = function(self,...)
             -- ================= AddKeyBoxUnlock =================
             -- Adds a Key/Submit/Get Key groupbox at the top of this tab,
             -- then locks every OTHER groupbox added to the SAME tab from
-            -- this point on: they stay hidden until a valid key is
-            -- submitted. Unlike AddDependencyBox, the key-entry box is
-            -- not left sitting on screen once unlocked -- it's destroyed
-            -- outright the moment a valid key is accepted (or on load,
-            -- if a previously saved key already passes), and the real
-            -- API groupboxes take its place. The caller just keeps
+            -- this point on: they stay hidden (like AddDependencyBox
+            -- content) until a valid key is submitted, at which point
+            -- they're revealed in place -- no separate "locked box"
+            -- object to route controls through, the caller just keeps
             -- calling Tab:AddLeftGroupbox/AddRightGroupbox/AddToggle/etc
             -- as normal and everything downstream is gated automatically.
             --
@@ -8052,15 +8120,8 @@ Library.CreateWindow = function(self,...)
 
                 -- The key-entry groupbox itself is built with the
                 -- ORIGINAL (unwrapped) AddLeftGroupbox, so it's never
-                -- hidden by the lock loop above (it's not in
-                -- LockedOuters). Its Outer is grabbed separately so it
-                -- can be destroyed outright once a key is accepted (see
-                -- DoSubmit below) -- unlocking now removes the key-entry
-                -- box entirely and reveals the real API groupboxes in
-                -- its place, instead of leaving the key box sitting
-                -- there next to Dependency-box-style show/hide toggles.
+                -- hidden by its own lock.
                 local KeyBoxGroup = OrigAddLeft(Tab, Config.Title or 'Key System', 'key')
-                local KeyBoxOuter = KeyBoxGroup.Container.Parent.Parent
 
                 local InputIdx = 'TabKeyInput_' .. tostring(math.random(100000, 999999))
                 KeyBoxGroup:AddInput(InputIdx, {
@@ -8085,16 +8146,10 @@ Library.CreateWindow = function(self,...)
                         if StatusLabel.SetText then StatusLabel:SetText('Invalid key. Please try again.') end
                         return
                     end
+                    if StatusLabel.SetText then StatusLabel:SetText('Key accepted!') end
                     PersistPass(Attempt)
                     Unlocked = true
                     ApplyLockState()
-                    -- Xoá hẳn ô nhập key khỏi tab (không chỉ ẩn) ngay khi
-                    -- key được chấp nhận, để các groupbox API phía dưới
-                    -- chiếm luôn vị trí đó, thay vì để khung nhập key nằm
-                    -- lại màn hình.
-                    if KeyBoxOuter and KeyBoxOuter.Parent then
-                        KeyBoxOuter:Destroy()
-                    end
                     Library:SafeCallback(Config.Callback, Attempt)
                 end
 
@@ -8119,13 +8174,10 @@ Library.CreateWindow = function(self,...)
                     KeyBoxGroup:AddLabel({ Text = Config.Note, DoesWrap = true })
                 end
 
-                -- If a saved key already passed, reflect that immediately:
-                -- destroy the key-entry box right away instead of letting
-                -- it flash on screen for a frame before being removed.
+                -- If a saved key already passed, reflect that immediately
+                -- (any groupbox added above the check, i.e. none besides
+                -- KeyBoxGroup which is never locked, is unaffected).
                 ApplyLockState()
-                if Unlocked and KeyBoxOuter and KeyBoxOuter.Parent then
-                    KeyBoxOuter:Destroy()
-                end
 
                 return {
                     IsUnlocked = function() return Unlocked end;
