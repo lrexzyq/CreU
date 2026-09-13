@@ -1884,9 +1884,24 @@ do
                 if Mode ~= 'Toggle' and Mode ~= 'Always' and Mode ~= 'Hold' then
                     return
                 end
+                local PreviousMode = KeyPicker.Mode
                 KeyPicker.Mode = Mode;
                 if Mode ~= 'Hold' then
                     KeyPicker.MobileHeld = false
+                end
+                -- FIX: switching modes didn't reset Toggled, so a value left
+                -- over from the previous mode leaked into the new one. Most
+                -- visibly: 'Always' forces GetState() to true on every tap
+                -- (see SetMobileBindState) without ever touching Toggled
+                -- back to false, so after switching to 'Toggle' the very
+                -- first tap flipped an already-true Toggled to false —
+                -- turning the feature OFF on what looked like the first
+                -- "turn it on" tap ("bấm vào không bật mà lỗi rất ngáo").
+                -- Reset to a clean, predictable false whenever the mode
+                -- actually changes, regardless of which mode it's leaving
+                -- or entering.
+                if PreviousMode ~= Mode then
+                    KeyPicker.Toggled = false
                 end
                 Button.TextColor3 = Library.AccentColor;
                 Library.RegistryMap[Button].Properties.TextColor3 = 'AccentColor';
