@@ -1,3 +1,4 @@
+print('[DEBUG-LIB] Library.lua bắt đầu chạy — line 1');
 local InputService = game:GetService('UserInputService');
 local TextService = game:GetService('TextService');
 local CoreGui = game:GetService('CoreGui');
@@ -6300,6 +6301,7 @@ end
 -- ============================================================
 
 function Library:CreateWindow(...)
+    print('[DEBUG-LIB] CreateWindow bắt đầu');
     local Arguments = { ... }
     local Config = { AnchorPoint = Vector2.zero }
 
@@ -7283,6 +7285,7 @@ function Library:CreateWindow(...)
     end
 
     Window.Holder = Outer;
+    print('[DEBUG-LIB] CreateWindow hoàn tất, chuẩn bị return Window');
     return Window;
 end;
 
@@ -7540,6 +7543,7 @@ function Library:AddWatermark(Segments)
 end
 
 function Library:BuildWatermarkV2(Segments)
+    print('[DEBUG-LIB] BuildWatermarkV2 bắt đầu, số segments =', #Segments);
     if Library._WatermarkV2 then
         local Holder = Library._WatermarkV2.Holder
         if Holder and Holder.Parent then Holder:Destroy() end
@@ -7697,7 +7701,9 @@ function Library:BuildWatermarkV2(Segments)
     end;
 
     for Idx, SegInfo in ipairs(Segments) do
+        print('[DEBUG-LIB] BuildSegment #' .. tostring(Idx) .. ' bắt đầu, Icon=' .. tostring(SegInfo.Icon) .. ' Text=' .. tostring(type(SegInfo.Text) == 'function' and '<function>' or SegInfo.Text));
         BuildSegment(SegInfo, Idx);
+        print('[DEBUG-LIB] BuildSegment #' .. tostring(Idx) .. ' xong');
     end;
 
     local function RefreshWatermarkSize()
@@ -7706,24 +7712,35 @@ function Library:BuildWatermarkV2(Segments)
     Layout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(RefreshWatermarkSize);
     task.defer(RefreshWatermarkSize);
 
+    print('[DEBUG-LIB] MakeDraggable(Outer) sắp gọi');
     Library:MakeDraggable(Outer);
+    print('[DEBUG-LIB] MakeDraggable(Outer) xong');
 
     if #DynamicLabels > 0 then
+        print('[DEBUG-LIB] Khởi tạo vòng lặp refresh watermark, DynamicLabels =', #DynamicLabels);
         task.spawn(function()
+            local LoopCount = 0
             while (not Library.Unloaded) and ScreenGui.Parent do
-                for _, Entry in ipairs(DynamicLabels) do
+                LoopCount = LoopCount + 1
+                print('[DEBUG-LIB] Watermark refresh loop #' .. LoopCount .. ' bắt đầu');
+                for i, Entry in ipairs(DynamicLabels) do
+                    print('[DEBUG-LIB]   -> gọi DynamicLabels[' .. i .. '].Fn()');
                     local Ok, Result = pcall(Entry.Fn);
+                    print('[DEBUG-LIB]   <- xong DynamicLabels[' .. i .. '].Fn(), Ok=' .. tostring(Ok) .. ' Result=' .. tostring(Result));
                     if Ok and type(Result) == 'string' then
                         Entry.Label.Text = Result;
                     end;
                 end;
+                print('[DEBUG-LIB] Watermark refresh loop #' .. LoopCount .. ' xong, chuẩn bị task.wait');
                 task.wait(Watermark.RefreshRate or 1);
             end;
+            print('[DEBUG-LIB] Watermark refresh loop ĐÃ THOÁT (Unloaded hoặc ScreenGui mất Parent)');
         end);
     end;
 
     Watermark.Holder = Outer;
     Library._WatermarkV2 = Watermark;
+    print('[DEBUG-LIB] BuildWatermarkV2 hoàn tất, chuẩn bị return Watermark');
     return Watermark;
 end
 
@@ -8202,4 +8219,5 @@ do
     end
 end
 
+print('[DEBUG-LIB] Library.lua load xong, chuẩn bị return — line cuối');
 return Library
