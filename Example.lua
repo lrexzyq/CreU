@@ -34,19 +34,6 @@ local Window = Library:CreateWindow({
     Center = true,
     Size = UDim2.fromOffset(700, 600),
     AutoShow = true,
-    -- Key System: the window stays hidden (Library:Toggle() refuses to
-    -- open it) until one of these keys is submitted. SaveKey remembers a
-    -- successful key on disk so returning players skip the prompt.
-    KeySystem = {
-        Title = "CreU Showcase - Key System",
-        Subtitle = "Enter a key to unlock the menu",
-        Note = "Demo keys: \"Banana\" or \"Coconut\"",
-        Key = { "Banana", "Coconut" },
-        SaveKey = true,
-        FolderName = "CreUShowcase",
-        FileName = "keysystem",
-        GetKeyLink = "https://example.com/get-key",
-    },
     Footer = {
         "CreU | ",
         {
@@ -1083,10 +1070,10 @@ do
     -- NOTE: AddKeyBox (used further below) is the original simple
     -- key-entry widget -- a control living inside a normal tab that just
     -- reports the submitted key via callback; it doesn't hide/gate
-    -- anything on its own. It's independent of the full-screen
-    -- Config.KeySystem gate set up in CreateWindow above (which locks
-    -- the whole window) and of AddKeyBoxUnlock below (which locks only
-    -- the groupboxes on this specific tab).
+    -- anything on its own. It's independent of AddKeyBoxUnlock below
+    -- (which locks only the groupboxes on this specific tab), and of the
+    -- separate full-window Config.KeySystem gate that Library:CreateWindow
+    -- still supports (just not used in this example) -- see Library.lua.
     --
     -- AddKeyBoxUnlock: everything added to THIS tab via
     -- Tab:AddLeftGroupbox/AddRightGroupbox AFTER this call starts out
@@ -1142,6 +1129,39 @@ do
         Text = "Feature Button",
         Func = function()
             Library:Notify("This button was behind the key lock!", 3)
+        end,
+    })
+
+    -- AddRow: two side-by-side sub-groupboxes, still hidden until the key
+    -- above is accepted since Locked itself is hidden.
+    local RowLeft, RowRight = Locked:AddRow(2)
+    RowLeft:AddLabel("Row - Left side")
+    RowLeft:AddToggle("KeyUnlockedRowToggle", {
+        Text = "Row Toggle",
+        Default = false,
+    })
+    RowRight:AddLabel("Row - Right side")
+    RowRight:AddSlider("KeyUnlockedRowSlider", {
+        Text = "Row Slider",
+        Default = 25,
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+    })
+
+    -- AddDependencyBox: content only shows once BOTH the key above is
+    -- accepted (Locked is visible) AND KeyUnlockedToggle is on.
+    Locked:AddDivider()
+    Locked:AddLabel("Dependency box (also needs Feature Toggle above ON):")
+    local KeyDepBox = Locked:AddDependencyBox()
+    KeyDepBox:SetupDependencies({
+        { Toggles.KeyUnlockedToggle, true },
+    })
+    KeyDepBox:AddLabel("This only shows when unlocked AND the toggle is on.")
+    KeyDepBox:AddButton({
+        Text = "Dependency Button",
+        Func = function()
+            Library:Notify("Both conditions were met!", 3)
         end,
     })
 
