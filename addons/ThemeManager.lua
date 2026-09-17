@@ -248,8 +248,6 @@ do
             end
         end
 
-        self._ApplyingTheme = false
-
         if not Changed then
             self._ApplyingTheme = false
             return false
