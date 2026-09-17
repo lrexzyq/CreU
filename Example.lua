@@ -1165,24 +1165,97 @@ do
         end,
     })
 
-    -- The plain, non-gating key box for comparison -- always visible,
-    -- just reports whatever was typed.
-    Tabs.Key:AddLabel({
-        Text = "Below is the original AddKeyBox (no locking, just reports the key). The demo accepts: Banana",
-        DoesWrap = true,
+    -- Second groupbox on this tab, covering every remaining control type
+    -- the library supports -- also created via the wrapped
+    -- AddRightGroupbox above, so it starts hidden and unlocks together
+    -- with Locked.
+    local LockedRight = Tabs.Key:AddRightGroupbox("More Unlocked Controls", "sparkles")
+
+    LockedRight:AddPlayerInfo("KeyUnlockedPlayerInfo", {
+        Player = LocalPlayer,
+        Title = "Player Info Card",
+        Description = { "Shown only once unlocked" },
     })
 
-    Tabs.Key:AddKeyBox(function(ReceivedKey)
-        local Success = ReceivedKey == "Banana"
+    LockedRight:AddCheckbox("KeyUnlockedCheckbox", {
+        Text = "Feature Checkbox",
+        Default = false,
+    })
 
-        Library:Notify(
-            "Received key: "
-                .. tostring(ReceivedKey)
-                .. " | Success: "
-                .. tostring(Success),
-            4
-        )
-    end)
+    LockedRight:AddLabel("Color Picker"):AddColorPicker("KeyUnlockedColor", {
+        Default = Color3.fromRGB(0, 255, 140),
+        Title = "Feature Color",
+        Transparency = 0,
+    })
+
+    LockedRight:AddLabel("Color Picker (Alpha)"):AddColorPickerAlpha("KeyUnlockedColorAlpha", {
+        Default = Color3.fromRGB(255, 170, 0),
+        Title = "Feature Color Alpha",
+    })
+
+    LockedRight:AddLabel("Keybind"):AddKeyPicker("KeyUnlockedKeybind", {
+        Default = "None",
+        Mode = "Toggle",
+        Text = "Feature Keybind",
+    })
+
+    LockedRight:AddPriorityDropdown("KeyUnlockedPriority", {
+        Text = "Priority Dropdown",
+        Values = { "Critical", "High", "Medium", "Low" },
+        Default = { "High" },
+        Searchable = true,
+        SelectAllButtons = true,
+    })
+
+    LockedRight:AddMultiTextbox("KeyUnlockedNotes", {
+        Text = "Multi-line Notes",
+        Default = "",
+        Placeholder = "Type multiple lines here...",
+        Height = 60,
+        Finished = false,
+    })
+
+    LockedRight:AddRangeSlider("KeyUnlockedRange", {
+        Text = "Feature Range",
+        Min = 0,
+        Max = 1000,
+        Rounding = 0,
+        Prefix = "$",
+        Default = { 100, 400 },
+    })
+
+    local KeyProgress = LockedRight:AddProgressBar({
+        Text = "Feature Progress",
+        Default = 0,
+    })
+    LockedRight:AddButton({
+        Text = "Simulate Progress",
+        Func = function()
+            task.spawn(function()
+                for i = 0, 100, 5 do
+                    KeyProgress:SetProgress(i)
+                    task.wait(0.05)
+                end
+            end)
+        end,
+    })
+
+    LockedRight:AddImage({
+        Text = "Feature Preview Image",
+        Image = "rbxassetid://6031302930",
+        Height = 70,
+    })
+
+    LockedRight:AddSection("Section header")
+    LockedRight:AddParagraph("This is a paragraph control, also part of the locked tab's full control set.", true)
+    LockedRight:AddBlank(6)
+    LockedRight:AddDivider()
+
+    LockedRight:AddKeybind("KeyUnlockedKeybindAlias", {
+        Default = "None",
+        Mode = "Toggle",
+        Text = "Keybind (via AddKeybind alias)",
+    })
 end
 
 do

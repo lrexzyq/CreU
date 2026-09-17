@@ -9017,10 +9017,24 @@ Library.CreateWindow = function(self,...)
                 -- -> BoxOuter).
                 local LockedOuters = {}
                 local Unlocked = TryLoadSavedPass()
+                -- Forward-declared; assigned once KeyBoxGroup exists below.
+                -- ApplyLockState only reads it when called (never at
+                -- definition time), so this is safe.
+                local KeyBoxOuter = nil
 
                 local function ApplyLockState()
                     for _, Outer in ipairs(LockedOuters) do
                         Outer.Visible = Unlocked
+                    end
+                    -- FIX: the key-entry groupbox itself used to stay
+                    -- visible forever, even after a correct key unlocked
+                    -- everything else -- both the input box and the
+                    -- leftover Submit/status label kept sitting there
+                    -- alongside the now-visible features. It needs the
+                    -- opposite rule from LockedOuters above: shown while
+                    -- locked, hidden once unlocked.
+                    if KeyBoxOuter then
+                        KeyBoxOuter.Visible = not Unlocked
                     end
                 end
 
@@ -9049,9 +9063,12 @@ Library.CreateWindow = function(self,...)
                 end
 
                 -- The key-entry groupbox itself is built with the
-                -- ORIGINAL (unwrapped) AddLeftGroupbox, so it's never
-                -- hidden by its own lock.
+                -- ORIGINAL (unwrapped) AddLeftGroupbox, so wrapping it
+                -- above wouldn't have hidden it (and would be backwards
+                -- anyway -- it needs the opposite rule from the feature
+                -- groupboxes: visible while locked, hidden once unlocked).
                 local KeyBoxGroup = OrigAddLeft(Tab, Config.Title or 'Key System', 'key')
+                KeyBoxOuter = KeyBoxGroup.Container.Parent.Parent
 
                 local InputIdx = 'TabKeyInput_' .. tostring(math.random(100000, 999999))
                 KeyBoxGroup:AddInput(InputIdx, {
