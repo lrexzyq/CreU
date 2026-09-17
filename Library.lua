@@ -5495,7 +5495,225 @@ function Funcs:AddDropdown(Idx, Info)
         return Depbox;
     end;
 
-    -- ================= RangeSlider (two-handle Min/Max slider) =================
+    -- ================= Nested Tabbox (works on any Groupbox/Tabbox-tab) =================
+    -- Same structure/behaviour as Window's Tab:AddTabbox (sub-tab strip
+    -- with content panels below it), but defined on Funcs so it works on
+    -- ANY container that has a Groupbox-shaped .Container -- most
+    -- importantly, on the `Tab` object returned by Tabbox:AddTab, which
+    -- is setmetatable'd to BaseGroupbox further up this file. That's what
+    -- makes nesting possible: a top-level Window Tab (Main/Visuals/...)
+    -- can hold a Tabbox (Legit/Rage), and each of ITS tabs can hold
+    -- another Tabbox (General/Primary/Secondary/Melee/Utility) -- three
+    -- levels of tabs stacked on top of each other, matching the
+    -- reference screenshot's layout (top-level tab, sub-tab strip below
+    -- it, and a further sub-tab strip below that inside a sub-tab).
+    -- Window's own Tab:AddTabbox is untouched and still used for the
+    -- top-level Legit/Rage-style strip directly on a window tab; this is
+    -- for adding one MORE level inside an existing tab/groupbox.
+    function Funcs:AddTabbox(Info)
+        Info = type(Info) == 'table' and Info or { Name = Info }
+        local Tabbox = { Tabs = {} };
+
+        -- Named distinctly from `self` on purpose: `self` gets shadowed
+        -- by SubTab's own `self` inside every `function SubTab:Method()`
+        -- below (that's just how Lua's `:` sugar works), so a bubble-up
+        -- call like `self:Resize()` inside SubTab:Resize would actually
+        -- mean "call SubTab:Resize on itself" -- infinite-recursion-shaped
+        -- footgun, not "resize my parent". ParentGroupbox always refers
+        -- to the container AddTabbox was called on, regardless of which
+        -- method body it's read from.
+        local ParentGroupbox = self;
+        local Parent = ParentGroupbox.Container;
+
+        local BoxOuter = Library:Create('Frame', {
+            BackgroundColor3 = Library.BackgroundColor;
+            BorderColor3 = Library.OutlineColor;
+            BorderMode = Enum.BorderMode.Inset;
+            Size = UDim2.new(1, 0, 0, 0);
+            ZIndex = 2;
+            Parent = Parent;
+        });
+        Library:AddToRegistry(BoxOuter, {
+            BackgroundColor3 = 'BackgroundColor';
+            BorderColor3 = 'OutlineColor';
+        });
+        local BoxInner = Library:Create('Frame', {
+            BackgroundColor3 = Library.BackgroundColor;
+            BorderColor3 = Color3.new(0, 0, 0);
+            Size = UDim2.new(1, -2, 1, -2);
+            Position = UDim2.new(0, 1, 0, 1);
+            ZIndex = 4;
+            Parent = BoxOuter;
+        });
+        Library:AddToRegistry(BoxInner, {
+            BackgroundColor3 = 'BackgroundColor';
+        });
+        local TabboxButtons = Library:Create('Frame', {
+            BackgroundTransparency = 1;
+            Position = UDim2.new(0, 0, 0, 1);
+            Size = UDim2.new(1, 0, 0, 18);
+            ZIndex = 5;
+            Parent = BoxInner;
+        });
+        Library:Create('UIListLayout', {
+            FillDirection = Enum.FillDirection.Horizontal;
+            HorizontalAlignment = Enum.HorizontalAlignment.Left;
+            SortOrder = Enum.SortOrder.LayoutOrder;
+            Parent = TabboxButtons;
+        });
+
+        function Tabbox:AddTab(Name)
+            local SubTab = {};
+            local Button = Library:Create('Frame', {
+                BackgroundColor3 = Library.MainColor;
+                BorderColor3 = Color3.new(0, 0, 0);
+                Size = UDim2.new(0.5, 0, 1, 0);
+                ZIndex = 6;
+                Parent = TabboxButtons;
+            });
+            Library:AddToRegistry(Button, {
+                BackgroundColor3 = 'MainColor';
+            });
+            local TabHighlight = Library:Create('Frame', {
+                BackgroundColor3 = Library.AccentColor;
+                BorderSizePixel = 0;
+                Size = UDim2.new(1, 0, 0, 2);
+                Visible = false;
+                ZIndex = 10;
+                Parent = Button;
+            });
+            Library:AddToRegistry(TabHighlight, {
+                BackgroundColor3 = 'AccentColor';
+            });
+            Library:CreateLabel({
+                Size = UDim2.new(1, 0, 1, 0);
+                TextSize = Library.FontSize;
+                Text = Name;
+                TextXAlignment = Enum.TextXAlignment.Center;
+                ZIndex = 7;
+                Parent = Button;
+            });
+            local Block = Library:Create('Frame', {
+                BackgroundColor3 = Library.BackgroundColor;
+                BorderSizePixel = 0;
+                Position = UDim2.new(0, 0, 1, 0);
+                Size = UDim2.new(1, 0, 0, 1);
+                Visible = false;
+                ZIndex = 9;
+                Parent = Button;
+            });
+            Library:AddToRegistry(Block, {
+                BackgroundColor3 = 'BackgroundColor';
+            });
+            local Container = Library:Create('Frame', {
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0, 4, 0, 20);
+                Size = UDim2.new(1, -4, 1, -20);
+                ZIndex = 1;
+                Visible = false;
+                Parent = BoxInner;
+            });
+            Library:Create('UIListLayout', {
+                FillDirection = Enum.FillDirection.Vertical;
+                SortOrder = Enum.SortOrder.LayoutOrder;
+                Parent = Container;
+            });
+            function SubTab:Show()
+                for _, T in next, Tabbox.Tabs do
+                    T:Hide();
+                end;
+                Container.Visible = true;
+                Block.Visible = true;
+                TabHighlight.Visible = true;
+                Button.BackgroundColor3 = Library.BackgroundColor;
+                Library.RegistryMap[Button].Properties.BackgroundColor3 = 'BackgroundColor';
+                SubTab:Resize();
+            end;
+            function SubTab:Hide()
+                Container.Visible = false;
+                Block.Visible = false;
+                TabHighlight.Visible = false;
+                Button.BackgroundColor3 = Library.MainColor;
+                Library.RegistryMap[Button].Properties.BackgroundColor3 = 'MainColor';
+            end;
+            function SubTab:Resize()
+                local TabCount = 0;
+                for _, T in next, Tabbox.Tabs do
+                    TabCount = TabCount + 1;
+                end;
+                for _, Btn in next, TabboxButtons:GetChildren() do
+                    if not Btn:IsA('UIListLayout') then
+                        Btn.Size = UDim2.new(1 / TabCount, 0, 1, 0);
+                    end;
+                end;
+                if not Container.Visible then return end;
+                local Size = 0;
+                for _, Element in next, SubTab.Container:GetChildren() do
+                    if (not Element:IsA('UIListLayout')) and Element.Visible then
+                        Size = Size + Element.Size.Y.Offset;
+                    end;
+                end;
+                BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
+                -- Bubble the resize up so the outer tab/groupbox this
+                -- Tabbox lives in also recalculates its own height --
+                -- otherwise a nested Tabbox's content could get clipped
+                -- by its parent's fixed size.
+                if type(ParentGroupbox.Resize) == 'function' then
+                    ParentGroupbox:Resize();
+                end
+            end;
+
+            Button.InputBegan:Connect(function(Input)
+                if (Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch) or Library:MouseIsOverOpenedFrame(Input.Position) then return end
+                if not Library:BeginGesture(Input) then return end
+
+                local PressStart = Input.Position;
+                local Moved = false;
+                local ThisInput = Input;
+                local ChangedConn, EndedConn;
+
+                ChangedConn = InputService.InputChanged:Connect(function(Change)
+                    if Change ~= ThisInput and not (Change.UserInputType == Enum.UserInputType.MouseMovement and ThisInput.UserInputType == Enum.UserInputType.MouseButton1) then return end
+                    if (Change.Position - PressStart).Magnitude > 6 then
+                        Moved = true;
+                    end
+                end);
+                EndedConn = InputService.InputEnded:Connect(function(EndInput)
+                    if EndInput ~= ThisInput then return end
+                    if ChangedConn then ChangedConn:Disconnect(); end
+                    if EndedConn then EndedConn:Disconnect(); end
+
+                    Library:EndGesture(ThisInput)
+                    if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
+                        SubTab:Show();
+                        SubTab:Resize();
+                    end
+                end);
+                Library:RegisterGestureCleanup(ThisInput, function()
+                    if ChangedConn then ChangedConn:Disconnect(); ChangedConn = nil end
+                    if EndedConn then EndedConn:Disconnect(); EndedConn = nil end
+                end)
+            end);
+
+            SubTab.Container = Container;
+            Tabbox.Tabs[Name] = SubTab;
+
+            setmetatable(SubTab, BaseGroupbox);
+
+            SubTab:AddBlank(3);
+            SubTab:Resize();
+
+            if #TabboxButtons:GetChildren() == 2 then
+                SubTab:Show();
+            end;
+
+            return SubTab;
+        end;
+
+        return Tabbox;
+    end;
+
+
     -- Mirrors AddSlider's structure/behaviour (same drag pattern, Prefix/
     -- Suffix, Rounding, Display callback) but tracks two values instead of
     -- one, returned as {Low, High}.
@@ -7328,36 +7546,36 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'BackgroundColor';
     });
     
-    local TabArea = Library:Create('ScrollingFrame', {
+    -- FIX: TabArea used to be a horizontally-scrolling ScrollingFrame with
+    -- each TabButton sized to its own fixed text width (Offset, not
+    -- Scale) -- so once tabs no longer fit the window at its current
+    -- size, the user had to drag/scroll the tab bar sideways instead of
+    -- tabs simply shrinking to fit, and shrinking the window didn't
+    -- resize existing tab buttons at all. Replaced with a plain Frame
+    -- (no scrolling) where every TabButton is (1/TabCount, 0, 1, 0) wide
+    -- via RelayoutTabButtons below, so all tabs always fit across the
+    -- bar and stay evenly sized -- shrinking the window shrinks them
+    -- together automatically since they're Scale-sized. Text inside each
+    -- button uses TextScaled so labels shrink to fit rather than getting
+    -- clipped when tabs get narrow.
+    local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
         BorderSizePixel = 0;
         Position = UDim2.new(0, 4, 0, 4);
         Size = UDim2.new(1, -8, 1, -8);
-        CanvasSize = UDim2.new(0, 0, 0, 0);
-        AutomaticCanvasSize = Enum.AutomaticSize.X;
-        ScrollingDirection = Enum.ScrollingDirection.X;
-        ElasticBehavior = Enum.ElasticBehavior.Never;
-        ScrollBarThickness = 3;
-        ScrollBarImageColor3 = Library.OutlineColor;
-        TopImage = '';
-        BottomImage = '';
-        MidImage = '';
         ZIndex = 1;
         Parent = TabBarInner;
     });
-    Library:AddToRegistry(TabArea, { ScrollBarImageColor3 = 'OutlineColor' });
-    local TabListLayout = Library:Create('UIListLayout', {
-        Padding = UDim.new(0, Config.TabPadding);
-        FillDirection = Enum.FillDirection.Horizontal;
-        SortOrder = Enum.SortOrder.LayoutOrder;
-        Parent = TabArea;
-    });
-    
-    local function RefreshTabAreaCanvas()
-        TabArea.CanvasSize = UDim2.new(0, TabListLayout.AbsoluteContentSize.X, 0, 0);
+    local TabButtons = {};
+    local function RelayoutTabButtons()
+        local Count = #TabButtons;
+        if Count == 0 then return end;
+        local Width = 1 / Count;
+        for Index, Btn in ipairs(TabButtons) do
+            Btn.Size = UDim2.new(Width, 0, 1, 0);
+            Btn.Position = UDim2.new(Width * (Index - 1), 0, 0, 0);
+        end;
     end;
-    Library:GiveSignal(TabListLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(RefreshTabAreaCanvas));
-    task.defer(RefreshTabAreaCanvas);
     local MainSectionOuter = Library:Create('Frame', {
         BackgroundColor3 = Library.BackgroundColor;
         BorderColor3 = Library.OutlineColor;
@@ -7499,14 +7717,17 @@ function Library:CreateWindow(...)
         local ResolvedTabIcon = ResolveLucideIcon(Tab.Icon);
         local IconSlotWidth = ResolvedTabIcon and 18 or 0;
 
-        local TabButtonWidth = Library:GetTextBounds(Name, Library.Font, Library.FontSize + 2);
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
-            Size = UDim2.new(0, TabButtonWidth + 8 + 4 + IconSlotWidth, 1, 0);
+            -- Real Size/Position assigned by RelayoutTabButtons right
+            -- below (equal Scale width across however many tabs exist).
+            Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
         });
+        table.insert(TabButtons, TabButton);
+        RelayoutTabButtons();
         Library:AddToRegistry(TabButton, {
             BackgroundColor3 = 'BackgroundColor';
             BorderColor3 = 'OutlineColor';
@@ -7525,10 +7746,21 @@ function Library:CreateWindow(...)
         end
         local TabButtonLabel = Library:CreateLabel({
             Position = UDim2.new(0, IconSlotWidth, 0, 0);
-            Size = UDim2.new(1, -IconSlotWidth, 1, -1);
+            Size = UDim2.new(1, -IconSlotWidth - 4, 1, -1);
             Text = Name;
+            -- FIX: tabs are now Scale-sized (equal share of the bar) and
+            -- shrink together with the window, so the label needs to
+            -- shrink with them instead of getting clipped/overflowing --
+            -- TextScaled shrinks the font to fit the available space,
+            -- down to a sane floor so it never becomes unreadable.
+            TextScaled = true;
             ZIndex = 1;
             Parent = TabButton;
+        });
+        Library:Create('UITextSizeConstraint', {
+            MaxTextSize = Library.FontSize + 2;
+            MinTextSize = 7;
+            Parent = TabButtonLabel;
         });
         local TabIndicator = Library:Create('Frame', {
             BackgroundColor3 = Library.AccentColor;

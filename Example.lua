@@ -1,5 +1,7 @@
 --enjoy!
+
 local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
+
 local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
@@ -992,6 +994,48 @@ do
         Min = 0,
         Max = 10,
         Rounding = 0,
+    })
+
+    -- Nested Tabbox: a THIRD tab level living inside "Tab 1" above,
+    -- matching the reference screenshot's structure (top-level tab ->
+    -- sub-tab strip -> another sub-tab strip nested inside one of the
+    -- sub-tabs). Funcs:AddTabbox works on any BaseGroupbox-shaped
+    -- container, including a Tabbox's own sub-tab, so this nests freely.
+    TabOne:AddLabel("Nested tabbox (3rd level):", true)
+    local InnerTabbox = TabOne:AddTabbox("Weapon Category")
+
+    local GeneralTab = InnerTabbox:AddTab("General")
+    GeneralTab:AddToggle("NestedGeneralToggle", {
+        Text = "General Setting",
+        Default = false,
+    })
+
+    local PrimaryTab = InnerTabbox:AddTab("Primary")
+    PrimaryTab:AddSlider("NestedPrimarySlider", {
+        Text = "Primary Slider",
+        Default = 50,
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+    })
+
+    local SecondaryTab = InnerTabbox:AddTab("Secondary")
+    SecondaryTab:AddDropdown("NestedSecondaryDropdown", {
+        Text = "Secondary Mode",
+        Values = { "Semi", "Auto" },
+        Default = 1,
+    })
+
+    local MeleeTab = InnerTabbox:AddTab("Melee")
+    MeleeTab:AddCheckbox("NestedMeleeCheckbox", {
+        Text = "Melee Checkbox",
+        Default = false,
+    })
+
+    local UtilityTab = InnerTabbox:AddTab("Utility")
+    UtilityTab:AddInput("NestedUtilityInput", {
+        Text = "Utility Input",
+        Placeholder = "Type here...",
     })
 
     local TabTwo = Tabbox:AddTab("Tab 2")
