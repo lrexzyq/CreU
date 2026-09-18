@@ -1,9 +1,9 @@
 local HttpService = game:GetService('HttpService')
 
--- Fallback Base64 codec, used only if SaveManager.Library isn't set or
--- doesn't expose Base64Encode/Base64Decode (Library.lua defines the
--- canonical copy and exposes it as Library.Base64Encode/Base64Decode so
--- both addon files share one implementation instead of duplicating it).
+
+
+
+
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 local function LocalBase64Encode(data)
@@ -70,13 +70,13 @@ local function LocalBase64Decode(data)
     return table.concat(result)
 end
 
--- Forward-declared so the wrapper functions below close over this local
--- (and see SaveManager.Library once SetLibrary runs), not a stray global.
+
+
 local SaveManager
 
--- Prefer the Library's shared codec (set once SaveManager:SetLibrary has
--- run); these wrappers still work before that, via the local fallback
--- above, so nothing here depends on call order.
+
+
+
 local function Base64Encode(data)
     local library = SaveManager and SaveManager.Library
     if library and type(library.Base64Encode) == 'function' then
@@ -116,7 +116,16 @@ SaveManager = {} do
         name = Trim(name)
         if name == '' then return false end
         if name:find('[/\\]') then return false end
-        if name:find('%.%.', 1, true) then return false end
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        if name:find('%.%.') then return false end
         if name:find('[<>:"|%?%*]') then return false end
         if name:sub(1, 1) == '.' then return false end
         if name:sub(-5):lower() == '.json' then return false end
@@ -186,11 +195,11 @@ SaveManager = {} do
         end
     end
 
-    -- Imported/loaded config data is untrusted input (it may come from a
-    -- pasted string authored by someone else). `idx` must be a non-empty
-    -- string before it's used to index Options/Toggles, otherwise a
-    -- malformed or hand-edited config could pass a table/number/boolean
-    -- through as a key.
+    
+    
+    
+    
+    
     local function IsValidIdx(idx)
         return type(idx) == 'string' and idx ~= ''
     end
@@ -227,9 +236,9 @@ SaveManager = {} do
                     return
                 end
 
-                -- data.value must resolve to a real number; a table, nil,
-                -- or non-numeric string from a hand-edited config should
-                -- be rejected here rather than silently passed through.
+                
+                
+                
                 local numericValue = tonumber(data.value)
                 if not numericValue then
                     return
@@ -251,14 +260,14 @@ SaveManager = {} do
                     multi = object.Multi == true,
                 }
 
-                -- PriorityDropdown (AddPriorityDropdown) reuses Type ==
-                -- 'Dropdown' but tracks an additional ordered list
-                -- (`Order`) on top of the plain selection set, and its
-                -- overridden `SetValue` expects that ordered array back,
-                -- not the unordered `{[value]=true}` set. Persist `Order`
-                -- separately so re-ordering survives a save/load round
-                -- trip instead of silently collapsing to whatever order
-                -- `next()` happens to iterate the set in.
+                
+                
+                
+                
+                
+                
+                
+                
                 if object.Priority == true and type(object.Order) == 'table' then
                     local order = {}
                     for i, v in ipairs(object.Order) do
@@ -283,12 +292,12 @@ SaveManager = {} do
 
                 local isMulti = data.multi == true
 
-                -- PriorityDropdown: prefer the ordered `order` list when
-                -- present (current-format configs). `SetValue` on a
-                -- PriorityDropdown accepts either an ordered array or an
-                -- unordered set, so a config saved before this field
-                -- existed still falls through to the normal multi-select
-                -- handling below instead of failing to load.
+                
+                
+                
+                
+                
+                
                 if data.priority == true and type(data.order) == 'table' then
                     local cleanedOrder = {}
                     for _, v in ipairs(data.order) do
@@ -303,11 +312,11 @@ SaveManager = {} do
                 local value = data.value
 
                 if isMulti then
-                    -- Multi-select expects a set table of { [string] = true }.
-                    -- A pasted/edited config could hand us a plain string,
-                    -- a number, or a set with non-string/non-boolean
-                    -- entries (e.g. after a lossy JSON round-trip); rebuild
-                    -- a clean set instead of forwarding it as-is.
+                    
+                    
+                    
+                    
+                    
                     if type(value) ~= 'table' then
                         return
                     end
@@ -321,16 +330,16 @@ SaveManager = {} do
                         end
                     end
 
-                    -- An explicitly empty multi-selection is valid (clears
-                    -- the dropdown); only bail out if nothing usable came
-                    -- through AND the source table wasn't already empty.
+                    
+                    
+                    
                     if not any and next(value) ~= nil then
                         return
                     end
 
                     option:SetValue(cleaned)
                 else
-                    -- Single-select expects a bare string, or nil to clear.
+                    
                     if value ~= nil and type(value) ~= 'string' then
                         return
                     end
@@ -364,9 +373,9 @@ SaveManager = {} do
                     return
                 end
 
-                -- Require a plausible hex string (3-8 hex digits, optional
-                -- leading '#') before handing it to Color3.fromHex, rather
-                -- than relying solely on pcall to catch malformed input.
+                
+                
+                
                 local hex = data.value
                 if not hex:match('^#?%x+$') or #(hex:gsub('^#', '')) < 3 then
                     return
@@ -403,10 +412,10 @@ SaveManager = {} do
                     return
                 end
 
-                -- key must be a non-empty string (or 'None'); mode must be
-                -- one of the three modes Library actually recognizes.
-                -- `data.value` is kept only as a legacy fallback for
-                -- configs written before `key` existed.
+                
+                
+                
+                
                 local key = data.key or data.value
                 if type(key) ~= 'string' or key == '' then
                     key = 'None'
@@ -453,9 +462,9 @@ SaveManager = {} do
                     return
                 end
 
-                -- Both bounds must resolve to real numbers; reject the
-                -- whole entry (rather than applying a half-valid range)
-                -- if either one is missing or non-numeric.
+                
+                
+                
                 local low = tonumber(data.low)
                 local high = tonumber(data.high)
                 if not low or not high then
@@ -488,7 +497,11 @@ SaveManager = {} do
         end
 
         folder = Trim(folder)
-        if folder == '' or folder:find('%.%.', 1, true) or folder:find('[<>:"|%?%*]') then
+        
+        
+        
+        
+        if folder == '' or folder:find('%.%.') or folder:find('[<>:"|%?%*]') then
             return self
         end
 
@@ -505,7 +518,8 @@ SaveManager = {} do
         end
 
         local sub = Trim(folder):gsub('^[/\\]+', ''):gsub('[/\\]+$', '')
-        if sub == '' or sub:find('%.%.', 1, true) or sub:find('[/\\]') or sub:find('[<>:"|%?%*]') then
+        
+        if sub == '' or sub:find('%.%.') or sub:find('[/\\]') or sub:find('[<>:"|%?%*]') then
             return self.Folder
         end
 
@@ -526,13 +540,13 @@ SaveManager = {} do
         local data = { objects = {} }
 
         local library = self.Library
-        -- Respect IgnoreThemeSettings(): if theme-related indexes are
-        -- ignored, don't save/restore the theme name either. Previously
-        -- this saved `data.theme` unconditionally even when the five
-        -- color fields were ignored, so an autoload config saved before
-        -- "Set as default" was clicked could silently overwrite the
-        -- ThemeManager default theme on the next join with whatever
-        -- theme was current at save time (e.g. "Default").
+        
+        
+        
+        
+        
+        
+        
         if library and type(library.ThemeManager) == 'table' and not self.Ignore['ThemeManager_ThemeList'] then
             local currentTheme = library.ThemeManager.CurrentTheme
             if type(currentTheme) == 'string' and currentTheme ~= '' then
@@ -659,10 +673,10 @@ SaveManager = {} do
             return false, 'decode error'
         end
 
-        -- Guard against a malformed/malicious config claiming an
-        -- unreasonable number of objects (e.g. a huge array of junk
-        -- entries), which would otherwise stall the UI thread across many
-        -- batches even though each individual entry is cheap to skip.
+        
+        
+        
+        
         local maxObjects = math.max(1, math.floor(tonumber(self.MaxLoadObjects) or 2000))
         if #decoded.objects > maxObjects then
             local err = string.format('config has too many entries (%d > %d)', #decoded.objects, maxObjects)
@@ -703,9 +717,9 @@ SaveManager = {} do
                     end
                 end
 
-                -- Normalize a missing/blank theme to nil so we don't call
-                -- ApplyTheme('') and surface a spurious "theme unavailable"
-                -- notification for configs that simply have no theme set.
+                
+                
+                
                 local savedTheme = type(decoded.theme) == 'string' and Trim(decoded.theme) or nil
                 if savedTheme == '' then
                     savedTheme = nil
@@ -804,20 +818,20 @@ SaveManager = {} do
         return exportString
     end
 
-    -- Only version prefixes this SaveManager actually knows how to read.
-    -- A future/foreign prefix (e.g. 'CREU3:' -- that's ThemeManager's,
-    -- see below) must be rejected explicitly rather than silently
-    -- accepted and decoded as if it were CREU2 -- schema drift between
-    -- versions could otherwise apply garbage values.
-    --
-    -- Prefix scheme shared across this whole library: CREU1 = Library,
-    -- CREU2 = SaveManager (config), CREU3 = ThemeManager (theme).
+    
+    
+    
+    
+    
+    
+    
+    
     local KnownExportPrefixes = { CREU2 = true }
 
-    -- Hard ceiling on the raw import string length, before any decoding
-    -- work happens. This is a cheap first line of defense against being
-    -- handed an absurdly large paste (accidental or otherwise) that would
-    -- waste time/memory in Base64Decode/JSONDecode before validation.
+    
+    
+    
+    
     SaveManager.MaxImportStringLength = 200000
 
     function SaveManager:Import(exportString)
@@ -1073,9 +1087,9 @@ SaveManager = {} do
         end
 
         self:BuildImportExportSection(tab)
-        -- REMOVED: BuildUploadSection (config-hub--z1bje.replit.app upload
-        -- feature) — the backing web service is down, so this was removed
-        -- rather than left as a dead "Upload" button.
+        
+        
+        
         self:SetIgnoreIndexes({ 'SaveManager_ConfigList', 'SaveManager_ConfigName' })
 
         return section
@@ -1085,9 +1099,9 @@ SaveManager = {} do
         assert(self.Library, 'Must set SaveManager.Library')
         assert(tab, 'Must set a valid tab')
 
-        -- Right column: stacks under the "Configuration" groupbox
-        -- (also right column) instead of under ThemeManager's "Themes"
-        -- groupbox on the left, since Import/Export belongs with Config.
+        
+        
+        
         local IOGroup = tab:AddRightGroupbox('Import / Export')
 
         IOGroup:AddButton('Export current config to clipboard', function()

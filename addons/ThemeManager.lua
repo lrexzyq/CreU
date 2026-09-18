@@ -1,9 +1,9 @@
 local HttpService = game:GetService("HttpService")
 
--- Fallback Base64 codec, used only if ThemeManager.Library isn't set or
--- doesn't expose Base64Encode/Base64Decode (Library.lua defines the
--- canonical copy and exposes it as Library.Base64Encode/Base64Decode so
--- both addon files share one implementation instead of duplicating it).
+
+
+
+
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 local function LocalBase64Encode(data)
@@ -70,13 +70,13 @@ local function LocalBase64Decode(data)
     return table.concat(result)
 end
 
--- Forward-declared so the wrapper functions below close over this local
--- (and see ThemeManager.Library once SetLibrary runs), not a stray global.
+
+
 local ThemeManager
 
--- Prefer the Library's shared codec (set once ThemeManager:SetLibrary has
--- run); these wrappers still work before that, via the local fallback
--- above, so nothing here depends on call order.
+
+
+
 local function Base64Encode(data)
     local library = ThemeManager and ThemeManager.Library
     if library and type(library.Base64Encode) == 'function' then
@@ -122,7 +122,11 @@ do
             return false
         end
 
-        if Name:find("[/\\]") or Name:find("%.%.", 1, true) or Name:find('[<>:"|%?%*]') then
+        
+        
+        
+        
+        if Name:find("[/\\]") or Name:find("%.%.") or Name:find('[<>:"|%?%*]') then
             return false
         end
 
@@ -581,14 +585,14 @@ do
             Default = ""
         })
 
-        -- Import always applies live only, never touching disk. This is
-        -- deliberately independent of whatever is currently sitting in
-        -- the "Custom theme name" input (used by the unrelated "Save
-        -- theme" button above) -- reusing that leftover text here would
-        -- mean an import could silently overwrite a saved theme file the
-        -- person never intended to touch, just because they'd typed a
-        -- name into that box earlier for something else. Saving an
-        -- imported theme is a separate, explicit action below.
+        
+        
+        
+        
+        
+        
+        
+        
         Groupbox:AddButton("Import from string", function()
             local Input = self:GetOption("ThemeManager_ImportString")
             local Raw = Input and Input.Value
@@ -624,10 +628,10 @@ do
             Notify(self, "Theme imported from clipboard")
         end)
 
-        -- Explicit, separate action for "import this string AND save it
-        -- as a named custom theme" -- requires the name box to actually
-        -- be filled in on purpose, rather than inferring intent to save
-        -- from whatever text happens to be sitting there.
+        
+        
+        
+        
         Groupbox:AddButton("Import and save as", function()
             local Input = self:GetOption("ThemeManager_ImportString")
             local NameOption = self:GetOption("ThemeManager_CustomThemeName")
@@ -769,11 +773,11 @@ do
         return true
     end
 
-    -- Mirrors SaveManager:Delete: validate the name, refuse to touch
-    -- built-in themes, confirm the file actually exists before attempting
-    -- delfile, and clear default.txt if the deleted theme was the default
-    -- (otherwise LoadDefault would keep pointing at a file that no longer
-    -- exists).
+    
+    
+    
+    
+    
     function ThemeManager:DeleteCustomTheme(File)
         File = Trim(File)
 
@@ -805,15 +809,15 @@ do
         return true
     end
 
-    -- Only version prefixes this ThemeManager actually knows how to read.
-    --
-    -- Prefix scheme shared across this whole library: CREU1 = Library,
-    -- CREU2 = SaveManager (config), CREU3 = ThemeManager (theme). Using
-    -- the same 'CREU' family (instead of a separate 'CRUT' prefix) means
-    -- a string copy-pasted into the wrong box (theme string into config
-    -- import, or vice versa) is still rejected immediately -- the number
-    -- right after CREU tells them apart (2 vs 3), so decoding as the
-    -- wrong kind of data can't happen either way.
+    
+    
+    
+    
+    
+    
+    
+    
+    
     local KnownThemeExportPrefixes = { CREU3 = true }
     ThemeManager.MaxImportStringLength = 20000
 
@@ -833,10 +837,10 @@ do
                 return nil, "theme does not exist"
             end
         else
-            -- No name given: export the colors currently applied, the
-            -- same source ApplyTheme reads from and SaveCustomTheme
-            -- writes from, so "export current" always matches what the
-            -- user is actually looking at right now.
+            
+            
+            
+            
             local Options = GetOptions(self)
             Scheme = {}
 
@@ -853,11 +857,11 @@ do
             end
         end
 
-        -- Re-validate every field is a hex string Color3.fromHex accepts,
-        -- regardless of source (built-in table, theme file, or live
-        -- options) -- this is the same shape check GetCustomTheme applies
-        -- to files loaded from disk, applied here uniformly before we
-        -- ever hand the data out as a shareable string.
+        
+        
+        
+        
+        
         local Data = {}
         for _, Field in ipairs(ThemeFields) do
             local Hex = Scheme[Field]
@@ -931,9 +935,9 @@ do
             return false, "invalid or corrupted theme string"
         end
 
-        -- Every field must be present and a hex string Color3.fromHex
-        -- accepts before we touch anything -- reject the whole import
-        -- rather than applying a partial/mismatched theme.
+        
+        
+        
         for _, Field in ipairs(ThemeFields) do
             if type(Decoded[Field]) ~= "string" then
                 return false, "theme string is missing " .. Field
@@ -981,11 +985,11 @@ do
             return true, Name
         end
 
-        -- No name given: apply directly without persisting to disk. This
-        -- mirrors ApplyTheme's field loop rather than calling ApplyTheme
-        -- itself, since ApplyTheme only knows how to look up themes by
-        -- name (built-in or already-saved custom) -- an unsaved imported
-        -- theme has neither.
+        
+        
+        
+        
+        
         self._ApplyingTheme = true
 
         local Options = GetOptions(self)
@@ -1010,11 +1014,11 @@ do
 
         self.CurrentTheme = nil
 
-        -- Neither dropdown reflects an unsaved, directly-applied theme
-        -- (it has no name to match), so clear their selection the same
-        -- way the manual color-picker path does via UpdateTheme --
-        -- otherwise the UI would keep showing a stale theme name while
-        -- the actual colors have already changed underneath it.
+        
+        
+        
+        
+        
         if Options then
             local BuiltInList = Options.ThemeManager_ThemeList
             local CustomList = Options.ThemeManager_CustomThemeList
@@ -1099,7 +1103,8 @@ do
 
         Folder = Trim(Folder)
 
-        if Folder ~= "" and not Folder:find("%.%.", 1, true) and not Folder:find('[<>:"|%?%*]') then
+        
+        if Folder ~= "" and not Folder:find("%.%.") and not Folder:find('[<>:"|%?%*]') then
             self.Folder = Folder:gsub('[/\\]+', '/')
             self:BuildFolderTree()
         end
