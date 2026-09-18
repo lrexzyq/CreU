@@ -7925,9 +7925,6 @@ function Library:CreateWindow(...)
                 if SubTab._SubTabState and SubTab._SubTabState.Current then
                     SubTab._SubTabState.Current:Resize()
                 end
-                if type(State.GetParentResize) == 'function' then
-                    State.GetParentResize()
-                end
                 return SubTab
             end
 
@@ -7949,9 +7946,6 @@ function Library:CreateWindow(...)
                 UpdatePageCanvas(SubTab)
                 if SubTab._SubTabState and SubTab._SubTabState.Current then
                     SubTab._SubTabState.Current:Resize()
-                end
-                if type(State.GetParentResize) == 'function' then
-                    State.GetParentResize()
                 end
                 return SubTab
             end
@@ -8050,9 +8044,7 @@ function Library:CreateWindow(...)
                         ClipsDescendants = true,
                     })
                     SubTab.NestedRoot = NestedRoot
-                    ChildState = CreateSubTabSystem(Self, NestedRoot, function()
-                        Self:Resize()
-                    end)
+                    ChildState = CreateSubTabSystem(Self, NestedRoot, nil)
                     ChildState.Depth = (State.Depth or 0) + 1
                 end
                 SubTabHost.Visible = State.Current == SubTab
