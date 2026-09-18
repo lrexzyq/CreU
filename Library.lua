@@ -7731,6 +7731,7 @@ function Library:CreateWindow(...)
             Position = UDim2.new(0, 4, 0, 32),
             Size = UDim2.new(1, -8, 1, -36),
             ZIndex = 2,
+            ClipsDescendants = true,
             Parent = ParentFrame,
         })
 
@@ -7764,6 +7765,9 @@ function Library:CreateWindow(...)
         end
 
         local function SetButtonState(SubTab, Active)
+            if not SubTab.Button then
+                return
+            end
             if Active then
                 SubTab.Button.BackgroundColor3 = Library.BackgroundColor
                 Library.RegistryMap[SubTab.Button].Properties.BackgroundColor3 = 'BackgroundColor'
@@ -7800,8 +7804,9 @@ function Library:CreateWindow(...)
                 Name = Name,
                 Icon = Info.Icon or Info.IconName,
                 Description = Info.Description,
-                ParentTab = Parent.ParentTab or Parent,
-                ParentSubTab = Parent._SubTabParent,
+                IsSubTab = true,
+                ParentTab = Parent.IsSubTab and Parent.ParentTab or Parent,
+                ParentSubTab = Parent.IsSubTab and Parent or nil,
                 SubTabs = {},
             }
 
@@ -7858,6 +7863,16 @@ function Library:CreateWindow(...)
             })
             Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor' })
 
+            local SubTabHost = Library:Create('Frame', {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 0, 0, 0),
+                Size = UDim2.new(1, 0, 1, 0),
+                Visible = false,
+                ZIndex = 3,
+                ClipsDescendants = true,
+                Parent = ContentRoot,
+            })
+
             local ControlsPage = Library:Create('ScrollingFrame', {
                 BackgroundTransparency = 1,
                 BorderSizePixel = 0,
@@ -7868,8 +7883,8 @@ function Library:CreateWindow(...)
                 TopImage = '',
                 ScrollBarThickness = 2,
                 Visible = false,
-                ZIndex = 2,
-                Parent = ContentRoot,
+                ZIndex = 3,
+                Parent = SubTabHost,
             })
             local ControlsLayout = Library:Create('UIListLayout', {
                 FillDirection = Enum.FillDirection.Vertical,
@@ -7889,6 +7904,7 @@ function Library:CreateWindow(...)
             SubTab.Highlight = Highlight
             SubTab.Label = Label
             SubTab.IconLabel = IconLabel
+            SubTab.Host = SubTabHost
             setmetatable(SubTab, BaseGroupbox)
 
             function SubTab:Show()
@@ -7898,6 +7914,7 @@ function Library:CreateWindow(...)
                     end
                 end
                 local HasNested = SubTab._SubTabState ~= nil
+                SubTabHost.Visible = true
                 ControlsPage.Visible = not HasNested
                 if SubTab.NestedRoot then
                     SubTab.NestedRoot.Visible = HasNested
@@ -7905,6 +7922,9 @@ function Library:CreateWindow(...)
                 SetButtonState(SubTab, true)
                 State.Current = SubTab
                 UpdatePageCanvas(SubTab)
+                if SubTab._SubTabState and SubTab._SubTabState.Current then
+                    SubTab._SubTabState.Current:Resize()
+                end
                 if type(State.GetParentResize) == 'function' then
                     State.GetParentResize()
                 end
@@ -7912,6 +7932,7 @@ function Library:CreateWindow(...)
             end
 
             function SubTab:Hide()
+                SubTabHost.Visible = false
                 ControlsPage.Visible = false
                 if SubTab.NestedRoot then
                     SubTab.NestedRoot.Visible = false
@@ -7926,6 +7947,9 @@ function Library:CreateWindow(...)
             function SubTab:Resize()
                 UpdateButtons()
                 UpdatePageCanvas(SubTab)
+                if SubTab._SubTabState and SubTab._SubTabState.Current then
+                    SubTab._SubTabState.Current:Resize()
+                end
                 if type(State.GetParentResize) == 'function' then
                     State.GetParentResize()
                 end
@@ -7933,8 +7957,17 @@ function Library:CreateWindow(...)
             end
 
             function SubTab:SetName(NewName)
-                SubTab.Name = tostring(NewName or 'SubTab')
-                Label.Text = SubTab.Name
+                local OldName = SubTab.Name
+                local NameValue = tostring(NewName or 'SubTab')
+                if State.Tabs[NameValue] and State.Tabs[NameValue] ~= SubTab then
+                    return SubTab
+                end
+                if OldName ~= NameValue then
+                    State.Tabs[OldName] = nil
+                    State.Tabs[NameValue] = SubTab
+                end
+                SubTab.Name = NameValue
+                Label.Text = NameValue
                 return SubTab
             end
 
@@ -7952,6 +7985,7 @@ function Library:CreateWindow(...)
                             Parent = Button,
                         })
                         Library:AddToRegistry(IconLabel, { ImageColor3 = 'FontColor' })
+                        SubTab.IconLabel = IconLabel
                     end
                     IconLabel.Image = NewImage
                     IconLabel.Visible = true
@@ -7966,10 +8000,23 @@ function Library:CreateWindow(...)
             end
 
             function SubTab:IsVisible()
-                return State.Current == SubTab and (ControlsPage.Visible or (SubTab.NestedRoot and SubTab.NestedRoot.Visible))
+                if State.Current ~= SubTab or not SubTabHost.Visible then
+                    return false
+                end
+                local Ancestor = SubTab.ParentSubTab
+                while Ancestor do
+                    if not Ancestor.Host or not Ancestor.Host.Visible then
+                        return false
+                    end
+                    Ancestor = Ancestor.ParentSubTab
+                end
+                return true
             end
 
             function SubTab:Select()
+                if SubTab.ParentSubTab and not SubTab.ParentSubTab:IsVisible() then
+                    SubTab.ParentSubTab:Select()
+                end
                 return SubTab:Show()
             end
 
@@ -7993,26 +8040,33 @@ function Library:CreateWindow(...)
             SubTab.AddSubTab = function(Self, ChildInfo)
                 local ChildState = Self._SubTabState
                 if not ChildState then
-                    ControlsPage.Visible = false
                     local NestedRoot = Library:Create('Frame', {
                         BackgroundTransparency = 1,
                         Position = UDim2.new(0, 0, 0, 0),
                         Size = UDim2.new(1, 0, 1, 0),
-                        ZIndex = 3,
-                        Parent = ControlsPage.Parent,
+                        ZIndex = 4,
+                        Parent = SubTabHost,
                         Visible = false,
+                        ClipsDescendants = true,
                     })
                     SubTab.NestedRoot = NestedRoot
                     ChildState = CreateSubTabSystem(Self, NestedRoot, function()
                         Self:Resize()
                     end)
                     ChildState.Depth = (State.Depth or 0) + 1
-                    NestedRoot.Visible = true
                 end
+                SubTabHost.Visible = State.Current == SubTab
+                ControlsPage.Visible = false
+                SubTab.NestedRoot.Visible = State.Current == SubTab
                 return ChildState:Add(ChildInfo)
             end
 
             State.Tabs[Name] = SubTab
+
+            Button.Activated:Connect(function()
+                SubTab:Show()
+            end)
+
             UpdateButtons()
             SubTab:Resize()
             if not State.Current then
