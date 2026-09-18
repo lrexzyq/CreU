@@ -10,11 +10,11 @@ local RenderStepped = RunService.RenderStepped;
 local LocalPlayer = Players.LocalPlayer;
 local Mouse = LocalPlayer:GetMouse();
 
--- Lucide icon name -> rbxassetid mapping.
--- Source: https://github.com/Snxdfer/Roblox-UI-Libraries/blob/main/rbxassetidIcons.lua
--- Keys here are stored WITHOUT the "lucide-" prefix (e.g. "user", "wifi",
--- "crosshair") since that's how Icon values are passed throughout this
--- codebase (AddTab({Icon="crosshair"}), Watermark segments, etc.).
+
+
+
+
+
 local LucideIcons = {
     ["accessibility"] = "rbxassetid://10709751939",
     ["activity"] = "rbxassetid://10709752035",
@@ -836,20 +836,20 @@ local LucideIcons = {
     ["zoom-out"] = "rbxassetid://10747384679",
 }
 
--- Resolves an Icon/Image value used throughout this library (Tab, Groupbox,
--- Watermark segment, AddImage control) into something Roblox's ImageLabel
--- can actually display:
---   * a number             -> "rbxassetid://<n>"
---   * "rbxassetid://..." / "http..." -> passed through as-is
---   * a bare Lucide name like "user", "wifi", "crosshair" (with or without
---     the "lucide-" prefix) -> looked up in LucideIcons above
--- Previously each caller had its own narrower resolver (ResolveIcon only
--- handled the first two cases; ResolveImage didn't even do that, it just
--- passed strings through unchanged) and neither understood bare Lucide
--- names, even though "crosshair", "user", "wifi" etc. are used everywhere
--- in Example.lua/Tab icons/Watermark segments -- those icons silently
--- rendered as nothing. This is now the single place all of them resolve
--- through.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 local function ResolveLucideIcon(IconValue)
     if type(IconValue) == 'number' then
         return 'rbxassetid://' .. tostring(IconValue);
@@ -870,12 +870,12 @@ local function ResolveLucideIcon(IconValue)
 end;
 
 
--- Shared Base64 codec, used by SaveManager/ThemeManager for their
--- Export/Import strings. Defined once here instead of duplicated in both
--- addon files; exposed below as Library.Base64Encode/Base64Decode so those
--- files can call Library.Base64Encode/Base64Decode when a Library is set,
--- and fall back to their own local copy otherwise (e.g. if someone loads
--- SaveManager/ThemeManager standalone without a Library instance).
+
+
+
+
+
+
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 local function Base64Encode(data)
@@ -1014,19 +1014,19 @@ local Library = {
 Library.Options = Options;
 Library.Toggles = Toggles;
 
--- Exposed so addons (SaveManager/ThemeManager) can share one Base64
--- implementation instead of each keeping their own copy.
+
+
 Library.Base64Encode = Base64Encode;
 Library.Base64Decode = Base64Decode;
 
--- Shared export-string prefix family used across this whole library, so
--- a string copy-pasted into the wrong box is rejected immediately
--- instead of being decoded as if it were the right kind of data:
---   CREU1 = Library   (reserved; Library itself doesn't export a string
---                       today, but the number is reserved so nothing
---                       else ever reuses it)
---   CREU2 = SaveManager (config export/import, see SaveManager.lua)
---   CREU3 = ThemeManager (theme export/import, see ThemeManager.lua)
+
+
+
+
+
+
+
+
 Library.ExportPrefix = 'CREU1';
 
 Library.KeyPickerList = {};
@@ -1183,17 +1183,17 @@ function Library:ApplyTextStroke(Inst)
 end;
 
 function Library:ApplyGlow(Inst)
-    -- Soft outer glow used behind the on-screen keybind list, built from
-    -- plain Frame/UIStroke/UIGradient instances only (no external asset
-    -- id), so it can't silently stop rendering if a remote asset is ever
-    -- taken down. Layered translucent frames, each slightly larger than
-    -- Inst and centered on it, approximate a glow falloff.
-    --
-    -- Parented as a SIBLING of Inst (not a child): a child's ZIndex only
-    -- orders it against other children of the same parent, so a lower
-    -- ZIndex than Inst itself would NOT push it behind Inst - it would
-    -- still draw on top, just behind other children. Sitting next to Inst
-    -- with a lower ZIndex actually renders it behind.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     local GlowHolder = Library:Create('Frame', {
         AnchorPoint = Inst.AnchorPoint;
         BackgroundTransparency = 1;
@@ -1230,8 +1230,8 @@ function Library:ApplyGlow(Inst)
         });
     end
 
-    -- Inst may move (it's draggable) after this runs; keep the glow glued
-    -- to it instead of freezing at its position/size/anchor at call time.
+    
+    
     Inst:GetPropertyChangedSignal('Position'):Connect(function()
         GlowHolder.Position = Inst.Position;
     end);
@@ -1284,17 +1284,17 @@ function Library:BeginGesture(Input, AllowCurrent)
         return false
     end
     if Library.ActiveGestureInput ~= nil then
-        -- FIX (kẹt UI vĩnh viễn trên mobile): nếu ứng dụng bị chuyển nền
-        -- (cuộc gọi đến, Home button, thông báo che màn hình...) trong lúc
-        -- đang giữ 1 gesture, một số thiết bị/phiên bản Roblox không phát
-        -- InputEnded cho input đó khi quay lại app. Safety-net toàn cục cũ
-        -- (ở dưới, lắng nghe InputEnded) chỉ giải phóng đúng input đang bị
-        -- kẹt, nhưng nếu input đó không bao giờ nhận InputEnded thì khoá
-        -- không bao giờ được gỡ -> mọi BeginGesture() sau đó luôn trả về
-        -- false, toàn bộ nút/kéo/resize trong UI ngừng phản hồi vĩnh viễn.
-        -- Đặt hạn 15 giây: không thao tác kéo/giữ bình thường nào của con
-        -- người kéo dài như vậy, nên quá hạn thì coi như input cũ đã "chết"
-        -- và tự động giải phóng để input mới có thể chiếm gesture.
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         if Library.ActiveGestureStartedAt and (os.clock() - Library.ActiveGestureStartedAt) > 15 then
             Library:CancelGesture()
         else
@@ -1348,16 +1348,16 @@ function Library:CancelGesture()
     end
 end
 
--- Wires up a press/release click on Instance the same way AddButton does
--- internally: BeginGesture on InputBegan, then wait for the matching
--- InputEnded before calling EndGesture and firing Callback, and only if
--- the pointer didn't move more than a few pixels away (so a
--- press-drag-release off the button doesn't count as a click, and the
--- global gesture lock stays held for the button's full press instead of
--- being released the instant it's pressed). Used by every plain
--- click-button built outside of AddButton (KeySystem, Confirm,
--- NotifyWithActions) so they share the same input semantics as the
--- rest of the library instead of firing on mouse-down.
+
+
+
+
+
+
+
+
+
+
 function Library:SimpleClick(Instance, Callback)
     Instance.InputBegan:Connect(function(Input)
         local InputType = Input.UserInputType
@@ -1545,8 +1545,8 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         Tooltip.Visible = false
     end)
 
-    -- FIX: return a handle so callers (e.g. Funcs:SetTooltip) can update the
-    -- tooltip text live instead of it being frozen at creation time.
+    
+    
     local Handle = { Frame = Tooltip, Label = Label }
     function Handle:SetText(NewText)
         NewText = tostring(NewText or '')
@@ -2502,13 +2502,13 @@ do
             _Initializing = true;
         };
 
-        -- NoUI keybinds never show in the on-screen Keybinds panel: Update()
-        -- returns immediately for them (see below), by design, for things
-        -- like a menu-toggle key that shouldn't clutter the list. This is a
-        -- common source of "I bound a key but it's not on the Keybinds
-        -- list" confusion when NoUI is copied from an example alongside a
-        -- real feature keybind. Surface it once, opt-in via
-        -- Library.DebugKeybinds, instead of failing silently.
+        
+        
+        
+        
+        
+        
+        
         if KeyPicker.NoUI and Library.DebugKeybinds then
             warn(string.format('[Library] KeyPicker %q created with NoUI = true; it will never appear in the Keybinds panel.', tostring(Idx)))
         end
@@ -2646,11 +2646,11 @@ do
             Text = '',
             AutoButtonColor = false,
             Active = InputService.TouchEnabled,
-            -- FIX: was ZIndex 112, lower than ContainerLabel's 113 below.
-            -- Reported as "tapping the mobile Show Keybinds entry does
-            -- nothing" -- raising this above the label removes any chance
-            -- of the label's Z-order stealing the tap before this button
-            -- sees it.
+            
+            
+            
+            
+            
             ZIndex = 114,
             Parent = KeybindEntry,
         })
@@ -2748,17 +2748,17 @@ do
                 if Mode ~= 'Hold' then
                     KeyPicker.MobileHeld = false
                 end
-                -- FIX: switching modes didn't reset Toggled, so a value left
-                -- over from the previous mode leaked into the new one. Most
-                -- visibly: 'Always' forces GetState() to true on every tap
-                -- (see SetMobileBindState) without ever touching Toggled
-                -- back to false, so after switching to 'Toggle' the very
-                -- first tap flipped an already-true Toggled to false —
-                -- turning the feature OFF on what looked like the first
-                -- "turn it on" tap ("bấm vào không bật mà lỗi rất ngáo").
-                -- Reset to a clean, predictable false whenever the mode
-                -- actually changes, regardless of which mode it's leaving
-                -- or entering.
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
                 if PreviousMode ~= Mode then
                     KeyPicker.Toggled = false
                 end
@@ -3021,11 +3021,11 @@ do
                 elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
                     Key = 'MB2'
                 elseif Input.UserInputType == Enum.UserInputType.Touch then
-                    -- FIX: on mobile there's no physical key to press, so
-                    -- Picking previously stayed true forever after tapping
-                    -- the box -- the "..." animation just ran with no way
-                    -- out ("bấm vô chẳng có gì"). A tap here cancels picking
-                    -- (same as Escape) instead of hanging indefinitely.
+                    
+                    
+                    
+                    
+                    
                     StopPicking()
                     DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
                     KeyPicker:Update()
@@ -3041,15 +3041,15 @@ do
             end)
             Library:GiveSignal(Event)
 
-            -- FIX: some environments/executors don't fire InputBegan
-            -- reliably for keyboard keys while a control (like this
-            -- TextButton) has just received a mouse click -- reported as
-            -- "the box shows the picking animation but pressing a key does
-            -- nothing." InputBegan continues to work fine for keys that are
-            -- already bound (that's a separate, always-connected listener
-            -- below), so this only patches the picking moment itself.
-            -- Poll every Heartbeat with IsKeyDown as a keyboard fallback;
-            -- it does not depend on InputBegan firing at all.
+            
+            
+            
+            
+            
+            
+            
+            
+            
             local KeyboardKeys
             local function GetKeyboardKeys()
                 if not KeyboardKeys then
@@ -3148,16 +3148,16 @@ do
             if Library:MouseIsOverOpenedFrame(Input.Position) then
                 return;
             end;
-            -- FIX: previously this only listened for MouseButton1 or Touch,
-            -- so MouseButton2 (right-click, meant to clear the bind on PC)
-            -- was never handled at all here -- right-clicking did nothing.
-            -- Touch fell into the same "else" branch that was written for
-            -- MouseButton2, so on mobile, tapping the key display cleared
-            -- the bind instead of opening picking (unlike GearButton just
-            -- above, which correctly treats a tap-without-move as a left
-            -- click). Now: MouseButton1 or a non-moving Touch tap opens
-            -- picking (Touch can't type a specific key, but at least it no
-            -- longer wipes the bind); MouseButton2 clears it, as intended.
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1
                 and Input.UserInputType ~= Enum.UserInputType.MouseButton2
                 and Input.UserInputType ~= Enum.UserInputType.Touch then
@@ -3178,9 +3178,9 @@ do
                 Library:EndGesture(Input)
                 BeginPicking();
             else
-                -- Touch: only open picking on a tap that doesn't move (a
-                -- drag/swipe shouldn't trigger it), mirroring GearButton's
-                -- touch handling above.
+                
+                
+                
                 local StartPosition = Input.Position;
                 local TouchMoved = false;
                 local ChangedConn, EndedConn;
@@ -3366,10 +3366,10 @@ do
     function Funcs:SetTooltip(Text)
         self.Tooltip = Text
 
-        -- FIX: previously this only stored the text on the object without
-        -- touching the UI, so the on-screen tooltip never changed. If a
-        -- tooltip handle exists (control was created with `Info.Tooltip`),
-        -- update its live text too.
+        
+        
+        
+        
         if self._TooltipHandle and type(self._TooltipHandle.SetText) == 'function' then
             self._TooltipHandle:SetText(Text)
         end
@@ -4090,11 +4090,11 @@ do
         return Textbox;
     end;
 
-    -- ================= Multi-line Textbox =================
-    -- Same Value/SetValue/OnChanged/Callback contract as AddInput, but
-    -- backed by a taller, MultiLine=true TextBox (notes, scripts, JSON
-    -- blobs, etc). Registered in Options like AddInput so SaveManager's
-    -- existing 'Input' parser can save/load it without changes.
+    
+    
+    
+    
+    
     function Funcs:AddMultiTextbox(Idx, Info)
         Info = type(Info) == 'table' and Info or {}
         assert(Info.Text, 'AddMultiTextbox: Missing `Text` string.')
@@ -4184,12 +4184,12 @@ do
                 Text = Text:sub(1, Info.MaxLength)
             end
             Textbox.Value = Text
-            -- Only reassign Box.Text when it actually changed (e.g. after
-            -- truncating to MaxLength): the live GetPropertyChangedSignal
-            -- listener below calls SetValue on every keystroke, so an
-            -- unconditional Box.Text = Text here would refire that signal
-            -- and run the whole callback chain a second time for the same
-            -- final value.
+            
+            
+            
+            
+            
+            
             if Box.Text ~= Text then
                 Box.Text = Text
             end
@@ -5495,33 +5495,33 @@ function Funcs:AddDropdown(Idx, Info)
         return Depbox;
     end;
 
-    -- ================= Nested Tabbox (works on any Groupbox/Tabbox-tab) =================
-    -- Same structure/behaviour as Window's Tab:AddTabbox (sub-tab strip
-    -- with content panels below it), but defined on Funcs so it works on
-    -- ANY container that has a Groupbox-shaped .Container -- most
-    -- importantly, on the `Tab` object returned by Tabbox:AddTab, which
-    -- is setmetatable'd to BaseGroupbox further up this file. That's what
-    -- makes nesting possible: a top-level Window Tab (Main/Visuals/...)
-    -- can hold a Tabbox (Legit/Rage), and each of ITS tabs can hold
-    -- another Tabbox (General/Primary/Secondary/Melee/Utility) -- three
-    -- levels of tabs stacked on top of each other, matching the
-    -- reference screenshot's layout (top-level tab, sub-tab strip below
-    -- it, and a further sub-tab strip below that inside a sub-tab).
-    -- Window's own Tab:AddTabbox is untouched and still used for the
-    -- top-level Legit/Rage-style strip directly on a window tab; this is
-    -- for adding one MORE level inside an existing tab/groupbox.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     function Funcs:AddTabbox(Info)
         Info = type(Info) == 'table' and Info or { Name = Info }
         local Tabbox = { Tabs = {} };
 
-        -- Named distinctly from `self` on purpose: `self` gets shadowed
-        -- by SubTab's own `self` inside every `function SubTab:Method()`
-        -- below (that's just how Lua's `:` sugar works), so a bubble-up
-        -- call like `self:Resize()` inside SubTab:Resize would actually
-        -- mean "call SubTab:Resize on itself" -- infinite-recursion-shaped
-        -- footgun, not "resize my parent". ParentGroupbox always refers
-        -- to the container AddTabbox was called on, regardless of which
-        -- method body it's read from.
+        
+        
+        
+        
+        
+        
+        
+        
         local ParentGroupbox = self;
         local Parent = ParentGroupbox.Container;
 
@@ -5654,10 +5654,10 @@ function Funcs:AddDropdown(Idx, Info)
                     end;
                 end;
                 BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
-                -- Bubble the resize up so the outer tab/groupbox this
-                -- Tabbox lives in also recalculates its own height --
-                -- otherwise a nested Tabbox's content could get clipped
-                -- by its parent's fixed size.
+                
+                
+                
+                
                 if type(ParentGroupbox.Resize) == 'function' then
                     ParentGroupbox:Resize();
                 end
@@ -5714,9 +5714,9 @@ function Funcs:AddDropdown(Idx, Info)
     end;
 
 
-    -- Mirrors AddSlider's structure/behaviour (same drag pattern, Prefix/
-    -- Suffix, Rounding, Display callback) but tracks two values instead of
-    -- one, returned as {Low, High}.
+    
+    
+    
     function Funcs:AddRangeSlider(Idx, Info)
         Info = type(Info) == 'table' and Info or {}
         assert(Info.Text, 'AddRangeSlider: Missing slider text.');
@@ -5851,8 +5851,8 @@ function Funcs:AddDropdown(Idx, Info)
             Library:SafeCallback(RangeSlider.Changed, RangeSlider.Low, RangeSlider.High)
         end
 
-        -- Whichever handle (Low or High) is nearer to the press point gets
-        -- dragged; matches the common two-thumb range-slider convention.
+        
+        
         SliderInner.InputBegan:Connect(function(Input)
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
                 if not Library:BeginGesture(Input) then return end
@@ -5875,12 +5875,12 @@ function Funcs:AddDropdown(Idx, Info)
                         RangeSlider.High = math.max(nValue, RangeSlider.Low)
                     end
 
-                    -- Matches AddSlider's convention of only firing
-                    -- callbacks when the value actually moved -- without
-                    -- this, dragging past the other handle (where the
-                    -- min/max clamp above holds the value steady) would
-                    -- still re-fire the callback on every InputChanged
-                    -- event for no actual change.
+                    
+                    
+                    
+                    
+                    
+                    
                     if RangeSlider.Low ~= OldLow or RangeSlider.High ~= OldHigh then
                         RangeSlider:Display()
                         Library:SafeCallback(RangeSlider.Callback, RangeSlider.Low, RangeSlider.High)
@@ -5924,13 +5924,13 @@ function Funcs:AddDropdown(Idx, Info)
         return RangeSlider
     end;
 
-    -- ================= ProgressBar (read-only, no user input) =================
-    -- Visual-only indicator (download/health/progress). Not registered in
-    -- Options since it has no user-settable Value to persist; exposes
-    -- SetProgress(value) for scripts to drive it directly. SetProgress
-    -- auto-detects scale: pass 0-1 for a fraction, or >1 to be treated as
-    -- a 0-100 percentage (e.g. SetProgress(45) and SetProgress(0.45) are
-    -- equivalent) -- there's no separate config flag for this.
+    
+    
+    
+    
+    
+    
+    
     function Funcs:AddProgressBar(Info)
         Info = type(Info) == 'table' and Info or {}
         local Groupbox = self
@@ -6006,8 +6006,8 @@ function Funcs:AddDropdown(Idx, Info)
             end
         end
 
-        -- Accepts either a 0-1 fraction or, if Percent is passed >1, treats
-        -- it as a 0-100 percentage for convenience.
+        
+        
         function ProgressBar:SetProgress(Value)
             Value = tonumber(Value) or 0
             if Value > 1 then Value = Value / 100 end
@@ -6028,9 +6028,9 @@ function Funcs:AddDropdown(Idx, Info)
         return ProgressBar
     end;
 
-    -- ================= Image / Icon display =================
-    -- Static image control (banners, icons, previews). Accepts a Roblox
-    -- asset id (number or 'rbxassetid://...' string) or a raw image URL.
+    
+    
+    
     function Funcs:AddImage(Info)
         Info = type(Info) == 'table' and Info or {}
         local Groupbox = self
@@ -6140,9 +6140,9 @@ end;
 do
     Library.NotificationArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        -- Position/AnchorPoint set below by Library_UpdateNotifAlignment(),
-        -- which runs once immediately after setup -- no need to compute
-        -- them twice here.
+        
+        
+        
         Size = UDim2.new(0, 300, 1, -Library.NotifyConfig.PositionY);
         ZIndex = 100;
         Parent = ScreenGui;
@@ -6164,18 +6164,18 @@ do
 
         area.Size = UDim2.new(0, 300, 1, -cfg.PositionY)
 
-        -- FIX: previously area.Position/AnchorPoint were set the same
-        -- way (AnchorPoint (0,0), Position from the left edge) for every
-        -- Alignment value, and only layout.HorizontalAlignment changed.
-        -- That only re-arranges notifications *inside* the fixed
-        -- 300px-wide area sitting at the left edge -- it never actually
-        -- moved the area itself to the right side or center of the
-        -- screen, so SetNotifySide('Right') looked like it did nothing
-        -- (or left things stuck near center-left) on a normal PC-width
-        -- viewport. The area's anchor/position now follows Alignment so
-        -- it actually docks to the requested screen edge, while
-        -- HorizontalAlignment keeps stacked notifications of different
-        -- widths lined up on the correct inner edge of that area.
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         local align = cfg.Alignment or 'Left'
         if align == 'Left' then
             layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -6488,11 +6488,11 @@ function Library:SetNotificationConfig(Config)
     if Library.UpdateNotifAlignment then Library.UpdateNotifAlignment() end
 end
 
--- ================= Notification with action buttons =================
--- Same visual shell as Notify, but adds up to 2 buttons under the text
--- that invoke a callback and then dismiss the toast. Time is optional;
--- pass nil/0 to keep the notification up until a button is pressed
--- (useful for "Undo" / "Confirm" style toasts).
+
+
+
+
+
 function Library:NotifyWithActions(Text, Buttons, Time)
     Buttons = type(Buttons) == 'table' and Buttons or {}
     Library._NotificationHistory = Library._NotificationHistory or {}
@@ -6509,8 +6509,8 @@ function Library:NotifyWithActions(Text, Buttons, Time)
     local ButtonRowHeight = (#Buttons > 0) and 26 or 0
     local YSize = TextHeight + ButtonRowHeight
 
-    -- Width needs to fit the longer of: the text, or all buttons laid
-    -- out side by side with padding -- otherwise labels get clipped.
+    
+    
     local ButtonsWidth = 0
     for _, Btn in ipairs(Buttons) do
         local bw = Library:GetTextBounds(Btn.Text or 'Button', Library.Font, Library.FontSize)
@@ -6668,13 +6668,13 @@ function Library:NotifyWithActions(Text, Buttons, Time)
     return { Dismiss = function() task.spawn(Dismiss) end }
 end;
 
--- ================= Confirm dialog (modal Yes/No) =================
--- Blocking-style confirm box: shows a centered modal with a message and
--- Confirm/Cancel buttons, and invokes Callback(true) or Callback(false)
--- once the user picks one. If Callback is omitted, the calling coroutine
--- yields until the dialog is answered and Confirm() returns the boolean
--- result directly (promise-like usage) -- only safe to call this way
--- from a coroutine that can yield (e.g. inside task.spawn).
+
+
+
+
+
+
+
 function Library:Confirm(Info, Callback)
     if type(Info) == 'string' then Info = { Text = Info } end
     Info = type(Info) == 'table' and Info or {}
@@ -6689,8 +6689,8 @@ function Library:Confirm(Info, Callback)
         Thread = coroutine.running()
     end
 
-    -- Wrap width is a Vector2 (max width, max height), not a bare
-    -- number -- pass a tall Y so only width constrains the wrap.
+    
+    
     local _, TextHeight = Library:GetTextBounds(Text, Library.Font, Library.FontSize, Vector2.new(260, 2000))
 
     local Holder = Library:Create('Frame', {
@@ -6745,8 +6745,8 @@ function Library:Confirm(Info, Callback)
         Parent = Inner;
     });
 
-    -- Modal backdrop: blocks clicks from reaching whatever is behind the
-    -- dialog until it's answered, same trick used by the main Toggle().
+    
+    
     local Modal = Library:Create('TextButton', {
         BackgroundTransparency = 1;
         Size = UDim2.new(0, 0, 0, 0);
@@ -6807,23 +6807,23 @@ function Library:Confirm(Info, Callback)
     local CancelBtn = MakeBtn(CancelText, 10, 135, false)
     local ConfirmBtn = MakeBtn(ConfirmText, 155, 135, true)
 
-    -- Uses SimpleClick (press+release, drag-to-cancel) instead of firing
-    -- on InputBegan directly, matching how every other button in the
-    -- library behaves -- see the SimpleClick definition for why firing
-    -- immediately on press was wrong here.
+    
+    
+    
+    
     Library:SimpleClick(CancelBtn, function() Answer(false) end)
     Library:SimpleClick(ConfirmBtn, function() Answer(true) end)
 
     Library:MakeDraggable(Holder, 30, true)
 
     if Thread then
-        -- coroutine.yield() only works from a thread that can actually
-        -- yield (e.g. one created by task.spawn/coroutine.wrap); calling
-        -- Library:Confirm with no Callback directly from the main script
-        -- thread would otherwise throw here and potentially take down
-        -- the caller's whole script. Guard it so a misuse like that
-        -- degrades to a clear warning instead of an uncaught error, and
-        -- still cleans up the dialog it already built.
+        
+        
+        
+        
+        
+        
+        
         local Ok, ResultOrErr = pcall(coroutine.yield)
         if Ok then
             return ResultOrErr
@@ -6836,14 +6836,14 @@ function Library:Confirm(Info, Callback)
     end
 end;
 
--- ================= Loading overlay (indeterminate spinner) =================
--- Simple centered blocking overlay with a rotating ring and an optional
--- status label; ShowLoading returns a handle exposing SetText/Hide so
--- callers can update progress text or dismiss it once their async work
--- finishes. Only one loading overlay is tracked at a time via
--- Library._LoadingHandle (calling ShowLoading again replaces the
--- previous one) to avoid stacking overlays if a caller forgets to hide
--- theirs.
+
+
+
+
+
+
+
+
 function Library:ShowLoading(Text)
     if Library._LoadingHandle then
         pcall(Library._LoadingHandle.Hide)
@@ -6881,7 +6881,7 @@ function Library:ShowLoading(Text)
     local RingImage = Library:Create('ImageLabel', {
         BackgroundTransparency = 1;
         Size = UDim2.new(1, 0, 1, 0);
-        Image = 'http://www.roblox.com/asset/?id=4990968531'; -- generic ring/loading glyph
+        Image = 'http://www.roblox.com/asset/?id=4990968531'; 
         ImageColor3 = Library.AccentColor;
         ZIndex = 701;
         Parent = Ring;
@@ -7057,13 +7057,13 @@ function Library:Notify(Text, Time)
     end);
 end;
 
--- ================= Key System (Rayfield/Fluent-style) =================
--- Full-screen gate shown BEFORE the main window: the caller supplies a
--- list of valid keys (and optional note/links); until the player submits
--- a matching key, the main Window stays hidden/locked (see the
--- Config.KeySystem branch inside CreateWindow below). Optionally
--- remembers a successful key on disk (Config.SaveKey) so returning
--- players aren't asked again, mirroring Rayfield's behaviour.
+
+
+
+
+
+
+
 do
     local function KS_Trim(v)
         if type(v) ~= 'string' then return v end
@@ -7074,16 +7074,21 @@ do
         if type(name) ~= 'string' then return false end
         name = KS_Trim(name)
         if name == '' then return false end
-        if name:find('[/\\]') or name:find('%.%.', 1, true) or name:find('[<>:"|%?%*]') then return false end
+        
+        
+        
+        
+        
+        if name:find('[/\\]') or name:find('%.%.') or name:find('[<>:"|%?%*]') then return false end
         return true
     end
 
-    -- Constant-time-ish string compare: avoids leaking key length/prefix
-    -- via early-exit timing on the (client-side, so limited value, but
-    -- cheap to do right) comparison. Uses only string.byte/plain
-    -- arithmetic (no bit32 dependency) since some executors trim global
-    -- libraries down; XOR-ing byte values and OR-ing the accumulator
-    -- with plain +/~= avoids needing bitwise ops at all for this check.
+    
+    
+    
+    
+    
+    
     local function KS_SecureCompare(a, b)
         if type(a) ~= 'string' or type(b) ~= 'string' then return false end
         if #a ~= #b then return false end
@@ -7110,12 +7115,12 @@ do
         end
 
         if #Keys == 0 then
-            -- No valid key was configured: DoSubmit below can never
-            -- succeed, permanently locking the window behind a prompt
-            -- nothing can pass. Warn loudly at setup time instead of
-            -- leaving the caller to figure out why the key box always
-            -- says "Invalid key" -- this is virtually always a config
-            -- mistake (Config.Key omitted or empty), not intended UX.
+            
+            
+            
+            
+            
+            
             warn('[CreU] CreateKeySystem: no valid Key(s) configured -- the key prompt will never accept an answer. Pass Config.Key as a string or array of strings.')
         end
 
@@ -7159,8 +7164,8 @@ do
             pcall(writefile, SavedKeyPath(), Key)
         end
 
-        -- Outer container: its own ScreenGui-parented frame, independent
-        -- of any particular Window (CreateWindow may not have run yet).
+        
+        
         local Holder = Library:Create('Frame', {
             Name = 'KeySystem';
             AnchorPoint = Vector2.new(0.5, 0.5);
@@ -7380,11 +7385,11 @@ do
             if Holder and Holder.Parent then Holder:Destroy() end
         end
 
-        -- Auto-pass immediately if a previously saved key is still valid,
-        -- skipping the prompt entirely. Verified is set here; the actual
-        -- success callback run happens inside KeySystem:OnSuccess below
-        -- (it checks self.Verified and fires immediately for callbacks
-        -- registered after the fact), so nothing else is needed here.
+        
+        
+        
+        
+        
         if TryLoadSavedPass() then
             KeySystem.Verified = true
             Holder:Destroy()
@@ -7394,7 +7399,7 @@ do
         return KeySystem
     end
 end
--- ============================================================
+
 
 function Library:CreateWindow(...)
     local Arguments = { ... }
@@ -7415,14 +7420,14 @@ function Library:CreateWindow(...)
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
 
     if InputService.TouchEnabled then
-        -- FIX (crash khi mở UI): workspace.CurrentCamera có thể là nil trong
-        -- một số trường hợp (script chạy rất sớm trước khi camera khởi tạo
-        -- xong, hoặc CurrentCamera bị đổi/respawn sau khi teleport giữa các
-        -- map). Truy cập .ViewportSize thẳng trên nil sẽ ném lỗi ngay tại
-        -- đây, làm crash toàn bộ CreateWindow() -- tức là UI không bao giờ
-        -- mở được. Dùng cùng cách xử lý an toàn đã có sẵn ở
-        -- RecalculateListPosition (Dropdown) cho nhất quán: nếu không có
-        -- camera thì tạm coi màn hình là 1920x1080.
+        
+        
+        
+        
+        
+        
+        
+        
         local Camera = workspace.CurrentCamera
         local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
         local maxWidth = math.min(Config.Size.X.Offset, vp.X - 20)
@@ -7430,15 +7435,15 @@ function Library:CreateWindow(...)
         local maxHeight = math.min(Config.Size.Y.Offset, vp.Y - 60)
         Config.Size = UDim2.fromOffset(maxWidth, maxHeight)
 
-        -- FIX: only Size was being clamped to the viewport above; Position
-        -- (the caller's value, or the UDim2.fromOffset(175, 50) default a
-        -- few lines up) was left untouched. On a narrow phone viewport,
-        -- 175 + maxWidth can exceed vp.X entirely, pushing the window
-        -- partly or fully off-screen with no way to drag it back (the drag
-        -- handle is on the window itself). Clamp the offset position (for
-        -- AnchorPoint (0,0) windows -- Config.Center below overrides
-        -- Position/AnchorPoint anyway, so this only affects the
-        -- non-centered default) so the whole window stays reachable.
+        
+        
+        
+        
+        
+        
+        
+        
+        
         if Config.AnchorPoint == Vector2.zero and typeof(Config.Position) == 'UDim2' then
             local PosX = math.clamp(Config.Position.X.Offset, 0, math.max(0, vp.X - maxWidth))
             local PosY = math.clamp(Config.Position.Y.Offset, 0, math.max(0, vp.Y - maxHeight))
@@ -7546,18 +7551,18 @@ function Library:CreateWindow(...)
         BackgroundColor3 = 'BackgroundColor';
     });
     
-    -- FIX: TabArea used to be a horizontally-scrolling ScrollingFrame with
-    -- each TabButton sized to its own fixed text width (Offset, not
-    -- Scale) -- so once tabs no longer fit the window at its current
-    -- size, the user had to drag/scroll the tab bar sideways instead of
-    -- tabs simply shrinking to fit, and shrinking the window didn't
-    -- resize existing tab buttons at all. Replaced with a plain Frame
-    -- (no scrolling) where every TabButton is (1/TabCount, 0, 1, 0) wide
-    -- via RelayoutTabButtons below, so all tabs always fit across the
-    -- bar and stay evenly sized -- shrinking the window shrinks them
-    -- together automatically since they're Scale-sized. Text inside each
-    -- button uses TextScaled so labels shrink to fit rather than getting
-    -- clipped when tabs get narrow.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
         BorderSizePixel = 0;
@@ -7694,6 +7699,343 @@ function Library:CreateWindow(...)
     function Window:Minimize() return Window:SetMinimized(true) end
     function Window:Restore() return Window:SetMinimized(false) end
     if Window.AlwaysOnTop then Window:SetAlwaysOnTop(true) end
+    local function CreateSubTabSystem(Parent, ParentFrame, GetParentResize)
+        if Parent._SubTabState then
+            return Parent._SubTabState
+        end
+
+        local State = {
+            Tabs = {},
+            Current = nil,
+            Alignment = 'Left',
+        }
+        Parent._SubTabState = State
+        Parent.SubTabs = State.Tabs
+
+        local Bar = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 8, 0, 6),
+            Size = UDim2.new(1, -16, 0, 22),
+            ZIndex = 5,
+            Parent = ParentFrame,
+        })
+        local BarLayout = Library:Create('UIListLayout', {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 4),
+            Parent = Bar,
+        })
+        local ContentRoot = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 4, 0, 32),
+            Size = UDim2.new(1, -8, 1, -36),
+            ZIndex = 2,
+            Parent = ParentFrame,
+        })
+
+        State.Bar = Bar
+        State.BarLayout = BarLayout
+        State.ContentRoot = ContentRoot
+        State.GetParentResize = GetParentResize
+
+        local function UpdateButtons()
+            local Count = 0
+            for _ in next, State.Tabs do
+                Count += 1
+            end
+            if Count == 0 then
+                return
+            end
+            local Width = 1 / Count
+            local Gap = BarLayout.Padding.Offset
+            local Offset = -((Count - 1) * Gap) / Count
+            for _, SubTab in next, State.Tabs do
+                if SubTab.Button then
+                    SubTab.Button.Size = UDim2.new(Width, Offset, 1, 0)
+                end
+            end
+        end
+
+        local function UpdatePageCanvas(SubTab)
+            if SubTab.ControlsLayout and SubTab.ControlsPage then
+                SubTab.ControlsPage.CanvasSize = UDim2.fromOffset(0, SubTab.ControlsLayout.AbsoluteContentSize.Y + 8)
+            end
+        end
+
+        local function SetButtonState(SubTab, Active)
+            if Active then
+                SubTab.Button.BackgroundColor3 = Library.BackgroundColor
+                Library.RegistryMap[SubTab.Button].Properties.BackgroundColor3 = 'BackgroundColor'
+                SubTab.Highlight.Size = UDim2.new(0.55, 0, 0, 2)
+            else
+                SubTab.Button.BackgroundColor3 = Library.MainColor
+                Library.RegistryMap[SubTab.Button].Properties.BackgroundColor3 = 'MainColor'
+                SubTab.Highlight.Size = UDim2.new(0, 0, 0, 2)
+            end
+        end
+
+        function Parent:SetSubTabAlignment(Alignment)
+            Alignment = tostring(Alignment or 'Left')
+            if Alignment ~= 'Left' and Alignment ~= 'Center' and Alignment ~= 'Right' then
+                Alignment = 'Left'
+            end
+            State.Alignment = Alignment
+            State.BarLayout.HorizontalAlignment = Enum.HorizontalAlignment[Alignment]
+            return Parent
+        end
+
+        function Parent:GetSubTab(Name)
+            return State.Tabs[Name]
+        end
+
+        function State:Add(Info)
+            Info = type(Info) == 'table' and Info or { Name = Info }
+            local Name = tostring(Info.Name or Info.Text or 'SubTab')
+            if State.Tabs[Name] then
+                return State.Tabs[Name]
+            end
+
+            local SubTab = {
+                Name = Name,
+                Icon = Info.Icon or Info.IconName,
+                Description = Info.Description,
+                ParentTab = Parent.ParentTab or Parent,
+                ParentSubTab = Parent._SubTabParent,
+                SubTabs = {},
+            }
+
+            local Button = Library:Create('TextButton', {
+                AutoButtonColor = false,
+                BackgroundColor3 = Library.MainColor,
+                BorderColor3 = Library.OutlineColor,
+                BorderMode = Enum.BorderMode.Inset,
+                Size = UDim2.new(0, 100, 1, 0),
+                Text = '',
+                ZIndex = 6,
+                Parent = Bar,
+            })
+            Library:AddToRegistry(Button, {
+                BackgroundColor3 = 'MainColor',
+                BorderColor3 = 'OutlineColor',
+            })
+
+            local ResolvedIcon = ResolveLucideIcon(SubTab.Icon)
+            local IconLabel
+            local LabelLeft = 4
+            if ResolvedIcon then
+                IconLabel = Library:Create('ImageLabel', {
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0, 4, 0.5, -6),
+                    Size = UDim2.fromOffset(12, 12),
+                    Image = ResolvedIcon,
+                    ImageColor3 = Library.FontColor,
+                    ZIndex = 7,
+                    Parent = Button,
+                })
+                Library:AddToRegistry(IconLabel, { ImageColor3 = 'FontColor' })
+                LabelLeft = 19
+            end
+
+            local Label = Library:CreateLabel({
+                Position = UDim2.new(0, LabelLeft, 0, 0),
+                Size = UDim2.new(1, -LabelLeft - 4, 1, 0),
+                Text = Name,
+                TextSize = Library.FontSize,
+                TextXAlignment = Enum.TextXAlignment.Center,
+                ZIndex = 7,
+                Parent = Button,
+            })
+
+            local Highlight = Library:Create('Frame', {
+                BackgroundColor3 = Library.AccentColor,
+                BorderSizePixel = 0,
+                AnchorPoint = Vector2.new(0.5, 1),
+                Position = UDim2.new(0.5, 0, 1, 0),
+                Size = UDim2.new(0, 0, 0, 2),
+                ZIndex = 8,
+                Parent = Button,
+            })
+            Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor' })
+
+            local ControlsPage = Library:Create('ScrollingFrame', {
+                BackgroundTransparency = 1,
+                BorderSizePixel = 0,
+                Position = UDim2.new(0, 0, 0, 0),
+                Size = UDim2.new(1, 0, 1, 0),
+                CanvasSize = UDim2.new(0, 0, 0, 0),
+                BottomImage = '',
+                TopImage = '',
+                ScrollBarThickness = 2,
+                Visible = false,
+                ZIndex = 2,
+                Parent = ContentRoot,
+            })
+            local ControlsLayout = Library:Create('UIListLayout', {
+                FillDirection = Enum.FillDirection.Vertical,
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                HorizontalAlignment = Enum.HorizontalAlignment.Center,
+                Padding = UDim.new(0, 8),
+                Parent = ControlsPage,
+            })
+            ControlsLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
+                UpdatePageCanvas(SubTab)
+            end)
+
+            SubTab.Container = ControlsPage
+            SubTab.ControlsPage = ControlsPage
+            SubTab.ControlsLayout = ControlsLayout
+            SubTab.Button = Button
+            SubTab.Highlight = Highlight
+            SubTab.Label = Label
+            SubTab.IconLabel = IconLabel
+            setmetatable(SubTab, BaseGroupbox)
+
+            function SubTab:Show()
+                for _, Other in next, State.Tabs do
+                    if Other ~= SubTab then
+                        Other:Hide()
+                    end
+                end
+                local HasNested = SubTab._SubTabState ~= nil
+                ControlsPage.Visible = not HasNested
+                if SubTab.NestedRoot then
+                    SubTab.NestedRoot.Visible = HasNested
+                end
+                SetButtonState(SubTab, true)
+                State.Current = SubTab
+                UpdatePageCanvas(SubTab)
+                if type(State.GetParentResize) == 'function' then
+                    State.GetParentResize()
+                end
+                return SubTab
+            end
+
+            function SubTab:Hide()
+                ControlsPage.Visible = false
+                if SubTab.NestedRoot then
+                    SubTab.NestedRoot.Visible = false
+                end
+                SetButtonState(SubTab, false)
+                if State.Current == SubTab then
+                    State.Current = nil
+                end
+                return SubTab
+            end
+
+            function SubTab:Resize()
+                UpdateButtons()
+                UpdatePageCanvas(SubTab)
+                if type(State.GetParentResize) == 'function' then
+                    State.GetParentResize()
+                end
+                return SubTab
+            end
+
+            function SubTab:SetName(NewName)
+                SubTab.Name = tostring(NewName or 'SubTab')
+                Label.Text = SubTab.Name
+                return SubTab
+            end
+
+            function SubTab:SetIcon(NewIcon)
+                SubTab.Icon = NewIcon
+                local NewImage = ResolveLucideIcon(NewIcon)
+                if NewImage then
+                    if not IconLabel then
+                        IconLabel = Library:Create('ImageLabel', {
+                            BackgroundTransparency = 1,
+                            Position = UDim2.new(0, 4, 0.5, -6),
+                            Size = UDim2.fromOffset(12, 12),
+                            ImageColor3 = Library.FontColor,
+                            ZIndex = 7,
+                            Parent = Button,
+                        })
+                        Library:AddToRegistry(IconLabel, { ImageColor3 = 'FontColor' })
+                    end
+                    IconLabel.Image = NewImage
+                    IconLabel.Visible = true
+                    Label.Position = UDim2.new(0, 19, 0, 0)
+                    Label.Size = UDim2.new(1, -23, 1, 0)
+                elseif IconLabel then
+                    IconLabel.Visible = false
+                    Label.Position = UDim2.new(0, 4, 0, 0)
+                    Label.Size = UDim2.new(1, -8, 1, 0)
+                end
+                return SubTab
+            end
+
+            function SubTab:IsVisible()
+                return State.Current == SubTab and (ControlsPage.Visible or (SubTab.NestedRoot and SubTab.NestedRoot.Visible))
+            end
+
+            function SubTab:Select()
+                return SubTab:Show()
+            end
+
+            function SubTab:GetSubTab(ChildName)
+                return SubTab._SubTabState and SubTab._SubTabState.Tabs[ChildName] or nil
+            end
+
+            function SubTab:SetSubTabAlignment(Alignment)
+                if not SubTab._SubTabState then
+                    return SubTab
+                end
+                Alignment = tostring(Alignment or 'Left')
+                if Alignment ~= 'Left' and Alignment ~= 'Center' and Alignment ~= 'Right' then
+                    Alignment = 'Left'
+                end
+                SubTab._SubTabState.Alignment = Alignment
+                SubTab._SubTabState.BarLayout.HorizontalAlignment = Enum.HorizontalAlignment[Alignment]
+                return SubTab
+            end
+
+            SubTab.AddSubTab = function(Self, ChildInfo)
+                local ChildState = Self._SubTabState
+                if not ChildState then
+                    ControlsPage.Visible = false
+                    local NestedRoot = Library:Create('Frame', {
+                        BackgroundTransparency = 1,
+                        Position = UDim2.new(0, 0, 0, 0),
+                        Size = UDim2.new(1, 0, 1, 0),
+                        ZIndex = 3,
+                        Parent = ControlsPage.Parent,
+                        Visible = false,
+                    })
+                    SubTab.NestedRoot = NestedRoot
+                    ChildState = CreateSubTabSystem(Self, NestedRoot, function()
+                        Self:Resize()
+                    end)
+                    ChildState.Depth = (State.Depth or 0) + 1
+                    NestedRoot.Visible = true
+                end
+                return ChildState:Add(ChildInfo)
+            end
+
+            State.Tabs[Name] = SubTab
+            UpdateButtons()
+            SubTab:Resize()
+            if not State.Current then
+                SubTab:Show()
+            end
+            return SubTab
+        end
+
+        Parent.AddSubTab = function(_, Info)
+            if not State._Prepared and Parent._Root and Parent._Root.Container and ParentFrame == Parent._Root.Container.Parent then
+                State._Prepared = true
+                for _, Child in next, ParentFrame:GetChildren() do
+                    if Child:IsA('ScrollingFrame') then
+                        Child.Visible = false
+                    end
+                end
+            end
+            return State:Add(Info)
+        end
+
+        return State
+    end
+
     function Window:AddTab(Name, Icon)
         local TabInfo = type(Name) == 'table' and Name or { Name = Name, Icon = Icon };
         Name = tostring(TabInfo.Name or TabInfo.Text or 'Tab');
@@ -7706,22 +8048,22 @@ function Library:CreateWindow(...)
             SingleColumn = TabInfo.SingleColumn == true or TabInfo.Layout == 'Single' or TabInfo.Layout == 'Center';
         };
 
-        -- FIX: Tab.Icon was stored but never actually rendered anywhere --
-        -- AddTab({Icon = "crosshair"}) (used throughout Example.lua and
-        -- real scripts) silently showed no icon at all. Resolve it once
-        -- here (bare Lucide name, "lucide-" prefixed, rbxassetid, or raw
-        -- URL all work via ResolveLucideIcon) and, only when it resolves
-        -- to something real, reserve a small icon slot to the left of the
-        -- tab label. Tabs with no icon (or an unresolved one) keep the
-        -- exact old layout untouched.
+        
+        
+        
+        
+        
+        
+        
+        
         local ResolvedTabIcon = ResolveLucideIcon(Tab.Icon);
         local IconSlotWidth = ResolvedTabIcon and 18 or 0;
 
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
-            -- Real Size/Position assigned by RelayoutTabButtons right
-            -- below (equal Scale width across however many tabs exist).
+            
+            
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
@@ -7748,11 +8090,11 @@ function Library:CreateWindow(...)
             Position = UDim2.new(0, IconSlotWidth, 0, 0);
             Size = UDim2.new(1, -IconSlotWidth - 4, 1, -1);
             Text = Name;
-            -- FIX: tabs are now Scale-sized (equal share of the bar) and
-            -- shrink together with the window, so the label needs to
-            -- shrink with them instead of getting clipped/overflowing --
-            -- TextScaled shrinks the font to fit the available space,
-            -- down to a sane floor so it never becomes unreadable.
+            
+            
+            
+            
+            
             TextScaled = true;
             ZIndex = 1;
             Parent = TabButton;
@@ -7854,6 +8196,8 @@ function Library:CreateWindow(...)
         function Tab:AddKeyPicker(...) return Tab._Root:AddKeybind(...) end
         function Tab:AddKeybind(...) return Tab._Root:AddKeybind(...) end
 
+        CreateSubTabSystem(Tab, TabFrame, function() end)
+
         function Tab:ShowTab()
             for _, Tab in next, Window.Tabs do
                 Tab:HideTab();
@@ -7920,13 +8264,13 @@ function Library:CreateWindow(...)
                 ZIndex = 5;
                 Parent = BoxInner;
             });
-            -- FIX: Info.Icon (AddLeftGroupbox("Name", "target")) was
-            -- accepted and stored but never rendered -- same class of bug
-            -- as the Tab icon above. Placed at a fixed left offset rather
-            -- than computed from BoxInner.AbsoluteSize, since that can
-            -- still be 0 on the very first render pass before layout
-            -- settles. Only added when the icon actually resolves, so
-            -- groupboxes without an icon are unaffected.
+            
+            
+            
+            
+            
+            
+            
             if ResolvedGroupboxIcon then
                 local GroupboxIcon = Library:Create('ImageLabel', {
                     BackgroundTransparency = 1;
@@ -8209,13 +8553,6 @@ function Library:CreateWindow(...)
             return Holder
         end
 
-        function Tab:SetSubTabAlignment(_Alignment)
-            return Tab
-        end
-
-        function Tab:AddSubTab(_Info)
-            return Tab
-        end
 
         TabButton.InputBegan:Connect(function(Input)
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -8262,10 +8599,10 @@ function Library:CreateWindow(...)
         Parent = ScreenGui;
     });
     function Library:Toggle()
-        -- Key system gate: while Window._KeyLocked is true, refuse to show
-        -- the window at all (closing it is still allowed). Cleared once
-        -- the attached KeySystem reports success -- see the
-        -- Config.KeySystem block below.
+        
+        
+        
+        
         if Window._KeyLocked and not Library.Toggled then
             return
         end
@@ -8274,18 +8611,18 @@ function Library:CreateWindow(...)
         Outer.Visible = Library.Toggled;
         if Library.Toggled then
             task.spawn(function()
-                -- FIX (crash trên mobile/executor không hỗ trợ Drawing API):
-                -- 'Drawing' chỉ tồn tại trên một số executor PC. Rất nhiều
-                -- executor mobile tắt hẳn API này (lý do hiệu năng/bảo mật),
-                -- nên Drawing.new(...) sẽ ném lỗi "attempt to index nil
-                -- value (global 'Drawing')" ngay lập tức. Trước đây lỗi này
-                -- không được bọc pcall, nên: (1) toàn bộ vòng lặp con trỏ
-                -- tùy chỉnh bên dưới không bao giờ chạy được trên các máy
-                -- đó, và (2) nếu lỗi xảy ra sau khi InputService.MouseIconEnabled
-                -- đã bị tắt ở dòng dưới nhưng trước khi được khôi phục lại,
-                -- con trỏ chuột hệ thống sẽ bị ẩn VĨNH VIỄN vì đoạn code khôi
-                -- phục không bao giờ chạy tới. Bọc pcall để dùng con trỏ hệ
-                -- thống mặc định một cách an toàn khi Drawing không khả dụng.
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
                 local HasDrawing = typeof(Drawing) == 'table' or typeof(Drawing) == 'userdata'
                 if not HasDrawing then
                     return
@@ -8326,15 +8663,15 @@ function Library:CreateWindow(...)
                     CursorOutline:Remove();
                 end)
 
-                -- Luôn khôi phục con trỏ chuột hệ thống dù pcall ở trên
-                -- thành công hay lỗi giữa chừng -- đây chính là phần bị bỏ
-                -- sót ở bug gốc, gây ẩn con trỏ vĩnh viễn khi crash.
+                
+                
+                
                 InputService.MouseIconEnabled = State;
 
                 if not ok then
-                    -- Không Notify ở đây để tránh làm phiền người dùng mỗi
-                    -- lần mở UI trên máy không có Drawing; tắt con trỏ tùy
-                    -- chỉnh và dùng con trỏ hệ thống mặc định là đủ.
+                    
+                    
+                    
                 end
             end);
         end;
@@ -8356,11 +8693,11 @@ function Library:CreateWindow(...)
         if Processed then
             return
         end
-        -- FIX: `Library.Toggle` was passed to task.spawn without `:` syntax,
-        -- so `self` would be nil when the function ran. It happened not to
-        -- crash only because the body reads the `Library` upvalue instead
-        -- of `self`, but that's fragile — wrap in a closure that calls it
-        -- properly with `:` so it stays correct even if the method changes.
+        
+        
+        
+        
+        
         if type(Library.ToggleKeybind) == 'table' and Library.ToggleKeybind.Type == 'KeyPicker' then
             if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind.Value then
                 task.spawn(function() Library:Toggle() end)
@@ -8374,22 +8711,22 @@ function Library:CreateWindow(...)
         end
     end))
 
-    -- Rayfield/Fluent-style key system gate: if Config.KeySystem was
-    -- supplied, the window is locked (Toggle() refuses to open it, see
-    -- above) until KeySystem:OnSuccess fires.
-    --
-    -- FIX: this used to only auto-open the window on success when
-    -- Config.AutoShow was ALSO explicitly set to true. If a script
-    -- attached a KeySystem but didn't separately set AutoShow (a very
-    -- easy thing to forget -- "the key system opens the UI" feels like
-    -- it should be automatic), entering the correct key would close the
-    -- key prompt and then... nothing. The full Window (every tab,
-    -- Toggle/Slider/Dropdown/Input/dependency box/etc.) never appeared,
-    -- leaving whatever else happened to be on screen. A key system is
-    -- only ever attached because the window should be gated behind it,
-    -- so a verified key should always reveal the full window -- that's
-    -- the entire point of a key system. AutoShow now only controls
-    -- whether the window opens immediately when there's NO key system.
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     Window._KeyLocked = false
     if type(Config.KeySystem) == 'table' then
         Window._KeyLocked = true
@@ -8776,15 +9113,15 @@ function Library:BuildWatermarkV2(Segments)
         end;
 
         if Info.Player then
-            -- FIX: GetUserThumbnailAsync is a blocking network call. It was
-            -- wrapped in pcall (catches a throw) but NOT in task.spawn, so
-            -- a slow/stalled response here stalled the entire calling
-            -- thread -- which for a Watermark segment built during
-            -- CreateWindow/AddWatermark setup means the whole UI setup
-            -- would hang waiting on a Roblox API response before anything
-            -- else could render. Build the row with a blank avatar image
-            -- immediately (correct size/UICorner already in place) and
-            -- fill it in asynchronously once the thumbnail resolves.
+            
+            
+            
+            
+            
+            
+            
+            
+            
             local Avatar = Library:Create('ImageLabel', {
                 BackgroundTransparency = 1;
                 Size = UDim2.new(0, 16, 0, 16);
@@ -9147,32 +9484,32 @@ Library.CreateWindow = function(self,...)
                 return Box
             end
 
-            -- ================= AddKeyBoxUnlock =================
-            -- Adds a Key/Submit/Get Key groupbox at the top of this tab,
-            -- then locks every OTHER groupbox added to the SAME tab from
-            -- this point on: they stay hidden (like AddDependencyBox
-            -- content) until a valid key is submitted, at which point
-            -- they're revealed in place -- no separate "locked box"
-            -- object to route controls through, the caller just keeps
-            -- calling Tab:AddLeftGroupbox/AddRightGroupbox/AddToggle/etc
-            -- as normal and everything downstream is gated automatically.
-            --
-            -- Config:
-            --   Key          string | {string, ...} -- accepted key(s)
-            --   Note         string?  -- small helper text under the box
-            --   SaveKey      boolean? -- persist a passing key to disk so
-            --                            future sessions unlock instantly
-            --   FolderName   string?  -- defaults to 'LinoriaLibSettings'
-            --   FileName     string?  -- defaults to 'tabkey'
-            --   GetKeyLink   string?  -- if set, shows a "Get Key" button
-            --                            that copies this to clipboard
-            --   Callback     function(Key)? -- fires once, on success
-            --
-            -- Only gates Tab:AddLeftGroupbox / Tab:AddRightGroupbox calls
-            -- made after this one on the same tab -- Tab:AddTabbox isn't
-            -- wrapped, so a tabbox added afterward would stay visible.
-            -- Call this once per tab, before adding the groupboxes you
-            -- want locked.
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             function Tab:AddKeyBoxUnlock(Config)
                 Config = type(Config) == 'table' and Config or {}
 
@@ -9184,14 +9521,18 @@ Library.CreateWindow = function(self,...)
                     if type(name) ~= 'string' then return false end
                     name = TrimStr(name)
                     if name == '' then return false end
-                    if name:find('[/\\]') or name:find('%.%.', 1, true) or name:find('[<>:"|%?%*]') then return false end
+                    
+                    
+                    
+                    
+                    if name:find('[/\\]') or name:find('%.%.') or name:find('[<>:"|%?%*]') then return false end
                     return true
                 end
-                -- Same constant-time-ish byte comparison as
-                -- CreateKeySystem's KS_SecureCompare (kept as a separate
-                -- local copy since this block doesn't have access to
-                -- that upvalue -- it's defined inside CreateKeySystem's
-                -- own do...end scope further up the file).
+                
+                
+                
+                
+                
                 local function SecureCompare(a, b)
                     if type(a) ~= 'string' or type(b) ~= 'string' then return false end
                     if #a ~= #b then return false end
@@ -9242,41 +9583,41 @@ Library.CreateWindow = function(self,...)
                     pcall(writefile, SavedKeyPath(), Key)
                 end
 
-                -- Tracks every groupbox created on this tab AFTER this
-                -- call, so they can all be shown/hidden together. Each
-                -- entry is the groupbox's outer frame (Container's
-                -- grandparent -- see AddGroupbox: Container -> BoxInner
-                -- -> BoxOuter).
+                
+                
+                
+                
+                
                 local LockedOuters = {}
                 local Unlocked = TryLoadSavedPass()
-                -- Forward-declared; assigned once KeyBoxGroup exists below.
-                -- ApplyLockState only reads it when called (never at
-                -- definition time), so this is safe.
+                
+                
+                
                 local KeyBoxOuter = nil
 
                 local function ApplyLockState()
                     for _, Outer in ipairs(LockedOuters) do
                         Outer.Visible = Unlocked
                     end
-                    -- FIX: the key-entry groupbox itself used to stay
-                    -- visible forever, even after a correct key unlocked
-                    -- everything else -- both the input box and the
-                    -- leftover Submit/status label kept sitting there
-                    -- alongside the now-visible features. It needs the
-                    -- opposite rule from LockedOuters above: shown while
-                    -- locked, hidden once unlocked.
+                    
+                    
+                    
+                    
+                    
+                    
+                    
                     if KeyBoxOuter then
                         KeyBoxOuter.Visible = not Unlocked
                     end
                 end
 
-                -- Wrap AddLeftGroupbox/AddRightGroupbox on THIS Tab
-                -- instance only (not Funcs/BaseGroupbox, so every other
-                -- tab in the window is completely unaffected): any
-                -- groupbox created here from now on gets hidden until
-                -- Unlocked flips true, exactly mirroring how
-                -- AddDependencyBox content stays hidden until its
-                -- condition is met.
+                
+                
+                
+                
+                
+                
+                
                 local OrigAddLeft = Tab.AddLeftGroupbox
                 local OrigAddRight = Tab.AddRightGroupbox
                 function Tab:AddLeftGroupbox(...)
@@ -9294,11 +9635,11 @@ Library.CreateWindow = function(self,...)
                     return Groupbox
                 end
 
-                -- The key-entry groupbox itself is built with the
-                -- ORIGINAL (unwrapped) AddLeftGroupbox, so wrapping it
-                -- above wouldn't have hidden it (and would be backwards
-                -- anyway -- it needs the opposite rule from the feature
-                -- groupboxes: visible while locked, hidden once unlocked).
+                
+                
+                
+                
+                
                 local KeyBoxGroup = OrigAddLeft(Tab, Config.Title or 'Key System', 'key')
                 KeyBoxOuter = KeyBoxGroup.Container.Parent.Parent
 
@@ -9353,9 +9694,9 @@ Library.CreateWindow = function(self,...)
                     KeyBoxGroup:AddLabel({ Text = Config.Note, DoesWrap = true })
                 end
 
-                -- If a saved key already passed, reflect that immediately
-                -- (any groupbox added above the check, i.e. none besides
-                -- KeyBoxGroup which is never locked, is unaffected).
+                
+                
+                
                 ApplyLockState()
 
                 return {

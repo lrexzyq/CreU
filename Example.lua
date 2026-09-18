@@ -19,12 +19,12 @@ local function Log(...)
     print("[CreU Example]", ...)
 end
 
--- Library.DebugCreateErrors: warns in the console if a Create() call fails.
+
 Library.DebugCreateErrors = true
--- Library.NotifyOnError: SafeCallback shows a notification if a user callback errors.
+
 Library.NotifyOnError = true
--- Library.AutoSaveEnabled: when true, AttemptSave() (called after every option
--- change) writes the current config automatically instead of only on manual Save.
+
+
 Library.AutoSaveEnabled = true
 
 local Window = Library:CreateWindow({
@@ -96,6 +96,12 @@ local Tabs = {
         Name = "Settings",
         Icon = "settings",
         Description = "Theme and configuration managers",
+    }),
+
+    SubTabs = Window:AddTab({
+        Name = "Sub Tabs",
+        Icon = "layers",
+        Description = "Subtabs and nested subtabs",
     }),
 }
 
@@ -759,7 +765,7 @@ do
         }
     )
 
-    -- AddKeybind is an alias of AddKeyPicker, callable directly on a groupbox.
+    
     Pickers:AddKeybind("AliasKey", {
         Default = "G",
         Mode = "Toggle",
@@ -996,11 +1002,11 @@ do
         Rounding = 0,
     })
 
-    -- Nested Tabbox: a THIRD tab level living inside "Tab 1" above,
-    -- matching the reference screenshot's structure (top-level tab ->
-    -- sub-tab strip -> another sub-tab strip nested inside one of the
-    -- sub-tabs). Funcs:AddTabbox works on any BaseGroupbox-shaped
-    -- container, including a Tabbox's own sub-tab, so this nests freely.
+    
+    
+    
+    
+    
     TabOne:AddLabel("Nested tabbox (3rd level):", true)
     local InnerTabbox = TabOne:AddTabbox("Weapon Category")
 
@@ -1060,6 +1066,168 @@ do
 end
 
 do
+    local Overview = Tabs.SubTabs:AddSubTab({
+        Name = "Overview",
+        Icon = "home",
+        Description = "Basic subtab API",
+    })
+
+    Overview:AddLabel("Tab:AddSubTab({ Name, Icon, Description })", true)
+    Overview:AddToggle("SubTabEnabled", {
+        Text = "SubTab Toggle",
+        Default = true,
+    })
+    Overview:AddSlider("SubTabValue", {
+        Text = "SubTab Slider",
+        Default = 40,
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+        Suffix = "%",
+    })
+    Overview:AddDropdown("SubTabMode", {
+        Text = "SubTab Mode",
+        Values = {
+            "Normal",
+            "Advanced",
+            "Experimental",
+        },
+        Default = 1,
+        Searchable = true,
+    })
+
+    local Controls = Tabs.SubTabs:AddSubTab({
+        Name = "Controls",
+        Icon = "sliders",
+        Description = "Runtime subtab methods",
+    })
+
+    Controls:AddButton({
+        Text = "Select Overview",
+        Func = function()
+            Tabs.SubTabs:GetSubTab("Overview"):Select()
+        end,
+    })
+    Controls:AddButton({
+        Text = "Rename Current SubTab",
+        Func = function()
+            Controls:SetName("Controls API")
+        end,
+    })
+    Controls:AddButton({
+        Text = "Change Current Icon",
+        Func = function()
+            Controls:SetIcon("wrench")
+        end,
+    })
+    Controls:AddButton({
+        Text = "Check Visibility",
+        Func = function()
+            Library:Notify("Visible: " .. tostring(Controls:IsVisible()), 2)
+        end,
+    })
+    Controls:AddButton({
+        Text = "Hide Overview",
+        Func = function()
+            local Target = Tabs.SubTabs:GetSubTab("Overview")
+            if Target then
+                Target:Hide()
+            end
+        end,
+    })
+    Controls:AddButton({
+        Text = "Show Overview",
+        Func = function()
+            local Target = Tabs.SubTabs:GetSubTab("Overview")
+            if Target then
+                Target:Show()
+            end
+        end,
+    })
+    Controls:AddButton({
+        Text = "Align SubTabs: Center",
+        Func = function()
+            Tabs.SubTabs:SetSubTabAlignment("Center")
+        end,
+    })
+    Controls:AddButton({
+        Text = "Align SubTabs: Right",
+        Func = function()
+            Tabs.SubTabs:SetSubTabAlignment("Right")
+        end,
+    })
+    Controls:AddButton({
+        Text = "Align SubTabs: Left",
+        Func = function()
+            Tabs.SubTabs:SetSubTabAlignment("Left")
+        end,
+    })
+
+    local Nested = Tabs.SubTabs:AddSubTab({
+        Name = "Nested",
+        Icon = "layers-2",
+        Description = "Subtab containing another subtab level",
+    })
+
+    Nested:SetSubTabAlignment("Center")
+
+    local NestedGeneral = Nested:AddSubTab({
+        Name = "General",
+        Description = "Nested subtab level",
+    })
+
+    NestedGeneral:AddLabel("Tab -> SubTab -> Nested SubTab", true)
+    NestedGeneral:AddToggle("NestedGeneralToggle", {
+        Text = "Nested Toggle",
+        Default = false,
+    })
+    NestedGeneral:AddSlider("NestedGeneralSlider", {
+        Text = "Nested Slider",
+        Default = 25,
+        Min = 0,
+        Max = 50,
+        Rounding = 0,
+    })
+
+    local NestedAdvanced = Nested:AddSubTab({
+        Name = "Advanced",
+        Description = "Second nested page",
+    })
+
+    NestedAdvanced:AddDropdown("NestedAdvancedMode", {
+        Text = "Nested Mode",
+        Values = {
+            "Safe",
+            "Fast",
+            "Custom",
+        },
+        Default = 1,
+    })
+    NestedAdvanced:AddInput("NestedAdvancedInput", {
+        Text = "Nested Input",
+        Default = "Nested",
+        Placeholder = "Type here...",
+    })
+    NestedAdvanced:AddButton({
+        Text = "Select General",
+        Func = function()
+            Nested:GetSubTab("General"):Select()
+        end,
+    })
+    NestedAdvanced:AddButton({
+        Text = "Rename Nested Tab",
+        Func = function()
+            NestedAdvanced:SetName("Advanced API")
+        end,
+    })
+
+    local DeepCheck = Nested:GetSubTab("General")
+    if DeepCheck then
+        DeepCheck:Resize()
+    end
+end
+
+do
     local Farm = Tabs.Single:AddGroupbox({
         Name = "Single Column Demo",
         IconName = "layout-dashboard",
@@ -1109,21 +1277,21 @@ do
 end
 
 do
-    -- NOTE: AddKeyBox (used further below) is the original simple
-    -- key-entry widget -- a control living inside a normal tab that just
-    -- reports the submitted key via callback; it doesn't hide/gate
-    -- anything on its own. It's independent of AddKeyBoxUnlock below
-    -- (which locks only the groupboxes on this specific tab), and of the
-    -- separate full-window Config.KeySystem gate that Library:CreateWindow
-    -- still supports (just not used in this example) -- see Library.lua.
-    --
-    -- AddKeyBoxUnlock: everything added to THIS tab via
-    -- Tab:AddLeftGroupbox/AddRightGroupbox AFTER this call starts out
-    -- hidden -- exactly like AddDependencyBox content -- and is revealed
-    -- once a valid key is submitted (or GetKeyLink is used to copy a
-    -- link for where to obtain one, mirroring how key-system provider
-    -- links usually work: the accepted key(s) live in the script, while
-    -- the public-facing "get key" link can point anywhere, e.g. Discord).
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     Tabs.Key:AddKeyBoxUnlock({
         Title = "Unlock Features",
         Text = "Key",
@@ -1139,8 +1307,8 @@ do
         end,
     })
 
-    -- Added AFTER AddKeyBoxUnlock, so this whole groupbox (and every
-    -- control in it) stays hidden until the key above is accepted.
+    
+    
     local Locked = Tabs.Key:AddLeftGroupbox("Unlocked Controls", "unlock")
 
     Locked:AddToggle("KeyUnlockedToggle", {
@@ -1174,8 +1342,8 @@ do
         end,
     })
 
-    -- AddRow: two side-by-side sub-groupboxes, still hidden until the key
-    -- above is accepted since Locked itself is hidden.
+    
+    
     local RowLeft, RowRight = Locked:AddRow(2)
     RowLeft:AddLabel("Row - Left side")
     RowLeft:AddToggle("KeyUnlockedRowToggle", {
@@ -1191,8 +1359,8 @@ do
         Rounding = 0,
     })
 
-    -- AddDependencyBox: content only shows once BOTH the key above is
-    -- accepted (Locked is visible) AND KeyUnlockedToggle is on.
+    
+    
     Locked:AddDivider()
     Locked:AddLabel("Dependency box (also needs Feature Toggle above ON):")
     local KeyDepBox = Locked:AddDependencyBox()
@@ -1207,10 +1375,10 @@ do
         end,
     })
 
-    -- Second groupbox on this tab, covering every remaining control type
-    -- the library supports -- also created via the wrapped
-    -- AddRightGroupbox above, so it starts hidden and unlocks together
-    -- with Locked.
+    
+    
+    
+    
     local LockedRight = Tabs.Key:AddRightGroupbox("More Unlocked Controls", "sparkles")
 
     LockedRight:AddPlayerInfo("KeyUnlockedPlayerInfo", {
@@ -1590,11 +1758,11 @@ do
     SaveManager:SetFolder("CreU/specific-game")
     SaveManager:SetSubFolder("specific-place")
 
-    -- NOTE: the old duplicate call to SaveManager:BuildUploadSection() was
-    -- removed here (it was called a second time even though
-    -- BuildConfigSection already called it once, creating two "Upload"
-    -- groupboxes). The upload feature itself has since been removed from
-    -- SaveManager.lua because its backing web service is offline.
+    
+    
+    
+    
+    
     SaveManager:BuildConfigSection(
         Tabs.Settings
     )
