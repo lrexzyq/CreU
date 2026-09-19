@@ -10,11 +10,6 @@ local RenderStepped = RunService.RenderStepped;
 local LocalPlayer = Players.LocalPlayer;
 local Mouse = LocalPlayer:GetMouse();
 
-
-
-
-
-
 local LucideIcons = {
     ["accessibility"] = "rbxassetid://10709751939",
     ["activity"] = "rbxassetid://10709752035",
@@ -836,20 +831,6 @@ local LucideIcons = {
     ["zoom-out"] = "rbxassetid://10747384679",
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 local function ResolveLucideIcon(IconValue)
     if type(IconValue) == 'number' then
         return 'rbxassetid://' .. tostring(IconValue);
@@ -868,13 +849,6 @@ local function ResolveLucideIcon(IconValue)
     end
     return nil;
 end;
-
-
-
-
-
-
-
 
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
@@ -1014,18 +988,8 @@ local Library = {
 Library.Options = Options;
 Library.Toggles = Toggles;
 
-
-
 Library.Base64Encode = Base64Encode;
 Library.Base64Decode = Base64Decode;
-
-
-
-
-
-
-
-
 
 Library.ExportPrefix = 'CREU1';
 
@@ -1128,7 +1092,7 @@ function Library:SafeCallback(f, ...)
     local success, event = pcall(f, ...);
     if not success then
         if type(event) ~= 'string' then
-            
+
             return Library:Notify(tostring(event));
         end;
         local _, i = event:find(":%d+: ");
@@ -1183,17 +1147,7 @@ function Library:ApplyTextStroke(Inst)
 end;
 
 function Library:ApplyGlow(Inst)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
     local GlowHolder = Library:Create('Frame', {
         AnchorPoint = Inst.AnchorPoint;
         BackgroundTransparency = 1;
@@ -1230,8 +1184,6 @@ function Library:ApplyGlow(Inst)
         });
     end
 
-    
-    
     Inst:GetPropertyChangedSignal('Position'):Connect(function()
         GlowHolder.Position = Inst.Position;
     end);
@@ -1284,17 +1236,7 @@ function Library:BeginGesture(Input, AllowCurrent)
         return false
     end
     if Library.ActiveGestureInput ~= nil then
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         if Library.ActiveGestureStartedAt and (os.clock() - Library.ActiveGestureStartedAt) > 15 then
             Library:CancelGesture()
         else
@@ -1347,16 +1289,6 @@ function Library:CancelGesture()
         Library:_CleanupGesture(Input)
     end
 end
-
-
-
-
-
-
-
-
-
-
 
 function Library:SimpleClick(Instance, Callback)
     Instance.InputBegan:Connect(function(Input)
@@ -1545,8 +1477,6 @@ function Library:AddToolTip(InfoStr, HoverInstance)
         Tooltip.Visible = false
     end)
 
-    
-    
     local Handle = { Frame = Tooltip, Label = Label }
     function Handle:SetText(NewText)
         NewText = tostring(NewText or '')
@@ -2355,7 +2285,7 @@ do
                 if EndInput ~= ThisInput then return end
                 if ChangedConn then ChangedConn:Disconnect(); end
                 if EndedConn then EndedConn:Disconnect(); end
-                
+
                 Library:EndGesture(ThisInput)
                 if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
                     if PickerFrameOuter.Visible then
@@ -2398,7 +2328,7 @@ do
                         if EndInput == Input then
                             ChangedConn:Disconnect()
                             EndedConn:Disconnect()
-                            
+
                             Library:EndGesture(Input)
                             Library:AttemptSave()
                         end
@@ -2502,13 +2432,6 @@ do
             _Initializing = true;
         };
 
-        
-        
-        
-        
-        
-        
-        
         if KeyPicker.NoUI and Library.DebugKeybinds then
             warn(string.format('[Library] KeyPicker %q created with NoUI = true; it will never appear in the Keybinds panel.', tostring(Idx)))
         end
@@ -2646,11 +2569,7 @@ do
             Text = '',
             AutoButtonColor = false,
             Active = InputService.TouchEnabled,
-            
-            
-            
-            
-            
+
             ZIndex = 114,
             Parent = KeybindEntry,
         })
@@ -2748,17 +2667,7 @@ do
                 if Mode ~= 'Hold' then
                     KeyPicker.MobileHeld = false
                 end
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
+
                 if PreviousMode ~= Mode then
                     KeyPicker.Toggled = false
                 end
@@ -3021,11 +2930,7 @@ do
                 elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
                     Key = 'MB2'
                 elseif Input.UserInputType == Enum.UserInputType.Touch then
-                    
-                    
-                    
-                    
-                    
+
                     StopPicking()
                     DisplayLabel.Text = GetKeyDisplayName(KeyPicker.Value, KeyPicker.DisplayUnknown)
                     KeyPicker:Update()
@@ -3041,15 +2946,6 @@ do
             end)
             Library:GiveSignal(Event)
 
-            
-            
-            
-            
-            
-            
-            
-            
-            
             local KeyboardKeys
             local function GetKeyboardKeys()
                 if not KeyboardKeys then
@@ -3148,16 +3044,7 @@ do
             if Library:MouseIsOverOpenedFrame(Input.Position) then
                 return;
             end;
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
+
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1
                 and Input.UserInputType ~= Enum.UserInputType.MouseButton2
                 and Input.UserInputType ~= Enum.UserInputType.Touch then
@@ -3178,9 +3065,7 @@ do
                 Library:EndGesture(Input)
                 BeginPicking();
             else
-                
-                
-                
+
                 local StartPosition = Input.Position;
                 local TouchMoved = false;
                 local ChangedConn, EndedConn;
@@ -3366,10 +3251,6 @@ do
     function Funcs:SetTooltip(Text)
         self.Tooltip = Text
 
-        
-        
-        
-        
         if self._TooltipHandle and type(self._TooltipHandle.SetText) == 'function' then
             self._TooltipHandle:SetText(Text)
         end
@@ -4090,11 +3971,6 @@ do
         return Textbox;
     end;
 
-    
-    
-    
-    
-    
     function Funcs:AddMultiTextbox(Idx, Info)
         Info = type(Info) == 'table' and Info or {}
         assert(Info.Text, 'AddMultiTextbox: Missing `Text` string.')
@@ -4184,12 +4060,7 @@ do
                 Text = Text:sub(1, Info.MaxLength)
             end
             Textbox.Value = Text
-            
-            
-            
-            
-            
-            
+
             if Box.Text ~= Text then
                 Box.Text = Text
             end
@@ -4346,7 +4217,7 @@ do
                 if EndInput ~= ThisInput then return end
                 if ChangedConn then ChangedConn:Disconnect(); end
                 if EndedConn then EndedConn:Disconnect(); end
-                
+
                 Library:EndGesture(ThisInput)
                 if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
                     Toggle:SetValue(not Toggle.Value)
@@ -4672,7 +4543,7 @@ function Funcs:AddDropdown(Idx, Info)
 
         local TitleLabel
         if not Info.Compact then
-            
+
             TitleLabel = Library:CreateLabel({
                 Size = UDim2.new(1, 0, 0, 10);
                 TextSize = Library.FontSize;
@@ -5038,7 +4909,7 @@ function Funcs:AddDropdown(Idx, Info)
                             if EndInput ~= ThisInput then return end
                             if ChangedConn then ChangedConn:Disconnect(); end
                             if EndedConn then EndedConn:Disconnect(); end
-                            
+
                             Library:EndGesture(ThisInput)
                             DraggingSelection = false;
                             if not Moved then
@@ -5284,7 +5155,7 @@ function Funcs:AddDropdown(Idx, Info)
 
         function Dropdown:SetText(Text)
             self.Text = Text;
-            
+
             if TitleLabel then
                 TitleLabel.Text = tostring(Text or '');
             end
@@ -5329,7 +5200,7 @@ function Funcs:AddDropdown(Idx, Info)
             RecalculateListPosition();
             if ListOuter.Visible then Dropdown:BuildDropdownList() end
         end);
-        
+
         DropdownOuter.InputBegan:Connect(function(Input)
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
             if not Library:BeginGesture(Input) then return end
@@ -5495,33 +5366,10 @@ function Funcs:AddDropdown(Idx, Info)
         return Depbox;
     end;
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     function Funcs:AddTabbox(Info)
         Info = type(Info) == 'table' and Info or { Name = Info }
         local Tabbox = { Tabs = {} };
 
-        
-        
-        
-        
-        
-        
-        
-        
         local ParentGroupbox = self;
         local Parent = ParentGroupbox.Container;
 
@@ -5654,10 +5502,7 @@ function Funcs:AddDropdown(Idx, Info)
                     end;
                 end;
                 BoxOuter.Size = UDim2.new(1, 0, 0, 20 + Size + 2 + 2);
-                
-                
-                
-                
+
                 if type(ParentGroupbox.Resize) == 'function' then
                     ParentGroupbox:Resize();
                 end
@@ -5713,10 +5558,6 @@ function Funcs:AddDropdown(Idx, Info)
         return Tabbox;
     end;
 
-
-    
-    
-    
     function Funcs:AddRangeSlider(Idx, Info)
         Info = type(Info) == 'table' and Info or {}
         assert(Info.Text, 'AddRangeSlider: Missing slider text.');
@@ -5851,8 +5692,6 @@ function Funcs:AddDropdown(Idx, Info)
             Library:SafeCallback(RangeSlider.Changed, RangeSlider.Low, RangeSlider.High)
         end
 
-        
-        
         SliderInner.InputBegan:Connect(function(Input)
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
                 if not Library:BeginGesture(Input) then return end
@@ -5875,12 +5714,6 @@ function Funcs:AddDropdown(Idx, Info)
                         RangeSlider.High = math.max(nValue, RangeSlider.Low)
                     end
 
-                    
-                    
-                    
-                    
-                    
-                    
                     if RangeSlider.Low ~= OldLow or RangeSlider.High ~= OldHigh then
                         RangeSlider:Display()
                         Library:SafeCallback(RangeSlider.Callback, RangeSlider.Low, RangeSlider.High)
@@ -5924,13 +5757,6 @@ function Funcs:AddDropdown(Idx, Info)
         return RangeSlider
     end;
 
-    
-    
-    
-    
-    
-    
-    
     function Funcs:AddProgressBar(Info)
         Info = type(Info) == 'table' and Info or {}
         local Groupbox = self
@@ -6006,8 +5832,6 @@ function Funcs:AddDropdown(Idx, Info)
             end
         end
 
-        
-        
         function ProgressBar:SetProgress(Value)
             Value = tonumber(Value) or 0
             if Value > 1 then Value = Value / 100 end
@@ -6028,9 +5852,6 @@ function Funcs:AddDropdown(Idx, Info)
         return ProgressBar
     end;
 
-    
-    
-    
     function Funcs:AddImage(Info)
         Info = type(Info) == 'table' and Info or {}
         local Groupbox = self
@@ -6126,7 +5947,7 @@ function Funcs:AddDropdown(Idx, Info)
     end
 
     function Funcs:AddKeybind(Idx, Info)
-        
+
         Info = type(Info) == 'table' and Info or {}
         local LabelHost = self:AddLabel(Info.Text or '')
         return LabelHost:AddKeyPicker(Idx, Info)
@@ -6140,9 +5961,7 @@ end;
 do
     Library.NotificationArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        
-        
-        
+
         Size = UDim2.new(0, 300, 1, -Library.NotifyConfig.PositionY);
         ZIndex = 100;
         Parent = ScreenGui;
@@ -6164,18 +5983,6 @@ do
 
         area.Size = UDim2.new(0, 300, 1, -cfg.PositionY)
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         local align = cfg.Alignment or 'Left'
         if align == 'Left' then
             layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -6396,7 +6203,7 @@ function Library:SetWatermark(Text)
         if Holder and Holder.Parent then Holder:Destroy() end
         Library._WatermarkV2 = nil
     end
-    
+
     Library._WatermarkSegments = nil
     if Library.WatermarkSegmentsFrame then
         Library.WatermarkSegmentsFrame.Visible = false
@@ -6488,11 +6295,6 @@ function Library:SetNotificationConfig(Config)
     if Library.UpdateNotifAlignment then Library.UpdateNotifAlignment() end
 end
 
-
-
-
-
-
 function Library:NotifyWithActions(Text, Buttons, Time)
     Buttons = type(Buttons) == 'table' and Buttons or {}
     Library._NotificationHistory = Library._NotificationHistory or {}
@@ -6509,8 +6311,6 @@ function Library:NotifyWithActions(Text, Buttons, Time)
     local ButtonRowHeight = (#Buttons > 0) and 26 or 0
     local YSize = TextHeight + ButtonRowHeight
 
-    
-    
     local ButtonsWidth = 0
     for _, Btn in ipairs(Buttons) do
         local bw = Library:GetTextBounds(Btn.Text or 'Button', Library.Font, Library.FontSize)
@@ -6668,13 +6468,6 @@ function Library:NotifyWithActions(Text, Buttons, Time)
     return { Dismiss = function() task.spawn(Dismiss) end }
 end;
 
-
-
-
-
-
-
-
 function Library:Confirm(Info, Callback)
     if type(Info) == 'string' then Info = { Text = Info } end
     Info = type(Info) == 'table' and Info or {}
@@ -6689,8 +6482,6 @@ function Library:Confirm(Info, Callback)
         Thread = coroutine.running()
     end
 
-    
-    
     local _, TextHeight = Library:GetTextBounds(Text, Library.Font, Library.FontSize, Vector2.new(260, 2000))
 
     local Holder = Library:Create('Frame', {
@@ -6745,8 +6536,6 @@ function Library:Confirm(Info, Callback)
         Parent = Inner;
     });
 
-    
-    
     local Modal = Library:Create('TextButton', {
         BackgroundTransparency = 1;
         Size = UDim2.new(0, 0, 0, 0);
@@ -6807,23 +6596,13 @@ function Library:Confirm(Info, Callback)
     local CancelBtn = MakeBtn(CancelText, 10, 135, false)
     local ConfirmBtn = MakeBtn(ConfirmText, 155, 135, true)
 
-    
-    
-    
-    
     Library:SimpleClick(CancelBtn, function() Answer(false) end)
     Library:SimpleClick(ConfirmBtn, function() Answer(true) end)
 
     Library:MakeDraggable(Holder, 30, true)
 
     if Thread then
-        
-        
-        
-        
-        
-        
-        
+
         local Ok, ResultOrErr = pcall(coroutine.yield)
         if Ok then
             return ResultOrErr
@@ -6835,14 +6614,6 @@ function Library:Confirm(Info, Callback)
         end
     end
 end;
-
-
-
-
-
-
-
-
 
 function Library:ShowLoading(Text)
     if Library._LoadingHandle then
@@ -6881,7 +6652,7 @@ function Library:ShowLoading(Text)
     local RingImage = Library:Create('ImageLabel', {
         BackgroundTransparency = 1;
         Size = UDim2.new(1, 0, 1, 0);
-        Image = 'http://www.roblox.com/asset/?id=4990968531'; 
+        Image = 'http://www.roblox.com/asset/?id=4990968531';
         ImageColor3 = Library.AccentColor;
         ZIndex = 701;
         Parent = Ring;
@@ -7057,13 +6828,6 @@ function Library:Notify(Text, Time)
     end);
 end;
 
-
-
-
-
-
-
-
 do
     local function KS_Trim(v)
         if type(v) ~= 'string' then return v end
@@ -7074,21 +6838,11 @@ do
         if type(name) ~= 'string' then return false end
         name = KS_Trim(name)
         if name == '' then return false end
-        
-        
-        
-        
-        
+
         if name:find('[/\\]') or name:find('%.%.') or name:find('[<>:"|%?%*]') then return false end
         return true
     end
 
-    
-    
-    
-    
-    
-    
     local function KS_SecureCompare(a, b)
         if type(a) ~= 'string' or type(b) ~= 'string' then return false end
         if #a ~= #b then return false end
@@ -7115,12 +6869,7 @@ do
         end
 
         if #Keys == 0 then
-            
-            
-            
-            
-            
-            
+
             warn('[CreU] CreateKeySystem: no valid Key(s) configured -- the key prompt will never accept an answer. Pass Config.Key as a string or array of strings.')
         end
 
@@ -7164,8 +6913,6 @@ do
             pcall(writefile, SavedKeyPath(), Key)
         end
 
-        
-        
         local Holder = Library:Create('Frame', {
             Name = 'KeySystem';
             AnchorPoint = Vector2.new(0.5, 0.5);
@@ -7385,11 +7132,6 @@ do
             if Holder and Holder.Parent then Holder:Destroy() end
         end
 
-        
-        
-        
-        
-        
         if TryLoadSavedPass() then
             KeySystem.Verified = true
             Holder:Destroy()
@@ -7399,7 +7141,6 @@ do
         return KeySystem
     end
 end
-
 
 function Library:CreateWindow(...)
     local Arguments = { ... }
@@ -7420,14 +7161,7 @@ function Library:CreateWindow(...)
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
 
     if InputService.TouchEnabled then
-        
-        
-        
-        
-        
-        
-        
-        
+
         local Camera = workspace.CurrentCamera
         local vp = Camera and Camera.ViewportSize or Vector2.new(1920, 1080)
         local maxWidth = math.min(Config.Size.X.Offset, vp.X - 20)
@@ -7435,15 +7169,6 @@ function Library:CreateWindow(...)
         local maxHeight = math.min(Config.Size.Y.Offset, vp.Y - 60)
         Config.Size = UDim2.fromOffset(maxWidth, maxHeight)
 
-        
-        
-        
-        
-        
-        
-        
-        
-        
         if Config.AnchorPoint == Vector2.zero and typeof(Config.Position) == 'UDim2' then
             local PosX = math.clamp(Config.Position.X.Offset, 0, math.max(0, vp.X - maxWidth))
             local PosY = math.clamp(Config.Position.Y.Offset, 0, math.max(0, vp.Y - maxHeight))
@@ -7550,19 +7275,7 @@ function Library:CreateWindow(...)
     Library:AddToRegistry(TabBarInner, {
         BackgroundColor3 = 'BackgroundColor';
     });
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
     local TabArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
         BorderSizePixel = 0;
@@ -7699,389 +7412,6 @@ function Library:CreateWindow(...)
     function Window:Minimize() return Window:SetMinimized(true) end
     function Window:Restore() return Window:SetMinimized(false) end
     if Window.AlwaysOnTop then Window:SetAlwaysOnTop(true) end
-    local function CreateSubTabSystem(Parent, ParentFrame, GetParentResize)
-        if Parent._SubTabState then
-            return Parent._SubTabState
-        end
-
-        local State = {
-            Tabs = {},
-            Current = nil,
-            Alignment = 'Left',
-        }
-        Parent._SubTabState = State
-        Parent.SubTabs = State.Tabs
-
-        local Bar = Library:Create('Frame', {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 8, 0, 6),
-            Size = UDim2.new(1, -16, 0, 22),
-            ZIndex = 5,
-            Parent = ParentFrame,
-        })
-        local BarLayout = Library:Create('UIListLayout', {
-            FillDirection = Enum.FillDirection.Horizontal,
-            HorizontalAlignment = Enum.HorizontalAlignment.Left,
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 4),
-            Parent = Bar,
-        })
-        local ContentRoot = Library:Create('Frame', {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 4, 0, 32),
-            Size = UDim2.new(1, -8, 1, -36),
-            ZIndex = 2,
-            ClipsDescendants = true,
-            Parent = ParentFrame,
-        })
-
-        State.Bar = Bar
-        State.BarLayout = BarLayout
-        State.ContentRoot = ContentRoot
-        State.GetParentResize = GetParentResize
-
-        local function UpdateButtons()
-            local Count = 0
-            for _ in next, State.Tabs do
-                Count += 1
-            end
-            if Count == 0 then
-                return
-            end
-            local Width = 1 / Count
-            local Gap = BarLayout.Padding.Offset
-            local Offset = -((Count - 1) * Gap) / Count
-            for _, SubTab in next, State.Tabs do
-                if SubTab.Button then
-                    SubTab.Button.Size = UDim2.new(Width, Offset, 1, 0)
-                end
-            end
-        end
-
-        local function UpdatePageCanvas(SubTab)
-            if SubTab.ControlsLayout and SubTab.ControlsPage then
-                SubTab.ControlsPage.CanvasSize = UDim2.fromOffset(0, SubTab.ControlsLayout.AbsoluteContentSize.Y + 8)
-            end
-        end
-
-        local function SetButtonState(SubTab, Active)
-            if not SubTab.Button then
-                return
-            end
-            if Active then
-                SubTab.Button.BackgroundColor3 = Library.BackgroundColor
-                Library.RegistryMap[SubTab.Button].Properties.BackgroundColor3 = 'BackgroundColor'
-                SubTab.Highlight.Size = UDim2.new(0.55, 0, 0, 2)
-            else
-                SubTab.Button.BackgroundColor3 = Library.MainColor
-                Library.RegistryMap[SubTab.Button].Properties.BackgroundColor3 = 'MainColor'
-                SubTab.Highlight.Size = UDim2.new(0, 0, 0, 2)
-            end
-        end
-
-        function Parent:SetSubTabAlignment(Alignment)
-            Alignment = tostring(Alignment or 'Left')
-            if Alignment ~= 'Left' and Alignment ~= 'Center' and Alignment ~= 'Right' then
-                Alignment = 'Left'
-            end
-            State.Alignment = Alignment
-            State.BarLayout.HorizontalAlignment = Enum.HorizontalAlignment[Alignment]
-            return Parent
-        end
-
-        function Parent:GetSubTab(Name)
-            return State.Tabs[Name]
-        end
-
-        function State:Add(Info)
-            Info = type(Info) == 'table' and Info or { Name = Info }
-            local Name = tostring(Info.Name or Info.Text or 'SubTab')
-            if State.Tabs[Name] then
-                return State.Tabs[Name]
-            end
-
-            local SubTab = {
-                Name = Name,
-                Icon = Info.Icon or Info.IconName,
-                Description = Info.Description,
-                IsSubTab = true,
-                ParentTab = Parent.IsSubTab and Parent.ParentTab or Parent,
-                ParentSubTab = Parent.IsSubTab and Parent or nil,
-                SubTabs = {},
-            }
-
-            local Button = Library:Create('TextButton', {
-                AutoButtonColor = false,
-                BackgroundColor3 = Library.MainColor,
-                BorderColor3 = Library.OutlineColor,
-                BorderMode = Enum.BorderMode.Inset,
-                Size = UDim2.new(0, 100, 1, 0),
-                Text = '',
-                ZIndex = 6,
-                Parent = Bar,
-            })
-            Library:AddToRegistry(Button, {
-                BackgroundColor3 = 'MainColor',
-                BorderColor3 = 'OutlineColor',
-            })
-
-            local ResolvedIcon = ResolveLucideIcon(SubTab.Icon)
-            local IconLabel
-            local LabelLeft = 4
-            if ResolvedIcon then
-                IconLabel = Library:Create('ImageLabel', {
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 4, 0.5, -6),
-                    Size = UDim2.fromOffset(12, 12),
-                    Image = ResolvedIcon,
-                    ImageColor3 = Library.FontColor,
-                    ZIndex = 7,
-                    Parent = Button,
-                })
-                Library:AddToRegistry(IconLabel, { ImageColor3 = 'FontColor' })
-                LabelLeft = 19
-            end
-
-            local Label = Library:CreateLabel({
-                Position = UDim2.new(0, LabelLeft, 0, 0),
-                Size = UDim2.new(1, -LabelLeft - 4, 1, 0),
-                Text = Name,
-                TextSize = Library.FontSize,
-                TextXAlignment = Enum.TextXAlignment.Center,
-                ZIndex = 7,
-                Parent = Button,
-            })
-
-            local Highlight = Library:Create('Frame', {
-                BackgroundColor3 = Library.AccentColor,
-                BorderSizePixel = 0,
-                AnchorPoint = Vector2.new(0.5, 1),
-                Position = UDim2.new(0.5, 0, 1, 0),
-                Size = UDim2.new(0, 0, 0, 2),
-                ZIndex = 8,
-                Parent = Button,
-            })
-            Library:AddToRegistry(Highlight, { BackgroundColor3 = 'AccentColor' })
-
-            local SubTabHost = Library:Create('Frame', {
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 0, 0, 0),
-                Size = UDim2.new(1, 0, 1, 0),
-                Visible = false,
-                ZIndex = 3,
-                ClipsDescendants = true,
-                Parent = ContentRoot,
-            })
-
-            local ControlsPage = Library:Create('ScrollingFrame', {
-                BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                Position = UDim2.new(0, 0, 0, 0),
-                Size = UDim2.new(1, 0, 1, 0),
-                CanvasSize = UDim2.new(0, 0, 0, 0),
-                BottomImage = '',
-                TopImage = '',
-                ScrollBarThickness = 2,
-                Visible = false,
-                ZIndex = 3,
-                Parent = SubTabHost,
-            })
-            local ControlsLayout = Library:Create('UIListLayout', {
-                FillDirection = Enum.FillDirection.Vertical,
-                SortOrder = Enum.SortOrder.LayoutOrder,
-                HorizontalAlignment = Enum.HorizontalAlignment.Center,
-                Padding = UDim.new(0, 8),
-                Parent = ControlsPage,
-            })
-            ControlsLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-                UpdatePageCanvas(SubTab)
-            end)
-
-            SubTab.Container = ControlsPage
-            SubTab.ControlsPage = ControlsPage
-            SubTab.ControlsLayout = ControlsLayout
-            SubTab.Button = Button
-            SubTab.Highlight = Highlight
-            SubTab.Label = Label
-            SubTab.IconLabel = IconLabel
-            SubTab.Host = SubTabHost
-            setmetatable(SubTab, BaseGroupbox)
-
-            function SubTab:Show()
-                for _, Other in next, State.Tabs do
-                    if Other ~= SubTab then
-                        Other:Hide()
-                    end
-                end
-                local HasNested = SubTab._SubTabState ~= nil
-                SubTabHost.Visible = true
-                ControlsPage.Visible = not HasNested
-                if SubTab.NestedRoot then
-                    SubTab.NestedRoot.Visible = HasNested
-                end
-                SetButtonState(SubTab, true)
-                State.Current = SubTab
-                UpdatePageCanvas(SubTab)
-                if SubTab._SubTabState and SubTab._SubTabState.Current then
-                    SubTab._SubTabState.Current:Resize()
-                end
-                return SubTab
-            end
-
-            function SubTab:Hide()
-                SubTabHost.Visible = false
-                ControlsPage.Visible = false
-                if SubTab.NestedRoot then
-                    SubTab.NestedRoot.Visible = false
-                end
-                SetButtonState(SubTab, false)
-                if State.Current == SubTab then
-                    State.Current = nil
-                end
-                return SubTab
-            end
-
-            function SubTab:Resize()
-                UpdateButtons()
-                UpdatePageCanvas(SubTab)
-                if SubTab._SubTabState and SubTab._SubTabState.Current then
-                    SubTab._SubTabState.Current:Resize()
-                end
-                return SubTab
-            end
-
-            function SubTab:SetName(NewName)
-                local OldName = SubTab.Name
-                local NameValue = tostring(NewName or 'SubTab')
-                if State.Tabs[NameValue] and State.Tabs[NameValue] ~= SubTab then
-                    return SubTab
-                end
-                if OldName ~= NameValue then
-                    State.Tabs[OldName] = nil
-                    State.Tabs[NameValue] = SubTab
-                end
-                SubTab.Name = NameValue
-                Label.Text = NameValue
-                return SubTab
-            end
-
-            function SubTab:SetIcon(NewIcon)
-                SubTab.Icon = NewIcon
-                local NewImage = ResolveLucideIcon(NewIcon)
-                if NewImage then
-                    if not IconLabel then
-                        IconLabel = Library:Create('ImageLabel', {
-                            BackgroundTransparency = 1,
-                            Position = UDim2.new(0, 4, 0.5, -6),
-                            Size = UDim2.fromOffset(12, 12),
-                            ImageColor3 = Library.FontColor,
-                            ZIndex = 7,
-                            Parent = Button,
-                        })
-                        Library:AddToRegistry(IconLabel, { ImageColor3 = 'FontColor' })
-                        SubTab.IconLabel = IconLabel
-                    end
-                    IconLabel.Image = NewImage
-                    IconLabel.Visible = true
-                    Label.Position = UDim2.new(0, 19, 0, 0)
-                    Label.Size = UDim2.new(1, -23, 1, 0)
-                elseif IconLabel then
-                    IconLabel.Visible = false
-                    Label.Position = UDim2.new(0, 4, 0, 0)
-                    Label.Size = UDim2.new(1, -8, 1, 0)
-                end
-                return SubTab
-            end
-
-            function SubTab:IsVisible()
-                if State.Current ~= SubTab or not SubTabHost.Visible then
-                    return false
-                end
-                local Ancestor = SubTab.ParentSubTab
-                while Ancestor do
-                    if not Ancestor.Host or not Ancestor.Host.Visible then
-                        return false
-                    end
-                    Ancestor = Ancestor.ParentSubTab
-                end
-                return true
-            end
-
-            function SubTab:Select()
-                if SubTab.ParentSubTab and not SubTab.ParentSubTab:IsVisible() then
-                    SubTab.ParentSubTab:Select()
-                end
-                return SubTab:Show()
-            end
-
-            function SubTab:GetSubTab(ChildName)
-                return SubTab._SubTabState and SubTab._SubTabState.Tabs[ChildName] or nil
-            end
-
-            function SubTab:SetSubTabAlignment(Alignment)
-                if not SubTab._SubTabState then
-                    return SubTab
-                end
-                Alignment = tostring(Alignment or 'Left')
-                if Alignment ~= 'Left' and Alignment ~= 'Center' and Alignment ~= 'Right' then
-                    Alignment = 'Left'
-                end
-                SubTab._SubTabState.Alignment = Alignment
-                SubTab._SubTabState.BarLayout.HorizontalAlignment = Enum.HorizontalAlignment[Alignment]
-                return SubTab
-            end
-
-            SubTab.AddSubTab = function(Self, ChildInfo)
-                local ChildState = Self._SubTabState
-                if not ChildState then
-                    local NestedRoot = Library:Create('Frame', {
-                        BackgroundTransparency = 1,
-                        Position = UDim2.new(0, 0, 0, 0),
-                        Size = UDim2.new(1, 0, 1, 0),
-                        ZIndex = 4,
-                        Parent = SubTabHost,
-                        Visible = false,
-                        ClipsDescendants = true,
-                    })
-                    SubTab.NestedRoot = NestedRoot
-                    ChildState = CreateSubTabSystem(Self, NestedRoot, nil)
-                    ChildState.Depth = (State.Depth or 0) + 1
-                end
-                SubTabHost.Visible = State.Current == SubTab
-                ControlsPage.Visible = false
-                SubTab.NestedRoot.Visible = State.Current == SubTab
-                return ChildState:Add(ChildInfo)
-            end
-
-            State.Tabs[Name] = SubTab
-
-            Button.Activated:Connect(function()
-                SubTab:Show()
-            end)
-
-            UpdateButtons()
-            SubTab:Resize()
-            if not State.Current then
-                SubTab:Show()
-            end
-            return SubTab
-        end
-
-        Parent.AddSubTab = function(_, Info)
-            if not State._Prepared and Parent._Root and Parent._Root.Container and ParentFrame == Parent._Root.Container.Parent then
-                State._Prepared = true
-                for _, Child in next, ParentFrame:GetChildren() do
-                    if Child:IsA('ScrollingFrame') then
-                        Child.Visible = false
-                    end
-                end
-            end
-            return State:Add(Info)
-        end
-
-        return State
-    end
-
     function Window:AddTab(Name, Icon)
         local TabInfo = type(Name) == 'table' and Name or { Name = Name, Icon = Icon };
         Name = tostring(TabInfo.Name or TabInfo.Text or 'Tab');
@@ -8094,22 +7424,13 @@ function Library:CreateWindow(...)
             SingleColumn = TabInfo.SingleColumn == true or TabInfo.Layout == 'Single' or TabInfo.Layout == 'Center';
         };
 
-        
-        
-        
-        
-        
-        
-        
-        
         local ResolvedTabIcon = ResolveLucideIcon(Tab.Icon);
         local IconSlotWidth = ResolvedTabIcon and 18 or 0;
 
         local TabButton = Library:Create('Frame', {
             BackgroundColor3 = Library.BackgroundColor;
             BorderColor3 = Library.OutlineColor;
-            
-            
+
             Size = UDim2.new(1, 0, 1, 0);
             ZIndex = 1;
             Parent = TabArea;
@@ -8136,11 +7457,7 @@ function Library:CreateWindow(...)
             Position = UDim2.new(0, IconSlotWidth, 0, 0);
             Size = UDim2.new(1, -IconSlotWidth - 4, 1, -1);
             Text = Name;
-            
-            
-            
-            
-            
+
             TextScaled = true;
             ZIndex = 1;
             Parent = TabButton;
@@ -8238,11 +7555,9 @@ function Library:CreateWindow(...)
         function Tab:AddDivider(...) return Tab._Root:AddDivider(...) end
         function Tab:AddBlank(...) return Tab._Root:AddBlank(...) end
         function Tab:AddColorPicker(...) return Tab._Root:AddColorPicker(...) end
-        
+
         function Tab:AddKeyPicker(...) return Tab._Root:AddKeybind(...) end
         function Tab:AddKeybind(...) return Tab._Root:AddKeybind(...) end
-
-        CreateSubTabSystem(Tab, TabFrame, function() end)
 
         function Tab:ShowTab()
             for _, Tab in next, Window.Tabs do
@@ -8310,13 +7625,7 @@ function Library:CreateWindow(...)
                 ZIndex = 5;
                 Parent = BoxInner;
             });
-            
-            
-            
-            
-            
-            
-            
+
             if ResolvedGroupboxIcon then
                 local GroupboxIcon = Library:Create('ImageLabel', {
                     BackgroundTransparency = 1;
@@ -8543,7 +7852,7 @@ function Library:CreateWindow(...)
                         if EndInput ~= ThisInput then return end
                         if ChangedConn then ChangedConn:Disconnect(); end
                         if EndedConn then EndedConn:Disconnect(); end
-                        
+
                         Library:EndGesture(ThisInput)
                         if not Moved and not Library:MouseIsOverOpenedFrame(EndInput.Position) then
                             Tab:Show();
@@ -8599,6 +7908,13 @@ function Library:CreateWindow(...)
             return Holder
         end
 
+        function Tab:SetSubTabAlignment(_Alignment)
+            return Tab
+        end
+
+        function Tab:AddSubTab(_Info)
+            return Tab
+        end
 
         TabButton.InputBegan:Connect(function(Input)
             if Input.UserInputType ~= Enum.UserInputType.MouseButton1 and Input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -8645,10 +7961,7 @@ function Library:CreateWindow(...)
         Parent = ScreenGui;
     });
     function Library:Toggle()
-        
-        
-        
-        
+
         if Window._KeyLocked and not Library.Toggled then
             return
         end
@@ -8657,18 +7970,7 @@ function Library:CreateWindow(...)
         Outer.Visible = Library.Toggled;
         if Library.Toggled then
             task.spawn(function()
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
-                
+
                 local HasDrawing = typeof(Drawing) == 'table' or typeof(Drawing) == 'userdata'
                 if not HasDrawing then
                     return
@@ -8709,15 +8011,10 @@ function Library:CreateWindow(...)
                     CursorOutline:Remove();
                 end)
 
-                
-                
-                
                 InputService.MouseIconEnabled = State;
 
                 if not ok then
-                    
-                    
-                    
+
                 end
             end);
         end;
@@ -8739,11 +8036,7 @@ function Library:CreateWindow(...)
         if Processed then
             return
         end
-        
-        
-        
-        
-        
+
         if type(Library.ToggleKeybind) == 'table' and Library.ToggleKeybind.Type == 'KeyPicker' then
             if Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode.Name == Library.ToggleKeybind.Value then
                 task.spawn(function() Library:Toggle() end)
@@ -8757,22 +8050,6 @@ function Library:CreateWindow(...)
         end
     end))
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     Window._KeyLocked = false
     if type(Config.KeySystem) == 'table' then
         Window._KeyLocked = true
@@ -9159,15 +8436,7 @@ function Library:BuildWatermarkV2(Segments)
         end;
 
         if Info.Player then
-            
-            
-            
-            
-            
-            
-            
-            
-            
+
             local Avatar = Library:Create('ImageLabel', {
                 BackgroundTransparency = 1;
                 Size = UDim2.new(0, 16, 0, 16);
@@ -9357,7 +8626,7 @@ function Library:AddDraggableLabel(...)
     if type(Params) ~= 'table' then
         Params = { Text = tostring(Params or ''), Position = select(2, ...), Size = select(3, ...) }
     end
-    
+
     local Outer = self:Create('Frame', {
         BackgroundColor3 = Params.BackgroundColor3 or self.MainColor,
         BorderColor3 = Params.BorderColor3 or self.OutlineColor,
@@ -9389,7 +8658,7 @@ function Library:AddDraggableLabel(...)
     })
     self:AddToRegistry(Label, { TextColor3 = 'FontColor' })
     self:MakeDraggable(Outer, Params.Cutoff or 40, false)
-    
+
     return Label
 end
 
@@ -9462,7 +8731,7 @@ function BaseGroupbox:AddSection(Text)
 end
 
 function BaseGroupbox:AddKeybind(Idx, Info)
-    
+
     Info = type(Info) == 'table' and Info or {}
     local LabelHost = self:AddLabel(Info.Text or '')
     return LabelHost:AddKeyPicker(Idx, Info)
@@ -9530,32 +8799,6 @@ Library.CreateWindow = function(self,...)
                 return Box
             end
 
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
             function Tab:AddKeyBoxUnlock(Config)
                 Config = type(Config) == 'table' and Config or {}
 
@@ -9567,18 +8810,11 @@ Library.CreateWindow = function(self,...)
                     if type(name) ~= 'string' then return false end
                     name = TrimStr(name)
                     if name == '' then return false end
-                    
-                    
-                    
-                    
+
                     if name:find('[/\\]') or name:find('%.%.') or name:find('[<>:"|%?%*]') then return false end
                     return true
                 end
-                
-                
-                
-                
-                
+
                 local function SecureCompare(a, b)
                     if type(a) ~= 'string' or type(b) ~= 'string' then return false end
                     if #a ~= #b then return false end
@@ -9629,41 +8865,21 @@ Library.CreateWindow = function(self,...)
                     pcall(writefile, SavedKeyPath(), Key)
                 end
 
-                
-                
-                
-                
-                
                 local LockedOuters = {}
                 local Unlocked = TryLoadSavedPass()
-                
-                
-                
+
                 local KeyBoxOuter = nil
 
                 local function ApplyLockState()
                     for _, Outer in ipairs(LockedOuters) do
                         Outer.Visible = Unlocked
                     end
-                    
-                    
-                    
-                    
-                    
-                    
-                    
+
                     if KeyBoxOuter then
                         KeyBoxOuter.Visible = not Unlocked
                     end
                 end
 
-                
-                
-                
-                
-                
-                
-                
                 local OrigAddLeft = Tab.AddLeftGroupbox
                 local OrigAddRight = Tab.AddRightGroupbox
                 function Tab:AddLeftGroupbox(...)
@@ -9681,11 +8897,6 @@ Library.CreateWindow = function(self,...)
                     return Groupbox
                 end
 
-                
-                
-                
-                
-                
                 local KeyBoxGroup = OrigAddLeft(Tab, Config.Title or 'Key System', 'key')
                 KeyBoxOuter = KeyBoxGroup.Container.Parent.Parent
 
@@ -9740,9 +8951,6 @@ Library.CreateWindow = function(self,...)
                     KeyBoxGroup:AddLabel({ Text = Config.Note, DoesWrap = true })
                 end
 
-                
-                
-                
                 ApplyLockState()
 
                 return {

@@ -1,7 +1,5 @@
 --enjoy!
-
 local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
-
 local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
@@ -19,12 +17,12 @@ local function Log(...)
     print("[CreU Example]", ...)
 end
 
-
+-- Library.DebugCreateErrors: warns in the console if a Create() call fails.
 Library.DebugCreateErrors = true
-
+-- Library.NotifyOnError: SafeCallback shows a notification if a user callback errors.
 Library.NotifyOnError = true
-
-
+-- Library.AutoSaveEnabled: when true, AttemptSave() (called after every option
+-- change) writes the current config automatically instead of only on manual Save.
 Library.AutoSaveEnabled = true
 
 local Window = Library:CreateWindow({
@@ -97,12 +95,6 @@ local Tabs = {
         Icon = "settings",
         Description = "Theme and configuration managers",
     }),
-
-    SubTabs = Window:AddTab({
-        Name = "Sub Tabs",
-        Icon = "layers",
-        Description = "Subtabs and nested subtabs",
-    }),
 }
 
 do
@@ -126,9 +118,21 @@ do
         Tooltip = "Basic toggle saved by SaveManager",
         Default = true,
     }):AddKeyPicker("DemoEnabledKey", {
+        -- AddKeyPicker chained onto a Toggle lets the user bind a key
+        -- (here F6) to press instead of clicking the toggle. Mode
+        -- "Toggle" means pressing the key flips it on/off, same as
+        -- clicking (as opposed to "Hold", which keeps it on only while
+        -- the key is held down).
         Default = "F6",
         Mode = "Toggle",
         Text = "Demo Toggle",
+        -- SyncToggleState: whether pressing this key should also flip
+        -- the actual DemoEnabled Toggle above (calling its own callback
+        -- too), not just this keybind's own Callback/Clicked. false here
+        -- means the key press only fires this KeyPicker's own callback --
+        -- the DemoEnabled toggle itself is left completely untouched, as
+        -- if the two were unrelated. Set true to make the key act as a
+        -- real alternate way of clicking the toggle.
         SyncToggleState = false,
     })
 
@@ -190,8 +194,18 @@ do
             "Box",
             "Name",
         },
+        -- Multi: lets the user pick more than one value at once (a
+        -- checklist instead of a single choice) -- the dropdown stays
+        -- open and shows checkmarks next to every selected value.
         Multi = true,
+        -- Searchable: adds a text box at the top of the dropdown list so
+        -- the user can type to filter down to matching values instead of
+        -- scrolling through everything. Most useful once a dropdown has
+        -- more than a handful of options.
         Searchable = true,
+        -- SelectAllButtons: only meaningful together with Multi -- adds
+        -- "Select All" / "Deselect All" buttons above the list so the
+        -- user doesn't have to click every option one by one.
         SelectAllButtons = true,
     })
 
@@ -224,6 +238,11 @@ do
 
     Buttons:AddButton({
         Text = "Double-click Button",
+        -- DoubleClick: the button won't run its Func on the first click --
+        -- it shows a confirmation state instead, and only runs Func if
+        -- clicked again within a short window. Useful for destructive
+        -- actions (delete, reset, unload) where an accidental single
+        -- click shouldn't trigger anything.
         DoubleClick = true,
         Tooltip = "Requires a second click",
         Func = function()
@@ -254,6 +273,11 @@ do
         Default = false,
     })
 
+    -- Risky: purely visual -- tints the toggle's label text with
+    -- Library.RiskColor (red by default) as a warning to the user that
+    -- this feature is risky to use (e.g. more likely to get flagged,
+    -- more likely to break something). It doesn't add any confirmation
+    -- prompt or block the toggle -- it just colors the text differently.
     TogglesBox:AddToggle("RiskyToggle", {
         Text = "Risky Toggle",
         Default = false,
@@ -328,6 +352,9 @@ do
         Rounding = 0,
         Prefix = "",
         Suffix = "%",
+        -- Compact: uses a smaller/tighter visual layout for the slider,
+        -- for groupboxes with limited space where the normal-sized
+        -- slider would feel too spread out.
         Compact = true,
     })
 
@@ -338,6 +365,9 @@ do
         Max = 100,
         Rounding = 0,
         Suffix = "%",
+        -- HideMax: only shows the slider's current value, not "current /
+        -- max" (e.g. "50%" instead of "50 / 100%"). Useful when the max
+        -- is an implementation detail the user doesn't need to see.
         HideMax = true,
     })
 
@@ -513,6 +543,13 @@ do
         Placeholder = "Search items...",
         MaxVisibleItems = 8,
         ItemHeight = 20,
+        -- Expandable / ExpandColumns: accepted and stored by AddDropdown
+        -- (there's even Dropdown:SetExpandable()/:SetExpandColumns() to
+        -- change them later), but at the time of writing nothing in
+        -- Library.lua actually reads these fields back to change how the
+        -- dropdown renders -- setting them currently has no visible
+        -- effect. Left here as-is rather than removed, since a future
+        -- Library.lua update may wire them up.
         Expandable = true,
         ExpandColumns = 1,
     })
@@ -533,6 +570,9 @@ do
         Multi = true,
         Searchable = true,
         SelectAllButtons = true,
+        -- DragSelect: only works together with Multi -- lets the user
+        -- click-and-drag across multiple items to select/deselect them
+        -- all in one motion, instead of clicking each one individually.
         DragSelect = true,
     })
 
@@ -761,11 +801,16 @@ do
             Default = "F9",
             Mode = "Toggle",
             Text = "No UI Key",
+            -- NoUI: the key still works normally when pressed (Toggle
+            -- mode fires here same as any other keybind), it just never
+            -- appears in the on-screen Keybinds list (the small panel
+            -- showing currently-bound keys). Useful for keys you don't
+            -- want cluttering that list, or want to keep less obvious.
             NoUI = true,
         }
     )
 
-    
+    -- AddKeybind is an alias of AddKeyPicker, callable directly on a groupbox.
     Pickers:AddKeybind("AliasKey", {
         Default = "G",
         Mode = "Toggle",
@@ -1002,11 +1047,11 @@ do
         Rounding = 0,
     })
 
-    
-    
-    
-    
-    
+    -- Nested Tabbox: a THIRD tab level living inside "Tab 1" above,
+    -- matching the reference screenshot's structure (top-level tab ->
+    -- sub-tab strip -> another sub-tab strip nested inside one of the
+    -- sub-tabs). Funcs:AddTabbox works on any BaseGroupbox-shaped
+    -- container, including a Tabbox's own sub-tab, so this nests freely.
     TabOne:AddLabel("Nested tabbox (3rd level):", true)
     local InnerTabbox = TabOne:AddTabbox("Weapon Category")
 
@@ -1066,168 +1111,6 @@ do
 end
 
 do
-    local Overview = Tabs.SubTabs:AddSubTab({
-        Name = "Overview",
-        Icon = "home",
-        Description = "Basic subtab API",
-    })
-
-    Overview:AddLabel("Tab:AddSubTab({ Name, Icon, Description })", true)
-    Overview:AddToggle("SubTabEnabled", {
-        Text = "SubTab Toggle",
-        Default = true,
-    })
-    Overview:AddSlider("SubTabValue", {
-        Text = "SubTab Slider",
-        Default = 40,
-        Min = 0,
-        Max = 100,
-        Rounding = 0,
-        Suffix = "%",
-    })
-    Overview:AddDropdown("SubTabMode", {
-        Text = "SubTab Mode",
-        Values = {
-            "Normal",
-            "Advanced",
-            "Experimental",
-        },
-        Default = 1,
-        Searchable = true,
-    })
-
-    local Controls = Tabs.SubTabs:AddSubTab({
-        Name = "Controls",
-        Icon = "sliders",
-        Description = "Runtime subtab methods",
-    })
-
-    Controls:AddButton({
-        Text = "Select Overview",
-        Func = function()
-            Tabs.SubTabs:GetSubTab("Overview"):Select()
-        end,
-    })
-    Controls:AddButton({
-        Text = "Rename Current SubTab",
-        Func = function()
-            Controls:SetName("Controls API")
-        end,
-    })
-    Controls:AddButton({
-        Text = "Change Current Icon",
-        Func = function()
-            Controls:SetIcon("wrench")
-        end,
-    })
-    Controls:AddButton({
-        Text = "Check Visibility",
-        Func = function()
-            Library:Notify("Visible: " .. tostring(Controls:IsVisible()), 2)
-        end,
-    })
-    Controls:AddButton({
-        Text = "Hide Overview",
-        Func = function()
-            local Target = Tabs.SubTabs:GetSubTab("Overview")
-            if Target then
-                Target:Hide()
-            end
-        end,
-    })
-    Controls:AddButton({
-        Text = "Show Overview",
-        Func = function()
-            local Target = Tabs.SubTabs:GetSubTab("Overview")
-            if Target then
-                Target:Show()
-            end
-        end,
-    })
-    Controls:AddButton({
-        Text = "Align SubTabs: Center",
-        Func = function()
-            Tabs.SubTabs:SetSubTabAlignment("Center")
-        end,
-    })
-    Controls:AddButton({
-        Text = "Align SubTabs: Right",
-        Func = function()
-            Tabs.SubTabs:SetSubTabAlignment("Right")
-        end,
-    })
-    Controls:AddButton({
-        Text = "Align SubTabs: Left",
-        Func = function()
-            Tabs.SubTabs:SetSubTabAlignment("Left")
-        end,
-    })
-
-    local Nested = Tabs.SubTabs:AddSubTab({
-        Name = "Nested",
-        Icon = "layers-2",
-        Description = "Subtab containing another subtab level",
-    })
-
-    Nested:SetSubTabAlignment("Center")
-
-    local NestedGeneral = Nested:AddSubTab({
-        Name = "General",
-        Description = "Nested subtab level",
-    })
-
-    NestedGeneral:AddLabel("Tab -> SubTab -> Nested SubTab", true)
-    NestedGeneral:AddToggle("NestedGeneralToggle", {
-        Text = "Nested Toggle",
-        Default = false,
-    })
-    NestedGeneral:AddSlider("NestedGeneralSlider", {
-        Text = "Nested Slider",
-        Default = 25,
-        Min = 0,
-        Max = 50,
-        Rounding = 0,
-    })
-
-    local NestedAdvanced = Nested:AddSubTab({
-        Name = "Advanced",
-        Description = "Second nested page",
-    })
-
-    NestedAdvanced:AddDropdown("NestedAdvancedMode", {
-        Text = "Nested Mode",
-        Values = {
-            "Safe",
-            "Fast",
-            "Custom",
-        },
-        Default = 1,
-    })
-    NestedAdvanced:AddInput("NestedAdvancedInput", {
-        Text = "Nested Input",
-        Default = "Nested",
-        Placeholder = "Type here...",
-    })
-    NestedAdvanced:AddButton({
-        Text = "Select General",
-        Func = function()
-            Nested:GetSubTab("General"):Select()
-        end,
-    })
-    NestedAdvanced:AddButton({
-        Text = "Rename Nested Tab",
-        Func = function()
-            NestedAdvanced:SetName("Advanced API")
-        end,
-    })
-
-    local DeepCheck = Nested:GetSubTab("General")
-    if DeepCheck then
-        DeepCheck:Resize()
-    end
-end
-
-do
     local Farm = Tabs.Single:AddGroupbox({
         Name = "Single Column Demo",
         IconName = "layout-dashboard",
@@ -1277,21 +1160,28 @@ do
 end
 
 do
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    -- WHAT IS A "KEY SYSTEM"? A gate that only lets the script's
+    -- features be used after the user enters a correct key/password.
+    -- Scripts commonly use this to control who gets access (e.g. paid
+    -- users, Discord members, whitelisted testers) without needing a
+    -- real login system -- the accepted key(s) are just checked locally
+    -- against a list written into the script itself.
+    --
+    -- NOTE: AddKeyBox (used further below) is the original simple
+    -- key-entry widget -- a control living inside a normal tab that just
+    -- reports the submitted key via callback; it doesn't hide/gate
+    -- anything on its own. It's independent of AddKeyBoxUnlock below
+    -- (which locks only the groupboxes on this specific tab), and of the
+    -- separate full-window Config.KeySystem gate that Library:CreateWindow
+    -- still supports (just not used in this example) -- see Library.lua.
+    --
+    -- AddKeyBoxUnlock: everything added to THIS tab via
+    -- Tab:AddLeftGroupbox/AddRightGroupbox AFTER this call starts out
+    -- hidden -- exactly like AddDependencyBox content -- and is revealed
+    -- once a valid key is submitted (or GetKeyLink is used to copy a
+    -- link for where to obtain one, mirroring how key-system provider
+    -- links usually work: the accepted key(s) live in the script, while
+    -- the public-facing "get key" link can point anywhere, e.g. Discord).
     Tabs.Key:AddKeyBoxUnlock({
         Title = "Unlock Features",
         Text = "Key",
@@ -1307,8 +1197,8 @@ do
         end,
     })
 
-    
-    
+    -- Added AFTER AddKeyBoxUnlock, so this whole groupbox (and every
+    -- control in it) stays hidden until the key above is accepted.
     local Locked = Tabs.Key:AddLeftGroupbox("Unlocked Controls", "unlock")
 
     Locked:AddToggle("KeyUnlockedToggle", {
@@ -1342,8 +1232,8 @@ do
         end,
     })
 
-    
-    
+    -- AddRow: two side-by-side sub-groupboxes, still hidden until the key
+    -- above is accepted since Locked itself is hidden.
     local RowLeft, RowRight = Locked:AddRow(2)
     RowLeft:AddLabel("Row - Left side")
     RowLeft:AddToggle("KeyUnlockedRowToggle", {
@@ -1359,8 +1249,8 @@ do
         Rounding = 0,
     })
 
-    
-    
+    -- AddDependencyBox: content only shows once BOTH the key above is
+    -- accepted (Locked is visible) AND KeyUnlockedToggle is on.
     Locked:AddDivider()
     Locked:AddLabel("Dependency box (also needs Feature Toggle above ON):")
     local KeyDepBox = Locked:AddDependencyBox()
@@ -1375,10 +1265,10 @@ do
         end,
     })
 
-    
-    
-    
-    
+    -- Second groupbox on this tab, covering every remaining control type
+    -- the library supports -- also created via the wrapped
+    -- AddRightGroupbox above, so it starts hidden and unlocks together
+    -- with Locked.
     local LockedRight = Tabs.Key:AddRightGroupbox("More Unlocked Controls", "sparkles")
 
     LockedRight:AddPlayerInfo("KeyUnlockedPlayerInfo", {
@@ -1749,8 +1639,18 @@ do
     ThemeManager:ApplyToTab(Tabs.Settings)
 
     SaveManager:SetLibrary(Library)
+    -- IgnoreThemeSettings: tells SaveManager to leave color/theme-related
+    -- options (BackgroundColor, AccentColor, the theme dropdown, etc.)
+    -- out of its own saved configs. Those are already handled separately
+    -- by ThemeManager above -- without this, saving/loading a SaveManager
+    -- config could fight with ThemeManager over which one controls the
+    -- UI's colors.
     SaveManager:IgnoreThemeSettings()
 
+    -- SetIgnoreIndexes: the general-purpose version of the above -- lists
+    -- specific option Idx values that should never be written into or
+    -- read back from SaveManager configs. MenuKeybind is excluded here so
+    -- switching configs never changes which key opens the menu itself.
     SaveManager:SetIgnoreIndexes({
         "MenuKeybind",
     })
@@ -1758,11 +1658,11 @@ do
     SaveManager:SetFolder("CreU/specific-game")
     SaveManager:SetSubFolder("specific-place")
 
-    
-    
-    
-    
-    
+    -- NOTE: the old duplicate call to SaveManager:BuildUploadSection() was
+    -- removed here (it was called a second time even though
+    -- BuildConfigSection already called it once, creating two "Upload"
+    -- groupboxes). The upload feature itself has since been removed from
+    -- SaveManager.lua because its backing web service is offline.
     SaveManager:BuildConfigSection(
         Tabs.Settings
     )
