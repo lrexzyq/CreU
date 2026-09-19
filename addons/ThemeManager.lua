@@ -1,9 +1,5 @@
 local HttpService = game:GetService("HttpService")
 
-
-
-
-
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 local function LocalBase64Encode(data)
@@ -70,12 +66,7 @@ local function LocalBase64Decode(data)
     return table.concat(result)
 end
 
-
-
 local ThemeManager
-
-
-
 
 local function Base64Encode(data)
     local library = ThemeManager and ThemeManager.Library
@@ -122,10 +113,6 @@ do
             return false
         end
 
-        
-        
-        
-        
         if Name:find("[/\\]") or Name:find("%.%.") or Name:find('[<>:"|%?%*]') then
             return false
         end
@@ -585,14 +572,6 @@ do
             Default = ""
         })
 
-        
-        
-        
-        
-        
-        
-        
-        
         Groupbox:AddButton("Import from string", function()
             local Input = self:GetOption("ThemeManager_ImportString")
             local Raw = Input and Input.Value
@@ -628,10 +607,6 @@ do
             Notify(self, "Theme imported from clipboard")
         end)
 
-        
-        
-        
-        
         Groupbox:AddButton("Import and save as", function()
             local Input = self:GetOption("ThemeManager_ImportString")
             local NameOption = self:GetOption("ThemeManager_CustomThemeName")
@@ -773,11 +748,6 @@ do
         return true
     end
 
-    
-    
-    
-    
-    
     function ThemeManager:DeleteCustomTheme(File)
         File = Trim(File)
 
@@ -809,15 +779,6 @@ do
         return true
     end
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
     local KnownThemeExportPrefixes = { CREU3 = true }
     ThemeManager.MaxImportStringLength = 20000
 
@@ -837,10 +798,7 @@ do
                 return nil, "theme does not exist"
             end
         else
-            
-            
-            
-            
+
             local Options = GetOptions(self)
             Scheme = {}
 
@@ -857,11 +815,6 @@ do
             end
         end
 
-        
-        
-        
-        
-        
         local Data = {}
         for _, Field in ipairs(ThemeFields) do
             local Hex = Scheme[Field]
@@ -935,9 +888,6 @@ do
             return false, "invalid or corrupted theme string"
         end
 
-        
-        
-        
         for _, Field in ipairs(ThemeFields) do
             if type(Decoded[Field]) ~= "string" then
                 return false, "theme string is missing " .. Field
@@ -985,11 +935,6 @@ do
             return true, Name
         end
 
-        
-        
-        
-        
-        
         self._ApplyingTheme = true
 
         local Options = GetOptions(self)
@@ -1014,11 +959,6 @@ do
 
         self.CurrentTheme = nil
 
-        
-        
-        
-        
-        
         if Options then
             local BuiltInList = Options.ThemeManager_ThemeList
             local CustomList = Options.ThemeManager_CustomThemeList
@@ -1103,7 +1043,6 @@ do
 
         Folder = Trim(Folder)
 
-        
         if Folder ~= "" and not Folder:find("%.%.") and not Folder:find('[<>:"|%?%*]') then
             self.Folder = Folder:gsub('[/\\]+', '/')
             self:BuildFolderTree()
@@ -1135,4 +1074,3 @@ do
 end
 
 return ThemeManager
-

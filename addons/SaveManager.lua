@@ -1,9 +1,5 @@
 local HttpService = game:GetService('HttpService')
 
-
-
-
-
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 local function LocalBase64Encode(data)
@@ -70,12 +66,7 @@ local function LocalBase64Decode(data)
     return table.concat(result)
 end
 
-
-
 local SaveManager
-
-
-
 
 local function Base64Encode(data)
     local library = SaveManager and SaveManager.Library
@@ -116,15 +107,7 @@ SaveManager = {} do
         name = Trim(name)
         if name == '' then return false end
         if name:find('[/\\]') then return false end
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         if name:find('%.%.') then return false end
         if name:find('[<>:"|%?%*]') then return false end
         if name:sub(1, 1) == '.' then return false end
@@ -195,11 +178,6 @@ SaveManager = {} do
         end
     end
 
-    
-    
-    
-    
-    
     local function IsValidIdx(idx)
         return type(idx) == 'string' and idx ~= ''
     end
@@ -236,9 +214,6 @@ SaveManager = {} do
                     return
                 end
 
-                
-                
-                
                 local numericValue = tonumber(data.value)
                 if not numericValue then
                     return
@@ -260,14 +235,6 @@ SaveManager = {} do
                     multi = object.Multi == true,
                 }
 
-                
-                
-                
-                
-                
-                
-                
-                
                 if object.Priority == true and type(object.Order) == 'table' then
                     local order = {}
                     for i, v in ipairs(object.Order) do
@@ -292,12 +259,6 @@ SaveManager = {} do
 
                 local isMulti = data.multi == true
 
-                
-                
-                
-                
-                
-                
                 if data.priority == true and type(data.order) == 'table' then
                     local cleanedOrder = {}
                     for _, v in ipairs(data.order) do
@@ -312,11 +273,7 @@ SaveManager = {} do
                 local value = data.value
 
                 if isMulti then
-                    
-                    
-                    
-                    
-                    
+
                     if type(value) ~= 'table' then
                         return
                     end
@@ -330,16 +287,13 @@ SaveManager = {} do
                         end
                     end
 
-                    
-                    
-                    
                     if not any and next(value) ~= nil then
                         return
                     end
 
                     option:SetValue(cleaned)
                 else
-                    
+
                     if value ~= nil and type(value) ~= 'string' then
                         return
                     end
@@ -373,9 +327,6 @@ SaveManager = {} do
                     return
                 end
 
-                
-                
-                
                 local hex = data.value
                 if not hex:match('^#?%x+$') or #(hex:gsub('^#', '')) < 3 then
                     return
@@ -412,10 +363,6 @@ SaveManager = {} do
                     return
                 end
 
-                
-                
-                
-                
                 local key = data.key or data.value
                 if type(key) ~= 'string' or key == '' then
                     key = 'None'
@@ -462,9 +409,6 @@ SaveManager = {} do
                     return
                 end
 
-                
-                
-                
                 local low = tonumber(data.low)
                 local high = tonumber(data.high)
                 if not low or not high then
@@ -497,10 +441,7 @@ SaveManager = {} do
         end
 
         folder = Trim(folder)
-        
-        
-        
-        
+
         if folder == '' or folder:find('%.%.') or folder:find('[<>:"|%?%*]') then
             return self
         end
@@ -518,7 +459,7 @@ SaveManager = {} do
         end
 
         local sub = Trim(folder):gsub('^[/\\]+', ''):gsub('[/\\]+$', '')
-        
+
         if sub == '' or sub:find('%.%.') or sub:find('[/\\]') or sub:find('[<>:"|%?%*]') then
             return self.Folder
         end
@@ -540,13 +481,7 @@ SaveManager = {} do
         local data = { objects = {} }
 
         local library = self.Library
-        
-        
-        
-        
-        
-        
-        
+
         if library and type(library.ThemeManager) == 'table' and not self.Ignore['ThemeManager_ThemeList'] then
             local currentTheme = library.ThemeManager.CurrentTheme
             if type(currentTheme) == 'string' and currentTheme ~= '' then
@@ -673,10 +608,6 @@ SaveManager = {} do
             return false, 'decode error'
         end
 
-        
-        
-        
-        
         local maxObjects = math.max(1, math.floor(tonumber(self.MaxLoadObjects) or 2000))
         if #decoded.objects > maxObjects then
             local err = string.format('config has too many entries (%d > %d)', #decoded.objects, maxObjects)
@@ -717,9 +648,6 @@ SaveManager = {} do
                     end
                 end
 
-                
-                
-                
                 local savedTheme = type(decoded.theme) == 'string' and Trim(decoded.theme) or nil
                 if savedTheme == '' then
                     savedTheme = nil
@@ -818,20 +746,8 @@ SaveManager = {} do
         return exportString
     end
 
-    
-    
-    
-    
-    
-    
-    
-    
     local KnownExportPrefixes = { CREU2 = true }
 
-    
-    
-    
-    
     SaveManager.MaxImportStringLength = 200000
 
     function SaveManager:Import(exportString)
@@ -1087,9 +1003,7 @@ SaveManager = {} do
         end
 
         self:BuildImportExportSection(tab)
-        
-        
-        
+
         self:SetIgnoreIndexes({ 'SaveManager_ConfigList', 'SaveManager_ConfigName' })
 
         return section
@@ -1099,9 +1013,6 @@ SaveManager = {} do
         assert(self.Library, 'Must set SaveManager.Library')
         assert(tab, 'Must set a valid tab')
 
-        
-        
-        
         local IOGroup = tab:AddRightGroupbox('Import / Export')
 
         IOGroup:AddButton('Export current config to clipboard', function()
@@ -1160,7 +1071,6 @@ SaveManager = {} do
         return IOGroup
     end
 
-
     function SaveManager:BuildFullConfigTab(window)
         assert(window, 'Must set a valid window')
         local ConfigsTab = window:AddTab('Configs')
@@ -1171,4 +1081,3 @@ SaveManager = {} do
 end
 
 return SaveManager
-
