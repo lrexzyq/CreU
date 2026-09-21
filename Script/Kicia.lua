@@ -2298,6 +2298,9 @@ return {
                     state = state,
                 }
             end
+            -- Forward declaration: refreshTargetEntry() is defined before
+            -- runtimeEquippedItem(), so it must capture the same local function.
+            local runtimeEquippedItem
             local function refreshTargetEntry(entry)
                 if not entry then
                     return nil
@@ -2590,7 +2593,7 @@ return {
             local rageOrbitVantage = nil
             local rageOrbitVantageUntil = 0
             local rageOrbitTargetKey = nil
-            local function runtimeEquippedItem(fighter)
+            runtimeEquippedItem = function(fighter)
                 if fighter == nil then return nil end
                 local item = nil
                 pcall(function() item = fighter.EquippedItem end)
