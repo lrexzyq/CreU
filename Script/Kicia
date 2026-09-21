@@ -18338,6 +18338,26 @@ ErrorReporter.set_game(GameName)
             function RivalsRagebot.IsBaitModeEnabled()
                 return Toggles.P8S4T3 and Toggles.P8S4T3.Value == true
             end
+            local function SafeIsCombatTarget(player)
+                if player == nil or player == LP or player.Parent ~= Players then
+                    return false
+                end
+                local fn = RivalsRagebot.IsCombatTarget
+                if type(fn) == 'function' and fn ~= SafeIsCombatTarget then
+                    local ok, result = pcall(fn, player)
+                    if ok then
+                        return result == true
+                    end
+                end
+                local resolver = IsPlayerInLocalEnvironment
+                if type(resolver) ~= 'function' then
+                    return false
+                end
+                local ok, result = pcall(resolver, player)
+                return ok and result == true
+            end
+            RivalsRagebot.IsCombatTarget = SafeIsCombatTarget
+
             function RivalsRagebot.UpdateHostileTeleportTracker(now)
                 local minDt = RivalsRagebot.HostileTrackerSampleMinDt
                 if (now - (RivalsRagebotState.LastHostileTrackerSampleAt or 0)) < minDt then
@@ -18351,7 +18371,7 @@ ErrorReporter.set_game(GameName)
                 local processed = {}
 
                 local function samplePlayer(player)
-                    if not player or player == LP or player.Parent ~= Players or not RivalsRagebot.IsCombatTarget(player) then
+                    if not player or player == LP or player.Parent ~= Players or not SafeIsCombatTarget(player) then
                         return
                     end
                     if processed[player] then return end
@@ -18493,7 +18513,7 @@ ErrorReporter.set_game(GameName)
                 local nearestPlayer = nil
                 local nearestDistance = math.huge
                 for _, player in ipairs(Players:GetPlayers()) do
-                    if player ~= LP and player.Parent == Players and RivalsRagebot.IsCombatTarget(player) then
+                    if player ~= LP and player.Parent == Players and SafeIsCombatTarget(player) then
                         local armedUnder = RivalsRuntimeBridge.IsUndergroundArmedThreat
                         local activeArmed = armedUnder and armedUnder(player, maxDistance) or false
                         if activeArmed then
@@ -18804,7 +18824,7 @@ ErrorReporter.set_game(GameName)
                 local bestDistance = maxDistance + 1
                 local filter = RivalsRagebot.LosRaycastParams
                 for _, player in ipairs(Players:GetPlayers()) do
-                    if player ~= LP and player.Parent == Players and RivalsRagebot.IsCombatTarget(player) then
+                    if player ~= LP and player.Parent == Players and SafeIsCombatTarget(player) then
                         local subject = player.Character
                         local humanoid = subject and subject:FindFirstChildOfClass('Humanoid')
                         local root = subject and subject:FindFirstChild('HumanoidRootPart')
@@ -19002,14 +19022,6 @@ ErrorReporter.set_game(GameName)
                 binding:SetEnabled(RivalsRagebot.IsRespawnEnabled())
                 RivalsRuntimeBridge.ReplicateHook.RevertIfIdle()
             end
-            function RivalsRagebot.IsCombatTarget(player)
-                local resolver = IsPlayerInLocalEnvironment
-                if type(resolver) ~= 'function' then
-                    return false
-                end
-                local ok, result = pcall(resolver, player)
-                return ok and result == true
-            end
             local SHIELD_CLAMP_RAD = math.rad(45)
             function RivalsRagebot.ResolveTarget(rawPhase)
                 EnsureAimbotTargetTracking()
@@ -19025,7 +19037,7 @@ ErrorReporter.set_game(GameName)
                 local bestHoverCFrame = nil
                 for _, fighter in ipairs(LocalFighterController and LocalFighterController.Objects or {}) do
                     local player = fighter and fighter.Player
-                    if player and player ~= LP and player.Parent == Players and ShouldShow(player, false) and RivalsRagebot.IsCombatTarget(player) then
+                    if player and player ~= LP and player.Parent == Players and ShouldShow(player, false) and SafeIsCombatTarget(player) then
                         local entity = fighter.Entity
                         local subject = entity and entity.Model
                         if subject then
