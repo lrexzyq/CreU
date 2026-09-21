@@ -1206,9 +1206,6 @@ return {
                 end
 
                 local finalAimWorldPos = hitboxHead.Position
-                if not glued and typeof(aimWorldPos) == 'Vector3' and shotFiniteVector3(aimWorldPos) then
-                    finalAimWorldPos = aimWorldPos
-                end
                 local eyeBase = eyeCF.Position
                 local finalEyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, hitboxHead.Parent), 0)
                 local finalEyeCF = safeLookCFrame(finalEyePos, finalAimWorldPos)
@@ -2638,6 +2635,7 @@ return {
                 end
                 return true
             end
+            Setting.RAGE_TRIGGER_DISTANCE = 100000
             Setting.HACKER_PRIORITY_Y = 500
             Setting.HACKER_PRIORITY_SPEED = 67
 
@@ -2707,6 +2705,9 @@ return {
                         end
                         entry.distance = distance
                         entry.health = tonumber(entry.health) or math.huge
+                        if distance == math.huge or distance > Setting.RAGE_TRIGGER_DISTANCE then
+                            continue
+                        end
                         if prioritizeHackers then
                             local hackerPriority, heightPriority, velocity, measuredVelocity = KiciaRagebot.getHackerPriorityState(entry)
                             entry.hackerPriority = hackerPriority
@@ -2819,6 +2820,9 @@ return {
                     if KiciaRagebot.isFiniteVector3(delta) then
                         entry.distance = delta.Magnitude
                     end
+                end
+                if entry.distance == math.huge or entry.distance > Setting.RAGE_TRIGGER_DISTANCE then
+                    return nil
                 end
                 return entry
             end
@@ -3115,15 +3119,19 @@ return {
                 if attackerRoot == nil or attackerRoot.Parent == nil then return nil end
                 if not KiciaRagebot.isFiniteVector3(attackerRoot.Position) then return nil end
 
-                local horizontal = attackerRoot.Position - hitPart.Position
-                horizontal = Vector3.new(horizontal.X, 0, horizontal.Z)
-                if horizontal.Magnitude < 1e-3 then
-                    horizontal = Vector3.new(0, 0, -1)
-                else
-                    horizontal = horizontal.Unit
+                local targetRoot = target.model:FindFirstChild('HumanoidRootPart')
+                if targetRoot == nil or not targetRoot:IsA('BasePart') or not KiciaRagebot.isFiniteVector3(targetRoot.Position) then
+                    return nil
                 end
 
-                local awayAngle = math.atan2(horizontal.Z, horizontal.X)
+                local look = targetRoot.CFrame.LookVector
+                look = Vector3.new(look.X, 0, look.Z)
+                if look.Magnitude < 1e-3 then
+                    return nil
+                end
+                look = look.Unit
+
+                local awayAngle = math.atan2(look.Z, look.X) + math.pi
                 local ignore = { target.model, GetChar() }
                 local killFloor = KiciaRagebot.rageKillFloor()
 
@@ -3971,19 +3979,15 @@ return {
                         return false
                     end
 
-                    local aimWorldPos = finalShotAimWorldPos or hitboxHead.Position
-                    local shotEyeCF = finalShotEyeCF
-                    local shotMuzzleCF = finalShotMuzzleCF
-                    if shotEyeCF == nil or shotMuzzleCF == nil then
-                        local shotEyeBase = cframe.Position
-                        local shotEyePos = shotEyeBase + Vector3.new(0, eyeRise(shotEyeBase, target.model), 0)
-                        shotEyeCF = safeLookCFrame(shotEyePos, aimWorldPos)
-                        shotMuzzleCF = shotEyeCF and (shotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
-                    end
-                    if shotEyeCF == nil or shotMuzzleCF == nil then
+                    finalShotAimWorldPos = hitboxHead.Position
+                    local shotEyeBase = cframe.Position
+                    local shotEyePos = shotEyeBase + Vector3.new(0, eyeRise(shotEyeBase, target.model), 0)
+                    finalShotEyeCF = safeLookCFrame(shotEyePos, finalShotAimWorldPos)
+                    finalShotMuzzleCF = finalShotEyeCF and (finalShotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
+                    if finalShotEyeCF == nil or finalShotMuzzleCF == nil then
                         return false
                     end
-                    return fireGun(objectId, isRaycast, shotEyeCF, shotMuzzleCF, hitboxHead, aimWorldPos, aim1, aim2, AIM_EXTRA, glued, false) == true
+                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, glued, false) == true
                 end
                 return cframe, weaponAction, preFireRefresh
             end
@@ -4229,6 +4233,30 @@ return {
                     State.RageFireAimPos = liveAimPos
                     State.RageFireHitPart = liveHitPart
                     State.RageFireStamp = tick()
+
+                    local bypassHeavy = false
+                    if liveProfile.knife and togValue('P4S1T8', false) and type(liveItem.HeavyAttack) == 'function' then
+                        local okBypass = pcall(function()
+                            liveItem._attack_cooldown = 0
+                            liveItem._last_attack = tick() - 1
+                            liveItem:HeavyAttack(liveRoot.Position)
+                        end)
+                        bypassHeavy = okBypass == true
+                        if bypassHeavy then
+                            State.RageKnifeStatus = 'Backstab bypass'
+                        end
+                    end
+
+                    if bypassHeavy then
+                        self:MarkReady(meleeTargetKey(target), liveAttackPos)
+                        self._knifePendingStart = false
+                        self._lastKnifeSwingAt = os.clock()
+                        self:_RecordBackstab()
+                        State.RageKnifeSwings = (State.RageKnifeSwings or 0) + 1
+                        State.Shots = (State.Shots or 0) + 1
+                        return true
+                    end
+
                     local ok, result = pcall(function()
                         return fireMeleeRemote(liveItem, liveProfile.heavy, objectId, liveHitPart, liveAimPos, eyeCF, muzzleCF, useAim1, useAim2, AIM_EXTRA)
                     end)
@@ -4868,7 +4896,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
             local controllerInstance = nil
             local riotKnifeBypassWasActive = false
 
-            local RIOT_KNIFE_BYPASS_TRIGGER_DIST = 36
+            local RIOT_KNIFE_BYPASS_TRIGGER_DIST = 1000
 
             local function findNearestTargetWithinDistance(triggerDist)
                 local myChar = LPRB.Character
@@ -4922,15 +4950,67 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 return findNearestTargetWithinDistance(RIOT_KNIFE_BYPASS_TRIGGER_DIST)
             end
 
+            local riotKnifeBypassLastAt = 0
             local function updateRiotKnifeBypass(controller, active)
                 local characterController = controller and controller._characterController or nil
+                if characterController == nil and controller and type(controller._EnsureCharacterController) == 'function' then
+                    characterController = controller:_EnsureCharacterController()
+                end
+
                 local viewAngleDriver = characterController and characterController._viewAngleDriver or nil
                 if type(viewAngleDriver) ~= 'table' then
                     return
                 end
-                if not active and riotKnifeBypassWasActive then
+
+                if not active then
+                    riotKnifeBypassLastAt = 0
                     LuaHookViewAngle.ClearTarget(viewAngleDriver)
+                    return
                 end
+
+                local now = os.clock()
+                if now - riotKnifeBypassLastAt < 0.016 then
+                    return
+                end
+                riotKnifeBypassLastAt = now
+
+                local fighter = resolveLocalFighter()
+                local item = runtimeEquippedItem(fighter)
+                local profile = meleeProfile(item)
+                if profile == nil or not profile.knife then
+                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
+                    return
+                end
+
+                local root = nil
+                local rageTarget = controller and controller._lastTarget or nil
+                if rageTarget ~= nil then
+                    local rageRoot = rageTarget.rootPart
+                    if rageRoot ~= nil and rageRoot.Parent ~= nil and rageRoot:IsA('BasePart') then
+                        local hum = rageTarget.model and rageTarget.model:FindFirstChildOfClass('Humanoid') or nil
+                        if hum ~= nil and hum.Health > 0 then
+                            root = rageRoot
+                        end
+                    end
+                end
+
+                if root == nil then
+                    root = findNearestRiotKnifeBypassTarget()
+                end
+
+                if root == nil or root.Parent == nil or not root:IsA('BasePart') then
+                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
+                    return
+                end
+
+                local character = root.Parent
+                local humanoid = character and character:FindFirstChildOfClass('Humanoid') or nil
+                if humanoid == nil or humanoid.Health <= 0 then
+                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
+                    return
+                end
+
+                viewAngleDriver:SendSilentTarget(root)
             end
 
             local function ensureController()
@@ -5017,22 +5097,15 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
             end
             function KiciaRagebot.Update(dt)
                 local controller = ensureController()
+                local riotKnifeBypassActive = togValue('P4S1T8', false)
+                updateRiotKnifeBypass(controller, riotKnifeBypassActive)
+
                 local enabled = KiciaRagebot.IsEnabled()
                 if controller._enabled ~= enabled then
                     controller:SetEnabled(enabled)
                 end
                 controller:Update(dt or 0)
-
-                
-                
-                local riotKnifeBypassActive = togValue('P4S1T8', false)
-                if enabled then
-                    updateRiotKnifeBypass(controller, false)
-                    riotKnifeBypassWasActive = false
-                else
-                    updateRiotKnifeBypass(controller, riotKnifeBypassActive)
-                    riotKnifeBypassWasActive = riotKnifeBypassActive
-                end
+                riotKnifeBypassWasActive = riotKnifeBypassActive
             end
             function KiciaRagebot.Reset()
                 if controllerInstance then
