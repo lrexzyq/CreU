@@ -4487,16 +4487,17 @@ ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder(ScriptPaths.storage_root())
 ErrorReporter = RequireSharedModule('error_reporter')
 function Library:SafeCallback(Func, ...)
-    if not (Func and typeof(Func) == "function") then
+    if type(Func) ~= "function" then
         return
     end
     local args = table.pack(...)
     local Result = table.pack(xpcall(function()
         return Func(table.unpack(args, 1, args.n))
     end, function(err)
-        local traceback = debug.traceback(tostring(err), 2)
+        local traceFn = (type(debug) == 'table' and type(debug.traceback) == 'function') and debug.traceback or nil
+        local traceback = traceFn and traceFn(tostring(err), 2) or tostring(err)
         if ErrorReporter and type(ErrorReporter.report) == 'function' then
-            ErrorReporter.report(tostring(err), traceback, 'library_callback')
+            pcall(ErrorReporter.report, tostring(err), traceback, 'library_callback')
         end
         return err
     end))
@@ -4748,7 +4749,9 @@ ErrorReporter.set_game(GameName)
                     local ok, result = xpcall(function()
                         return callback(table.unpack(args, 1, args.n))
                     end, function(err)
-                        return debug.traceback(string.format('[%s] %s', tostring(feature), tostring(err)), 2)
+                        local traceFn = (type(debug) == 'table' and type(debug.traceback) == 'function') and debug.traceback or nil
+                        local message = string.format('[%s] %s', tostring(feature), tostring(err))
+                        return traceFn and traceFn(message, 2) or message
                     end)
                     if not ok then
                         ReportRivalsRuntimeIssue(feature, result)
@@ -12712,17 +12715,25 @@ ErrorReporter.set_game(GameName)
                     Spoofed = nil,
                     Connection = nil,
                 }
-                binder.Connection = instance:GetAttributeChangedSignal(attribute):Connect(function()
+                binder.Connection = instance:GetAttributeChangedSignal(attribute):Connect(GuardRivalsCallback('PlayerSpoofer_AttributeChanged', function()
                     if binder.IsWriting then
                         return
                     end
-                    binder.Original = instance:GetAttribute(attribute)
+                    local okOriginal, original = pcall(function()
+                        return instance:GetAttribute(attribute)
+                    end)
+                    if not okOriginal then
+                        return
+                    end
+                    binder.Original = original
                     binder.IsWriting = true
                     if binder.Spoofed ~= nil then
-                        instance:SetAttribute(attribute, binder.Spoofed.value)
+                        pcall(function()
+                            instance:SetAttribute(attribute, binder.Spoofed.value)
+                        end)
                     end
                     binder.IsWriting = false
-                end)
+                end))
                 return binder
             end
             function RivalsRuntimeBridge.PlayerSpoofer.BinderSet(binder, spoofed)
@@ -18390,20 +18401,39 @@ ErrorReporter.set_game(GameName)
 
                     local char = player.Character
                     local hrp = char and char:FindFirstChild('HumanoidRootPart')
-                    if not hrp or not hrp.Parent or not hrp:IsA('BasePart') or not isFiniteVector3(hrp.Position) then
+                    if hrp == nil then
+                        return
+                    end
+
+                    -- Some executors/proxies can expose FindFirstChild results whose methods are not
+                    -- callable in the normal way. Validate the instance and position without relying on
+                    -- a direct hrp:IsA() / helper call in the heartbeat hot path.
+                    local hrpPositionOk, hrpPosition = pcall(function()
+                        if hrp.Parent == nil then
+                            return nil
+                        end
+                        return hrp.Position
+                    end)
+                    if not hrpPositionOk or typeof(hrpPosition) ~= 'Vector3' then
+                        return
+                    end
+                    if hrpPosition.X ~= hrpPosition.X or hrpPosition.Y ~= hrpPosition.Y or hrpPosition.Z ~= hrpPosition.Z
+                        or math.abs(hrpPosition.X) >= 4194304
+                        or math.abs(hrpPosition.Y) >= 4194304
+                        or math.abs(hrpPosition.Z) >= 4194304 then
                         return
                     end
 
                     local entry = hostileTeleports[player]
                     if not entry then
-                        entry = { LastPos = hrp.Position, LastCheckedAt = now, Teleports = {}, Offsets = {}, LastTeleportAt = 0 }
+                        entry = { LastPos = hrpPosition, LastCheckedAt = now, Teleports = {}, Offsets = {}, LastTeleportAt = 0 }
                     end
                     hostileTeleports[player] = entry
                     entry.SeenAt = now
 
                     local dt = now - (entry.LastCheckedAt or now)
                     if dt >= minDt then
-                        local currentPos = hrp.Position
+                        local currentPos = hrpPosition
                         local lastPos = entry.LastPos or currentPos
                         local dist = (currentPos - lastPos).Magnitude
                         local speed = dist / math.max(dt, 1e-4)
