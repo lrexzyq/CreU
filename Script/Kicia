@@ -4150,7 +4150,16 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
             end
             local controllerInstance = nil
             local alwaysBackstabWasActive = false
-            local ALWAYS_BACKSTAB_TRIGGER_DIST = 36
+            local ALWAYS_BACKSTAB_TRIGGER_DIST_KNIFE = 67
+            local ALWAYS_BACKSTAB_TRIGGER_DIST_RIOT_SHIELD = math.huge
+
+            local function getAlwaysBackstabMode()
+                local value = optValue('P4S1D2', 'Knife')
+                if value == 'Riot Shield' then
+                    return 'Riot Shield'
+                end
+                return 'Knife'
+            end
 
             local function findNearestAlwaysBackstabTarget()
                 local myChar = LPRB.Character
@@ -4165,10 +4174,13 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 local myPos = myRoot.Position
                 local myTeam = LPRB:GetAttribute('TeamID')
                 local myEnv = LPRB:GetAttribute('EnvironmentID')
+                local mode = getAlwaysBackstabMode()
+                local triggerDist = mode == 'Riot Shield'
+                    and ALWAYS_BACKSTAB_TRIGGER_DIST_RIOT_SHIELD
+                    or ALWAYS_BACKSTAB_TRIGGER_DIST_KNIFE
                 local best, bestDist = nil, math.huge
 
                 for _, player in ipairs(Players:GetPlayers()) do
-                    
                     if player == nil then continue end
                     if player == LPRB then continue end
                     if player:GetAttribute('EnvironmentID') ~= myEnv then continue end
@@ -4178,8 +4190,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     if character == nil then continue end
                     local rootPart = character:FindFirstChild('HumanoidRootPart')
                     if rootPart == nil then continue end
-                    
-                    
+
                     local alive = false
                     pcall(function()
                         local hum = character:FindFirstChildOfClass('Humanoid')
@@ -4188,7 +4199,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     if not alive then continue end
 
                     local dist = (rootPart.Position - myPos).Magnitude
-                    if dist <= 0 or dist > ALWAYS_BACKSTAB_TRIGGER_DIST then
+                    if dist <= 0 or dist > triggerDist then
                         continue
                     end
                     if dist < bestDist then
@@ -27570,6 +27581,14 @@ ErrorReporter.set_game(GameName)
                         Default = false,
                         Callback = RivalsModsState.EnsureHooks,
                     })
+                    local AlwaysBackstab = Mods:AddDependencyBox()
+                    AlwaysBackstab:AddDropdown("P4S1D2", {
+                        Values = { "Knife", "Riot Shield" },
+                        Default = "Knife",
+                        Multi = false,
+                        Text = "Mode",
+                    })
+                    AlwaysBackstab:SetupDependencies({ { Toggles.P4S1T8, true } })
                 end
                 do
 local P3 = Tabs.Automation
