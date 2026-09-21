@@ -3535,16 +3535,25 @@ return {
 
                     local heavy = rawget(info, 'CriticalDamage') ~= nil
                         and type(rawget(info, 'HeavyAttackCooldown')) == 'number'
-                    local knife = isLocalKnifeRuntime(item)
+                    local knife = false
+                    if type(isLocalKnifeRuntime) == 'function' then
+                        local okKnife, resultKnife = pcall(isLocalKnifeRuntime, item)
+                        knife = okKnife and resultKnife == true
+                    end
                     return { heavy = heavy, knife = knife }
                 end
 
                 -- Fallback for melee objects whose Info table is unavailable
                 -- but which still satisfy the existing melee heuristic.
                 if itemIsMeleeLuaHook(item) then
+                    local knife = false
+                    if type(isLocalKnifeRuntime) == 'function' then
+                        local okKnife, resultKnife = pcall(isLocalKnifeRuntime, item)
+                        knife = okKnife and resultKnife == true
+                    end
                     return {
                         heavy = false,
-                        knife = isLocalKnifeRuntime(item),
+                        knife = knife,
                     }
                 end
 
@@ -18422,7 +18431,19 @@ ErrorReporter.set_game(GameName)
 
                     local char = player.Character
                     local hrp = char and char:FindFirstChild('HumanoidRootPart')
-                    if not hrp or not hrp.Parent or not hrp:IsA('BasePart') or not isFiniteVector3(hrp.Position) then
+                    if not hrp or not hrp.Parent then
+                        return
+                    end
+                    local hrpIsA = hrp.IsA
+                    if type(hrpIsA) ~= 'function' then
+                        return
+                    end
+                    local okIsBasePart, isBasePart = pcall(hrpIsA, hrp, 'BasePart')
+                    if not okIsBasePart or isBasePart ~= true then
+                        return
+                    end
+                    local finiteVector3 = isFiniteVector3
+                    if type(finiteVector3) ~= 'function' or not finiteVector3(hrp.Position) then
                         return
                     end
 
@@ -19126,7 +19147,10 @@ ErrorReporter.set_game(GameName)
                 local flightActive = isRivalsFlightActive()
                 local enabled = RivalsRagebot.IsEnabled()
                 if enabled and not flightActive then
-                    RivalsRagebot.UpdateHostileTeleportTracker(now)
+                    local updateHostileTracker = RivalsRagebot.UpdateHostileTeleportTracker
+                    if type(updateHostileTracker) == 'function' then
+                        pcall(updateHostileTracker, now)
+                    end
                 end
                 local evasionOption = Options and Options.P8S4D2 and Options.P8S4D2.Value or 'Random'
                 if evasionOption ~= 'Random' then
