@@ -2105,6 +2105,13 @@ return {
                     self._previousRepRoot[ourPart] = nil
                 end
             end
+            local function isFiniteVector3(v)
+                return typeof(v) == 'Vector3'
+                    and v.X == v.X and v.Y == v.Y and v.Z == v.Z
+                    and math.abs(v.X) < 4194304
+                    and math.abs(v.Y) < 4194304
+                    and math.abs(v.Z) < 4194304
+            end
             local function isEnemyPlayer(player)
                 if player == nil or player == LPRB then
                     return false
@@ -2145,13 +2152,6 @@ return {
                     return fighter ~= nil and type(fighter.Get) == 'function' and fighter:Get('IsInvincible') == true
                 end)
                 return ok and result == true
-            end
-            local function isFiniteVector3(v)
-                return typeof(v) == 'Vector3'
-                    and v.X == v.X and v.Y == v.Y and v.Z == v.Z
-                    and math.abs(v.X) < 4194304
-                    and math.abs(v.Y) < 4194304
-                    and math.abs(v.Z) < 4194304
             end
 
 
