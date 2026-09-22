@@ -3796,8 +3796,9 @@ return {
                     targetRootPart = targetRootPart or target.rootPart
                     if targetRootPart ~= nil and targetRootPart.Parent ~= nil and temporal ~= nil then
                         local shieldState = classifyAboveBelow(target)
-                        local above = shieldState ~= 'Below'
-                        local offset = above and OFFSET_ABOVE or OFFSET_BELOW
+                        local directHeadAim = shieldState == 'None'
+                        local above = shieldState == 'Above'
+                        local offset = directHeadAim and Vector3.zero or (above and OFFSET_ABOVE or OFFSET_BELOW)
                         local aimPoint = temporal.predictedHead
                         if KiciaRagebot.rageGumMode() == 'on' and Setting.RageGumVoidFire() and target.temporalHeadPart and target.temporalHeadPart.Parent then
                             local ghostHead = target.temporalHeadPart
@@ -3903,9 +3904,9 @@ return {
                     return ourRootPart.CFrame, nil
                 end
                 local shieldState = classifyAboveBelow(target)
-                local above = shieldState ~= 'Below'
                 local directHeadAim = shieldState == 'None'
-                local offset = above and OFFSET_ABOVE or OFFSET_BELOW
+                local above = shieldState == 'Above'
+                local offset = directHeadAim and Vector3.zero or (above and OFFSET_ABOVE or OFFSET_BELOW)
 
 
                 local aimHeadPosition = predictLiveHeadPosition(target, hitboxHead)
@@ -3985,9 +3986,9 @@ return {
                     targetRootPart = liveRoot
 
                     local shieldState = classifyAboveBelow(target)
-                    above = shieldState ~= 'Below'
                     directHeadAim = shieldState == 'None'
-                    offset = above and OFFSET_ABOVE or OFFSET_BELOW
+                    above = shieldState == 'Above'
+                    offset = directHeadAim and Vector3.zero or (above and OFFSET_ABOVE or OFFSET_BELOW)
 
                     local liveGlue = false
                     local liveVoid = nil
@@ -4234,7 +4235,7 @@ return {
                 return attackPos, aimPos
             end
 
-            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, ourRootPart)
+            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, ourRootPart, characterController)
                 return function()
                     if ourRootPart == nil or not ourRootPart.Parent then
                         return false
@@ -4306,7 +4307,14 @@ return {
                     State.RageFireStamp = tick()
 
                     local baseCF = ourRootPart.CFrame
-                    local teleportOk = meleeTeleport(ourRootPart, attackCF)
+                    local teleportOk = false
+                    if characterController and type(characterController.SetServerCFrame) == 'function' and type(characterController.HeartbeatUpdate) == 'function' then
+                        characterController:SetServerCFrame(attackCF)
+                        characterController:HeartbeatUpdate()
+                        teleportOk = true
+                    else
+                        teleportOk = meleeTeleport(ourRootPart, attackCF)
+                    end
                     if not teleportOk then
                         State.RageKnifeStatus = 'melee tp failed'
                         pcall(function() ourRootPart.CFrame = baseCF end)
@@ -4345,7 +4353,12 @@ return {
                         self:_RecordBackstab()
                         State.RageKnifeSwings = (State.RageKnifeSwings or 0) + 1
                         State.Shots = (State.Shots or 0) + 1
-                        pcall(function() meleeTeleport(ourRootPart, baseCF) end)
+                        if characterController and type(characterController.SetServerCFrame) == 'function' and type(characterController.HeartbeatUpdate) == 'function' then
+                            characterController:SetServerCFrame(baseCF)
+                            characterController:HeartbeatUpdate()
+                        else
+                            pcall(function() meleeTeleport(ourRootPart, baseCF) end)
+                        end
                         return true
                     end
 
@@ -4353,7 +4366,12 @@ return {
                         return fireMeleeRemote(liveItem, liveProfile.heavy, objectId, liveHitPart, liveAimPos, eyeCF, muzzleCF, useAim1, useAim2, AIM_EXTRA)
                     end)
 
-                    pcall(function() meleeTeleport(ourRootPart, baseCF) end)
+                    if characterController and type(characterController.SetServerCFrame) == 'function' and type(characterController.HeartbeatUpdate) == 'function' then
+                        characterController:SetServerCFrame(baseCF)
+                        characterController:HeartbeatUpdate()
+                    else
+                        pcall(function() meleeTeleport(ourRootPart, baseCF) end)
+                    end
 
                     if not ok then
                         State.RageKnifeStatus = 'melee error: ' .. tostring(result)
@@ -4430,7 +4448,7 @@ return {
                         State.RageKnifeStatus = string.format('Knife wait %.3fs', Setting.KNIFE_SWING_INTERVAL - elapsed)
                         return ourRootPart.CFrame, nil, nil, true, nil
                     end
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, ourRootPart)
+                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, ourRootPart, characterController)
                 else
                     if not self._shootLock:ShouldFire(canFire == true, math.max(dt or 0, 0) * Setting.ShootFrames()) then
                         return ourRootPart.CFrame, nil, nil, true, nil
@@ -4443,7 +4461,7 @@ return {
                     local meleePitch, meleeYaw, meleeRoll = attackCF:ToOrientation()
                     local aim1 = buildAim(AIM_ABOVE_ORIGIN, meleePitch, meleeYaw, meleeRoll)
                     local aim2 = buildAim(AIM_ABOVE_END, meleePitch, meleeYaw, meleeRoll)
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, ourRootPart)
+                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, ourRootPart, characterController)
                 end
 
                 if weaponAction == nil then
