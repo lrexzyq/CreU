@@ -1191,35 +1191,6 @@ return {
                 end
                 return bound == hitboxHead
             end
-            local function predictLiveHeadPosition(target, headPart)
-                if target == nil or headPart == nil or not headPart.Parent then
-                    return headPart and headPart.Position or nil
-                end
-                local predicted = headPart.Position
-                local rootPart = target.rootPart
-                if rootPart ~= nil and rootPart.Parent ~= nil then
-                    local velocity = rootPart.AssemblyLinearVelocity
-                    if typeof(velocity) == 'Vector3' and KiciaRagebot.isFiniteVector3(velocity)
-                            and velocity.Magnitude > 4 and velocity.Magnitude < 500 then
-                        local latency = KiciaRagebot.temporalPrefireLead() + 0.030
-                        local humanoid = target.model and target.model:FindFirstChildOfClass('Humanoid') or nil
-                        local moveDirection = humanoid and humanoid.MoveDirection or Vector3.zero
-                        local lead = Vector3.zero
-                        if moveDirection.Magnitude > 0.1 then
-                            lead = lead + Vector3.new(velocity.X, 0, velocity.Z) * latency
-                        end
-                        lead = lead + Vector3.new(0, velocity.Y * latency, 0)
-                        if lead.Magnitude > 12 then
-                            lead = lead.Unit * 12
-                        end
-                        local candidate = predicted + lead
-                        if KiciaRagebot.isFiniteVector3(candidate) then
-                            predicted = candidate
-                        end
-                    end
-                end
-                return predicted
-            end
             local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, glued, forceAimPayload)
                 local remote = resolveUseItemRemote()
                 local token = enc('StartShooting')
@@ -1234,10 +1205,7 @@ return {
                     return false
                 end
 
-                local finalAimWorldPos = aimWorldPos
-                if not KiciaRagebot.isFiniteVector3(finalAimWorldPos) then
-                    finalAimWorldPos = hitboxHead.Position
-                end
+                local finalAimWorldPos = hitboxHead.Position
                 local eyeBase = eyeCF.Position
                 if not glued then
                     local liveRoot = GetRoot()
@@ -1350,23 +1318,17 @@ return {
                 local hitData = { part = hitboxHead }
                 if eyeCF ~= nil and muzzleCF ~= nil then
                     if heavy and type(item.HeavyAttack) == 'function' then
-                        local accepted = false
-                        local ok = withThreadIdentity2(function()
-                            local callOk, callResult = pcall(item.HeavyAttack, item, eyeCF, eyeCF, hitData)
-                            local cooldown = rawget(item, '_attack_cooldown')
-                            accepted = callOk and (callResult == true or (type(cooldown) == 'number' and cooldown > tick()))
+                        local ok, result = withThreadIdentity2(function()
+                            return pcall(item.HeavyAttack, item, eyeCF, eyeCF, hitData)
                         end)
-                        if ok and accepted then
+                        if ok and result == true then
                             return true
                         end
                     elseif not heavy and type(item.Attack) == 'function' then
-                        local accepted = false
-                        local ok = withThreadIdentity2(function()
-                            local callOk, callResult = pcall(item.Attack, item, eyeCF, eyeCF, hitData)
-                            local cooldown = rawget(item, '_attack_cooldown')
-                            accepted = callOk and (callResult == true or (type(cooldown) == 'number' and cooldown > tick()))
+                        local ok, result = withThreadIdentity2(function()
+                            return pcall(item.Attack, item, eyeCF, eyeCF, hitData)
                         end)
-                        if ok and accepted then
+                        if ok and result == true then
                             return true
                         end
                     end
@@ -3158,8 +3120,12 @@ return {
                 return flank, shield and 'Anti-riot' or (katana and 'Katana flank' or 'Shield flank')
             end
             local KNIFE_BACKSTAB_DIST = 1.2
-            function KiciaRagebot.knifeBackstabPointRuntime(target, hitPart)
+            function KiciaRagebot.knifeBackstabPointRuntime(target, hitPart, ourRootPart)
                 if target == nil or target.model == nil or hitPart == nil then return nil end
+
+                local attackerRoot = ourRootPart or GetRoot()
+                if attackerRoot == nil or attackerRoot.Parent == nil then return nil end
+                if not KiciaRagebot.isFiniteVector3(attackerRoot.Position) then return nil end
 
                 local targetRoot = target.model:FindFirstChild('HumanoidRootPart')
                 if targetRoot == nil or not targetRoot:IsA('BasePart') or not KiciaRagebot.isFiniteVector3(targetRoot.Position) then
@@ -3193,7 +3159,7 @@ return {
                     or not KiciaRagebot.rageHasLOS(candidate, hitPart.Position, ignore) then
                     return nil
                 end
-                return candidate
+                return candidate, 'Backstab', dir
             end
             function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 if target == nil then return nil end
@@ -3851,8 +3817,40 @@ return {
                 local directHeadAim = shieldState == 'None'
                 local offset = above and OFFSET_ABOVE or OFFSET_BELOW
 
-
-                local aimHeadPosition = predictLiveHeadPosition(target, hitboxHead)
+                -- Velocity lead prediction (mirrors luahook calculateLead).
+                -- Computes predicted head position at time of server hit.
+                -- latency = client ping + estimated server processing time.
+                -- Applied to aimHeadPosition so eyeCF, aim1/aim2 and cframe
+                -- all aim at where the target WILL BE, not where they are now.
+                -- This is what lets luahook hit targets that fly/jump fast.
+                local aimHeadPosition = hitboxHead.Position
+                do
+                    local rootPart = target.rootPart
+                    if rootPart ~= nil and rootPart.Parent ~= nil then
+                        local vel = rootPart.AssemblyLinearVelocity
+                        if typeof(vel) == 'Vector3' and KiciaRagebot.isFiniteVector3(vel)
+                                and vel.Magnitude > 4 and vel.Magnitude < 500 then
+                            -- latency: network ping + 30ms server tick
+                            local lat = KiciaRagebot.temporalPrefireLead() + 0.030
+                            -- horizontal lead only when humanoid is moving
+                            local hum = target.model and target.model:FindFirstChildOfClass('Humanoid')
+                            local md  = hum and hum.MoveDirection or Vector3.zero
+                            local lead = Vector3.zero
+                            if md.Magnitude > 0.1 then
+                                lead = lead + Vector3.new(vel.X, 0, vel.Z) * lat
+                            end
+                            -- vertical lead always (jump / knockback / flight)
+                            lead = lead + Vector3.new(0, vel.Y * lat, 0)
+                            -- cap lead to avoid over-prediction on extreme velocities
+                            local cap = 12
+                            if lead.Magnitude > cap then lead = lead.Unit * cap end
+                            local predicted = aimHeadPosition + lead
+                            if KiciaRagebot.isFiniteVector3(predicted) then
+                                aimHeadPosition = predicted
+                            end
+                        end
+                    end
+                end
 
                 State.RageGumMode = KiciaRagebot.rageGumMode()
                 State.RageGumVoidFire = false
@@ -3913,6 +3911,7 @@ return {
                 local finalShotEyeCF = nil
                 local finalShotMuzzleCF = nil
                 local finalShotAimWorldPos = nil
+                local finalShotHead = nil
 
                 preFireRefresh = function(characterController)
                     if not characterController then return cframe end
@@ -3978,7 +3977,7 @@ return {
                         refreshed = CFrame.new(liveVoid.Position + offset, hitboxHead.Position)
                     end
                     if refreshed ~= nil then
-                        local snapshotAim = predictLiveHeadPosition(target, hitboxHead) or hitboxHead.Position
+                        local snapshotAim = hitboxHead.Position
                         local snapshotEyeBase = refreshed.Position
                         local snapshotEyePos = snapshotEyeBase + Vector3.new(0, eyeRise(snapshotEyeBase, target.model), 0)
                         local snapshotEyeCF = safeLookCFrame(snapshotEyePos, snapshotAim)
@@ -3988,6 +3987,7 @@ return {
                             finalShotAimWorldPos = snapshotAim
                             finalShotEyeCF = snapshotEyeCF
                             finalShotMuzzleCF = snapshotMuzzleCF
+                            finalShotHead = hitboxHead
                             characterController:SetServerCFrame(refreshed)
                         end
                     end
@@ -4008,7 +4008,11 @@ return {
                     if hitboxHead.Parent == nil or targetRootPart.Parent == nil then
                         return false
                     end
-                    finalShotAimWorldPos = predictLiveHeadPosition(target, hitboxHead) or hitboxHead.Position
+                    if finalShotHead ~= nil and hitboxHead ~= finalShotHead then
+                        return false
+                    end
+
+                    finalShotAimWorldPos = hitboxHead.Position
                     local shotEyeBase = cframe.Position
                     local shotEyePos = shotEyeBase + Vector3.new(0, eyeRise(shotEyeBase, target.model), 0)
                     finalShotEyeCF = safeLookCFrame(shotEyePos, finalShotAimWorldPos)
@@ -4054,7 +4058,6 @@ return {
                     _lastKnifeSwingAt = -math.huge,
                     _knifePendingStart = false,
                     _gluedOurPart = nil,
-                    _viewAngleDriver = nil,
                 }, MeleeStrategy)
             end
 
@@ -4074,6 +4077,10 @@ return {
                         local okKnife, resultKnife = pcall(KiciaRagebot.isLocalKnifeRuntime, item)
                         knife = okKnife and resultKnife == true
                     end
+                    -- FIX: knife always uses HeavyAttack (backstab has longer range than
+                    -- light Attack). Previously heavy=false for knife because knives
+                    -- lack CriticalDamage → fireMeleeRemote called item:Attack() (short range)
+                    -- → missed. Now: knife forces heavy=true regardless of CriticalDamage.
                     return { heavy = heavy or knife, knife = knife }
                 end
 
@@ -4084,12 +4091,20 @@ return {
                         knife = okKnife and resultKnife == true
                     end
                     return {
-                        heavy = knife,
+                        heavy = knife,  -- FIX: knife → heavy for fallback path too
                         knife = knife,
                     }
                 end
 
                 return nil
+            end
+
+            local function meleeFarMiss()
+                return CFrame.new(
+                    rbRandom:NextInteger(-1000000, 1000000),
+                    rbRandom:NextInteger(5000, 10000),
+                    rbRandom:NextInteger(-1000000, 1000000)
+                )
             end
 
             local function meleeTargetKey(target)
@@ -4154,16 +4169,17 @@ return {
                 return CFrame.new(self._lastPark), true
             end
 
-            local function resolveMeleeAttackPose(profile, hitPart, targetRootPart, target)
-                if not profile or not hitPart or not targetRootPart then return nil, nil end
+            local function resolveMeleeAttackPose(profile, hitPart, targetRootPart, target, ourRootPart)
+                if not profile or not hitPart or not targetRootPart then return nil, nil, nil end
                 if not KiciaRagebot.isFiniteVector3(hitPart.Position) or not KiciaRagebot.isFiniteVector3(targetRootPart.Position) then
-                    return nil, nil
+                    return nil, nil, nil
                 end
                 local aimPos = hitPart.Position
                 local attackPos = nil
+                local attackDir = nil
 
                 if profile.knife then
-                    attackPos = KiciaRagebot.knifeBackstabPointRuntime(target, hitPart)
+                    attackPos, _, attackDir = KiciaRagebot.knifeBackstabPointRuntime(target, hitPart, ourRootPart)
                 else
                     local look = targetRootPart.CFrame.LookVector
                     look = Vector3.new(look.X, 0, look.Z)
@@ -4175,11 +4191,11 @@ return {
                     attackPos = Vector3.new(attackPos.X, math.max(attackPos.Y, KiciaRagebot.rageKillFloor() + 3), attackPos.Z)
                 end
 
-                if not KiciaRagebot.isFiniteVector3(attackPos) then return nil, nil end
-                return attackPos, aimPos
+                if not KiciaRagebot.isFiniteVector3(attackPos) then return nil, nil, nil end
+                return attackPos, aimPos, attackDir
             end
 
-            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2)
+            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, fallbackAttackDir, snapshotState)
                 return function()
                     local liveFighter = resolveLocalFighter()
                     local runtimeItem = liveFighter and runtimeEquippedItem(liveFighter) or nil
@@ -4195,7 +4211,15 @@ return {
                     end
 
                     local liveHitPart, liveRoot = resolveLiveMeleeTarget(target)
-                    if liveHitPart == nil or liveRoot == nil then
+                    local snapshotHitPart = snapshotState and snapshotState.hitPart or nil
+                    local snapshotAttackPos = snapshotState and snapshotState.attackPos or nil
+                    if snapshotHitPart ~= nil then
+                        if liveHitPart ~= snapshotHitPart then
+                            State.RageKnifeStatus = 'melee hit part changed'
+                            return false
+                        end
+                        liveHitPart = snapshotHitPart
+                    elseif liveHitPart == nil then
                         liveHitPart, liveRoot = fallbackHitPart, fallbackRoot
                     end
                     if liveHitPart == nil or liveRoot == nil or not liveHitPart.Parent or not liveRoot.Parent then
@@ -4203,7 +4227,16 @@ return {
                         return false
                     end
 
-                    local liveAttackPos, liveAimPos = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target)
+                    local liveAttackPos, liveAimPos, liveAttackDir
+                    if liveProfile.knife then
+                        liveAttackPos, liveAimPos, liveAttackDir = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target, GetRoot())
+                    elseif snapshotAttackPos ~= nil then
+                        liveAttackPos = snapshotAttackPos
+                        liveAimPos = liveHitPart.Position
+                        liveAttackDir = fallbackAttackDir
+                    else
+                        liveAttackPos, liveAimPos, liveAttackDir = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target, GetRoot())
+                    end
                     if liveAttackPos == nil or liveAimPos == nil then
                         State.RageKnifeStatus = 'invalid melee pose'
                         return false
@@ -4233,28 +4266,17 @@ return {
                     State.RageFireStamp = tick()
 
                     local bypassHeavy = false
-                    if liveProfile.knife then
-                        local driver = self._viewAngleDriver
-                        if type(driver) == 'table' and type(driver.SendSilentTarget) == 'function' then
-                            pcall(function() driver:SendSilentTarget(liveRoot, Setting.RIOT_KNIFE_BYPASS_TRIGGER_DIST) end)
-                        end
-                    end
                     if liveProfile.knife and togValue('P4S1T8', false) and type(liveItem.HeavyAttack) == 'function' then
-                        local accepted = false
                         local okBypass = pcall(function()
                             liveItem._attack_cooldown = 0
                             liveItem._last_attack = tick() - 1
                             local hitData = { part = liveHitPart }
-                            local okHeavy, resultHeavy = pcall(liveItem.HeavyAttack, liveItem, eyeCF, eyeCF, hitData)
-                            local cooldown = rawget(liveItem, '_attack_cooldown')
-                            accepted = okHeavy and (resultHeavy == true or (type(cooldown) == 'number' and cooldown > tick()))
-                            if not accepted then
-                                local okFallback, fallbackResult = pcall(liveItem.HeavyAttack, liveItem, liveRoot.Position)
-                                local fallbackCooldown = rawget(liveItem, '_attack_cooldown')
-                                accepted = okFallback and (fallbackResult == true or (type(fallbackCooldown) == 'number' and fallbackCooldown > tick()))
+                            local sent = pcall(liveItem.HeavyAttack, liveItem, eyeCF, eyeCF, hitData)
+                            if not sent then
+                                liveItem:HeavyAttack(liveRoot.Position)
                             end
                         end)
-                        bypassHeavy = okBypass and accepted
+                        bypassHeavy = okBypass == true
                         if bypassHeavy then
                             State.RageKnifeStatus = 'Backstab bypass'
                         end
@@ -4301,7 +4323,6 @@ return {
             end
 
             function MeleeStrategy:Plan(dt, target, item, ourRootPart, canFire, characterController)
-                self._viewAngleDriver = characterController and characterController._viewAngleDriver or nil
                 if target == nil or item == nil or ourRootPart == nil or not ourRootPart.Parent then
                     return ourRootPart and ourRootPart.CFrame or VOID_CFRAME, nil, nil, false, nil
                 end
@@ -4343,45 +4364,46 @@ return {
                     self._meleeDwellStart = now
                 end
 
-                local attackPos, aimPos = resolveMeleeAttackPose(profile, hitPart, targetRootPart, target)
+                local attackPos, aimPos, attackDir = resolveMeleeAttackPose(profile, hitPart, targetRootPart, target, ourRootPart)
                 if attackPos == nil then
                     return ourRootPart.CFrame, nil, nil, true, nil
                 end
 
-                local facePoint = Vector3.new(targetRootPart.Position.X, attackPos.Y, targetRootPart.Position.Z)
-                local attackCF = CFrame.lookAt(attackPos, facePoint)
+                local attackCF = CFrame.new(attackPos)
                 if now - (self._meleeDwellStart or now) < Setting.MELEE_DWELL_S then
                     return attackCF, nil, nil, true, nil
                 end
 
                 local weaponAction = nil
                 local preFireRefresh = nil
+                local finalMeleeSnapshot = { hitPart = nil, attackPos = nil }
+
                 if profile.knife then
                     if now < self._hitboxWindowUntil then
                         if now - (self._lastKnifeSwingAt or -math.huge) < Setting.KNIFE_SWING_INTERVAL then
                             return attackCF, nil, nil, true, nil
                         end
-                        weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil)
+                        weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, attackDir, finalMeleeSnapshot)
                     elseif now < self._attackCooldown then
                         State.RageKnifeStatus = string.format('Knife wait %.2fs', self._attackCooldown - now)
-                        return attackCF, nil, nil, true, nil
+                        return meleeFarMiss(), nil, nil, true, nil
                     else
                         if not self._shootLock:ShouldFire(canFire == true, Setting.KNIFE_SWING_INTERVAL) then
                             return attackCF, nil, nil, true, nil
                         end
                         self._knifePendingStart = true
                         self._lastKnifeSwingAt = -math.huge
-                        weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil)
+                        weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, attackDir, finalMeleeSnapshot)
                     end
                 else
                     if not self._shootLock:ShouldFire(canFire == true, math.max(dt or 0, 0) * Setting.ShootFrames()) then
-                        return attackCF, nil, nil, true, nil
+                        return meleeFarMiss(), nil, nil, true, nil
                     end
                     self:MarkReady(key, attackCF.Position)
                     local meleePitch, meleeYaw, meleeRoll = attackCF:ToOrientation()
                     local aim1 = buildAim(AIM_ABOVE_ORIGIN, meleePitch, meleeYaw, meleeRoll)
                     local aim2 = buildAim(AIM_ABOVE_END, meleePitch, meleeYaw, meleeRoll)
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2)
+                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, attackDir, finalMeleeSnapshot)
                 end
 
                 if weaponAction == nil then
@@ -4398,21 +4420,33 @@ return {
                         return attackCF
                     end
 
-                    local liveAttackPos = resolveMeleeAttackPose(profile, liveHitPart, liveRoot, target)
+                    local liveAttackPos, _, liveAttackDir = resolveMeleeAttackPose(profile, liveHitPart, liveRoot, target, ourRootPart)
                     if liveAttackPos == nil or not KiciaRagebot.isFiniteVector3(liveAttackPos) then
                         return attackCF
                     end
 
-                    local liveFacePoint = Vector3.new(liveRoot.Position.X, liveAttackPos.Y, liveRoot.Position.Z)
-                    local liveCF = CFrame.lookAt(liveAttackPos, liveFacePoint)
+                    local liveCF = CFrame.new(liveAttackPos)
                     if profile.knife then
                         local driver = characterController._viewAngleDriver
                         if type(driver) == 'table' and type(driver.SendSilentTarget) == 'function' then
                             pcall(function() driver:SendSilentTarget(liveRoot, Setting.RIOT_KNIFE_BYPASS_TRIGGER_DIST) end)
                         end
                     end
+                    -- FIX melee block: reset item attack cooldown immediately before fire,
+                    -- not just in fireMeleeRemote. HeartbeatUpdate between _ApplyPlan and
+                    -- preFireRefresh can trigger game-side cooldown reset (server tick).
+                    pcall(function()
+                        local liveFighter = resolveLocalFighter()
+                        local liveRuntime = liveFighter and runtimeEquippedItem(liveFighter) or actionItem
+                        if liveRuntime ~= nil then
+                            rawset(liveRuntime, '_attack_cooldown', 0)
+                            rawset(liveRuntime, '_last_attack', tick() - 1)
+                        end
+                    end)
                     hitPart = liveHitPart
                     targetRootPart = liveRoot
+                    finalMeleeSnapshot.hitPart = liveHitPart
+                    finalMeleeSnapshot.attackPos = liveAttackPos
                     attackCF = liveCF
                     characterController:SetServerCFrame(liveCF)
                     return liveCF
@@ -4847,6 +4881,12 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     characterController:HeartbeatUpdate()
                 end
                 if plan.preFireRefresh ~= nil and plan.weaponAction ~= nil then
+                    -- FIX melee TP delay: for melee, server must receive our park position
+                    -- BEFORE the attack arrives. Gun uses PartGlue (continuous VOID anchor)
+                    -- so no settle needed. Melee TPs to a world position each frame →
+                    -- needs at least 1 HeartbeatUpdate to register position, then fire.
+                    -- Add extra HeartbeatUpdate here (before preFireRefresh) so server
+                    -- gets 2 consecutive frames with us at attackPos before the weapon action.
                     if preActionHeartbeat then
                         characterController:HeartbeatUpdate()
                     end
@@ -5127,6 +5167,11 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 end
                 controller:Update(dt or 0)
 
+                -- FIX AlwaysBackstab bug: updateRiotKnifeBypass MUST run AFTER controller:Update.
+                -- Previously ran BEFORE, so any ForceViewAngles fired by _ApplyPlan (gun aim,
+                -- heavy melee view) overrode the silent camera rotation set here.
+                -- Running AFTER ensures SendSilentTarget fires last → server receives backstab
+                -- rotation even when ragebot is active.
                 updateRiotKnifeBypass(controller, riotKnifeBypassActive)
                 riotKnifeBypassWasActive = riotKnifeBypassActive
             end
