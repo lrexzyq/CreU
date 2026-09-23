@@ -131,9 +131,9 @@ function UndergroundRootDesync:HeartbeatUpdate()
     end
     local current = rootPart.CFrame
     local delta = (cf.Position - current.Position).Magnitude
-    
-    
-    
+
+
+
     if delta > 25 then
         return
     end
@@ -200,8 +200,8 @@ local function undergroundFindFloorY(char, root)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = { char }
-    
-    
+
+
     local offsets = {
         Vector3.new(0,  0, 0),
         Vector3.new(1,  0, 0), Vector3.new(-1, 0, 0),
@@ -307,9 +307,9 @@ local function undergroundServerCFrame(char, root)
     if targetRootY ~= targetRootY or math.abs(targetRootY) > 100000 then
         return nil
     end
-    
-    
-    
+
+
+
     local t = os.clock()
     local phaseX = math.sin(t * math.pi / 0.27) * 1.5
     local phaseZ = math.cos(t * math.pi / 0.31) * 1.5
@@ -321,8 +321,8 @@ local function undergroundServerCFrame(char, root)
     local previous = undergroundLastServerCFrame
     if previous ~= nil then
         local shift = (result.Position - previous.Position).Magnitude
-        
-        
+
+
         if shift > 18 then
             return previous
         end
@@ -777,7 +777,7 @@ return {
                 end
                 return default
             end
-            
+
             local State = {
                 RageFireFromPos = nil,
                 RageFireAimPos = nil,
@@ -945,7 +945,7 @@ return {
                 if not lib then
                     return nil
                 end
-                
+
                 local toEnum = rawget(lib, '_to_enum')
                 if type(toEnum) == 'function' then
                     local ok, token = pcall(toEnum, name)
@@ -1191,35 +1191,6 @@ return {
                 end
                 return bound == hitboxHead
             end
-            local function predictLiveHeadPosition(target, headPart)
-                if target == nil or headPart == nil or not headPart.Parent then
-                    return headPart and headPart.Position or nil
-                end
-                local predicted = headPart.Position
-                local rootPart = target.rootPart
-                if rootPart ~= nil and rootPart.Parent ~= nil then
-                    local velocity = rootPart.AssemblyLinearVelocity
-                    if typeof(velocity) == 'Vector3' and KiciaRagebot.isFiniteVector3(velocity)
-                            and velocity.Magnitude > 4 and velocity.Magnitude < 500 then
-                        local latency = KiciaRagebot.temporalPrefireLead() + 0.030
-                        local humanoid = target.model and target.model:FindFirstChildOfClass('Humanoid') or nil
-                        local moveDirection = humanoid and humanoid.MoveDirection or Vector3.zero
-                        local lead = Vector3.zero
-                        if moveDirection.Magnitude > 0.1 then
-                            lead = lead + Vector3.new(velocity.X, 0, velocity.Z) * latency
-                        end
-                        lead = lead + Vector3.new(0, velocity.Y * latency, 0)
-                        if lead.Magnitude > 12 then
-                            lead = lead.Unit * 12
-                        end
-                        local candidate = predicted + lead
-                        if KiciaRagebot.isFiniteVector3(candidate) then
-                            predicted = candidate
-                        end
-                    end
-                end
-                return predicted
-            end
             local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, glued, forceAimPayload)
                 local remote = resolveUseItemRemote()
                 local token = enc('StartShooting')
@@ -1234,10 +1205,7 @@ return {
                     return false
                 end
 
-                local finalAimWorldPos = aimWorldPos
-                if not KiciaRagebot.isFiniteVector3(finalAimWorldPos) then
-                    finalAimWorldPos = hitboxHead.Position
-                end
+                local finalAimWorldPos = hitboxHead.Position
                 local eyeBase = eyeCF.Position
                 if not glued then
                     local liveRoot = GetRoot()
@@ -1603,13 +1571,13 @@ return {
                     end
                 end
                 if typeof(rotation) == 'Vector2' or typeof(rotation) == 'Vector3' then
-                    
+
                     return rotation.X, rotation.Y
                 end
-                
-                
-                
-                
+
+
+
+
                 local rootPart = target and target.rootPart
                 if rootPart ~= nil and rootPart.Parent ~= nil then
                     local _, yaw = rootPart.CFrame:ToOrientation()
@@ -1634,8 +1602,8 @@ return {
                             if it.name == 'Riot Shield' then
                                 local pitchValue = getTargetCameraRotation(target)
                                 local pitch = pitchValue and math.deg(pitchValue) or 0
-                                
-                                
+
+
                                 if 22 < pitch and pitch < 91 then
                                     return 'Below'
                                 end
@@ -1731,9 +1699,9 @@ return {
             local function decodeSingle(s)
                 return utf8.codepoint(s) * math.pi * 2 / 256
             end
-            
-            
-            
+
+
+
             local function decodeByteSigned(b)
                 if b > 127 then
                     return (b - 256) * math.pi * 2 / 256
@@ -1745,7 +1713,7 @@ return {
                 if a.kind == 'Encoded' and type(a.encoded) == 'string' and #a.encoded == 2 then
                     local p = string.byte(a.encoded, 1) or 0
                     local y = string.byte(a.encoded, 2) or 0
-                    
+
                     return Vector2.new(decodeByteSigned(p), decodeByteSigned(y))
                 end
                 if a.kind == 'Unnormalized' then
@@ -1762,95 +1730,6 @@ return {
                 end
                 return encodeSingle(math.rad(a.pitch)) .. encodeSingle(math.rad(a.yaw))
             end
-            local SilentReplicationHook = {
-                active = false,
-                lastEncoded = nil,
-                original = nil,
-                utility = nil,
-                installed = false,
-            }
-
-            local function silentEncodeByte(n)
-                if type(n) ~= 'number' or n ~= n then
-                    return utf8.char(0)
-                end
-                local v = math.floor(n % (2 * math.pi) / math.pi / 2 * 256 + 0.5)
-                return utf8.char(math.clamp(v, 0, 255))
-            end
-
-            
-            
-            
-            
-            
-            
-            local function silentEncodeByteUnlimited(n)
-                if type(n) ~= 'number' or n ~= n then
-                    return utf8.char(0)
-                end
-                
-                local tau = 2 * math.pi
-                local normalised = n % tau
-                if normalised < 0 then normalised = normalised + tau end
-                local v = math.floor(normalised / tau * 256 + 0.5) % 256
-                return utf8.char(math.clamp(v, 0, 255))
-            end
-
-            local function installSilentReplicationHook()
-                if SilentReplicationHook.installed then
-                    return true
-                end
-                for _, m in ipairs(getgc(true)) do
-                    if type(m) == 'table' then
-                        local idx = rawget(m, '__index')
-                        if type(idx) == 'table' and rawget(idx, '_CameraReplicationLoop') ~= nil then
-                            local loop = rawget(idx, '_CameraReplicationLoop')
-                            if type(loop) ~= 'function' then
-                                return false
-                            end
-                            local ok, ups = pcall(debug.getupvalues, loop)
-                            if not ok then
-                                return false
-                            end
-                            for _, val in pairs(ups) do
-                                if type(val) == 'table' then
-                                    local mt = getmetatable(val)
-                                    local vidx = mt and rawget(mt, '__index')
-                                    if vidx and rawget(vidx, 'EncodeCameraRotation') then
-                                        local original = rawget(vidx, 'EncodeCameraRotation')
-                                        if type(original) ~= 'function' then
-                                            return false
-                                        end
-                                        local state = SilentReplicationHook
-                                        local wrapped = function(_, raw)
-                                            if state.active then
-                                                return state.lastEncoded
-                                            end
-                                            return original(_, raw)
-                                        end
-                                        local okSet = pcall(rawset, vidx, 'EncodeCameraRotation', wrapped)
-                                        if not okSet then
-                                            okSet = pcall(function()
-                                                vidx.EncodeCameraRotation = wrapped
-                                            end)
-                                        end
-                                        if not okSet then
-                                            return false
-                                        end
-                                        state.original = original
-                                        state.utility = vidx
-                                        state.installed = true
-                                        print('[SilentCam] Hooked')
-                                        return true
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-                return false
-            end
-
             local ViewAngleDriver = {}
             ViewAngleDriver.__index = ViewAngleDriver
             function ViewAngleDriver.new()
@@ -1928,10 +1807,7 @@ return {
                             raw = anglesToRaw(driver._winning)
                         end
                         if raw ~= nil then
-                            local writeOk = pcall(rbRawWrite, b, 'CameraRotationRaw', raw)
-                            if not writeOk then
-                                pcall(function() b.CameraRotationRaw = raw end)
-                            end
+                            rbRawWrite(b, 'CameraRotationRaw', raw)
                         end
                     end
                     return original(jointsSelf, a, b)
@@ -1948,7 +1824,55 @@ return {
                 return true
             end
             function ViewAngleDriver:_LoadReplicationHook()
-                return installSilentReplicationHook()
+                if self._replicationRestore ~= nil then
+                    return true
+                end
+                local proto = resolveFighterControllerPrototype()
+                local instance = resolveFighterController()
+                local loop = proto and rawget(proto, '_CameraReplicationLoop') or nil
+                if not proto or not instance or loop == nil then
+                    return false
+                end
+                local utilIndex, util
+                local ok, upvalues = pcall(debug.getupvalues, loop)
+                if ok and type(upvalues) == 'table' then
+                    for index, value in pairs(upvalues) do
+                        if type(value) == 'table' then
+                            local vmt = getmetatable(value)
+                            local vidx = vmt and rawget(vmt, '__index') or nil
+                            if vidx ~= nil and rawget(vidx, 'EncodeCameraRotation') ~= nil then
+                                util = value
+                                utilIndex = index
+                                break
+                            end
+                        end
+                    end
+                end
+                if utilIndex == nil or util == nil then
+                    return false
+                end
+                local driver = self
+                local replacement = {}
+                function replacement.EncodeCameraRotation(_, raw)
+                    if driver._silentTargetActive and driver._silentTargetEncoded ~= nil then
+                        rbRawWrite(instance, '_replication_stopped', false)
+                        return driver._silentTargetEncoded
+                    end
+                    if next(driver._slots) == nil and not driver._fullySuppressed then
+                        return encodeCameraRotation(raw)
+                    end
+                    rbRawWrite(instance, '_replication_stopped', false)
+                    local last = rawget(instance, '_last_encoded_camera_rotation')
+                    if not last then
+                        last = encodeCameraRotation(raw)
+                    end
+                    return last
+                end
+                if not pcall(debug.setupvalue, loop, utilIndex, replacement) then
+                    return false
+                end
+                self._replicationRestore = { loop = loop, utilityIndex = utilIndex, utility = util }
+                return true
             end
             function ViewAngleDriver:SendViewAngles(priority, value)
                 if self._slots[priority] == value then
@@ -1976,7 +1900,7 @@ return {
                 self._dirty = false
                 local remote = resolveCameraRotationRemote()
                 if remote then
-                    
+
                     pcall(function()
                         remote:FireServer(anglesToEncoded(winning), nil)
                     end)
@@ -1998,13 +1922,13 @@ return {
                 if not remote then
                     return false
                 end
-                
+
                 local ok = pcall(function()
                     remote:FireServer(anglesToEncoded(self._winning), nil)
                 end)
                 return ok
             end
-            function ViewAngleDriver:SendSilentTarget(rootPart, maxDistance, targetEntry)
+            function ViewAngleDriver:SendSilentTarget(rootPart, maxDistance)
                 if rootPart == nil or rootPart.Parent == nil then
                     return false
                 end
@@ -2012,117 +1936,48 @@ return {
                 if myRoot == nil or myRoot.Parent == nil then
                     self._silentTargetActive = false
                     self._silentTargetEncoded = nil
-                    self._silentTargetAngles = nil
-                    SilentReplicationHook.active = false
                     return false
                 end
                 local delta = rootPart.Position - myRoot.Position
                 local distanceLimit = tonumber(maxDistance) or 1000
-                if distanceLimit < 0 then
-                    distanceLimit = 0
-                end
+                if distanceLimit < 0 then distanceLimit = 0 end
                 if not shotFiniteVector3(delta) or delta.Magnitude > distanceLimit then
                     self._silentTargetActive = false
                     self._silentTargetEncoded = nil
                     self._silentTargetAngles = nil
-                    SilentReplicationHook.active = false
                     return false
                 end
-
-                
-                
-                
-                
-                
-                local jointsOk = self:_LoadJointsHook()
-                if not jointsOk then
-                    
-                end
-                if not installSilentReplicationHook() then
-                    self._silentTargetActive = false
-                    self._silentTargetEncoded = nil
-                    self._silentTargetAngles = nil
-                    SilentReplicationHook.active = false
-                    return false
-                end
-
-                
-                
-                
-                local pitch, yaw = nil, nil
-                local targetFighter = targetEntry and targetEntry.fighter or nil
-                if targetFighter ~= nil and type(targetFighter.GetCameraRotation) == 'function' then
-                    local ok, rot = pcall(function() return targetFighter:GetCameraRotation() end)
-                    if ok and rot ~= nil then
-                        if typeof(rot) == 'Vector2' or typeof(rot) == 'Vector3' then
-                            pitch = rot.X
-                            yaw = rot.Y
-                        elseif type(rot) == 'number' then
-                            
-                            pitch = rot
-                        end
-                    end
-                end
-                
-                if pitch == nil then
-                    local ok2, p2, y2 = pcall(function()
-                        return targetFighter:GetCameraRotation()
-                    end)
-                    if ok2 and type(p2) == 'number' then
-                        pitch = p2
-                        if type(y2) == 'number' then yaw = y2 end
-                    end
-                end
-                
-                if pitch == nil or yaw == nil then
-                    local _, bodyYaw = rootPart.CFrame:ToOrientation()
-                    pitch = pitch or 0
-                    yaw = yaw or bodyYaw or 0
-                end
-
-                if type(pitch) ~= 'number' or pitch ~= pitch or math.abs(pitch) == math.huge
-                    or type(yaw) ~= 'number' or yaw ~= yaw or math.abs(yaw) == math.huge then
-                    self._silentTargetActive = false
-                    self._silentTargetEncoded = nil
-                    self._silentTargetAngles = nil
-                    SilentReplicationHook.active = false
-                    return false
-                end
-
-                
-                
-                
-                local encoded = silentEncodeByteUnlimited(pitch) .. silentEncodeByteUnlimited(yaw)
-                self._silentTargetActive = true
-                self._silentTargetEncoded = encoded
+                local pitch, yaw = rootPart.CFrame:ToOrientation()
+                local encoded = encodeCameraRotation(Vector2.new(pitch, yaw))
                 self._silentTargetAngles = {
-                    kind = 'Encoded',
-                    encoded = encoded,
+                    kind = 'Normalized',
+                    pitch = math.deg(pitch),
+                    yaw = math.deg(yaw),
                 }
-                SilentReplicationHook.active = true
-                SilentReplicationHook.lastEncoded = encoded
-
+                self._silentTargetActive = true
+                if self._silentTargetEncoded == encoded then
+                    return true
+                end
+                self._silentTargetEncoded = encoded
+                self:_LoadJointsHook()
+                self:_LoadReplicationHook()
                 local remote = resolveCameraRotationRemote()
                 if not remote then
-                    self:ClearSilentTarget()
                     return false
                 end
+
+
+
 
                 local ok = pcall(function()
                     remote:FireServer(encoded, nil)
                 end)
-                if not ok then
-                    self:ClearSilentTarget()
-                    return false
-                end
-                return true
+                return ok
             end
             function ViewAngleDriver:ClearSilentTarget()
                 self._silentTargetActive = false
                 self._silentTargetEncoded = nil
                 self._silentTargetAngles = nil
-                SilentReplicationHook.active = false
-                SilentReplicationHook.lastEncoded = nil
             end
             function ViewAngleDriver:ClearAll()
                 table.clear(self._slots)
@@ -2142,22 +1997,13 @@ return {
                     self._jointsRestore = nil
                     pcall(rawset, jointsRestore.joints, 'Update', jointsRestore.original)
                 end
-                self:ClearSilentTarget()
-                if SilentReplicationHook.installed and SilentReplicationHook.utility ~= nil and SilentReplicationHook.original ~= nil then
-                    local utility = SilentReplicationHook.utility
-                    local original = SilentReplicationHook.original
-                    local okRestore = pcall(rawset, utility, 'EncodeCameraRotation', original)
-                    if not okRestore then
-                        pcall(function() utility.EncodeCameraRotation = original end)
-                    end
-                    SilentReplicationHook.active = false
-                    SilentReplicationHook.original = nil
-                    SilentReplicationHook.utility = nil
-                    SilentReplicationHook.installed = false
-                    SilentReplicationHook.lastEncoded = nil
+                local replicationRestore = self._replicationRestore
+                if replicationRestore ~= nil then
+                    self._replicationRestore = nil
+                    pcall(debug.setupvalue, replicationRestore.loop, replicationRestore.utilityIndex, replicationRestore.utility)
                 end
             end
-            local CharacterController = {}
+local CharacterController = {}
             CharacterController.__index = CharacterController
             function CharacterController.new(rootPart)
                 return setmetatable({
@@ -2473,215 +2319,6 @@ return {
             end
 
 
-            Setting.TEMPORAL_HOLD_SEC = 0.18
-            Setting.TEMPORAL_CHEATER_HOLD_SEC = 0.42
-            Setting.TEMPORAL_LEAD_SEC = 0.08
-            Setting.TEMPORAL_MAX_SPEED = 220
-            local TemporalTargetState = setmetatable({}, { __mode = 'k' })
-
-            function KiciaRagebot.temporalHoldSecFor(entry)
-                local player = entry and entry.player or nil
-                local bridge = RivalsRuntimeBridge
-                if player ~= nil and bridge and type(bridge.IsRageHacker) == 'function' then
-                    local ok, marked = pcall(bridge.IsRageHacker, player)
-                    if ok and marked == true then
-                        return Setting.TEMPORAL_CHEATER_HOLD_SEC
-                    end
-                end
-                return Setting.TEMPORAL_HOLD_SEC
-            end
-
-            function KiciaRagebot.temporalStateFor(entry)
-                local key = entry and (entry.player or entry.model)
-                if key == nil then
-                    return nil
-                end
-                local state = TemporalTargetState[key]
-                if state == nil then
-                    state = {
-                        character = nil,
-                        lastHead = nil,
-                        lastRoot = nil,
-                        headVelocity = Vector3.zero,
-                        rootVelocity = Vector3.zero,
-                        lastSeenAt = 0,
-                        hiddenSince = nil,
-                        lastPresentedAt = nil,
-                        hiddenDurations = {},
-                        presentDurations = {},
-                    }
-                    TemporalTargetState[key] = state
-                end
-                local character = entry and entry.model or nil
-                if character ~= nil and state.character ~= character then
-                    state.character = character
-                    state.lastHead = nil
-                    state.lastRoot = nil
-                    state.headVelocity = Vector3.zero
-                    state.rootVelocity = Vector3.zero
-                    state.lastSeenAt = 0
-                    state.hiddenSince = nil
-                    state.lastPresentedAt = nil
-                    table.clear(state.hiddenDurations)
-                    table.clear(state.presentDurations)
-                end
-                return state
-            end
-
-            function KiciaRagebot.pushTemporalDuration(list, value)
-                if type(list) ~= 'table' or type(value) ~= 'number' then
-                    return
-                end
-                if value < 0.001 or value > 120 then
-                    return
-                end
-                list[#list + 1] = value
-                if #list > 5 then
-                    table.remove(list, 1)
-                end
-            end
-
-            function KiciaRagebot.temporalMedian(list)
-                if type(list) ~= 'table' or #list < 3 then
-                    return nil
-                end
-                local sorted = {}
-                for i = 1, #list do
-                    sorted[i] = list[i]
-                end
-                table.sort(sorted)
-                return sorted[math.floor(#sorted / 2) + 1]
-            end
-
-            function KiciaRagebot.temporalPrefireLead()
-                local ping = 0.05
-                local ok, value = pcall(function()
-                    return LPRB:GetNetworkPing()
-                end)
-                if ok and type(value) == 'number' and value == value and value > 0 then
-                    ping = value
-                end
-                return math.clamp(ping, 0.05, 0.20)
-            end
-
-            function KiciaRagebot.recordTemporalSample(entry, head, root, now)
-                local state = KiciaRagebot.temporalStateFor(entry)
-                if state == nil then return end
-                local t = now or os.clock()
-                if state.lastSeenAt > 0 and t > state.lastSeenAt then
-                    local dtSample = math.clamp(t - state.lastSeenAt, 0.001, 0.25)
-                    if state.lastHead and head and KiciaRagebot.isFiniteVector3(state.lastHead) and KiciaRagebot.isFiniteVector3(head.Position) then
-                        local v = (head.Position - state.lastHead) / dtSample
-                        if KiciaRagebot.isFiniteVector3(v) and v.Magnitude <= Setting.TEMPORAL_MAX_SPEED then
-                            state.headVelocity = v
-                        end
-                    end
-                    if state.lastRoot and root and KiciaRagebot.isFiniteVector3(state.lastRoot) and KiciaRagebot.isFiniteVector3(root.Position) then
-                        local v = (root.Position - state.lastRoot) / dtSample
-                        if KiciaRagebot.isFiniteVector3(v) and v.Magnitude <= Setting.TEMPORAL_MAX_SPEED then
-                            state.rootVelocity = v
-                        end
-                    end
-                end
-                if head and KiciaRagebot.isFiniteVector3(head.Position) then
-                    state.lastHead = head.Position
-                    if state.hiddenSince ~= nil then
-                        KiciaRagebot.pushTemporalDuration(state.hiddenDurations, t - state.hiddenSince)
-                        state.hiddenSince = nil
-                    end
-                    state.lastPresentedAt = t
-                elseif state.hiddenSince == nil then
-                    if state.lastPresentedAt ~= nil then
-                        KiciaRagebot.pushTemporalDuration(state.presentDurations, t - state.lastPresentedAt)
-                    end
-                    state.hiddenSince = t
-                end
-                if root and KiciaRagebot.isFiniteVector3(root.Position) then
-                    state.lastRoot = root.Position
-                end
-                state.lastSeenAt = t
-            end
-
-            function KiciaRagebot.noteTemporalMissing(entry, root, now)
-                local state = KiciaRagebot.temporalStateFor(entry)
-                if state == nil then return end
-                local t = now or os.clock()
-                if state.hiddenSince == nil then
-                    if state.lastPresentedAt ~= nil then
-                        KiciaRagebot.pushTemporalDuration(state.presentDurations, t - state.lastPresentedAt)
-                    end
-                    state.hiddenSince = t
-                end
-                if root and KiciaRagebot.isFiniteVector3(root.Position) then
-                    if state.lastSeenAt > 0 and t > state.lastSeenAt and state.lastRoot and KiciaRagebot.isFiniteVector3(state.lastRoot) then
-                        local dtSample = math.clamp(t - state.lastSeenAt, 0.001, 0.25)
-                        local v = (root.Position - state.lastRoot) / dtSample
-                        if KiciaRagebot.isFiniteVector3(v) and v.Magnitude <= Setting.TEMPORAL_MAX_SPEED then
-                            state.rootVelocity = v
-                        end
-                    end
-                    state.lastRoot = root.Position
-                end
-                state.lastSeenAt = t
-            end
-
-            function KiciaRagebot.temporalFallback(entry)
-                if not entry then return nil end
-                local state = KiciaRagebot.temporalStateFor(entry)
-                if state == nil or state.lastHead == nil or state.hiddenSince == nil then
-                    return nil
-                end
-                local elapsed = os.clock() - state.hiddenSince
-                local holdSec = KiciaRagebot.temporalHoldSecFor(entry)
-                if elapsed < 0 or elapsed > holdSec then
-                    return nil
-                end
-                local model = entry.model
-                if state.character ~= model then
-                    return nil
-                end
-                local root = model and (model:FindFirstChild('HumanoidRootPart') or model:FindFirstChild('HitboxBody')) or entry.rootPart
-                if root == nil or root.Parent == nil or not root:IsA('BasePart') or not KiciaRagebot.isFiniteVector3(root.Position) then
-                    return nil
-                end
-                local lead = math.min(Setting.TEMPORAL_LEAD_SEC, math.max(0, holdSec - elapsed))
-                local medianHidden = KiciaRagebot.temporalMedian(state.hiddenDurations)
-                local timeToResurface = nil
-                local aboutToResurface = false
-                if medianHidden ~= nil then
-                    timeToResurface = medianHidden - elapsed
-                    local preWindow = KiciaRagebot.temporalPrefireLead()
-                    if timeToResurface >= -Setting.TEMPORAL_LEAD_SEC and timeToResurface <= preWindow then
-                        aboutToResurface = true
-                        lead = math.clamp(timeToResurface, 0, math.max(0, holdSec - elapsed))
-                    end
-                end
-                local predicted = state.lastHead
-                if state.lastRoot and KiciaRagebot.isFiniteVector3(state.lastRoot) then
-                    local offset = state.lastHead - state.lastRoot
-                    if KiciaRagebot.isFiniteVector3(offset) then
-                        local rootVelocity = state.rootVelocity or Vector3.zero
-                        local headVelocity = state.headVelocity or Vector3.zero
-                        predicted = root.Position + offset
-                            + (rootVelocity * 0.75 + headVelocity * 0.25) * lead
-                    end
-                else
-                    predicted = state.lastHead + (state.headVelocity or Vector3.zero) * lead
-                end
-                if not KiciaRagebot.isFiniteVector3(predicted) then
-                    predicted = state.lastHead
-                end
-                return {
-                    predictedHead = predicted,
-                    lastHead = state.lastHead,
-                    elapsed = elapsed,
-                    rootPart = root,
-                    state = state,
-                    medianHidden = medianHidden,
-                    timeToResurface = timeToResurface,
-                    aboutToResurface = aboutToResurface,
-                }
-            end
             local runtimeEquippedItem
             local function refreshTargetEntry(entry)
                 if not entry then
@@ -2695,7 +2332,6 @@ return {
                 local body = model:FindFirstChild('HitboxBody')
                 local root = model:FindFirstChild('HumanoidRootPart') or body
                 if not head or not root or not head:IsA('BasePart') or not root:IsA('BasePart') then
-                    KiciaRagebot.noteTemporalMissing(entry, root)
                     return nil
                 end
                 local humanoid = model:FindFirstChildOfClass('Humanoid')
@@ -2735,10 +2371,8 @@ return {
                     entry.hacker = okHacker and marked == true
                 end
                 if not KiciaRagebot.isFiniteVector3(head.Position) or not KiciaRagebot.isFiniteVector3(root.Position) then
-                    KiciaRagebot.noteTemporalMissing(entry, root)
                     return nil
                 end
-                KiciaRagebot.recordTemporalSample(entry, head, root)
                 local headDelta = head.Position - root.Position
                 if KiciaRagebot.isFiniteVector3(headDelta) and headDelta.Magnitude <= 20 then
                     local localOffset = root.CFrame:PointToObjectSpace(head.Position)
@@ -2798,7 +2432,6 @@ return {
                             return nil
                         end
                         if not hitboxHead or not hitboxHead:IsA('BasePart') then
-                            KiciaRagebot.noteTemporalMissing({ player = player, model = model }, rootPart)
                             return nil
                         end
                         local humanoid = model:FindFirstChildOfClass('Humanoid')
@@ -2836,7 +2469,9 @@ return {
                 return true
             end
             Setting.RAGE_TRIGGER_DISTANCE = 100000
-            Setting.RIOT_KNIFE_BYPASS_TRIGGER_DIST = 50
+            Setting.RIOT_BYPASS_TRIGGER_DIST = 500
+            Setting.ALWAYS_BACKSTAB_TRIGGER_DIST = 100000
+            Setting.KNIFE_BYPASS_TRIGGER_DIST = 35
             Setting.HACKER_PRIORITY_Y = 500
             Setting.HACKER_PRIORITY_SPEED = 67
 
@@ -2970,62 +2605,6 @@ return {
                     return a.distance < b.distance
                 end)
                 return valid[1]
-            end
-            function KiciaRagebot.resolveTemporalTarget(previousTarget)
-                if previousTarget == nil then
-                    return nil
-                end
-                local model = previousTarget.model
-                if model == nil or model.Parent == nil then
-                    return nil
-                end
-                local humanoid = model:FindFirstChildOfClass('Humanoid')
-                if humanoid and humanoid.Health <= 0 then
-                    return nil
-                end
-                local entry = previousTarget
-                entry.alive = humanoid == nil or humanoid.Health > 0
-                entry.invincible = KiciaRagebot.isTargetInvincible(entry.entity)
-                entry.protected = KiciaRagebot.isTargetProtected(entry)
-                entry.deflecting = false
-                local deflectCheck = RivalsRuntimeBridge and RivalsRuntimeBridge.IsRivalsKatanaDeflectActiveItem
-                if type(deflectCheck) == 'function' and entry.fighter ~= nil then
-                    local equippedForDeflect = nil
-                    pcall(function() equippedForDeflect = entry.fighter.EquippedItem end)
-                    if equippedForDeflect == nil then
-                        pcall(function() equippedForDeflect = rawget(entry.fighter, 'EquippedItem') end)
-                    end
-                    if equippedForDeflect ~= nil then
-                        local okDeflect, activeDeflect = pcall(deflectCheck, equippedForDeflect)
-                        entry.deflecting = okDeflect and activeDeflect == true
-                    end
-                end
-                if not KiciaRagebot.isValidTarget(entry) then
-                    return nil
-                end
-                local fallback = KiciaRagebot.temporalFallback(previousTarget)
-                if fallback == nil then
-                    return nil
-                end
-                entry.temporalHeadPart = previousTarget.hitboxHead or previousTarget.temporalHeadPart
-                entry.hitboxHead = nil
-                entry.rootPart = fallback.rootPart
-                entry.temporalOnly = true
-                entry.temporalHeadPosition = fallback.predictedHead
-                entry.temporalHeadLastPosition = fallback.lastHead
-                entry.temporalGap = fallback.elapsed
-                entry.distance = math.huge
-                local myRoot = GetRoot()
-                if myRoot and myRoot.Parent then
-                    local delta = fallback.rootPart.Position - myRoot.Position
-                    if KiciaRagebot.isFiniteVector3(delta) then
-                        entry.distance = delta.Magnitude
-                    end
-                end
-                if entry.distance == math.huge or entry.distance > Setting.RAGE_TRIGGER_DISTANCE then
-                    return nil
-                end
-                return entry
             end
             function KiciaRagebot.hasTargets()
                 for _, entry in ipairs(KiciaRagebot.collectEnemies()) do
@@ -3310,21 +2889,49 @@ return {
                 if not KiciaRagebot.isFiniteVector3(flank) or KiciaRagebot.ragePosIsOOB(flank) or not KiciaRagebot.rageHasLOS(flank, hitboxHead.Position, ignore) then return nil end
                 return flank, shield and 'Anti-riot' or (katana and 'Katana flank' or 'Shield flank')
             end
-            function KiciaRagebot.knifeBackstabPointRuntime(target, hitPart)
-                if target == nil or target.model == nil then return nil end
+            local KNIFE_BACKSTAB_DIST = 1.2
+            function KiciaRagebot.knifeBackstabPointRuntime(target, hitPart, ourRootPart)
+                if target == nil or target.model == nil or hitPart == nil then return nil end
+
+                local attackerRoot = ourRootPart or GetRoot()
+                if attackerRoot == nil or attackerRoot.Parent == nil then return nil end
+                if not KiciaRagebot.isFiniteVector3(attackerRoot.Position) then return nil end
 
                 local targetRoot = target.model:FindFirstChild('HumanoidRootPart')
-                if targetRoot == nil or not targetRoot:IsA('BasePart') then
+                if targetRoot == nil or not targetRoot:IsA('BasePart') or not KiciaRagebot.isFiniteVector3(targetRoot.Position) then
                     return nil
                 end
 
-                local center = targetRoot.Position
-                if not KiciaRagebot.isFiniteVector3(center) or KiciaRagebot.ragePosIsOOB(center) then
+                local look = targetRoot.CFrame.LookVector
+                look = Vector3.new(look.X, 0, look.Z)
+                if look.Magnitude < 1e-3 then
                     return nil
                 end
-                return center
+                local dir = -look.Unit
+                local ignore = { target.model, GetChar() }
+                local killFloor = KiciaRagebot.rageKillFloor()
+                local candidate = targetRoot.Position + dir * KNIFE_BACKSTAB_DIST + Vector3.new(0, 0.6, 0)
+                if not KiciaRagebot.isFiniteVector3(candidate) or KiciaRagebot.ragePosIsOOB(candidate) then
+                    return nil
+                end
+
+                local rayParams = RaycastParams.new()
+                rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                rayParams.FilterDescendantsInstances = ignore
+                local ray = WorkspaceRB:Raycast(targetRoot.Position, dir * KNIFE_BACKSTAB_DIST, rayParams)
+                if ray ~= nil then
+                    candidate = ray.Position - dir * 0.20 + Vector3.new(0, 0.6, 0)
+                end
+
+                candidate = Vector3.new(candidate.X, math.max(candidate.Y, killFloor + 3), candidate.Z)
+                if not KiciaRagebot.isFiniteVector3(candidate)
+                    or KiciaRagebot.ragePosIsOOB(candidate)
+                    or not KiciaRagebot.rageHasLOS(candidate, hitPart.Position, ignore) then
+                    return nil
+                end
+                return candidate, 'Backstab', dir
             end
-            function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
+function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 if target == nil then return nil end
                 local root = target.rootPart
                 if root == nil or root.Parent == nil then return nil end
@@ -3410,8 +3017,8 @@ return {
                         local slot = tonumber(slotKey)
                         local category = KiciaRagebot.itemCategory(slot)
                         if slot ~= nil and slot >= 1 and slot <= 3 and category ~= nil and KiciaRagebot.isCategoryEnabled(category) then
-                            
-                            
+
+
                             local resolvedType = category == 'Melee' and 'Melee' or itemType(item)
                             if resolvedType == nil and KiciaRagebot.itemIsMeleeLuaHook(item) then
                                 resolvedType = 'Melee'
@@ -3620,8 +3227,8 @@ return {
                 return scatterFar(clientCF.Position, Setting.RandomAnchorFromCharacter(), Setting.RandomBaseRadius(), Setting.RandomRadiusFactor())
             end
 
-            
-            
+
+
             Setting.PB_DEPTH_FORWARD = { Min = 0, Max = 4 }
             Setting.PB_DEPTH_FORWARD_FREQ = 5
             Setting.PB_DEPTH_UP = { Min = 0, Max = 5.5 }
@@ -3834,8 +3441,8 @@ return {
                     end
 
                     if humanoidRoot.Parent == model and KiciaRagebot.isFiniteVector3(humanoidRoot.Position) then
-                        
-                        
+
+
                         local head = model:FindFirstChild('Head')
                         local upperTorso = model:FindFirstChild('UpperTorso') or model:FindFirstChild('Torso')
                         local hitPart = humanoidRoot
@@ -3873,126 +3480,15 @@ return {
             end
             function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
-                local temporal = nil
-                if hitboxHead == nil and target and target.temporalOnly then
-                    temporal = KiciaRagebot.temporalFallback(target)
-                    targetRootPart = targetRootPart or target.rootPart
-                    if targetRootPart ~= nil and targetRootPart.Parent ~= nil and temporal ~= nil then
-                        local shieldState = classifyAboveBelow(target)
-                        local directHeadAim = shieldState == 'None'
-                        local above = shieldState ~= 'Below'
-                        local offset = Vector3.zero
-                        local aimPoint = temporal.predictedHead
-                        if KiciaRagebot.rageGumMode() == 'on' and Setting.RageGumVoidFire() and target.temporalHeadPart and target.temporalHeadPart.Parent then
-                            local ghostHead = target.temporalHeadPart
-                            local okGum, voidCF = pcall(function()
-                                return self._partGlue:Acquire(ourRootPart, ghostHead, false, 'on')
-                            end)
-                            if okGum and voidCF ~= nil then
-                                self._gluedOurPart = ourRootPart
-                                State.RageGumVoidFire = true
-                                State.RageGumMode = 'on'
-                                local eyePos = voidCF.Position + Vector3.new(0, eyeRise(voidCF.Position, target.model), 0)
-                                local eyeCF = safeLookCFrame(eyePos, ghostHead.Position)
-                                if eyeCF ~= nil then
-                                    local muzzleCF = eyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)
-                                    local objectId = itemObjectId(item)
-                                    if objectId ~= nil then
-                                        local raycast = itemIsRaycast(item)
-                                        local weaponAction = function()
-                                            if not ghostHead.Parent then
-                                                self:ClearGlue()
-                                                return false
-                                            end
-                                            local ok, fired = pcall(function()
-                                                return fireGun(objectId, raycast, eyeCF, muzzleCF, ghostHead, ghostHead.Position, nil, nil, AIM_EXTRA, true, false)
-                                            end)
-                                            self:ClearGlue()
-                                            if ok and fired == true then
-                                                State.RageGumVoidFires = (State.RageGumVoidFires or 0) + 1
-                                                State.Shots = (State.Shots or 0) + 1
-                                                return true
-                                            end
-                                            return false
-                                        end
-                                        return voidCF + Setting.GLUE_PARK_OFF, weaponAction
-                                    end
-                                end
-                                self:ClearGlue()
-                            end
-                        end
-                        self:ClearGlue()
-                        local cframe = CFrame.new(targetRootPart.Position + offset, aimPoint)
-
-                        if temporal.aboutToResurface and target.temporalHeadPart ~= nil and itemType(item) == 'Gun' then
-                            local objectId = itemObjectId(item)
-                            if objectId ~= nil and self._shootLock:ShouldFire(canFire == true, math.max(dt or 0, 0) * Setting.ShootFrames()) then
-                                local raycast = itemIsRaycast(item)
-                                local prefirePart = target.temporalHeadPart
-                                local weaponAction = function()
-                                    if prefirePart == nil or prefirePart.Parent == nil then
-                                        return false
-                                    end
-
-                                    local prefireGlued = false
-                                    local firePark = cframe
-                                    if KiciaRagebot.rageGumMode() == 'on' then
-                                        local okGlue, voidCF = pcall(function()
-                                            return self._partGlue:Acquire(ourRootPart, prefirePart, false, 'on')
-                                        end)
-                                        if okGlue and voidCF ~= nil then
-                                            self._gluedOurPart = ourRootPart
-                                            prefireGlued = true
-                                            firePark = voidCF + Setting.GLUE_PARK_OFF
-                                        end
-                                    elseif KiciaRagebot.rageGumMode() == 'lite' then
-                                        local okGlue, _, bound = pcall(function()
-                                            return self._partGlue:Acquire(ourRootPart, prefirePart, false, 'lite')
-                                        end)
-                                        if okGlue and bound == true then
-                                            self._gluedOurPart = ourRootPart
-                                        end
-                                    else
-                                        self:ClearGlue()
-                                    end
-
-                                    local aimAt = prefirePart.Position
-                                    local eyeBase = firePark.Position
-                                    local shotEyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, target.model), 0)
-                                    local shotEyeCF = safeLookCFrame(shotEyePos, aimAt)
-                                    if shotEyeCF == nil then
-                                        self:ClearGlue()
-                                        return false
-                                    end
-                                    local shotMuzzleCF = shotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)
-                                    local ok, fired = pcall(function()
-                                        return fireGun(objectId, raycast, shotEyeCF, shotMuzzleCF, prefirePart, aimAt, nil, nil, AIM_EXTRA, prefireGlued, false)
-                                    end)
-                                    self:ClearGlue()
-                                    if ok and fired == true then
-                                        State.RagePreFires = (State.RagePreFires or 0) + 1
-                                        State.Shots = (State.Shots or 0) + 1
-                                        return true
-                                    end
-                                    return false
-                                end
-                                return cframe, weaponAction
-                            end
-                        end
-                        return cframe, nil
-                    end
-                end
                 if hitboxHead == nil then
                     self:ClearGlue()
                     return ourRootPart.CFrame, nil
                 end
                 local shieldState = classifyAboveBelow(target)
-                local directHeadAim = shieldState == 'None'
                 local above = shieldState ~= 'Below'
-                local offset = Vector3.zero
-
-
-                local aimHeadPosition = predictLiveHeadPosition(target, hitboxHead)
+                local directHeadAim = shieldState == 'None'
+                local offset = above and OFFSET_ABOVE or OFFSET_BELOW
+                local aimHeadPosition = hitboxHead.Position
 
                 State.RageGumMode = KiciaRagebot.rageGumMode()
                 State.RageGumVoidFire = false
@@ -4053,6 +3549,7 @@ return {
                 local finalShotEyeCF = nil
                 local finalShotMuzzleCF = nil
                 local finalShotAimWorldPos = nil
+                local finalShotHead = nil
 
                 preFireRefresh = function(characterController)
                     if not characterController then return cframe end
@@ -4069,9 +3566,9 @@ return {
                     targetRootPart = liveRoot
 
                     local shieldState = classifyAboveBelow(target)
-                    directHeadAim = shieldState == 'None'
                     above = shieldState ~= 'Below'
-                    offset = Vector3.zero
+                    directHeadAim = shieldState == 'None'
+                    offset = above and OFFSET_ABOVE or OFFSET_BELOW
 
                     local liveGlue = false
                     local liveVoid = nil
@@ -4118,7 +3615,7 @@ return {
                         refreshed = CFrame.new(liveVoid.Position + offset, hitboxHead.Position)
                     end
                     if refreshed ~= nil then
-                        local snapshotAim = predictLiveHeadPosition(target, hitboxHead) or hitboxHead.Position
+                        local snapshotAim = hitboxHead.Position
                         local snapshotEyeBase = refreshed.Position
                         local snapshotEyePos = snapshotEyeBase + Vector3.new(0, eyeRise(snapshotEyeBase, target.model), 0)
                         local snapshotEyeCF = safeLookCFrame(snapshotEyePos, snapshotAim)
@@ -4128,6 +3625,7 @@ return {
                             finalShotAimWorldPos = snapshotAim
                             finalShotEyeCF = snapshotEyeCF
                             finalShotMuzzleCF = snapshotMuzzleCF
+                            finalShotHead = hitboxHead
                             characterController:SetServerCFrame(refreshed)
                         end
                     end
@@ -4148,7 +3646,11 @@ return {
                     if hitboxHead.Parent == nil or targetRootPart.Parent == nil then
                         return false
                     end
-                    finalShotAimWorldPos = predictLiveHeadPosition(target, hitboxHead) or hitboxHead.Position
+                    if finalShotHead ~= nil and hitboxHead ~= finalShotHead then
+                        return false
+                    end
+
+                    finalShotAimWorldPos = hitboxHead.Position
                     local shotEyeBase = cframe.Position
                     local shotEyePos = shotEyeBase + Vector3.new(0, eyeRise(shotEyeBase, target.model), 0)
                     finalShotEyeCF = safeLookCFrame(shotEyePos, finalShotAimWorldPos)
@@ -4171,16 +3673,19 @@ return {
 
 
             Setting.MELEE_DWELL_S = 0.03
-            Setting.BACKSTAB_WINDOW = 0.675
-            Setting.BACKSTAB_COOLDOWN = 0.675
-            Setting.KNIFE_SWING_INTERVAL = 0.675
+            Setting.BACKSTAB_WINDOW = 0.625
+            Setting.BACKSTAB_COOLDOWN = 1.25
+            Setting.KNIFE_SWING_INTERVAL = 0.08
             Setting.ATTACK_GAP_HOLD = 0.30
             local MeleeStrategy = {}
             MeleeStrategy.__index = MeleeStrategy
 
-            function MeleeStrategy.new()
+            function MeleeStrategy.new(partGlue)
                 return setmetatable({
+                    _partGlue = partGlue,
                     _shootLock = ShootLock.new(),
+                    _hitboxWindowUntil = -1,
+                    _attackCooldown = -1,
                     _meleeDwellStart = nil,
                     _meleeDwellTarget = nil,
                     _gapTargetKey = nil,
@@ -4189,7 +3694,8 @@ return {
                     _lastPark = nil,
                     _lastParkTargetKey = nil,
                     _lastKnifeSwingAt = -math.huge,
-                    _viewAngleDriver = nil,
+                    _knifePendingStart = false,
+                    _gluedOurPart = nil,
                 }, MeleeStrategy)
             end
 
@@ -4209,6 +3715,10 @@ return {
                         local okKnife, resultKnife = pcall(KiciaRagebot.isLocalKnifeRuntime, item)
                         knife = okKnife and resultKnife == true
                     end
+
+
+
+
                     return { heavy = heavy or knife, knife = knife }
                 end
 
@@ -4227,33 +3737,30 @@ return {
                 return nil
             end
 
+            local function meleeFarMiss()
+                return CFrame.new(
+                    rbRandom:NextInteger(-1000000, 1000000),
+                    rbRandom:NextInteger(5000, 10000),
+                    rbRandom:NextInteger(-1000000, 1000000)
+                )
+            end
+
             local function meleeTargetKey(target)
                 return target and (target.player or target.model or target.rootPart) or nil
             end
 
-            local function meleeTeleport(rootPart, targetCF)
-                if rootPart == nil or not rootPart.Parent or typeof(targetCF) ~= 'CFrame' then
-                    return false
-                end
-
-                local ok = pcall(function()
-                    rootPart.CFrame = targetCF
-                    if rootPart.AssemblyLinearVelocity.Magnitude > 0.05 then
-                        rootPart.AssemblyLinearVelocity = Vector3.zero
-                    end
-                    if rootPart.AssemblyAngularVelocity.Magnitude > 0.05 then
-                        rootPart.AssemblyAngularVelocity = Vector3.zero
-                    end
-                end)
-                return ok
-            end
-
             function MeleeStrategy:_RecordBackstab()
-                self._lastKnifeSwingAt = os.clock()
+                local now = os.clock()
+                self._hitboxWindowUntil = now + Setting.BACKSTAB_WINDOW
+                self._attackCooldown = now + Setting.BACKSTAB_COOLDOWN
             end
 
             function MeleeStrategy:ClearGlue()
-                return
+                local glued = self._gluedOurPart
+                if glued ~= nil and self._partGlue ~= nil then
+                    pcall(function() self._partGlue:Free(glued) end)
+                end
+                self._gluedOurPart = nil
             end
 
             function MeleeStrategy:_ClearContinuity()
@@ -4300,44 +3807,34 @@ return {
                 return CFrame.new(self._lastPark), true
             end
 
-            local function resolveMeleeAttackPose(profile, hitPart, targetRootPart, target)
-                if not profile or not hitPart or not targetRootPart then return nil, nil end
+            local function resolveMeleeAttackPose(profile, hitPart, targetRootPart, target, ourRootPart)
+                if not profile or not hitPart or not targetRootPart then return nil, nil, nil end
                 if not KiciaRagebot.isFiniteVector3(hitPart.Position) or not KiciaRagebot.isFiniteVector3(targetRootPart.Position) then
-                    return nil, nil
+                    return nil, nil, nil
                 end
                 local aimPos = hitPart.Position
                 local attackPos = nil
+                local attackDir = nil
 
                 if profile.knife then
-                    
-                    
-                    local look = targetRootPart.CFrame.LookVector
-                    local flat = Vector3.new(look.X, 0, look.Z)
-                    if flat.Magnitude < 1e-3 then flat = Vector3.new(0, 0, -1) else flat = flat.Unit end
-                    
-                    attackPos = targetRootPart.Position + flat * 2
+                    attackPos, _, attackDir = KiciaRagebot.knifeBackstabPointRuntime(target, hitPart, ourRootPart)
                 else
-                    
-                    local meleeLook = targetRootPart.CFrame.LookVector
-                    local meleeFlat = Vector3.new(meleeLook.X, 0, meleeLook.Z)
-                    if meleeFlat.Magnitude < 1e-3 then
-                        meleeFlat = Vector3.new(0, 0, -1)
-                    else
-                        meleeFlat = meleeFlat.Unit
+                    local look = targetRootPart.CFrame.LookVector
+                    look = Vector3.new(look.X, 0, look.Z)
+                    if look.Magnitude < 1e-3 then
+                        return nil, nil, nil
                     end
-                    attackPos = targetRootPart.Position - meleeFlat * 2
+                    local dist = profile.heavy and 1.2 or 0.8
+                    attackPos = targetRootPart.Position - look.Unit * dist + Vector3.new(0, 0.6, 0)
+                    attackPos = Vector3.new(attackPos.X, math.max(attackPos.Y, KiciaRagebot.rageKillFloor() + 3), attackPos.Z)
                 end
 
-                if not KiciaRagebot.isFiniteVector3(attackPos) then return nil, nil end
-                return attackPos, aimPos
+                if not KiciaRagebot.isFiniteVector3(attackPos) then return nil, nil, nil end
+                return attackPos, aimPos, attackDir
             end
 
-            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, ourRootPart, characterController)
+            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, fallbackAttackDir, snapshotState)
                 return function()
-                    if ourRootPart == nil or not ourRootPart.Parent then
-                        return false
-                    end
-
                     local liveFighter = resolveLocalFighter()
                     local runtimeItem = liveFighter and runtimeEquippedItem(liveFighter) or nil
                     local liveProfile = meleeProfile(runtimeItem)
@@ -4352,7 +3849,15 @@ return {
                     end
 
                     local liveHitPart, liveRoot = resolveLiveMeleeTarget(target)
-                    if liveHitPart == nil or liveRoot == nil then
+                    local snapshotHitPart = snapshotState and snapshotState.hitPart or nil
+                    local snapshotAttackPos = snapshotState and snapshotState.attackPos or nil
+                    if snapshotHitPart ~= nil then
+                        if liveHitPart ~= snapshotHitPart then
+                            State.RageKnifeStatus = 'melee hit part changed'
+                            return false
+                        end
+                        liveHitPart = snapshotHitPart
+                    elseif liveHitPart == nil then
                         liveHitPart, liveRoot = fallbackHitPart, fallbackRoot
                     end
                     if liveHitPart == nil or liveRoot == nil or not liveHitPart.Parent or not liveRoot.Parent then
@@ -4360,7 +3865,16 @@ return {
                         return false
                     end
 
-                    local liveAttackPos, liveAimPos = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target)
+                    local liveAttackPos, liveAimPos, liveAttackDir
+                    if liveProfile.knife then
+                        liveAttackPos, liveAimPos, liveAttackDir = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target, GetRoot())
+                    elseif snapshotAttackPos ~= nil then
+                        liveAttackPos = snapshotAttackPos
+                        liveAimPos = liveHitPart.Position
+                        liveAttackDir = fallbackAttackDir
+                    else
+                        liveAttackPos, liveAimPos, liveAttackDir = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target, GetRoot())
+                    end
                     if liveAttackPos == nil or liveAimPos == nil then
                         State.RageKnifeStatus = 'invalid melee pose'
                         return false
@@ -4372,36 +3886,7 @@ return {
                         return false
                     end
 
-                    
-                    
-                    local currentTargetPos = liveRoot.Position
-                    if not KiciaRagebot.isFiniteVector3(currentTargetPos) then
-                        State.RageKnifeStatus = 'invalid melee target position'
-                        return false
-                    end
-                    local faceVector = liveRoot.CFrame.LookVector
-                    if typeof(faceVector) ~= 'Vector3' or not KiciaRagebot.isFiniteVector3(faceVector) or faceVector.Magnitude < 1e-3 then
-                        faceVector = Vector3.new(0, 0, -1)
-                    end
-                    local flatFace = Vector3.new(faceVector.X, 0, faceVector.Z)
-                    if flatFace.Magnitude < 1e-3 then flatFace = Vector3.new(0, 0, -1) else flatFace = flatFace.Unit end
-                    local attackCF
-                    if liveProfile.knife then
-                        
-                        local behindPos = currentTargetPos + flatFace * 2
-                        attackCF = CFrame.lookAt(behindPos, behindPos + flatFace)
-                        liveAttackPos = behindPos
-                    else
-                        
-                        local frontPos = currentTargetPos - flatFace * 2
-                        attackCF = CFrame.lookAt(frontPos, currentTargetPos)
-                        liveAttackPos = frontPos
-                    end
-                    liveAimPos = liveHitPart.Position
-                    
-                    
-                    local eyeBase = liveAttackPos
-                    local eyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, target.model), 0)
+                    local eyePos = liveAttackPos + Vector3.new(0, eyeRise(liveAttackPos, target.model), 0)
                     local eyeCF = safeLookCFrame(eyePos, liveAimPos)
                     if eyeCF == nil then
                         State.RageKnifeStatus = 'invalid melee eye'
@@ -4418,87 +3903,52 @@ return {
                     State.RageFireHitPart = liveHitPart
                     State.RageFireStamp = tick()
 
-                    local baseCF = ourRootPart.CFrame
-                    if characterController and type(characterController.GetClientCFrame) == 'function' then
-                        local clientBase = characterController:GetClientCFrame()
-                        if typeof(clientBase) == 'CFrame' then
-                            baseCF = clientBase
-                        end
-                    end
-                    local teleportOk = false
-                    if characterController and type(characterController.SetServerCFrame) == 'function' and type(characterController.HeartbeatUpdate) == 'function' then
-                        characterController:SetServerCFrame(attackCF)
-                        characterController:HeartbeatUpdate()
-                        teleportOk = true
-                    else
-                        teleportOk = meleeTeleport(ourRootPart, attackCF)
-                    end
-                    if not teleportOk then
-                        State.RageKnifeStatus = 'melee tp failed'
-                        pcall(function() ourRootPart.CFrame = baseCF end)
-                        return false
-                    end
-
                     local bypassHeavy = false
-                    if liveProfile.knife and togValue('P4S1T8', false) then
-                        local driver = self._viewAngleDriver
-                        if type(driver) == 'table' and type(driver.SendSilentTarget) == 'function' then
-                            pcall(function() driver:SendSilentTarget(liveRoot, Setting.RIOT_KNIFE_BYPASS_TRIGGER_DIST, target) end)
-                        end
-                    end
-
-                    if liveProfile.knife and togValue('P4S1T8', false) and type(liveItem.HeavyAttack) == 'function' then
-                        local accepted = false
+                    if liveProfile.knife and togValue('P4S1T8', false) and optValue('P4S1D2', 'Riot') == 'Knife' and type(liveItem.HeavyAttack) == 'function' then
                         local okBypass = pcall(function()
                             liveItem._attack_cooldown = 0
                             liveItem._last_attack = tick() - 1
                             local hitData = { part = liveHitPart }
-                            local okHeavy = pcall(liveItem.HeavyAttack, liveItem, eyeCF, muzzleCF, hitData)
-                            accepted = okHeavy
-                            if not accepted then
-                                
-                                accepted = pcall(liveItem.HeavyAttack, liveItem, eyeCF, muzzleCF, hitData)
+                            local sent = pcall(liveItem.HeavyAttack, liveItem, eyeCF, eyeCF, hitData)
+                            if not sent then
+                                liveItem:HeavyAttack(liveRoot.Position)
                             end
                         end)
-                        bypassHeavy = okBypass and accepted
+                        bypassHeavy = okBypass == true
+                        if bypassHeavy then
+                            State.RageKnifeStatus = 'Backstab bypass'
+                        end
                     end
 
                     if bypassHeavy then
-                        State.RageKnifeStatus = 'Backstab bypass'
-                        self:MarkReady(meleeTargetKey(target), baseCF.Position)
+                        self:MarkReady(meleeTargetKey(target), liveAttackPos)
+                        self._knifePendingStart = false
+                        self._lastKnifeSwingAt = os.clock()
                         self:_RecordBackstab()
                         State.RageKnifeSwings = (State.RageKnifeSwings or 0) + 1
                         State.Shots = (State.Shots or 0) + 1
-                        if characterController and type(characterController.SetServerCFrame) == 'function' and type(characterController.HeartbeatUpdate) == 'function' then
-                            characterController:SetServerCFrame(baseCF)
-                            characterController:HeartbeatUpdate()
-                        else
-                            pcall(function() meleeTeleport(ourRootPart, baseCF) end)
-                        end
                         return true
                     end
 
                     local ok, result = pcall(function()
                         return fireMeleeRemote(liveItem, liveProfile.heavy, objectId, liveHitPart, liveAimPos, eyeCF, muzzleCF, useAim1, useAim2, AIM_EXTRA)
                     end)
-
-                    if characterController and type(characterController.SetServerCFrame) == 'function' and type(characterController.HeartbeatUpdate) == 'function' then
-                        characterController:SetServerCFrame(baseCF)
-                        characterController:HeartbeatUpdate()
-                    else
-                        pcall(function() meleeTeleport(ourRootPart, baseCF) end)
-                    end
-
                     if not ok then
                         State.RageKnifeStatus = 'melee error: ' .. tostring(result)
                         return false
                     end
                     if result == true then
-                        self:MarkReady(meleeTargetKey(target), baseCF.Position)
+                        self:MarkReady(meleeTargetKey(target), liveAttackPos)
                         if liveProfile.knife then
-                            self:_RecordBackstab()
-                            State.RageKnifeStatus = 'Backstab'
+                            local wasBackstabStart = self._knifePendingStart
+                            if wasBackstabStart then
+                                self:_RecordBackstab()
+                                self._knifePendingStart = false
+                            end
+                            self._lastKnifeSwingAt = os.clock()
+                            State.RageKnifeStatus = wasBackstabStart and 'Backstab' or 'Knife attack'
                         else
+                            self._knifePendingStart = false
                             State.RageKnifeStatus = liveProfile.heavy and 'Heavy melee' or 'Light melee'
                         end
                         State.RageKnifeSwings = (State.RageKnifeSwings or 0) + 1
@@ -4511,7 +3961,6 @@ return {
             end
 
             function MeleeStrategy:Plan(dt, target, item, ourRootPart, canFire, characterController)
-                self._viewAngleDriver = characterController and characterController._viewAngleDriver or nil
                 if target == nil or item == nil or ourRootPart == nil or not ourRootPart.Parent then
                     return ourRootPart and ourRootPart.CFrame or VOID_CFRAME, nil, nil, false, nil
                 end
@@ -4525,14 +3974,16 @@ return {
                 local profile = meleeProfile(actionItem)
                 if profile == nil then
                     self:_ClearContinuity()
-                    self._meleeDwellStart = nil
-                    self._meleeDwellTarget = nil
-                    self._lastKnifeSwingAt = -math.huge
+                    self._hitboxWindowUntil = -1
+                    self._attackCooldown = -1
+                    self._knifePendingStart = false
                     return ourRootPart.CFrame, nil, nil, false, nil
                 end
 
                 local hitPart, targetRootPart = resolveLiveMeleeTarget(target)
                 if hitPart == nil or targetRootPart == nil then
+                    local held = self:HoldGap(target, ourRootPart)
+                    if held then return held, nil, nil, true, nil end
                     self._meleeDwellStart = nil
                     self._meleeDwellTarget = nil
                     return ourRootPart.CFrame, nil, nil, true, nil
@@ -4544,72 +3995,120 @@ return {
                     self._meleeDwellTarget = key
                     self._meleeDwellStart = now
                     self._lastKnifeSwingAt = -math.huge
+                    self._hitboxWindowUntil = -1
+                    self._attackCooldown = -1
+                    self._knifePendingStart = false
                 elseif self._meleeDwellStart == nil then
                     self._meleeDwellStart = now
                 end
 
-                local attackPos = resolveMeleeAttackPose(profile, hitPart, targetRootPart, target)
+                local attackPos, aimPos, attackDir = resolveMeleeAttackPose(profile, hitPart, targetRootPart, target, ourRootPart)
                 if attackPos == nil then
                     return ourRootPart.CFrame, nil, nil, true, nil
                 end
 
+                local attackCF = CFrame.new(attackPos)
                 if now - (self._meleeDwellStart or now) < Setting.MELEE_DWELL_S then
-                    return ourRootPart.CFrame, nil, nil, true, nil
+                    return attackCF, nil, nil, true, nil
                 end
 
                 local weaponAction = nil
-                local planCFrame = ourRootPart.CFrame
+                local preFireRefresh = nil
+                local finalMeleeSnapshot = { hitPart = nil, attackPos = nil }
+
                 if profile.knife then
-                    local elapsed = now - (self._lastKnifeSwingAt or -math.huge)
-                    if elapsed < Setting.KNIFE_SWING_INTERVAL then
-                        State.RageKnifeStatus = string.format('Knife wait %.3fs', Setting.KNIFE_SWING_INTERVAL - elapsed)
-                        return ourRootPart.CFrame, nil, nil, true, nil
-                    end
-                    local knifeLook = targetRootPart.CFrame.LookVector
-                    local knifeFlat = Vector3.new(knifeLook.X, 0, knifeLook.Z)
-                    if knifeFlat.Magnitude < 1e-3 then
-                        knifeFlat = Vector3.new(0, 0, -1)
+                    if now < self._hitboxWindowUntil then
+                        if now - (self._lastKnifeSwingAt or -math.huge) < Setting.KNIFE_SWING_INTERVAL then
+                            return attackCF, nil, nil, true, nil
+                        end
+                        weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, attackDir, finalMeleeSnapshot)
+                    elseif now < self._attackCooldown then
+                        State.RageKnifeStatus = string.format('Knife wait %.2fs', self._attackCooldown - now)
+                        return meleeFarMiss(), nil, nil, true, nil
                     else
-                        knifeFlat = knifeFlat.Unit
+                        if not self._shootLock:ShouldFire(canFire == true, Setting.KNIFE_SWING_INTERVAL) then
+                            return attackCF, nil, nil, true, nil
+                        end
+                        self._knifePendingStart = true
+                        self._lastKnifeSwingAt = -math.huge
+                        weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, attackDir, finalMeleeSnapshot)
                     end
-                    
-                    local knifeAttackPos = targetRootPart.Position + knifeFlat * 2
-                    planCFrame = CFrame.lookAt(knifeAttackPos, knifeAttackPos + knifeFlat)
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, ourRootPart, characterController)
                 else
                     if not self._shootLock:ShouldFire(canFire == true, math.max(dt or 0, 0) * Setting.ShootFrames()) then
-                        return ourRootPart.CFrame, nil, nil, true, nil
+                        return meleeFarMiss(), nil, nil, true, nil
                     end
-                    planCFrame = CFrame.lookAt(
-                        attackPos,
-                        Vector3.new(targetRootPart.Position.X, attackPos.Y, targetRootPart.Position.Z)
-                    )
-                    self:MarkReady(key, ourRootPart.CFrame.Position)
-                    local meleePitch, meleeYaw, meleeRoll = planCFrame:ToOrientation()
+                    self:MarkReady(key, attackCF.Position)
+                    local meleePitch, meleeYaw, meleeRoll = attackCF:ToOrientation()
                     local aim1 = buildAim(AIM_ABOVE_ORIGIN, meleePitch, meleeYaw, meleeRoll)
                     local aim2 = buildAim(AIM_ABOVE_END, meleePitch, meleeYaw, meleeRoll)
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, ourRootPart, characterController)
+                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, attackDir, finalMeleeSnapshot)
                 end
 
                 if weaponAction == nil then
-                    return ourRootPart.CFrame, nil, nil, true, nil
+                    return attackCF, nil, nil, true, nil
                 end
 
-                return ourRootPart.CFrame, nil, weaponAction, true, nil
+                preFireRefresh = function(characterController)
+                    if characterController == nil then
+                        return attackCF
+                    end
+
+                    local liveHitPart, liveRoot = resolveLiveMeleeTarget(target)
+                    if liveHitPart == nil or liveRoot == nil then
+                        return attackCF
+                    end
+
+                    local liveAttackPos, _, liveAttackDir = resolveMeleeAttackPose(profile, liveHitPart, liveRoot, target, ourRootPart)
+                    if liveAttackPos == nil or not KiciaRagebot.isFiniteVector3(liveAttackPos) then
+                        return attackCF
+                    end
+
+                    local liveCF = CFrame.new(liveAttackPos)
+                    if profile.knife then
+                        local driver = characterController._viewAngleDriver
+                        if type(driver) == 'table' and type(driver.SendSilentTarget) == 'function' then
+                            pcall(function() driver:SendSilentTarget(liveRoot, Setting.KNIFE_BYPASS_TRIGGER_DIST) end)
+                        end
+                    end
+
+
+
+                    pcall(function()
+                        local liveFighter = resolveLocalFighter()
+                        local liveRuntime = liveFighter and runtimeEquippedItem(liveFighter) or actionItem
+                        if liveRuntime ~= nil then
+                            rawset(liveRuntime, '_attack_cooldown', 0)
+                            rawset(liveRuntime, '_last_attack', tick() - 1)
+                        end
+                    end)
+                    hitPart = liveHitPart
+                    targetRootPart = liveRoot
+                    finalMeleeSnapshot.hitPart = liveHitPart
+                    finalMeleeSnapshot.attackPos = liveAttackPos
+                    attackCF = liveCF
+                    characterController:SetServerCFrame(liveCF)
+                    return liveCF
+                end
+
+                return attackCF, nil, weaponAction, true, preFireRefresh
             end
 
             function MeleeStrategy:ResetState(keepContinuity)
                 self._meleeDwellStart = nil
                 self._meleeDwellTarget = nil
                 self._lastKnifeSwingAt = -math.huge
+                self._knifePendingStart = false
                 self._shootLock:Reset()
-                if not keepContinuity then
-                    self:_ClearContinuity()
-                end
+                self:ClearGlue()
                 State.RageFireFromPos = nil
                 State.RageFireAimPos = nil
                 State.RageFireHitPart = nil
                 State.RageFireStamp = 0
+                if not keepContinuity then
+                    self._hitboxWindowUntil = -1
+                    self._attackCooldown = -1
+                    self:_ClearContinuity()
+                end
             end
 
 local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
@@ -4742,7 +4241,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     _enabled = false,
                     _partGlue = partGlue,
                     _hitscanStrategy = HitscanStrategy.new(partGlue),
-                    _meleeStrategy = MeleeStrategy.new(),
+                    _meleeStrategy = MeleeStrategy.new(partGlue),
                     _projectileBreaker = ProjectileBreaker.new(),
                     _spatialLimitGate = SpatialLimitGate.new(),
                     _stateHook = StateHook.new(),
@@ -4797,7 +4296,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 if isFlightActive() then
                     return { cframe = clientCF }
                 end
-                
+
                 if self._projectileBreaker and (mode == 'Random' or mode == 'Auto' or mode == 'Translocate')
                     and self._projectileBreaker:HasProjectileThreat() then
                     local supportCF = self._projectileBreaker:Compute(clientCF)
@@ -4846,6 +4345,12 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 end
                 if target == nil then
                     self._hitscanStrategy:ResetState()
+                    if action.itemType == 'Melee' then
+                        local held = self._meleeStrategy:HoldGap(self._lastTarget, ourRootPart)
+                        if held then
+                            return { cframe = held, shouldSkipDefense = true, preActionHeartbeat = true }
+                        end
+                    end
                     self._meleeStrategy:ResetState()
                     return self:_EvadePlan(clientCF, mode)
                 end
@@ -4867,7 +4372,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                         cframe = support
                     end
                 end
-                    return { cframe = cframe, viewAngles = nil, suppressViewAngles = true, preFireRefresh = nil, weaponAction = weaponAction, shouldSkipDefense = true, preActionHeartbeat = false, forceViewBeforeAction = false, undergroundZShift = 0, pureTeleport = true }
+                    return { cframe = cframe, viewAngles = nil, suppressViewAngles = true, preFireRefresh = preFireRefresh, weaponAction = weaponAction, shouldSkipDefense = true, preActionHeartbeat = weaponAction ~= nil, forceViewBeforeAction = false, undergroundZShift = undergroundZShift }
                 end
                 if action.itemType ~= 'Gun' then
                     self._hitscanStrategy:ResetState()
@@ -4882,18 +4387,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire)
                 return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
             end
-            function Controller:_ApplyPlan(plan, target, characterController, fighter)
-                if plan and plan.pureTeleport then
-                    
-                    
-                    
-                    
-                    local clientCF = characterController and characterController:GetClientCFrame() or nil
-                    if clientCF ~= nil then
-                        characterController:SetServerCFrame(clientCF)
-                    end
-                    return
-                end
+function Controller:_ApplyPlan(plan, target, characterController, fighter)
                 local cframe = plan.cframe
                 local zShift = tonumber(plan.undergroundZShift) or 0
                 if cframe ~= nil and (zShift == 5 or zShift == -5) then
@@ -4928,7 +4422,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     characterController:SendViewAngles(20, plan.viewAngles or self._lastDefensiveViewAngles)
                 end
             end
-            function Controller:Update(dt)
+function Controller:Update(dt)
                 local fighter = resolveLocalFighter()
                 local characterController = self:_EnsureCharacterController()
                 if fighter == nil or characterController == nil or not self._enabled then
@@ -4948,30 +4442,8 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 local clientCF = characterController:GetClientCFrame()
                 local now = os.clock()
                 local target = KiciaRagebot.selectTarget(self._lastTarget)
-                if target ~= nil then
-                    if target.temporalOnly then
-                        self._temporalHoldCount = (self._temporalHoldCount or 0) + 1
-                        self._temporalLastGap = target.temporalGap or 0
-                    else
-                        target.temporalOnly = false
-                    end
-                    self._lastTarget = target
-                    self._lastTargetAt = now
-                else
-                    local held = nil
-                    if self._lastTarget ~= nil and (now - (self._lastTargetAt or -math.huge)) <= KiciaRagebot.temporalHoldSecFor(self._lastTarget) then
-                        held = KiciaRagebot.resolveTemporalTarget(self._lastTarget)
-                    end
-                    target = held
-                    if target ~= nil then
-
-
-                        self._lastTargetAt = now
-                    else
-                        self._lastTarget = nil
-                        self._lastTargetAt = -math.huge
-                    end
-                end
+                self._lastTarget = target
+                self._lastTargetAt = target and now or -math.huge
                 local action = KiciaRagebot.getAction(fighter)
                 local evasionOption = Options and Options.P8S4D2 and Options.P8S4D2.Value or 'Random'
                 local mode
@@ -4997,13 +4469,13 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     self:_ApplyForcedCrouch(false)
                     local evasionOption = Options and Options.P8S4D2 and Options.P8S4D2.Value or mode
                     if undergroundEnabled and evasionOption ~= 'Auto' then
-                        
-                        
-                        
-                        
+
+
+
+
                         characterController:SetServerCFrame(clientCF)
-                        
-                        mode = 'Random'  
+
+                        mode = 'Random'
                     else
                         local supportCF = nil
                         if self._projectileBreaker and self._projectileBreaker:HasProjectileThreat() then
@@ -5025,6 +4497,12 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     characterController:HeartbeatUpdate()
                 end
                 if plan.preFireRefresh ~= nil and plan.weaponAction ~= nil then
+
+
+
+
+
+
                     if preActionHeartbeat then
                         characterController:HeartbeatUpdate()
                     end
@@ -5040,11 +4518,11 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 if plan.weaponAction ~= nil then
                     plan.weaponAction()
                 end
-                if not preActionHeartbeat and not plan.pureTeleport then
+                if not preActionHeartbeat then
                     characterController:HeartbeatUpdate()
                 end
             end
-            function Controller:GetLastTargetWorld()
+function Controller:GetLastTargetWorld()
                 return self._lastTargetWorld
             end
             function Controller:_Reset()
@@ -5088,134 +4566,198 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 applyEnabledFFlags(false)
             end
             local controllerInstance = nil
-            local riotKnifeBypassWasActive = false
+            local riotKnifeSilentActive = false
+            local riotKnifeLastEncoded = utf8.char(255) .. utf8.char(255)
+            local riotKnifeBypassHooked = setmetatable({}, { __mode = 'k' })
 
-            local RIOT_KNIFE_BYPASS_TRIGGER_DIST = Setting.RIOT_KNIFE_BYPASS_TRIGGER_DIST
 
-            local function findNearestTargetWithinDistance(triggerDist)
-                local myChar = LPRB.Character
-                if myChar == nil then
-                    return nil
+            local function riotKnifeEncodeByte(n)
+                if type(n) ~= 'number' or n ~= n then return utf8.char(0) end
+                local v = math.floor(n % (2 * math.pi) / math.pi / 2 * 256 + 0.5)
+                return utf8.char(math.clamp(v, 0, 255))
+            end
+
+            local function installRiotKnifeReplicationHook()
+                if type(getgc) ~= 'function' or type(debug) ~= 'table' or type(debug.getupvalues) ~= 'function' then
+                    return false
                 end
+                for _, m in ipairs(getgc(true)) do
+                    if type(m) == 'table' then
+                        local idx = rawget(m, '__index')
+                        if type(idx) == 'table' and rawget(idx, '_CameraReplicationLoop') ~= nil then
+                            local loop = rawget(idx, '_CameraReplicationLoop')
+                            if type(loop) ~= 'function' then
+                                return false
+                            end
+                            local ok, ups = pcall(debug.getupvalues, loop)
+                            if not ok then
+                                return false
+                            end
+                            for _, val in pairs(ups) do
+                                if type(val) == 'table' then
+                                    local mt = getmetatable(val)
+                                    local vidx = mt and rawget(mt, '__index')
+                                    local original = vidx and rawget(vidx, 'EncodeCameraRotation') or rawget(val, 'EncodeCameraRotation')
+                                    if type(original) == 'function' and not riotKnifeBypassHooked[original] then
+                                        local hooked = function(_, raw)
+                                            if riotKnifeSilentActive then
+                                                return riotKnifeLastEncoded
+                                            end
+                                            return original(_, raw)
+                                        end
+                                        if vidx and rawget(vidx, 'EncodeCameraRotation') == original then
+                                            rawset(vidx, 'EncodeCameraRotation', hooked)
+                                        elseif rawget(val, 'EncodeCameraRotation') == original then
+                                            rawset(val, 'EncodeCameraRotation', hooked)
+                                        else
+                                            continue
+                                        end
+                                        riotKnifeBypassHooked[hooked] = true
+                                        return true
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                return false
+            end
 
+            local function findNearestRiotKnifeBypassTarget(triggerDist)
+                local myChar = lp.Character
+                if not myChar then return nil end
                 local myRoot = myChar:FindFirstChild('HumanoidRootPart')
-                if myRoot == nil then
-                    return nil
-                end
+                if not myRoot then return nil end
 
                 local myPos = myRoot.Position
+                local myTeam = lp:GetAttribute('TeamID')
+                local myEnv = lp:GetAttribute('EnvironmentID')
                 local best, bestDist = nil, math.huge
 
-                for _, entry in ipairs(KiciaRagebot.collectEnemies()) do
-                    if not KiciaRagebot.isValidTarget(entry) then
-                        continue
-                    end
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p == lp then continue end
+                    if p:GetAttribute('EnvironmentID') ~= myEnv then continue end
+                    if myTeam ~= nil and p:GetAttribute('TeamID') == myTeam then continue end
 
-                    local rootPart = entry.rootPart
-                    if rootPart == nil or rootPart.Parent == nil or not rootPart:IsA('BasePart') then
-                        continue
-                    end
+                    local char = p.Character
+                    if not char then continue end
+                    local root = char:FindFirstChild('HumanoidRootPart')
+                    local hum = char:FindFirstChildOfClass('Humanoid')
+                    local head = char:FindFirstChild('Head')
+                    if not root or not hum or hum.Health <= 0 or not head then continue end
 
-                    local delta = rootPart.Position - myPos
-                    if not KiciaRagebot.isFiniteVector3(delta) then
-                        continue
-                    end
-
-                    local dist = delta.Magnitude
-                    if dist <= 0 or dist > triggerDist then
-                        continue
-                    end
-
+                    local dist = (root.Position - myPos).Magnitude
+                    if dist > triggerDist then continue end
                     if dist < bestDist then
                         bestDist = dist
-                        best = entry
+                        best = { head = head, root = root }
                     end
                 end
 
                 return best
             end
 
-            local function findNearestRiotKnifeBypassTarget()
-                return findNearestTargetWithinDistance(RIOT_KNIFE_BYPASS_TRIGGER_DIST)
-            end
-
-            local riotKnifeBypassLastAt = 0
-            local function updateRiotKnifeBypass(controller, active)
-                local characterController = controller and controller._characterController or nil
-                if characterController == nil and controller and type(controller._EnsureCharacterController) == 'function' then
-                    characterController = controller:_EnsureCharacterController()
-                end
-
-                local viewAngleDriver = characterController and characterController._viewAngleDriver or nil
-                if type(viewAngleDriver) ~= 'table' then
+            local function updateRiotKnifeBypass()
+                if not togValue('P4S1T8', false) then
+                    riotKnifeSilentActive = false
                     return
                 end
 
-                if not active then
-                    riotKnifeBypassLastAt = 0
-                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
-                    return
-                end
-
-                local now = os.clock()
-                if now - riotKnifeBypassLastAt < 0.016 then
-                    return
-                end
-                riotKnifeBypassLastAt = now
-
-                local fighter = resolveLocalFighter()
-                local item = runtimeEquippedItem(fighter)
-                local profile = meleeProfile(item)
-                if profile == nil or not profile.knife then
-                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
-                    return
-                end
-
-                local root = nil
-                local targetEntry = nil
-                local rageTarget = controller and controller._lastTarget or nil
-                if rageTarget ~= nil then
-                    local rageRoot = rageTarget.rootPart
-                    local myRoot = LPRB.Character and LPRB.Character:FindFirstChild('HumanoidRootPart') or nil
-                    local inRange = false
-                    if myRoot ~= nil and myRoot.Parent ~= nil and rageRoot ~= nil and rageRoot.Parent ~= nil and rageRoot:IsA('BasePart') then
-                        local delta = rageRoot.Position - myRoot.Position
-                        inRange = delta == delta and delta.Magnitude <= RIOT_KNIFE_BYPASS_TRIGGER_DIST
-                    end
-                    if inRange then
-                        local hum = rageTarget.model and rageTarget.model:FindFirstChildOfClass('Humanoid') or nil
-                        if hum ~= nil and hum.Health > 0 and KiciaRagebot.isValidTarget(rageTarget) then
-                            root = rageRoot
-                            targetEntry = rageTarget
-                        end
+                local bypassMode = optValue('P4S1D2', 'Riot')
+                local triggerDist = bypassMode == 'Knife' and Setting.KNIFE_BYPASS_TRIGGER_DIST or Setting.RIOT_BYPASS_TRIGGER_DIST
+                if bypassMode == 'Knife' then
+                    local fighter = resolveLocalFighter()
+                    local item = fighter and runtimeEquippedItem(fighter) or nil
+                    if item == nil or type(KiciaRagebot.isLocalKnifeRuntime) ~= 'function' or not KiciaRagebot.isLocalKnifeRuntime(item) then
+                        riotKnifeSilentActive = false
+                        return
                     end
                 end
 
-                if root == nil then
-                    targetEntry = findNearestRiotKnifeBypassTarget()
-                    root = targetEntry and targetEntry.rootPart or nil
-                end
-
-                if root == nil or root.Parent == nil or not root:IsA('BasePart') then
-                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
+                local target = findNearestRiotKnifeBypassTarget(triggerDist)
+                if not target then
+                    riotKnifeSilentActive = false
                     return
                 end
 
-                local character = root.Parent
-                local humanoid = character and character:FindFirstChildOfClass('Humanoid') or nil
-                if humanoid == nil or humanoid.Health <= 0 then
-                    LuaHookViewAngle.ClearTarget(viewAngleDriver)
+                riotKnifeSilentActive = true
+
+                local headPitch, yaw = target.head.CFrame:ToOrientation()
+                local myChar = lp.Character
+                local myRoot = myChar and myChar:FindFirstChild('HumanoidRootPart')
+
+                local pitch = headPitch
+                local absP = math.abs(headPitch)
+
+                if myRoot and absP > math.rad(45) then
+                    local eyePos = myRoot.Position + Vector3.new(0, 1.5, 0)
+                    local computedPitch = CFrame.lookAt(eyePos, target.head.Position):ToOrientation()
+
+                    if absP >= math.rad(65) then
+                        pitch = computedPitch
+                    else
+                        local t = (absP - math.rad(45)) / (math.rad(65) - math.rad(45))
+                        pitch = headPitch + (computedPitch - headPitch) * t
+                    end
+                end
+
+                local encoded = riotKnifeEncodeByte(pitch) .. riotKnifeEncodeByte(yaw)
+                if encoded == riotKnifeLastEncoded then
                     return
                 end
 
-                viewAngleDriver:SendSilentTarget(root, RIOT_KNIFE_BYPASS_TRIGGER_DIST, targetEntry)
+                riotKnifeLastEncoded = encoded
+                local remote = resolveCameraRotationRemote()
+                if remote == nil then
+                    return
+                end
+                pcall(function()
+                    remote:FireServer(encoded, nil)
+                end)
             end
 
-            local function ensureController()
+            RunService.Heartbeat:Connect(function()
+                pcall(installRiotKnifeReplicationHook)
+                updateRiotKnifeBypass()
+            end)
+
+local function ensureController()
                 if controllerInstance == nil then
                     controllerInstance = Controller.new()
                 end
                 return controllerInstance
+            end
+
+            local function updateAlwaysBackstab()
+                local controller = ensureController()
+                local characterController = controller and controller._characterController or nil
+                if characterController == nil and controller and type(controller._EnsureCharacterController) == 'function' then
+                    characterController = controller:_EnsureCharacterController()
+                end
+                local viewAngleDriver = characterController and characterController._viewAngleDriver or nil
+                if type(viewAngleDriver) ~= 'table' or type(viewAngleDriver.SendSilentTarget) ~= 'function' then
+                    return
+                end
+                if not togValue('P8S4T1', false) then
+                    return
+                end
+                local myChar = lp.Character
+                local myRoot = myChar and myChar:FindFirstChild('HumanoidRootPart')
+                if myRoot == nil or myRoot.Parent == nil then
+                    return
+                end
+                local target = findNearestRiotKnifeBypassTarget(Setting.ALWAYS_BACKSTAB_TRIGGER_DIST)
+                if target == nil or target.root == nil or target.root.Parent == nil then
+                    return
+                end
+                local character = target.root.Parent
+                local humanoid = character and character:FindFirstChildOfClass('Humanoid') or nil
+                if humanoid == nil or humanoid.Health <= 0 then
+                    return
+                end
+                pcall(function()
+                    viewAngleDriver:SendSilentTarget(target.root, Setting.ALWAYS_BACKSTAB_TRIGGER_DIST)
+                end)
             end
             function KiciaRagebot.FireUndergroundDefense(target)
                 if target == nil then
@@ -5274,8 +4816,8 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 if not togValue('P8S4T1', false) then
                     return false
                 end
-                
-                
+
+
                 local caps = __kicia_hook_genv.KiciaHookCaps
                 if type(caps) ~= 'table' or type(caps.gate) ~= 'function' then
                     KiciaRagebot.CapsOk = false
@@ -5289,22 +4831,19 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 if not KiciaRagebot.CapsOk then
                     return false
                 end
-                
-                
+
+
                 return true
             end
             function KiciaRagebot.Update(dt)
                 local controller = ensureController()
-                local riotKnifeBypassActive = togValue('P4S1T8', false)
-
                 local enabled = KiciaRagebot.IsEnabled()
                 if controller._enabled ~= enabled then
                     controller:SetEnabled(enabled)
                 end
                 controller:Update(dt or 0)
+                updateAlwaysBackstab()
 
-                updateRiotKnifeBypass(controller, riotKnifeBypassActive)
-                riotKnifeBypassWasActive = riotKnifeBypassActive
             end
             function KiciaRagebot.Reset()
                 if controllerInstance then
@@ -9188,9 +8727,9 @@ ErrorReporter.set_game(GameName)
                     local originalStartAiming = knifeModule.StartAiming
                     state.OriginalKnifeStartAiming = originalStartAiming
                     knifeModule.StartAiming = function(self, ...)
-                        
-                        
-                        
+
+
+
                         local item = ResolveRivalsModsStartShootingItem(self) or self
                         local info = item and item.Info or nil
                         local originalHeavyCooldown = nil
@@ -9260,8 +8799,8 @@ ErrorReporter.set_game(GameName)
                 if state.GrenadeFuseController then
                     RivalsModsState.SyncGrenadeFuse()
                 end
-                
-                
+
+
                 if IsReplicatedStateReady() then
                     RivalsModsState.EnsureKnifeHooks()
                 end
@@ -9289,8 +8828,8 @@ ErrorReporter.set_game(GameName)
                     state.PendingEnsureHooks = true
                     return false
                 end
-                
-                
+
+
                 RivalsModsState.EnsureKnifeHooks()
                 state.PendingEnsureHooks = false
                 if IsRivalsModToggleEnabled('P4S1T3')
@@ -14812,8 +14351,8 @@ ErrorReporter.set_game(GameName)
                 if recorder.Mode ~= 'Recording' or not active then
                     return
                 end
-                
-                
+
+
                 if active.RootPart and active.RootPart.Parent then
                     pcall(recorder.SampleRecording)
                 end
@@ -15468,8 +15007,8 @@ ErrorReporter.set_game(GameName)
                 local activeCharacter = recorder.Recording and recorder.Recording.Character
                     or recorder.Replay and recorder.Replay.Character or nil
                 if activeCharacter and (not context or context.Character ~= activeCharacter) then
-                    
-                    
+
+
                     recorder.StopRecording(true, false)
                     recorder.StopReplay('Stopped', false)
                     recorder.SetToggle('P10S4T4', false)
@@ -19399,8 +18938,8 @@ ErrorReporter.set_game(GameName)
                         local previousLocalDistance = localHrp and (lastPos - localHrp.Position).Magnitude or math.huge
                         local currentLocalDistance = localHrp and (currentPos - localHrp.Position).Magnitude or math.huge
 
-                        
-                        
+
+
                         local instantTeleport = dist > RivalsRagebot.HostileTeleportDeltaStuds
                             and speed > RivalsRagebot.HostileTeleportMinSpeed
                         local teleportToLocal = previousLocalDistance > RivalsRagebot.UndergroundDefenseDistance
@@ -19432,7 +18971,7 @@ ErrorReporter.set_game(GameName)
                     end
                 end
 
-                
+
                 local fighters = LocalFighterController and LocalFighterController.Objects or {}
                 for _, fighter in ipairs(fighters) do samplePlayer(fighter and fighter.Player) end
                 for _, player in ipairs(Players:GetPlayers()) do samplePlayer(player) end
@@ -20153,8 +19692,8 @@ ErrorReporter.set_game(GameName)
                     local cheater = RivalsRagebot.GetMostActiveCheater()
                     local entry = cheater and RivalsRagebotState.HostileTeleports[cheater] or nil
                     local lastTeleportAt = entry and entry.LastTeleportAt or 0
-                    
-                    
+
+
                     local counterWindow = 0.24
                     local counterActive = lastTeleportAt > 0 and (now - lastTeleportAt) <= counterWindow
                     local counterCooldown = 0.12
@@ -28578,6 +28117,14 @@ ErrorReporter.set_game(GameName)
                         Default = false,
                         Callback = RivalsModsState.EnsureHooks,
                     })
+                    local RiotKnifeMode = Mods:AddDependencyBox()
+                    RiotKnifeMode:AddDropdown("P4S1D2", {
+                        Values = { "Knife", "Riot" },
+                        Default = "Riot",
+                        Multi = false,
+                        Text = "Mode",
+                    })
+                    RiotKnifeMode:SetupDependencies({ { Toggles.P4S1T8, true } })
                 end
                 do
 local P3 = Tabs.Automation
