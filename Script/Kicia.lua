@@ -832,7 +832,6 @@ return {
                 RageAttackContinuity = function() return true end,
                 RageGumMode = function() return 'on' end,
                 RageGumVoidFire = function() return true end,
-                RagePartGlue = function() return false end,
                 RageOrbitRadius = function() return 60 end,
                 RageOrbitDwell = function() return 0.30 end,
                 RageOrbitHeight = function() return 8 end,
@@ -2071,197 +2070,6 @@ local CharacterController = {}
                 100000,
                 math.random(-100000, 10000)
             )
-            local PartGlue = {}
-            PartGlue.__index = PartGlue
-            function PartGlue.new()
-                return setmetatable({
-                    _gluedParts = {},
-                    _bindings = {},
-                    _previousRepRoot = {},
-                }, PartGlue)
-            end
-            function PartGlue:_ReadPreviousRepRoot(ourPart)
-                if self._previousRepRoot[ourPart] ~= nil then
-                    return self._previousRepRoot[ourPart], true
-                end
-                local previous = nil
-                local known = false
-                if type(gethiddenproperty) == 'function' then
-                    local ok, value = pcall(gethiddenproperty, ourPart, 'PhysicsRepRootPart')
-                    if ok then
-                        previous = value
-                        known = true
-                    end
-                end
-                if not known then
-
-
-                    previous = ourPart
-                end
-                self._previousRepRoot[ourPart] = previous
-                return previous, known
-            end
-            function PartGlue:_SetRepRoot(ourPart, value)
-                local previous = rbGetThreadIdentity and rbGetThreadIdentity() or nil
-                if type(rbSetThreadIdentity) == 'function' then
-                    pcall(rbSetThreadIdentity, 8)
-                end
-                local ok = pcall(rbSetHidden, ourPart, 'PhysicsRepRootPart', value)
-                local verified = true
-                if ok and type(gethiddenproperty) == 'function' then
-                    local okRead, seen = pcall(gethiddenproperty, ourPart, 'PhysicsRepRootPart')
-                    if okRead then
-                        verified = seen == value
-                    end
-                end
-                if type(rbSetThreadIdentity) == 'function' and previous ~= nil then
-                    pcall(rbSetThreadIdentity, previous)
-                end
-                return ok and verified
-            end
-            function PartGlue:_SetupGlue(part)
-                local entry = self._gluedParts[part]
-                if entry ~= nil then
-                    entry.refCount = entry.refCount + 1
-                    return
-                end
-                local weld = part:FindFirstChildOfClass('WeldConstraint')
-                if weld == nil then
-                    weld = part:FindFirstChild('WeldConstraint')
-                end
-                local originalPart1 = nil
-                local originalAnchored = nil
-                if weld ~= nil then
-                    pcall(function() originalAnchored = part.Anchored end)
-                    originalPart1 = weld.Part1
-                    if originalPart1 ~= nil then
-                        pcall(function() weld.Part1 = nil end)
-                    end
-                    pcall(function() part.Anchored = true end)
-                end
-                self._gluedParts[part] = {
-                    refCount = 1,
-                    weld = weld,
-                    originalPart1 = originalPart1,
-                    originalAnchored = originalAnchored,
-                }
-            end
-            function PartGlue:_ReleaseGlue(part)
-                local entry = self._gluedParts[part]
-                if entry == nil then
-                    return
-                end
-                entry.refCount = entry.refCount - 1
-                if 0 < entry.refCount then
-                    return
-                end
-                local weld = entry.weld
-                local part1 = entry.originalPart1
-                local anchored = entry.originalAnchored
-                pcall(function()
-                    if weld ~= nil and weld.Parent ~= nil and part1 ~= nil then
-                        weld.Part1 = part1
-                    end
-                end)
-                pcall(function()
-                    if part ~= nil and part.Parent ~= nil and anchored ~= nil then
-                        part.Anchored = anchored
-                    end
-                end)
-                self._gluedParts[part] = nil
-            end
-            function PartGlue:Acquire(ourPart, hitboxPart, useRotation, mode)
-                mode = mode or 'on'
-                if ourPart == nil or hitboxPart == nil or hitboxPart.Parent == nil then
-                    self:Free(ourPart)
-                    return nil, false
-                end
-                if mode == 'off' then
-                    self:Free(ourPart)
-                    return nil, false
-                end
-                local boundEntry = self._bindings[ourPart]
-                local boundHit = type(boundEntry) == 'table' and boundEntry.hitbox or boundEntry
-                if boundEntry == nil then
-                    self:_ReadPreviousRepRoot(ourPart)
-                elseif boundHit ~= hitboxPart then
-                    self:Free(ourPart)
-                    self:_ReadPreviousRepRoot(ourPart)
-                    boundEntry = nil
-                    boundHit = nil
-                end
-                if not self:_SetRepRoot(ourPart, hitboxPart) then
-                    self:Free(ourPart)
-                    return nil, false
-                end
-                if boundHit ~= hitboxPart then
-                    if mode == 'on' then
-                        self:_SetupGlue(hitboxPart)
-                    end
-                    self._bindings[ourPart] = { hitbox = hitboxPart }
-                elseif mode == 'lite' and self._gluedParts[hitboxPart] ~= nil then
-                    self:_ReleaseGlue(hitboxPart)
-                elseif mode == 'on' and self._gluedParts[hitboxPart] == nil then
-                    self:_SetupGlue(hitboxPart)
-                end
-                local cf = CFrame.new(VOID_CFRAME.Position)
-                if useRotation then
-                    cf = cf * hitboxPart.CFrame.Rotation
-                end
-                if mode == 'on' then
-                    local moved = pcall(function() hitboxPart.CFrame = cf end)
-                    if not moved then
-                        self:Free(ourPart)
-                        return nil, false
-                    end
-                    return VOID_CFRAME, true
-                end
-
-                return hitboxPart.Position, true
-            end
-            function PartGlue:Free(ourPart)
-                if ourPart == nil then return end
-                local binding = self._bindings[ourPart]
-                if binding == nil then
-                    return
-                end
-                self._bindings[ourPart] = nil
-                local bound = type(binding) == 'table' and binding.hitbox or binding
-                if bound ~= nil then
-                    self:_ReleaseGlue(bound)
-                end
-                local previous = self._previousRepRoot[ourPart]
-                self._previousRepRoot[ourPart] = nil
-                self:_SetRepRoot(ourPart, previous)
-            end
-            function PartGlue:Destroy()
-                for part, entry in pairs(self._gluedParts) do
-                    local weld = entry.weld
-                    local part1 = entry.originalPart1
-                    local anchored = entry.originalAnchored
-                    pcall(function()
-                        if weld ~= nil and weld.Parent ~= nil and part1 ~= nil then
-                            weld.Part1 = part1
-                        end
-                    end)
-                    pcall(function()
-                        if part ~= nil and part.Parent ~= nil and anchored ~= nil then
-                            part.Anchored = anchored
-                        end
-                    end)
-                end
-                table.clear(self._gluedParts)
-                local restoreList = {}
-                for ourPart, binding in pairs(self._bindings) do
-                    restoreList[#restoreList + 1] = ourPart
-                end
-                for _, ourPart in ipairs(restoreList) do
-                    local previous = self._previousRepRoot[ourPart]
-                    self:_SetRepRoot(ourPart, previous)
-                    self._bindings[ourPart] = nil
-                    self._previousRepRoot[ourPart] = nil
-                end
-            end
             function KiciaRagebot.isFiniteVector3(v)
                 return typeof(v) == 'Vector3'
                     and v.X == v.X and v.Y == v.Y and v.Z == v.Z
@@ -2977,7 +2785,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             function KiciaRagebot.rageGumMode()
                 local m = Setting.RageGumMode()
                 if m ~= 'off' and m ~= 'lite' and m ~= 'on' then m = 'off' end
-                if m == 'off' and Setting.RagePartGlue() then return 'on' end
                 return m
             end
             function KiciaRagebot.resolveEquippedIndex(fighter, items)
@@ -3470,11 +3277,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             end
             local HitscanStrategy = {}
             HitscanStrategy.__index = HitscanStrategy
-            function HitscanStrategy.new(partGlue)
-                return setmetatable({ _shootLock = ShootLock.new() }, HitscanStrategy)
-            end
-            function HitscanStrategy:ClearGlue()
-                return
+            function HitscanStrategy.new()
+                return setmetatable({}, HitscanStrategy)
             end
             function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire, attackZShift)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
@@ -3496,8 +3300,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return cf
                 end
 
-                -- Gun now uses the same direct server-CFrame teleport path as Knife.
-                -- No PartGlue/RageGum acquisition is used in the Gun path.
+                -- Gun uses the direct server-CFrame path.
                 State.RageGumMode = 'off'
                 State.RageGumVoidFire = false
 
@@ -3522,10 +3325,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 local aim1 = buildAim(above and AIM_ABOVE_ORIGIN or AIM_BELOW_ORIGIN, pitch, oy, oz)
                 local aim2 = buildAim(above and AIM_ABOVE_END or AIM_BELOW_END, pitch, oy, oz)
 
-                if not self._shootLock:ShouldFire(canFire, dt * Setting.ShootFrames()) then
-                    return cframe, nil
-                end
-
                 local objectId = itemObjectId(item)
                 local isRaycast = itemIsRaycast(item)
                 local finalShotEyeCF = nil
@@ -3542,7 +3341,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = nil
                         finalShotEyeCF = nil
                         finalShotMuzzleCF = nil
-                        return cframe
+                        return nil
                     end
 
                     local liveHead, liveRoot = resolveLiveTarget(target)
@@ -3551,7 +3350,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = nil
                         finalShotEyeCF = nil
                         finalShotMuzzleCF = nil
-                        self._shootLock:Reset()
                         return nil
                     end
 
@@ -3561,7 +3359,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = nil
                         finalShotEyeCF = nil
                         finalShotMuzzleCF = nil
-                        self._shootLock:Reset()
                         return nil
                     end
                     local liveDelta = liveRoot.Position - localRoot.Position
@@ -3571,7 +3368,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = nil
                         finalShotEyeCF = nil
                         finalShotMuzzleCF = nil
-                        self._shootLock:Reset()
                         return nil
                     end
 
@@ -3588,7 +3384,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = nil
                         finalShotEyeCF = nil
                         finalShotMuzzleCF = nil
-                        self._shootLock:Reset()
                         return nil
                     end
 
@@ -3609,7 +3404,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = nil
                         finalShotEyeCF = nil
                         finalShotMuzzleCF = nil
-                        self._shootLock:Reset()
                         return nil
                     end
 
@@ -3634,17 +3428,13 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     end
 
                     -- Fire from the exact snapshot captured by preFireRefresh; do not rebuild it from stale cframe state.
-                    local fired = fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, finalShotHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, false, false) == true
-                    if not fired then
-                        self._shootLock:Reset()
-                    end
-                    return fired
+                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, finalShotHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, false, false) == true
                 end
 
                 return cframe, weaponAction, preFireRefresh
             end
             function HitscanStrategy:ResetState()
-                self._shootLock:Reset()
+                return
             end
 
 
@@ -3656,9 +3446,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             local MeleeStrategy = {}
             MeleeStrategy.__index = MeleeStrategy
 
-            function MeleeStrategy.new(partGlue)
+            function MeleeStrategy.new()
                 return setmetatable({
-                    _partGlue = partGlue,
                     _shootLock = ShootLock.new(),
                     _hitboxWindowUntil = -1,
                     _attackCooldown = -1,
@@ -3671,7 +3460,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     _lastParkTargetKey = nil,
                     _lastKnifeSwingAt = -math.huge,
                     _knifePendingStart = false,
-                    _gluedOurPart = nil,
                 }, MeleeStrategy)
             end
 
@@ -3729,14 +3517,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 local now = os.clock()
                 self._hitboxWindowUntil = now + Setting.BACKSTAB_WINDOW
                 self._attackCooldown = now + Setting.BACKSTAB_COOLDOWN
-            end
-
-            function MeleeStrategy:ClearGlue()
-                local glued = self._gluedOurPart
-                if glued ~= nil and self._partGlue ~= nil then
-                    pcall(function() self._partGlue:Free(glued) end)
-                end
-                self._gluedOurPart = nil
             end
 
             function MeleeStrategy:_ClearContinuity()
@@ -4085,7 +3865,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 self._lastKnifeSwingAt = -math.huge
                 self._knifePendingStart = false
                 self._shootLock:Reset()
-                self:ClearGlue()
                 State.RageFireFromPos = nil
                 State.RageFireAimPos = nil
                 State.RageFireHitPart = nil
@@ -4222,12 +4001,10 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
             local Controller = {}
             Controller.__index = Controller
             function Controller.new()
-                local partGlue = PartGlue.new()
                 return setmetatable({
                     _enabled = false,
-                    _partGlue = partGlue,
-                    _hitscanStrategy = HitscanStrategy.new(partGlue),
-                    _meleeStrategy = MeleeStrategy.new(partGlue),
+                    _hitscanStrategy = HitscanStrategy.new(),
+                    _meleeStrategy = MeleeStrategy.new(),
                     _projectileBreaker = ProjectileBreaker.new(),
                     _spatialLimitGate = SpatialLimitGate.new(),
                     _stateHook = StateHook.new(),
@@ -4371,7 +4148,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     return self:_EvadePlan(clientCF, mode)
                 end
                 local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire, undergroundZShift)
-                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, shouldSkipDefense = true, suppressViewAngles = true, undergroundZShift = undergroundZShift }
+                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, skipPreFireHeartbeat = true, shouldSkipDefense = true, suppressViewAngles = true, undergroundZShift = undergroundZShift }
             end
 function Controller:_ApplyPlan(plan, target, characterController, fighter)
                 local cframe = plan.cframe
@@ -4485,7 +4262,7 @@ function Controller:Update(dt)
 
 
 
-                    if preActionHeartbeat then
+                    if preActionHeartbeat and not plan.skipPreFireHeartbeat then
                         characterController:HeartbeatUpdate()
                     end
                     local refreshed = plan.preFireRefresh(characterController)
@@ -4544,7 +4321,6 @@ function Controller:GetLastTargetWorld()
                     self._characterController = nil
                     self._boundRootPart = nil
                 end
-                self._partGlue:Destroy()
                 applyEnabledFFlags(false)
             end
             local controllerInstance = nil
