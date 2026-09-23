@@ -1911,7 +1911,16 @@ return {
                     if cf == nil then
                         return original(jointsSelf, a, b)
                     end
-                    if rawget(cf, 'IsLocalPlayer') == true then
+                    local isLocal = rawget(cf, 'IsLocalPlayer')
+                    if isLocal == nil then
+                        local okLocal, valLocal = pcall(function()
+                            return cf.IsLocalPlayer
+                        end)
+                        if okLocal then
+                            isLocal = valLocal
+                        end
+                    end
+                    if isLocal == true then
                         local raw = nil
                         if driver._silentTargetActive and driver._silentTargetAngles ~= nil then
                             raw = anglesToRaw(driver._silentTargetAngles)
@@ -1919,7 +1928,10 @@ return {
                             raw = anglesToRaw(driver._winning)
                         end
                         if raw ~= nil then
-                            rbRawWrite(b, 'CameraRotationRaw', raw)
+                            local writeOk = pcall(rbRawWrite, b, 'CameraRotationRaw', raw)
+                            if not writeOk then
+                                pcall(function() b.CameraRotationRaw = raw end)
+                            end
                         end
                     end
                     return original(jointsSelf, a, b)
@@ -30167,7 +30179,7 @@ local RivalsRuntime = {}
                 Connections:register('Flickbot_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Flickbot_Render', RivalsRuntimeBridge.UpdateFlickbot)))
                 Connections:register('CameraAim_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('CameraAim_Heartbeat', RivalsRuntimeBridge.UpdateCameraAim)))
                 Connections:register('Aimbot_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('Aimbot_Heartbeat', RivalsRuntimeBridge.UpdateAimbot)))
-                Connections:register('Ragebot_PreSimulation', RunService.PreSimulation:Connect(GuardRivalsCallback('Ragebot_PreSimulation', RivalsRuntimeBridge.UpdateRagebot)))
+                Connections:register('Ragebot_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('Ragebot_Heartbeat', RivalsRuntimeBridge.UpdateRagebot)))
                 Connections:register('TripmineAutomation_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('TripmineAutomation_Heartbeat', RivalsRuntimeBridge.UpdateTripmineAutomation)))
                 local AutoQueueRemotes = ReplicatedStorage:FindFirstChild('Remotes')
                 local AutoQueueMatchmaking = AutoQueueRemotes and AutoQueueRemotes:FindFirstChild('Matchmaking')
