@@ -1205,23 +1205,16 @@ return {
                     return false
                 end
 
-                local finalAimWorldPos = hitboxHead.Position
-                local eyeBase = eyeCF.Position
-                if not glued then
-                    local liveRoot = GetRoot()
-                    if liveRoot ~= nil and liveRoot.Parent ~= nil and KiciaRagebot.isFiniteVector3(liveRoot.Position) then
-                        eyeBase = liveRoot.Position
-                    end
-                end
-                local finalEyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, hitboxHead.Parent), 0)
-                local finalEyeCF = safeLookCFrame(finalEyePos, finalAimWorldPos)
-                local finalMuzzleCF = finalEyeCF and (finalEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
-                if finalEyeCF == nil or finalMuzzleCF == nil then
+                -- Use the exact eye/muzzle/aim snapshot captured before the action.
+                -- Do not rebuild these from live root/head state here; doing so can desync
+                -- the shot from the server CFrame applied by preFireRefresh.
+                if not KiciaRagebot.isFiniteVector3(aimWorldPos) then
                     return false
                 end
-                eyeCF = finalEyeCF
-                muzzleCF = finalMuzzleCF
-                aimWorldPos = finalAimWorldPos
+                if eyeCF == nil or muzzleCF == nil then
+                    return false
+                end
+                local finalAimWorldPos = aimWorldPos
                 local inner
                 if glued then
                     inner = {
@@ -2468,7 +2461,7 @@ local CharacterController = {}
                 end
                 return true
             end
-            Setting.RAGE_TRIGGER_DISTANCE = 100000
+            Setting.RAGE_TRIGGER_DISTANCE = 10000
             Setting.RIOT_BYPASS_TRIGGER_DIST = 500
             Setting.ALWAYS_BACKSTAB_TRIGGER_DIST = 100000
             Setting.KNIFE_BYPASS_TRIGGER_DIST = 35
@@ -2607,9 +2600,18 @@ local CharacterController = {}
                 return valid[1]
             end
             function KiciaRagebot.hasTargets()
+                local myRoot = GetRoot()
+                if myRoot == nil or myRoot.Parent == nil then
+                    return false
+                end
                 for _, entry in ipairs(KiciaRagebot.collectEnemies()) do
-                    if KiciaRagebot.isValidTarget(entry) then
-                        return true
+                    if KiciaRagebot.isValidTarget(entry)
+                        and entry.rootPart ~= nil and entry.rootPart.Parent ~= nil then
+                        local delta = entry.rootPart.Position - myRoot.Position
+                        if KiciaRagebot.isFiniteVector3(delta)
+                            and delta.Magnitude <= Setting.RAGE_TRIGGER_DISTANCE then
+                            return true
+                        end
                     end
                 end
                 return false
@@ -3469,72 +3471,52 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             local HitscanStrategy = {}
             HitscanStrategy.__index = HitscanStrategy
             function HitscanStrategy.new(partGlue)
-                return setmetatable({ _partGlue = partGlue, _shootLock = ShootLock.new(), _gluedOurPart = nil }, HitscanStrategy)
+                return setmetatable({ _shootLock = ShootLock.new() }, HitscanStrategy)
             end
             function HitscanStrategy:ClearGlue()
-                local glued = self._gluedOurPart
-                if glued ~= nil then
-                    self._partGlue:Free(glued)
-                    self._gluedOurPart = nil
-                end
+                return
             end
-            function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire)
+            function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire, attackZShift)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
-                if hitboxHead == nil then
-                    self:ClearGlue()
+                if hitboxHead == nil or targetRootPart == nil then
                     return ourRootPart.CFrame, nil
                 end
+
                 local shieldState = classifyAboveBelow(target)
                 local above = shieldState ~= 'Below'
                 local directHeadAim = shieldState == 'None'
                 local offset = above and OFFSET_ABOVE or OFFSET_BELOW
-                local aimHeadPosition = hitboxHead.Position
+                local function applyAttackZShift(cf)
+                    if cf == nil then
+                        return nil
+                    end
+                    if attackZShift == 5 or attackZShift == -5 then
+                        return CFrame.new(cf.Position + Vector3.new(0, 0, attackZShift)) * cf.Rotation
+                    end
+                    return cf
+                end
 
-                State.RageGumMode = KiciaRagebot.rageGumMode()
+                -- Gun now uses the same direct server-CFrame teleport path as Knife.
+                -- No PartGlue/RageGum acquisition is used in the Gun path.
+                State.RageGumMode = 'off'
                 State.RageGumVoidFire = false
-                local void
-                local glued = false
-                local gumMode = KiciaRagebot.rageGumMode()
-                if gumMode == 'off' then
-                    self:ClearGlue()
-                    local base = aimHeadPosition + offset
-                    void = CFrame.new(base)
-                    glued = false
-                else
-                    local ok, result, isBound = pcall(function()
-                        return self._partGlue:Acquire(ourRootPart, hitboxHead, false, gumMode)
-                    end)
-                    if not ok or isBound ~= true then
-                        self:ClearGlue()
-                        return ourRootPart.CFrame, nil
+
+                local function buildGunTeleportCF(head, shieldAbove, directAim)
+                    if head == nil or not head.Parent then
+                        return nil
                     end
-                    if gumMode == 'on' then
-                        void = result
-                        glued = true
-                    else
-                        void = CFrame.new(ourRootPart.Position)
-                        glued = false
+                    local position = head.Position + offset
+                    if directAim or not shieldAbove then
+                        return CFrame.new(position, head.Position)
                     end
-                    self._gluedOurPart = ourRootPart
+                    return CFrame.new(position)
                 end
-                if glued then
-                    aimHeadPosition = hitboxHead.Position
-                end
-                local cframe
-                if glued then
-                    cframe = CFrame.new(void.Position + Setting.GLUE_PARK_OFF)
-                elseif directHeadAim then
-                    cframe = CFrame.new(void.Position + offset, aimHeadPosition or hitboxHead.Position)
-                elseif above then
-                    cframe = void + offset
-                else
-                    cframe = CFrame.new(void.Position + offset, aimHeadPosition or hitboxHead.Position)
-                end
-                targetRootPart = target.rootPart
-                if targetRootPart == nil or targetRootPart.Parent == nil or not targetRootPart:IsA('BasePart') then
-                    self:ClearGlue()
+
+                local cframe = applyAttackZShift(buildGunTeleportCF(hitboxHead, above, directHeadAim))
+                if cframe == nil then
                     return ourRootPart.CFrame, nil
                 end
+
                 local _, oy, oz = targetRootPart.CFrame:ToOrientation()
                 local pitch = above and PITCH_ABOVE or PITCH_BELOW
                 local aim1 = buildAim(above and AIM_ABOVE_ORIGIN or AIM_BELOW_ORIGIN, pitch, oy, oz)
@@ -3543,92 +3525,99 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 if not self._shootLock:ShouldFire(canFire, dt * Setting.ShootFrames()) then
                     return cframe, nil
                 end
+
                 local objectId = itemObjectId(item)
                 local isRaycast = itemIsRaycast(item)
-                local preFireRefresh
                 local finalShotEyeCF = nil
                 local finalShotMuzzleCF = nil
                 local finalShotAimWorldPos = nil
                 local finalShotHead = nil
 
-                preFireRefresh = function(characterController)
-                    if not characterController then return cframe end
+                local preFireRefresh = function(characterController)
+                    if not characterController then
+                        return cframe
+                    end
                     if target == nil or target.model == nil or target.model.Parent == nil then
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
                         return cframe
                     end
 
                     local liveHead, liveRoot = resolveLiveTarget(target)
                     if liveHead == nil or liveRoot == nil then
-                        return cframe
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
+                        self._shootLock:Reset()
+                        return nil
+                    end
+
+                    local localRoot = GetRoot()
+                    if localRoot == nil or localRoot.Parent == nil then
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
+                        self._shootLock:Reset()
+                        return nil
+                    end
+                    local liveDelta = liveRoot.Position - localRoot.Position
+                    if not KiciaRagebot.isFiniteVector3(liveDelta)
+                        or liveDelta.Magnitude > Setting.RAGE_TRIGGER_DISTANCE then
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
+                        self._shootLock:Reset()
+                        return nil
                     end
 
                     hitboxHead = liveHead
                     targetRootPart = liveRoot
-
-                    local shieldState = classifyAboveBelow(target)
-                    above = shieldState ~= 'Below'
-                    directHeadAim = shieldState == 'None'
+                    local liveShieldState = classifyAboveBelow(target)
+                    above = liveShieldState ~= 'Below'
+                    directHeadAim = liveShieldState == 'None'
                     offset = above and OFFSET_ABOVE or OFFSET_BELOW
 
-                    local liveGlue = false
-                    local liveVoid = nil
-                    local liveGum = KiciaRagebot.rageGumMode()
-                    if liveGum == 'off' then
-                        self:ClearGlue()
-                        liveVoid = CFrame.new(hitboxHead.Position + offset)
-                    else
-                        local okBind, result, bound = pcall(function()
-                            return self._partGlue:Acquire(ourRootPart, hitboxHead, false, liveGum)
-                        end)
-                        if okBind and bound == true then
-                            if liveGum == 'on' then
-                                liveVoid = result
-                                liveGlue = liveVoid ~= nil
-                            else
-                                liveVoid = CFrame.new(ourRootPart.Position)
-                            end
-                            self._gluedOurPart = ourRootPart
-                        else
-                            self:ClearGlue()
-                        end
+                    local refreshed = applyAttackZShift(buildGunTeleportCF(hitboxHead, above, directHeadAim))
+                    if refreshed == nil then
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
+                        self._shootLock:Reset()
+                        return nil
                     end
 
-                    if liveVoid == nil then
-                        liveGlue = false
-                        liveVoid = CFrame.new(hitboxHead.Position + offset)
-                    end
-                    glued = liveGlue
+                    -- Keep the teleport CFrame and firing snapshot from the exact same refresh.
+                    cframe = refreshed
+                    finalShotHead = nil
+                    finalShotAimWorldPos = nil
+                    finalShotEyeCF = nil
+                    finalShotMuzzleCF = nil
 
-                    local _, liveOY, liveOZ = targetRootPart.CFrame:ToOrientation()
-                    local livePitch = above and PITCH_ABOVE or PITCH_BELOW
-                    aim1 = buildAim(above and AIM_ABOVE_ORIGIN or AIM_BELOW_ORIGIN, livePitch, liveOY, liveOZ)
-                    aim2 = buildAim(above and AIM_ABOVE_END or AIM_BELOW_END, livePitch, liveOY, liveOZ)
+                    local snapshotAim = hitboxHead.Position
+                    local snapshotEyeBase = refreshed.Position
+                    local snapshotEyePos = snapshotEyeBase + Vector3.new(0, eyeRise(snapshotEyeBase, target.model), 0)
+                    local snapshotEyeCF = safeLookCFrame(snapshotEyePos, snapshotAim)
+                    local snapshotMuzzleCF = snapshotEyeCF and (snapshotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
+                    if snapshotEyeCF == nil or snapshotMuzzleCF == nil then
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
+                        self._shootLock:Reset()
+                        return nil
+                    end
 
-                    local refreshed
-                    if liveGlue and liveVoid ~= nil then
-                        refreshed = CFrame.new(liveVoid.Position + Setting.GLUE_PARK_OFF)
-                    elseif directHeadAim then
-                        refreshed = CFrame.new(liveVoid.Position + offset, hitboxHead.Position)
-                    elseif above then
-                        refreshed = liveVoid + offset
-                    else
-                        refreshed = CFrame.new(liveVoid.Position + offset, hitboxHead.Position)
-                    end
-                    if refreshed ~= nil then
-                        local snapshotAim = hitboxHead.Position
-                        local snapshotEyeBase = refreshed.Position
-                        local snapshotEyePos = snapshotEyeBase + Vector3.new(0, eyeRise(snapshotEyeBase, target.model), 0)
-                        local snapshotEyeCF = safeLookCFrame(snapshotEyePos, snapshotAim)
-                        local snapshotMuzzleCF = snapshotEyeCF and (snapshotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
-                        if snapshotEyeCF ~= nil and snapshotMuzzleCF ~= nil then
-                            cframe = refreshed
-                            finalShotAimWorldPos = snapshotAim
-                            finalShotEyeCF = snapshotEyeCF
-                            finalShotMuzzleCF = snapshotMuzzleCF
-                            finalShotHead = hitboxHead
-                            characterController:SetServerCFrame(refreshed)
-                        end
-                    end
+                    finalShotAimWorldPos = snapshotAim
+                    finalShotEyeCF = snapshotEyeCF
+                    finalShotMuzzleCF = snapshotMuzzleCF
+                    finalShotHead = hitboxHead
+                    characterController:SetServerCFrame(refreshed)
                     return cframe
                 end
 
@@ -3637,38 +3626,25 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         return false
                     end
 
-                    local liveHead, liveRoot = resolveLiveTarget(target)
-                    if liveHead ~= nil and liveRoot ~= nil then
-                        hitboxHead = liveHead
-                        targetRootPart = liveRoot
-                    end
-
-                    if hitboxHead.Parent == nil or targetRootPart.Parent == nil then
+                    if finalShotHead == nil or finalShotHead ~= hitboxHead then
                         return false
                     end
-                    if finalShotHead ~= nil and hitboxHead ~= finalShotHead then
+                    if finalShotAimWorldPos == nil or finalShotEyeCF == nil or finalShotMuzzleCF == nil then
                         return false
                     end
 
-                    finalShotAimWorldPos = hitboxHead.Position
-                    local shotEyeBase = cframe.Position
-                    local shotEyePos = shotEyeBase + Vector3.new(0, eyeRise(shotEyeBase, target.model), 0)
-                    finalShotEyeCF = safeLookCFrame(shotEyePos, finalShotAimWorldPos)
-                    finalShotMuzzleCF = finalShotEyeCF and (finalShotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
-                    if finalShotEyeCF == nil or finalShotMuzzleCF == nil then
-                        return false
+                    -- Fire from the exact snapshot captured by preFireRefresh; do not rebuild it from stale cframe state.
+                    local fired = fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, finalShotHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, false, false) == true
+                    if not fired then
+                        self._shootLock:Reset()
                     end
-                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, glued, false) == true
+                    return fired
                 end
+
                 return cframe, weaponAction, preFireRefresh
             end
             function HitscanStrategy:ResetState()
                 self._shootLock:Reset()
-                local glued = self._gluedOurPart
-                if glued ~= nil then
-                    self._partGlue:Free(glued)
-                    self._gluedOurPart = nil
-                end
             end
 
 
@@ -3960,7 +3936,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 end
             end
 
-            function MeleeStrategy:Plan(dt, target, item, ourRootPart, canFire, characterController)
+            function MeleeStrategy:Plan(dt, target, item, ourRootPart, canFire, characterController, attackZShift)
                 if target == nil or item == nil or ourRootPart == nil or not ourRootPart.Parent then
                     return ourRootPart and ourRootPart.CFrame or VOID_CFRAME, nil, nil, false, nil
                 end
@@ -4007,7 +3983,17 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return ourRootPart.CFrame, nil, nil, true, nil
                 end
 
-                local attackCF = CFrame.new(attackPos)
+                local function applyAttackZShift(cf)
+                    if cf == nil then
+                        return nil
+                    end
+                    if attackZShift == 5 or attackZShift == -5 then
+                        return CFrame.new(cf.Position + Vector3.new(0, 0, attackZShift)) * cf.Rotation
+                    end
+                    return cf
+                end
+
+                local attackCF = applyAttackZShift(CFrame.new(attackPos))
                 if now - (self._meleeDwellStart or now) < Setting.MELEE_DWELL_S then
                     return attackCF, nil, nil, true, nil
                 end
@@ -4063,7 +4049,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         return attackCF
                     end
 
-                    local liveCF = CFrame.new(liveAttackPos)
+                    local liveCF = applyAttackZShift(CFrame.new(liveAttackPos))
                     if profile.knife then
                         local driver = characterController._viewAngleDriver
                         if type(driver) == 'table' and type(driver.SendSilentTarget) == 'function' then
@@ -4364,7 +4350,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     self._hitscanStrategy:ResetState()
                     local runtimeMeleeItem = runtimeEquippedItem(fighter) or action.item
                     local runtimeMeleeProfile = meleeProfile(runtimeMeleeItem)
-                    local cframe, _, weaponAction, isKnife, preFireRefresh = self._meleeStrategy:Plan(dt, target, action.item, ourRootPart, true, characterController)
+                    local cframe, _, weaponAction, isKnife, preFireRefresh = self._meleeStrategy:Plan(dt, target, action.item, ourRootPart, true, characterController, undergroundZShift)
                     isKnife = isKnife == true or (runtimeMeleeProfile ~= nil and runtimeMeleeProfile.knife == true)
                 if weaponAction == nil then
                     local support = self._projectileBreaker and self._projectileBreaker:Compute(clientCF) or nil
@@ -4384,15 +4370,11 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     self._hitscanStrategy:ResetState()
                     return self:_EvadePlan(clientCF, mode)
                 end
-                local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire)
-                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
+                local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire, undergroundZShift)
+                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, shouldSkipDefense = true, suppressViewAngles = true, undergroundZShift = undergroundZShift }
             end
 function Controller:_ApplyPlan(plan, target, characterController, fighter)
                 local cframe = plan.cframe
-                local zShift = tonumber(plan.undergroundZShift) or 0
-                if cframe ~= nil and (zShift == 5 or zShift == -5) then
-                    cframe = CFrame.new(cframe.Position + Vector3.new(0, 0, zShift)) * cframe.Rotation
-                end
                 local counterOverride = nil
                 if plan.weaponAction == nil then
                     counterOverride = RivalsRagebotState and RivalsRagebot.GetRandomCounterOverrideCFrame and RivalsRagebot.GetRandomCounterOverrideCFrame(tick()) or nil
