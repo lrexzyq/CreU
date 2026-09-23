@@ -1603,13 +1603,13 @@ return {
                     end
                 end
                 if typeof(rotation) == 'Vector2' or typeof(rotation) == 'Vector3' then
-                    -- rotation.X = pitch (camera up/down), rotation.Y = yaw
+                    
                     return rotation.X, rotation.Y
                 end
-                -- FIX: Fallback uses HRP yaw but pitch MUST be 0.
-                -- HumanoidRootPart never pitches — its CFrame:ToOrientation() pitch is
-                -- always near 0 anyway, but on sloped terrain it can be non-zero and
-                -- mislead classifyAboveBelow into thinking target is looking up/down.
+                
+                
+                
+                
                 local rootPart = target and target.rootPart
                 if rootPart ~= nil and rootPart.Parent ~= nil then
                     local _, yaw = rootPart.CFrame:ToOrientation()
@@ -1634,8 +1634,8 @@ return {
                             if it.name == 'Riot Shield' then
                                 local pitchValue = getTargetCameraRotation(target)
                                 local pitch = pitchValue and math.deg(pitchValue) or 0
-                                -- pitch > 0 (looking down) = shield protects front/above → aim Below
-                                -- pitch < 0 / wrapped 315-360 (looking up) = shield is low → aim Above
+                                
+                                
                                 if 22 < pitch and pitch < 91 then
                                     return 'Below'
                                 end
@@ -1731,9 +1731,9 @@ return {
             local function decodeSingle(s)
                 return utf8.codepoint(s) * math.pi * 2 / 256
             end
-            -- FIX: decodeByteSigned converts a 0-255 byte back to a signed radian angle.
-            -- Bytes 0-127 map to 0..+pi (looking down), bytes 128-255 map to -pi..-epsilon (looking up).
-            -- This matches how the server interprets CameraRotationRaw for pitch.
+            
+            
+            
             local function decodeByteSigned(b)
                 if b > 127 then
                     return (b - 256) * math.pi * 2 / 256
@@ -1745,7 +1745,7 @@ return {
                 if a.kind == 'Encoded' and type(a.encoded) == 'string' and #a.encoded == 2 then
                     local p = string.byte(a.encoded, 1) or 0
                     local y = string.byte(a.encoded, 2) or 0
-                    -- FIX: use signed decode so looking-up pitch (bytes 128-255) is negative
+                    
                     return Vector2.new(decodeByteSigned(p), decodeByteSigned(y))
                 end
                 if a.kind == 'Unnormalized' then
@@ -1778,17 +1778,17 @@ return {
                 return utf8.char(math.clamp(v, 0, 255))
             end
 
-            -- FIX: silentEncodeByteUnlimited supports the full pitch range including
-            -- negative values (camera looking up). The server uses a signed 8-bit angle:
-            -- byte 0 = 0 rad, byte 64 = pi/2 (down), byte 192 = -pi/2 (up, via 256-64).
-            -- Standard `n % (2*pi)` wrongly maps -pi/2 to +3pi/2 (byte 192 OK by accident
-            -- for -pi/2 ONLY, but breaks for arbitrary angles like -0.3, -1.0, etc.)
-            -- We normalise into [0, 2*pi) properly so any pitch encodes correctly.
+            
+            
+            
+            
+            
+            
             local function silentEncodeByteUnlimited(n)
                 if type(n) ~= 'number' or n ~= n then
                     return utf8.char(0)
                 end
-                -- Normalise to [0, 2*pi) preserving sign semantics
+                
                 local tau = 2 * math.pi
                 local normalised = n % tau
                 if normalised < 0 then normalised = normalised + tau end
@@ -1911,15 +1911,7 @@ return {
                     if cf == nil then
                         return original(jointsSelf, a, b)
                     end
-                    -- FIX: rawget only finds raw properties. If IsLocalPlayer is
-                    -- inherited via __index, rawget returns nil and the hook silently
-                    -- does nothing even when installed. Try metamethod-aware access too.
-                    local isLocal = rawget(cf, 'IsLocalPlayer')
-                    if isLocal == nil then
-                        local okLocal, valLocal = pcall(function() return cf.IsLocalPlayer end)
-                        if okLocal then isLocal = valLocal end
-                    end
-                    if isLocal == true then
+                    if rawget(cf, 'IsLocalPlayer') == true then
                         local raw = nil
                         if driver._silentTargetActive and driver._silentTargetAngles ~= nil then
                             raw = anglesToRaw(driver._silentTargetAngles)
@@ -1927,11 +1919,7 @@ return {
                             raw = anglesToRaw(driver._winning)
                         end
                         if raw ~= nil then
-                            local writeOk = pcall(rbRawWrite, b, 'CameraRotationRaw', raw)
-                            if not writeOk then
-                                -- Fallback: try direct assignment if rbRawWrite fails
-                                pcall(function() b.CameraRotationRaw = raw end)
-                            end
+                            rbRawWrite(b, 'CameraRotationRaw', raw)
                         end
                     end
                     return original(jointsSelf, a, b)
@@ -2029,14 +2017,14 @@ return {
                     return false
                 end
 
-                -- FIX: Must install BOTH hooks.
-                -- _LoadJointsHook hooks Joints:Update to write CameraRotationRaw every frame.
-                -- _LoadReplicationHook hooks EncodeCameraRotation for the replication send.
-                -- Console says "hooked" because installSilentReplicationHook succeeds,
-                -- but without _LoadJointsHook the CameraRotationRaw is never overwritten.
+                
+                
+                
+                
+                
                 local jointsOk = self:_LoadJointsHook()
                 if not jointsOk then
-                    -- Joints hook failed but replication hook alone may still work partially
+                    
                 end
                 if not installSilentReplicationHook() then
                     self._silentTargetActive = false
@@ -2046,9 +2034,9 @@ return {
                     return false
                 end
 
-                -- FIX: Read camera pitch from fighter.GetCameraRotation() so we capture
-                -- the true look-up/look-down angle, not just the body (HRP) rotation.
-                -- rootPart.CFrame:ToOrientation() only gives body yaw; pitch is always ~0.
+                
+                
+                
                 local pitch, yaw = nil, nil
                 local targetFighter = targetEntry and targetEntry.fighter or nil
                 if targetFighter ~= nil and type(targetFighter.GetCameraRotation) == 'function' then
@@ -2058,12 +2046,12 @@ return {
                             pitch = rot.X
                             yaw = rot.Y
                         elseif type(rot) == 'number' then
-                            -- Some implementations return pitch only as a number
+                            
                             pitch = rot
                         end
                     end
                 end
-                -- Also try reading pitch/yaw as two separate return values
+                
                 if pitch == nil then
                     local ok2, p2, y2 = pcall(function()
                         return targetFighter:GetCameraRotation()
@@ -2073,7 +2061,7 @@ return {
                         if type(y2) == 'number' then yaw = y2 end
                     end
                 end
-                -- Fallback: derive yaw from HRP, pitch stays 0 (body has no pitch)
+                
                 if pitch == nil or yaw == nil then
                     local _, bodyYaw = rootPart.CFrame:ToOrientation()
                     pitch = pitch or 0
@@ -2089,9 +2077,9 @@ return {
                     return false
                 end
 
-                -- FIX: Use silentEncodeByteUnlimited which correctly handles negative pitch
-                -- (looking up). The old silentEncodeByte used `% (2*pi)` which maps negative
-                -- pitch like -1.5 rad to ~4.78 rad -- server decodes this as looking DOWN.
+                
+                
+                
                 local encoded = silentEncodeByteUnlimited(pitch) .. silentEncodeByteUnlimited(yaw)
                 self._silentTargetActive = true
                 self._silentTargetEncoded = encoded
@@ -3834,8 +3822,8 @@ return {
                     end
 
                     if humanoidRoot.Parent == model and KiciaRagebot.isFiniteVector3(humanoidRoot.Position) then
-                        -- Try to use Head or UpperTorso as hit part for better melee contact detection,
-                        -- especially vs. riot shield targets where HRP is shielded from the front.
+                        
+                        
                         local head = model:FindFirstChild('Head')
                         local upperTorso = model:FindFirstChild('UpperTorso') or model:FindFirstChild('Torso')
                         local hitPart = humanoidRoot
@@ -4309,15 +4297,15 @@ return {
                 local attackPos = nil
 
                 if profile.knife then
-                    -- Knife: teleport BEHIND the target (backstab).
-                    -- Use the target's negative LookVector to position ourselves behind them.
+                    
+                    
                     local look = targetRootPart.CFrame.LookVector
                     local flat = Vector3.new(look.X, 0, look.Z)
                     if flat.Magnitude < 1e-3 then flat = Vector3.new(0, 0, -1) else flat = flat.Unit end
-                    -- Stand 2 studs behind the target's root
+                    
                     attackPos = targetRootPart.Position + flat * 2
                 else
-                    -- Regular melee: stand 2 studs in FRONT of the target (facing them).
+                    
                     local meleeLook = targetRootPart.CFrame.LookVector
                     local meleeFlat = Vector3.new(meleeLook.X, 0, meleeLook.Z)
                     if meleeFlat.Magnitude < 1e-3 then
@@ -4372,8 +4360,8 @@ return {
                         return false
                     end
 
-                    -- Re-read target position immediately before the teleport/attack pair.
-                    -- No velocity, ping, or future-position prediction is used.
+                    
+                    
                     local currentTargetPos = liveRoot.Position
                     if not KiciaRagebot.isFiniteVector3(currentTargetPos) then
                         State.RageKnifeStatus = 'invalid melee target position'
@@ -4387,19 +4375,19 @@ return {
                     if flatFace.Magnitude < 1e-3 then flatFace = Vector3.new(0, 0, -1) else flatFace = flatFace.Unit end
                     local attackCF
                     if liveProfile.knife then
-                        -- Knife backstab: stand BEHIND target, facing same direction as target
+                        
                         local behindPos = currentTargetPos + flatFace * 2
                         attackCF = CFrame.lookAt(behindPos, behindPos + flatFace)
                         liveAttackPos = behindPos
                     else
-                        -- Regular melee: stand in front of target, face them
+                        
                         local frontPos = currentTargetPos - flatFace * 2
                         attackCF = CFrame.lookAt(frontPos, currentTargetPos)
                         liveAttackPos = frontPos
                     end
                     liveAimPos = liveHitPart.Position
-                    -- FIX: eyePos should be from OUR post-teleport position, not the target's.
-                    -- liveAttackPos was set above to be behind/in-front of target.
+                    
+                    
                     local eyeBase = liveAttackPos
                     local eyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, target.model), 0)
                     local eyeCF = safeLookCFrame(eyePos, liveAimPos)
@@ -4456,7 +4444,7 @@ return {
                             local okHeavy = pcall(liveItem.HeavyAttack, liveItem, eyeCF, muzzleCF, hitData)
                             accepted = okHeavy
                             if not accepted then
-                                -- Fallback: pass a CFrame, not raw Vector3 — server expects CFrame
+                                
                                 accepted = pcall(liveItem.HeavyAttack, liveItem, eyeCF, muzzleCF, hitData)
                             end
                         end)
@@ -4572,7 +4560,7 @@ return {
                     else
                         knifeFlat = knifeFlat.Unit
                     end
-                    -- planCFrame: stand BEHIND the target (backstab position), face same direction
+                    
                     local knifeAttackPos = targetRootPart.Position + knifeFlat * 2
                     planCFrame = CFrame.lookAt(knifeAttackPos, knifeAttackPos + knifeFlat)
                     weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, ourRootPart, characterController)
@@ -4884,10 +4872,10 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
             end
             function Controller:_ApplyPlan(plan, target, characterController, fighter)
                 if plan and plan.pureTeleport then
-                    -- FIX FREEZE: pureTeleport skips normal SetServerCFrame, but we MUST
-                    -- clear any stale _cframe left from previous frames (e.g. VOID_CFRAME
-                    -- from hitscan) so HeartbeatUpdate doesn't teleport us somewhere wrong.
-                    -- Set server position to the current client position (safe default).
+                    
+                    
+                    
+                    
                     local clientCF = characterController and characterController:GetClientCFrame() or nil
                     if clientCF ~= nil then
                         characterController:SetServerCFrame(clientCF)
