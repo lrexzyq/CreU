@@ -1204,16 +1204,17 @@ return {
                     return false
                 end
 
-                -- Use the exact eye/muzzle/aim snapshot captured before the action.
-                -- Do not rebuild these from live root/head state here; doing so can desync
-                -- the shot from the server CFrame applied by preFireRefresh.
-                if not KiciaRagebot.isFiniteVector3(aimWorldPos) then
-                    return false
-                end
-                if eyeCF == nil or muzzleCF == nil then
-                    return false
-                end
                 local finalAimWorldPos = aimWorldPos
+                if typeof(finalAimWorldPos) ~= 'Vector3' or not KiciaRagebot.isFiniteVector3(finalAimWorldPos) then
+                    finalAimWorldPos = hitboxHead.Position
+                end
+                if typeof(eyeCF) ~= 'CFrame' or typeof(muzzleCF) ~= 'CFrame' then
+                    return false
+                end
+                if not KiciaRagebot.isFiniteVector3(eyeCF.Position) or not KiciaRagebot.isFiniteVector3(muzzleCF.Position) then
+                    return false
+                end
+                aimWorldPos = finalAimWorldPos
                 local inner
                 if glued then
                     inner = {
@@ -1234,16 +1235,6 @@ return {
                         end
                     end
                 end
-                pcall(function()
-                    local fighter = resolveLocalFighter()
-                    local liveItem = fighter and rawget(fighter, 'EquippedItem') or nil
-                    local liveData = type(liveItem) == 'table' and rawget(liveItem, 'Data') or nil
-                    if liveItem ~= nil and liveData ~= nil and rawget(liveData, 'ObjectID') == objectId then
-                        liveItem._shoot_cooldown = 0
-                        liveItem._shoot_cooldown_no_ammo = 0
-                        liveItem._last_shot = tick() - 1
-                    end
-                end)
                 local payload
                 if isRaycast then
                     payload = { ['\1'] = inner, ['\2'] = true }
@@ -3278,7 +3269,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             local HitscanStrategy = {}
             HitscanStrategy.__index = HitscanStrategy
             function HitscanStrategy.new()
-                return setmetatable({}, HitscanStrategy)
+                return setmetatable({ _nextNativeShotAt = 0 }, HitscanStrategy)
             end
             function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire, attackZShift)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
@@ -3327,12 +3318,52 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
 
                 local objectId = itemObjectId(item)
                 local isRaycast = itemIsRaycast(item)
+                local function resolveNativeShotInterval()
+                    local info = itemInfo(item)
+                    if type(info) ~= 'table' then
+                        return 0
+                    end
+                    local candidates = {
+                        rawget(info, 'ShootCooldown'),
+                        rawget(info, 'ShootBurstCooldown'),
+                        rawget(info, 'QuickShotCooldown'),
+                        rawget(info, 'ChargeReleaseCooldown'),
+                    }
+                    for _, value in ipairs(candidates) do
+                        if type(value) == 'number' and value > 0 then
+                            return value
+                        end
+                    end
+                    return 0
+                end
+                local function nativeShotReady()
+                    local now = tick()
+                    if now < (self._nextNativeShotAt or 0) then
+                        return false
+                    end
+                    local cooldown = rawget(item, '_shoot_cooldown')
+                    if type(cooldown) == 'number' and cooldown > now then
+                        return false
+                    end
+                    local noAmmoCooldown = rawget(item, '_shoot_cooldown_no_ammo')
+                    if type(noAmmoCooldown) == 'number' and noAmmoCooldown > now then
+                        return false
+                    end
+                    return true
+                end
                 local finalShotEyeCF = nil
                 local finalShotMuzzleCF = nil
                 local finalShotAimWorldPos = nil
                 local finalShotHead = nil
 
                 local preFireRefresh = function(characterController)
+                    if not nativeShotReady() then
+                        finalShotHead = nil
+                        finalShotAimWorldPos = nil
+                        finalShotEyeCF = nil
+                        finalShotMuzzleCF = nil
+                        return nil
+                    end
                     if not characterController then
                         return cframe
                     end
@@ -3416,6 +3447,12 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 end
 
                 local function weaponAction()
+                    if not nativeShotReady() then
+                        return false
+                    end
+                    if not canFire then
+                        return false
+                    end
                     if hitboxHead == nil or hitboxHead.Parent == nil or targetRootPart == nil or targetRootPart.Parent == nil then
                         return false
                     end
@@ -3428,13 +3465,20 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     end
 
                     -- Fire from the exact snapshot captured by preFireRefresh; do not rebuild it from stale cframe state.
-                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, finalShotHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, false, false) == true
+                    local fired = fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, finalShotHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, false, false) == true
+                    if fired then
+                        local interval = resolveNativeShotInterval()
+                        if interval > 0 then
+                            self._nextNativeShotAt = math.max(self._nextNativeShotAt or 0, tick() + interval)
+                        end
+                    end
+                    return fired
                 end
 
                 return cframe, weaponAction, preFireRefresh
             end
             function HitscanStrategy:ResetState()
-                return
+                self._nextNativeShotAt = 0
             end
 
 
