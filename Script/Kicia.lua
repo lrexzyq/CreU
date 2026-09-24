@@ -77,8 +77,23 @@ local function ResolveGlobalEnv()
     return _G
 end
 local undergroundEnabled = false
-local undergroundDepth = 1.0
+local undergroundDepth = 3.10
 local undergroundDesync = nil
+local undergroundGapBrain = {
+    current = 3.10,
+    target = 3.10,
+    lastUpdateAt = 0,
+    lastFloorY = nil,
+    floorSpread = 0,
+    floorConfidence = 0,
+    ceilingClearance = math.huge,
+}
+local undergroundFloorCache = {
+    character = nil,
+    root = nil,
+    floorY = nil,
+    lastScanAt = 0,
+}
 local undergroundConn = nil
 local undergroundDeathConn = nil
 local undergroundRespawnGuardUntil = 0
@@ -183,41 +198,150 @@ local function undergroundGetClientCFrame(root)
     return nil
 end
 
-local function undergroundGetDepth()
-    local value = Options and Options.P8S4S6 and Options.P8S4S6.Value
-    local depth = tonumber(value) or undergroundDepth or 4.0
-    depth = math.clamp(depth, 2.00, 4.50)
-    undergroundDepth = depth
-    return depth
-end
-
-local function undergroundFindFloorY(char, root)
+local function undergroundFindFloorY(char, root, forceScan)
     if not root or not root.Parent then return nil end
     local clientCF = undergroundGetClientCFrame(root)
     local pos = clientCF and clientCF.Position or root.Position
     if pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then return nil end
     if math.abs(pos.X) > 100000 or math.abs(pos.Y) > 100000 or math.abs(pos.Z) > 100000 then return nil end
+
+    local now = os.clock()
+    local cache = undergroundFloorCache
+    if not forceScan and cache.character == char and cache.root == root and cache.floorY ~= nil
+        and now - cache.lastScanAt < 0.055 then
+        return cache.floorY
+    end
+
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = { char }
-
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
 
     local offsets = {
-        Vector3.new(0,  0, 0),
-        Vector3.new(1,  0, 0), Vector3.new(-1, 0, 0),
-        Vector3.new(0,  0, 1), Vector3.new(0,  0, -1),
+        Vector3.new(0, 0, 0),
+        Vector3.new(1.25, 0, 0), Vector3.new(-1.25, 0, 0),
+        Vector3.new(0, 0, 1.25), Vector3.new(0, 0, -1.25),
+        Vector3.new(0.9, 0, 0.9), Vector3.new(-0.9, 0, 0.9),
+        Vector3.new(0.9, 0, -0.9), Vector3.new(-0.9, 0, -0.9),
     }
-    local bestY = nil
+    local hits = {}
     for _, off in ipairs(offsets) do
-        local origin = Vector3.new(pos.X + off.X, pos.Y + 12, pos.Z + off.Z)
+        local origin = Vector3.new(pos.X + off.X, pos.Y + 10, pos.Z + off.Z)
         local result = Workspace:Raycast(origin, Vector3.new(0, -96, 0), params)
-        if result then
-            if bestY == nil or result.Position.Y > bestY then
-                bestY = result.Position.Y
+        if result and result.Instance then
+            local y = result.Position.Y
+            -- Reject ceilings or geometry well above the character.
+            if y <= pos.Y + 3.0 then
+                hits[#hits + 1] = y
             end
         end
     end
-    return bestY
+    if #hits == 0 then
+        cache.character = char
+        cache.root = root
+        cache.floorY = nil
+        cache.lastScanAt = now
+        return nil
+    end
+    table.sort(hits)
+    local median = hits[math.floor((#hits + 1) * 0.5)]
+    cache.character = char
+    cache.root = root
+    cache.floorY = median
+    cache.lastScanAt = now
+    return median
+end
+
+local function undergroundGetDepth(char, root, floorY)
+    local now = os.clock()
+    local brain = undergroundGapBrain
+    if char == nil or root == nil or floorY == nil then
+        return math.clamp(brain.current or 3.10, 2.05, 4.40)
+    end
+    if now - (brain.lastUpdateAt or 0) >= 0.10 then
+        local clientCF = undergroundGetClientCFrame(root)
+        local pos = clientCF and clientCF.Position or root.Position
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = { char }
+        params.IgnoreWater = true
+        params.RespectCanCollide = false
+
+        local sampleOffsets = {
+            Vector3.new(0, 0, 0),
+            Vector3.new(2.5, 0, 0), Vector3.new(-2.5, 0, 0),
+            Vector3.new(0, 0, 2.5), Vector3.new(0, 0, -2.5),
+            Vector3.new(1.8, 0, 1.8), Vector3.new(-1.8, 0, 1.8),
+            Vector3.new(1.8, 0, -1.8), Vector3.new(-1.8, 0, -1.8),
+        }
+        local samples = {}
+        for _, off in ipairs(sampleOffsets) do
+            local result = Workspace:Raycast(
+                Vector3.new(pos.X + off.X, pos.Y + 8, pos.Z + off.Z),
+                Vector3.new(0, -80, 0),
+                params
+            )
+            if result and result.Instance and result.Position.Y <= pos.Y + 3.0 then
+                samples[#samples + 1] = result.Position.Y
+            end
+        end
+
+        local spread = 0
+        local mean = floorY
+        local confidence = 0.35
+        if #samples > 1 then
+            local sum = 0
+            local minY = math.huge
+            local maxY = -math.huge
+            for _, y in ipairs(samples) do
+                sum = sum + y
+                minY = math.min(minY, y)
+                maxY = math.max(maxY, y)
+            end
+            mean = sum / #samples
+            spread = maxY - minY
+            confidence = math.clamp(#samples / #sampleOffsets, 0, 1)
+        end
+
+        local ceilingClearance = math.huge
+        local ceilingHit = Workspace:Raycast(
+            pos + Vector3.new(0, 0.75, 0),
+            Vector3.new(0, 12, 0),
+            params
+        )
+        if ceilingHit and ceilingHit.Instance then
+            ceilingClearance = math.max(0, ceilingHit.Position.Y - pos.Y)
+        end
+
+        local previousFloor = brain.lastFloorY
+        local floorChange = previousFloor ~= nil and math.abs(mean - previousFloor) or 0
+        brain.lastFloorY = mean
+        brain.floorSpread = spread
+        brain.floorConfidence = confidence
+        brain.ceilingClearance = ceilingClearance
+
+        -- Adaptive controller: flatter floor -> shallower, rough/uncertain floor -> deeper.
+        -- Tight ceiling space pulls the depth back to reduce unnecessary penetration.
+        local targetGap = 2.35
+        targetGap = targetGap + math.clamp(spread * 0.42, 0, 1.25)
+        targetGap = targetGap + math.clamp(floorChange * 0.28, 0, 0.70)
+        targetGap = targetGap + math.clamp((1 - confidence) * 0.55, 0, 0.55)
+        if ceilingClearance < 3.0 then
+            targetGap = targetGap - math.clamp((3.0 - ceilingClearance) * 0.45, 0, 0.70)
+        end
+        local velocity = root.AssemblyLinearVelocity
+        if typeof(velocity) == 'Vector3' and velocity.Magnitude > 40 then
+            targetGap = targetGap + math.clamp((velocity.Magnitude - 40) / 160, 0, 0.35)
+        end
+        targetGap = math.clamp(targetGap, 2.05, 4.40)
+        brain.target = targetGap
+        local blend = math.clamp((now - brain.lastUpdateAt) / 0.20, 0.15, 0.60)
+        brain.current = brain.current + (targetGap - brain.current) * blend
+        brain.lastUpdateAt = now
+        undergroundDepth = brain.current
+    end
+    return math.clamp(brain.current or 3.10, 2.05, 4.40)
 end
 
 local function undergroundCapture(char, root, humanoid)
@@ -283,7 +407,7 @@ end
 local function undergroundServerCFrame(char, root)
     local floorY = undergroundFindFloorY(char, root)
     if floorY == nil then return nil end
-    local depth = undergroundGetDepth()
+    local depth = undergroundGetDepth(char, root, floorY)
     local currentRoot = undergroundGetClientCFrame(root)
     if not currentRoot then return nil end
     local _, yaw = currentRoot:ToOrientation()
@@ -337,7 +461,6 @@ startUnderground = function()
     local root = undergroundGetRoot(char)
     local humanoid = undergroundGetHumanoid(char)
     if not char or not root or not humanoid or humanoid.Health <= 0 then return end
-    undergroundGetDepth()
     undergroundCapture(char, root, humanoid)
     local initialServerCF = undergroundServerCFrame(char, root)
     if initialServerCF == nil then
@@ -381,6 +504,14 @@ end
 stopUnderground = function()
     undergroundEnabled = false
     undergroundLastServerCFrame = nil
+    undergroundGapBrain.lastUpdateAt = 0
+    undergroundGapBrain.lastFloorY = nil
+    undergroundGapBrain.current = 3.10
+    undergroundGapBrain.target = 3.10
+    undergroundFloorCache.character = nil
+    undergroundFloorCache.root = nil
+    undergroundFloorCache.floorY = nil
+    undergroundFloorCache.lastScanAt = 0
     if undergroundConn then
         undergroundConn:Disconnect()
         undergroundConn = nil
@@ -1013,14 +1144,25 @@ return {
                 return nil
             end
             local cachedFighterController = nil
+            local fighterControllerNextScanAt = 0
+            local fighterControllerScanInterval = 0.75
             local function resolveFighterController()
                 local cc = cachedFighterController
                 if type(cc) == 'table' and rawget(cc, 'LocalFighter') ~= nil then
                     return cc
                 end
+                local now = os.clock()
+                if now < fighterControllerNextScanAt then
+                    return nil
+                end
+                fighterControllerNextScanAt = now + fighterControllerScanInterval
+                if type(getgc) ~= 'function' then
+                    return nil
+                end
                 for _, m in ipairs(getgc(true)) do
                     if type(m) == 'table' and rawget(m, 'LocalFighter') ~= nil and rawget(m, 'Objects') ~= nil then
                         cachedFighterController = m
+                        fighterControllerNextScanAt = now + 2
                         return m
                     end
                 end
@@ -1357,10 +1499,16 @@ return {
                 return sent == true
             end
             local cachedFCPrototype = nil
+            local fighterControllerPrototypeNextScanAt = 0
             local function resolveFighterControllerPrototype()
                 if type(cachedFCPrototype) == 'table' and rawget(cachedFCPrototype, '_CameraReplicationLoop') ~= nil then
                     return cachedFCPrototype
                 end
+                local now = os.clock()
+                if now < fighterControllerPrototypeNextScanAt then
+                    return nil
+                end
+                fighterControllerPrototypeNextScanAt = now + 0.75
                 local controller = resolveFighterController()
                 if controller then
                     local mt = getmetatable(controller)
@@ -4354,7 +4502,6 @@ function Controller:GetLastTargetWorld()
                     self._characterController:RestoreNow()
                     self._characterController:SetServerCFrame(nil)
                     self._characterController:SendViewAngles(20, nil)
-                    self._characterController:HeartbeatUpdate()
                 end
             end
             function Controller:Destroy()
@@ -4653,14 +4800,19 @@ local function ensureController()
                 return true
             end
             function KiciaRagebot.Update(dt)
-                local controller = ensureController()
                 local enabled = KiciaRagebot.IsEnabled()
-                if controller._enabled ~= enabled then
-                    controller:SetEnabled(enabled)
+                if not enabled then
+                    if controllerInstance ~= nil and controllerInstance._enabled then
+                        controllerInstance:SetEnabled(false)
+                    end
+                    return
+                end
+                local controller = ensureController()
+                if not controller._enabled then
+                    controller:SetEnabled(true)
                 end
                 controller:Update(dt or 0)
                 updateAlwaysBackstab()
-
             end
             function KiciaRagebot.Reset()
                 if controllerInstance then
@@ -8045,6 +8197,16 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsModsState.UpdateCameraModifiers()
                 local state = RivalsModsState
+                local active = IsRivalsModToggleEnabled('P4S2T6')
+                    or IsRivalsModToggleEnabled('P4S2T8')
+                    or IsRivalsModToggleEnabled('P4S2T9')
+                    or IsRivalsModToggleEnabled('P4S2T10')
+                local needsRestore = state.CameraShakeOriginalEnabled ~= nil
+                    or state.CameraThirdPersonCaptured
+                    or state.CameraViewModelOriginal ~= nil
+                if not active and not needsRestore then
+                    return
+                end
                 local cameraController = RivalsModsState.ResolveCameraController()
                 if cameraController then
                     if IsRivalsModToggleEnabled('P4S2T6') then
@@ -8096,6 +8258,16 @@ ErrorReporter.set_game(GameName)
                 if type(RivalsModsState.RefreshViewmodelEffects) == 'function' then
                     RivalsModsState.RefreshViewmodelEffects()
                 end
+            end
+            function RivalsModsState.IsCameraModifierFrameActive()
+                local state = RivalsModsState
+                return IsRivalsModToggleEnabled('P4S2T6')
+                    or IsRivalsModToggleEnabled('P4S2T8')
+                    or IsRivalsModToggleEnabled('P4S2T9')
+                    or IsRivalsModToggleEnabled('P4S2T10')
+                    or state.CameraShakeOriginalEnabled ~= nil
+                    or state.CameraThirdPersonCaptured == true
+                    or state.CameraViewModelOriginal ~= nil
             end
             function RivalsModsState.ShouldSuppressViewmodelAnimation(animator, animationKey)
                 if type(animationKey) ~= 'string' then
@@ -11567,6 +11739,17 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.ViewmodelVisuals.Update(deltaTime)
                 local visuals = RivalsRuntimeBridge.ViewmodelVisuals
+                local featureActive = visuals.ReadToggle('P1S19T1')
+                    or visuals.ReadToggle('P1S20T1')
+                    or visuals.ReadToggle('P1S21T1')
+                    or visuals.ReadToggle('P1S22T1')
+                    or visuals.ReadToggle('P1S23T1')
+                    or visuals.ReadToggle('P1S26T1')
+                local hasPendingRestore = next(visuals.AppearanceSnapshots) ~= nil
+                    or next(visuals.TextureSnapshots) ~= nil
+                if not featureActive and not hasPendingRestore then
+                    return
+                end
                 if tick() - visuals.LastReconcileAt >= 0.25 then
                     visuals.LastReconcileAt = tick()
                     visuals.ReconcileModels()
@@ -12773,19 +12956,25 @@ ErrorReporter.set_game(GameName)
                 local movement = RivalsRuntimeBridge.Movement
                 movement.WalkMultiplier = movement.ReadNumber('P10S3S1', 2)
                 movement.WalkMultiplierEnabled = active == true
-                movement.AttemptLoadWalkSpeedHook()
+                if active == true then
+                    movement.AttemptLoadWalkSpeedHook()
+                end
             end
             function RivalsRuntimeBridge.Movement.UpdateSliding(active)
                 local movement = RivalsRuntimeBridge.Movement
                 movement.SlidingMultiplier = movement.ReadNumber('P10S3S2', 10)
                 movement.SlidingMultiplierEnabled = active == true
-                movement.AttemptLoadWalkSpeedHook()
+                if active == true then
+                    movement.AttemptLoadWalkSpeedHook()
+                end
             end
             function RivalsRuntimeBridge.Movement.UpdateJumpPower(active)
                 local movement = RivalsRuntimeBridge.Movement
                 movement.JumpPowerMultiplier = movement.ReadNumber('P10S3S3', 2)
                 movement.JumpPowerEnabled = active == true
-                movement.AttemptLoadJumpPowerHook()
+                if active == true then
+                    movement.AttemptLoadJumpPowerHook()
+                end
             end
             function RivalsRuntimeBridge.Movement.LaunchLongJump()
                 local movement = RivalsRuntimeBridge.Movement
@@ -12829,21 +13018,26 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.Movement.Update(deltaTime)
                 local movement = RivalsRuntimeBridge.Movement
+                local walkActive = movement.ReadToggle('P10S3T1') and movement.IsKeyActive('P10S3T1K')
+                local slideActive = movement.ReadToggle('P10S3T2') and movement.IsKeyActive('P10S3T2K')
+                local jumpActive = movement.ReadToggle('P10S3T3')
+                local autoStrafeActive = movement.ReadToggle('P10S3T6') and movement.IsKeyActive('P10S3T6K')
+                local flightActive = movement.ReadToggle('P10S3T4') and movement.IsKeyActive('P10S3T4K')
+                local noclipActive = movement.ReadToggle('P10S3T5')
+                local longJumpActive = movement.ReadToggle('P10S3T7') and movement.IsKeyActive('P10S3T7K')
+                local anyActive = walkActive or slideActive or jumpActive or autoStrafeActive or flightActive or noclipActive or longJumpActive
+                local needsCleanup = movement.Flight ~= nil or movement.NoclipEnabled or movement.LongJumpPressed
+                if not anyActive and not needsCleanup then
+                    return
+                end
                 movement.ResolveCharacter()
-                movement.UpdateWalkSpeed(
-                    movement.ReadToggle('P10S3T1') and movement.IsKeyActive('P10S3T1K'))
-                movement.UpdateSliding(
-                    movement.ReadToggle('P10S3T2') and movement.IsKeyActive('P10S3T2K'))
-                movement.UpdateJumpPower(movement.ReadToggle('P10S3T3'))
-                movement.UpdateAutoStrafe(
-                    deltaTime,
-                    movement.ReadToggle('P10S3T6') and movement.IsKeyActive('P10S3T6K'))
-                movement.UpdateFlight(
-                    movement.ReadToggle('P10S3T4') and movement.IsKeyActive('P10S3T4K'))
-                movement.UpdateNoclip(
-                    movement.ReadToggle('P10S3T5') and movement.IsKeyActive('P10S3T5K'))
-                movement.UpdateLongJump(
-                    movement.ReadToggle('P10S3T7') and movement.IsKeyActive('P10S3T7K'))
+                movement.UpdateWalkSpeed(walkActive)
+                movement.UpdateSliding(slideActive)
+                movement.UpdateJumpPower(jumpActive)
+                movement.UpdateAutoStrafe(deltaTime, autoStrafeActive)
+                movement.UpdateFlight(flightActive)
+                movement.UpdateNoclip(noclipActive)
+                movement.UpdateLongJump(longJumpActive)
             end
             function RivalsRuntimeBridge.Movement.RefreshAll()
                 local movement = RivalsRuntimeBridge.Movement
@@ -13297,6 +13491,16 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.AnimationPlayer.Update()
                 local player = RivalsRuntimeBridge.AnimationPlayer
+                local enabledToggle = Toggles and Toggles.P10S6T1 and Toggles.P10S6T1.Value == true
+                if not enabledToggle and player.Track == nil and player.Character == nil then
+                    return
+                end
+                if not enabledToggle and player.Track ~= nil then
+                    player.Stop()
+                    player.Character = nil
+                    player.Humanoid = nil
+                    return
+                end
                 local character = LP.Character
                 local humanoid = character and character:FindFirstChildOfClass('Humanoid') or nil
                 if character ~= player.Character or humanoid ~= player.Humanoid then
@@ -14816,10 +15020,15 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.MovementRecorder.Update(deltaTime)
                 local recorder = RivalsRuntimeBridge.MovementRecorder
-                recorder.LoadPersistence()
                 if not recorder.ReadToggle('P10S4T1') then
+                    if recorder.Mode ~= 'Idle' or recorder.PendingKind ~= nil then
+                        recorder.StopRecording(true, false)
+                        recorder.StopReplay('Disabled', false)
+                        recorder.PendingKind = nil
+                    end
                     return
                 end
+                recorder.LoadPersistence()
                 local context = recorder.ResolveMapContext()
                 local activeCharacter = recorder.Recording and recorder.Recording.Character
                     or recorder.Replay and recorder.Replay.Character or nil
@@ -15463,6 +15672,9 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.CombatFeedback.Update()
                 local feedback = RivalsRuntimeBridge.CombatFeedback
+                if #feedback.Tracers == 0 and #feedback.Chams == 0 then
+                    return
+                end
                 feedback.UpdateTracers()
                 local now = tick()
                 for index = #feedback.Chams, 1, -1 do
@@ -17510,6 +17722,15 @@ ErrorReporter.set_game(GameName)
                 item.StartShooting = wrappedStartShooting
             end
             local function UpdateAimbot()
+                local aimbotSelected = AimbotBridge.IsAimbotSelected()
+                local triggerbotEnabled = AimbotBridge.IsTriggerbotEnabled()
+                local cameraAimActive = AimbotBridge.IsCameraAimEnabled()
+                if not aimbotSelected and not triggerbotEnabled and not cameraAimActive then
+                    AimbotBridge.ResetAimbotRuntimeState()
+                    AimbotBridge.ResetTriggerbotReactionState()
+                    RivalsRuntimeBridge.DestroyAimbotStatusNotification()
+                    return
+                end
                 if not (Toggles.P2S1T6 and Toggles.P2S1T6.Value) then
                     RivalsRuntimeBridge.DestroyAimbotStatusNotification()
                 end
@@ -26584,6 +26805,9 @@ ErrorReporter.set_game(GameName)
                     CreateHazardESP(part)
                 end
                 function WorldESPState.UpdateHazard()
+                    if next(HazardESP) == nil then
+                        return
+                    end
                     local enabled = EspRenderSettings.ShowThrowable
                     if not enabled then
                         for _, entry in pairs(HazardESP) do
@@ -27784,7 +28008,6 @@ ErrorReporter.set_game(GameName)
                         Text = "Underground",
                         Default = false,
                         Callback = function(value)
-                            undergroundDepth = Options.P8S4S6 and Options.P8S4S6.Value or undergroundDepth
                             if value then
                                 startUnderground()
                             else
@@ -27793,15 +28016,8 @@ ErrorReporter.set_game(GameName)
                         end,
                     })
                     local UndergroundBox = Rage:AddDependencyBox()
-                    UndergroundBox:AddSlider("P8S4S6", {
-                        Text = "Floor Gap",
-                        Default = 4.00,
-                        Min = 2.00,
-                        Max = 4.50,
-                        Rounding = 2,
-                        Suffix = " studs",
-                        Compact = true,
-                    })
+                    UndergroundBox:AddLabel("Adaptive Floor Gap")
+                    UndergroundBox:AddLabel("Automatically adjusts to terrain, clearance, and movement.")
                     UndergroundBox:SetupDependencies({ { Toggles.P8S4T10, true } })
                 do
                     local Mods = Tabs.Combat:AddRightGroupbox("Weapon Mods", "swords")
@@ -29529,22 +29745,80 @@ local RivalsRuntime = {}
                 end
             end
             function RivalsRuntime.StartLoops()
-                Connections:register('ESP_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('ESP_Render', RivalsRuntimeBridge.UpdateESP)))
-                Connections:register('Throwable_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Throwable_Render', WorldESPState.UpdateThrowable)))
-                Connections:register('Hazard_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Hazard_Render', WorldESPState.UpdateHazard)))
-                Connections:register('CombatFeedback_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('CombatFeedback_Render', RivalsRuntimeBridge.CombatFeedback.Update)))
-                Connections:register('ViewmodelVisuals_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('ViewmodelVisuals_Render', RivalsRuntimeBridge.ViewmodelVisuals.Update)))
-                Connections:register('Movement_PreSimulation', RunService.PreSimulation:Connect(GuardRivalsCallback('Movement_PreSimulation', RivalsRuntimeBridge.Movement.Update)))
-                Connections:register('MovementRecorder_PreSimulation', RunService.PreSimulation:Connect(GuardRivalsCallback('MovementRecorder_PreSimulation', RivalsRuntimeBridge.MovementRecorder.Update)))
-                Connections:register('Movement_BlankFlight', RunService.RenderStepped:Connect(GuardRivalsCallback('Movement_BlankFlight', RivalsRuntimeBridge.Movement.BlankFlightVelocity)))
-                Connections:register('AnimationPlayer_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('AnimationPlayer_Render', RivalsRuntimeBridge.AnimationPlayer.Update)))
-                Connections:register('CameraModifiers_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('CameraModifiers_Render', RivalsModsState.UpdateCameraModifiers)))
-                Connections:register('MovementRecorder_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('MovementRecorder_Render', RivalsRuntimeBridge.MovementRecorder.UpdateRender)))
-                Connections:register('Flickbot_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Flickbot_Render', RivalsRuntimeBridge.UpdateFlickbot)))
-                Connections:register('CameraAim_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('CameraAim_Heartbeat', RivalsRuntimeBridge.UpdateCameraAim)))
-                Connections:register('Aimbot_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('Aimbot_Heartbeat', RivalsRuntimeBridge.UpdateAimbot)))
-                Connections:register('Ragebot_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('Ragebot_Heartbeat', RivalsRuntimeBridge.UpdateRagebot)))
-                Connections:register('TripmineAutomation_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('TripmineAutomation_Heartbeat', RivalsRuntimeBridge.UpdateTripmineAutomation)))
+                local function safeFrameCall(feature, callback, ...)
+                    local ok, err = pcall(callback, ...)
+                    if not ok then
+                        ReportRivalsRuntimeIssue(feature, err)
+                    end
+                end
+
+                -- Single RenderStepped scheduler. Disabled features are not touched.
+                Connections:register('Runtime_RenderScheduler', RunService.RenderStepped:Connect(function(deltaTime)
+                    if EspRenderSettings.Enabled then
+                        safeFrameCall('ESP_Render', RivalsRuntimeBridge.UpdateESP, deltaTime)
+                    end
+                    if EspRenderSettings.Enabled and EspRenderSettings.ShowThrowable then
+                        safeFrameCall('Throwable_Render', WorldESPState.UpdateThrowable)
+                    end
+                    if EspRenderSettings.Enabled then
+                        safeFrameCall('Hazard_Render', WorldESPState.UpdateHazard)
+                    end
+                    safeFrameCall('CombatFeedback_Render', RivalsRuntimeBridge.CombatFeedback.Update)
+                    safeFrameCall('ViewmodelVisuals_Render', RivalsRuntimeBridge.ViewmodelVisuals.Update, deltaTime)
+                    if RivalsRuntimeBridge.Movement.Flight ~= nil then
+                        safeFrameCall('Movement_BlankFlight', RivalsRuntimeBridge.Movement.BlankFlightVelocity)
+                    end
+                    local animEnabled = Toggles and Toggles.P10S6T1 and Toggles.P10S6T1.Value == true
+                    local animPlayer = RivalsRuntimeBridge.AnimationPlayer
+                    if animEnabled or (animPlayer and animPlayer.Track ~= nil) then
+                        safeFrameCall('AnimationPlayer_Render', RivalsRuntimeBridge.AnimationPlayer.Update)
+                    end
+                    if RivalsModsState.IsCameraModifierFrameActive() then
+                        safeFrameCall('CameraModifiers_Render', RivalsModsState.UpdateCameraModifiers)
+                    end
+                    if Toggles and Toggles.P10S4T1 and Toggles.P10S4T1.Value == true then
+                        safeFrameCall('MovementRecorder_Render', RivalsRuntimeBridge.MovementRecorder.UpdateRender, deltaTime)
+                    end
+                    local flickEnabled = Toggles and Toggles.P2S1T12 and Toggles.P2S1T12.Value == true
+                    local flickState = RivalsRuntimeBridge.Flickbot and RivalsRuntimeBridge.Flickbot.State
+                    if flickEnabled or flickState ~= 'Idle' then
+                        safeFrameCall('Flickbot_Render', RivalsRuntimeBridge.UpdateFlickbot, deltaTime)
+                    end
+                end))
+
+                -- Heartbeat scheduler. Movement runs here by design.
+                Connections:register('Runtime_HeartbeatScheduler', RunService.Heartbeat:Connect(function(deltaTime)
+                    local movement = RivalsRuntimeBridge.Movement
+                    local movementActive = movement.ReadToggle('P10S3T1')
+                        or movement.ReadToggle('P10S3T2')
+                        or movement.ReadToggle('P10S3T3')
+                        or movement.ReadToggle('P10S3T4')
+                        or movement.ReadToggle('P10S3T5')
+                        or movement.ReadToggle('P10S3T6')
+                        or movement.ReadToggle('P10S3T7')
+                        or movement.Flight ~= nil
+                        or movement.NoclipEnabled
+                        or movement.LongJumpPressed
+                    if movementActive then
+                        safeFrameCall('Movement_Heartbeat', movement.Update, deltaTime)
+                    end
+                    if Toggles and Toggles.P10S4T1 and Toggles.P10S4T1.Value == true then
+                        safeFrameCall('MovementRecorder_Heartbeat', RivalsRuntimeBridge.MovementRecorder.Update, deltaTime)
+                    end
+                    if AimbotBridge.IsCameraAimEnabled() then
+                        safeFrameCall('CameraAim_Heartbeat', RivalsRuntimeBridge.UpdateCameraAim, deltaTime)
+                    end
+                    if AimbotBridge.IsAimbotSelected() or AimbotBridge.IsTriggerbotEnabled() then
+                        safeFrameCall('Aimbot_Heartbeat', RivalsRuntimeBridge.UpdateAimbot, deltaTime)
+                    end
+                    if togValue('P8S4T1', false) then
+                        safeFrameCall('Ragebot_Heartbeat', RivalsRuntimeBridge.UpdateRagebot, deltaTime)
+                    end
+                    if Toggles and Toggles.P8S8T1 and Toggles.P8S8T1.Value == true then
+                        safeFrameCall('TripmineAutomation_Heartbeat', RivalsRuntimeBridge.UpdateTripmineAutomation, deltaTime)
+                    end
+                end))
+
                 local AutoQueueRemotes = ReplicatedStorage:FindFirstChild('Remotes')
                 local AutoQueueMatchmaking = AutoQueueRemotes and AutoQueueRemotes:FindFirstChild('Matchmaking')
                 local AutoQueueStatus = AutoQueueMatchmaking and AutoQueueMatchmaking:FindFirstChild('UpdateQueueStatus')
