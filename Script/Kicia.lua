@@ -4371,6 +4371,8 @@ function Controller:GetLastTargetWorld()
             local riotKnifeSilentActive = false
             local riotKnifeLastEncoded = utf8.char(255) .. utf8.char(255)
             local riotKnifeBypassHooked = setmetatable({}, { __mode = 'k' })
+            local riotKnifeHookScanAt = 0
+            local riotKnifeHookInstalled = false
 
 
             local function riotKnifeEncodeByte(n)
@@ -4519,7 +4521,20 @@ function Controller:GetLastTargetWorld()
             end
 
             RunService.Heartbeat:Connect(function()
-                pcall(installRiotKnifeReplicationHook)
+                if not togValue('P4S1T8', false) then
+                    riotKnifeSilentActive = false
+                    return
+                end
+
+                local now = os.clock()
+                if not riotKnifeHookInstalled and now >= riotKnifeHookScanAt then
+                    riotKnifeHookScanAt = now + 1
+                    local ok, installed = pcall(installRiotKnifeReplicationHook)
+                    if ok and installed then
+                        riotKnifeHookInstalled = true
+                    end
+                end
+
                 updateRiotKnifeBypass()
             end)
 
