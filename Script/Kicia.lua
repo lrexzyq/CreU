@@ -1320,10 +1320,20 @@ return {
                 return nil
             end
             local cachedFighterController = nil
+            local lastFighterControllerScanAt = 0
+            local FIGHTER_CONTROLLER_SCAN_COOLDOWN = 0.75
             local function resolveFighterController()
                 local cc = cachedFighterController
                 if type(cc) == 'table' and rawget(cc, 'LocalFighter') ~= nil then
                     return cc
+                end
+                local now = os.clock()
+                if now - lastFighterControllerScanAt < FIGHTER_CONTROLLER_SCAN_COOLDOWN then
+                    return nil
+                end
+                lastFighterControllerScanAt = now
+                if type(getgc) ~= 'function' then
+                    return nil
                 end
                 for _, m in ipairs(getgc(true)) do
                     if type(m) == 'table' and rawget(m, 'LocalFighter') ~= nil and rawget(m, 'Objects') ~= nil then
@@ -1688,6 +1698,8 @@ return {
                 return sent == true
             end
             local cachedFCPrototype = nil
+            local lastFCPrototypeScanAt = 0
+            local FC_PROTOTYPE_SCAN_COOLDOWN = 0.75
             local function resolveFighterControllerPrototype()
                 if type(cachedFCPrototype) == 'table' and rawget(cachedFCPrototype, '_CameraReplicationLoop') ~= nil then
                     return cachedFCPrototype
@@ -1700,6 +1712,14 @@ return {
                         cachedFCPrototype = proto
                         return proto
                     end
+                end
+                local now = os.clock()
+                if now - lastFCPrototypeScanAt < FC_PROTOTYPE_SCAN_COOLDOWN then
+                    return nil
+                end
+                lastFCPrototypeScanAt = now
+                if type(getgc) ~= 'function' then
+                    return nil
                 end
                 for _, m in ipairs(getgc(true)) do
                     if type(m) == 'table' then
@@ -4917,6 +4937,8 @@ function Controller:GetLastTargetWorld()
             local riotKnifeSilentActive = false
             local riotKnifeLastEncoded = utf8.char(255) .. utf8.char(255)
             local riotKnifeBypassHooked = setmetatable({}, { __mode = 'k' })
+            local riotKnifeHookInstalled = false
+            local riotKnifeNextHookScanAt = 0
 
 
             local function riotKnifeEncodeByte(n)
@@ -5065,7 +5087,18 @@ function Controller:GetLastTargetWorld()
             end
 
             RunService.Heartbeat:Connect(function()
-                pcall(installRiotKnifeReplicationHook)
+                if not togValue('P4S1T8', false) then
+                    riotKnifeSilentActive = false
+                    return
+                end
+                local now = os.clock()
+                if not riotKnifeHookInstalled and now >= riotKnifeNextHookScanAt then
+                    riotKnifeNextHookScanAt = now + 1
+                    local ok, installed = pcall(installRiotKnifeReplicationHook)
+                    if ok and installed == true then
+                        riotKnifeHookInstalled = true
+                    end
+                end
                 updateRiotKnifeBypass()
             end)
 
@@ -5077,6 +5110,9 @@ local function ensureController()
             end
 
             local function updateAlwaysBackstab()
+                if not togValue('P8S4T1', false) then
+                    return
+                end
                 local controller = ensureController()
                 local characterController = controller and controller._characterController or nil
                 if characterController == nil and controller and type(controller._EnsureCharacterController) == 'function' then
@@ -5084,9 +5120,6 @@ local function ensureController()
                 end
                 local viewAngleDriver = characterController and characterController._viewAngleDriver or nil
                 if type(viewAngleDriver) ~= 'table' or type(viewAngleDriver.SendSilentTarget) ~= 'function' then
-                    return
-                end
-                if not togValue('P8S4T1', false) then
                     return
                 end
                 local myChar = lp.Character
@@ -5186,10 +5219,12 @@ local function ensureController()
             function KiciaRagebot.Update(dt)
                 local enabled = KiciaRagebot.IsEnabled()
                 if not enabled then
-                    if controllerInstance ~= nil and controllerInstance._enabled ~= false then
-                        controllerInstance:SetEnabled(false)
+                    if controllerInstance ~= nil then
+                        pcall(function()
+                            controllerInstance:Destroy()
+                        end)
+                        controllerInstance = nil
                     end
-                    updateAlwaysBackstab()
                     return
                 end
                 local controller = ensureController()
@@ -8582,9 +8617,19 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsModsState.UpdateCameraModifiers()
                 local state = RivalsModsState
+                local shakeEnabled = IsRivalsModToggleEnabled('P4S2T6')
+                local thirdPersonEnabled = IsRivalsModToggleEnabled('P4S2T8')
+                local fovEnabled = IsRivalsModToggleEnabled('P4S2T9')
+                local viewModelEnabled = IsRivalsModToggleEnabled('P4S2T10')
+                if not shakeEnabled and not thirdPersonEnabled and not fovEnabled and not viewModelEnabled
+                    and state.CameraShakeOriginalEnabled == nil
+                    and not state.CameraThirdPersonCaptured
+                    and state.CameraViewModelOriginal == nil then
+                    return
+                end
                 local cameraController = RivalsModsState.ResolveCameraController()
                 if cameraController then
-                    if IsRivalsModToggleEnabled('P4S2T6') then
+                    if shakeEnabled then
                         if state.CameraShakeOriginalEnabled == nil then
                             state.CameraShakeOriginalEnabled = cameraController._shake_enabled
                         end
@@ -8593,7 +8638,7 @@ ErrorReporter.set_game(GameName)
                         cameraController._shake_enabled = state.CameraShakeOriginalEnabled
                         state.CameraShakeOriginalEnabled = nil
                     end
-                    if IsRivalsModToggleEnabled('P4S2T8') then
+                    if thirdPersonEnabled then
                         if not state.CameraThirdPersonCaptured then
                             state.CameraThirdPersonCaptured = true
                             state.CameraThirdPersonOriginal = cameraController._third_person_override
@@ -8612,10 +8657,10 @@ ErrorReporter.set_game(GameName)
                     if type(cameraController.SetExternalFOVOffset) == 'function' then
                         local targetFov = ReadRivalsModNumber('P4S2S4', 80)
                         local baseFov = type(cameraController._base_fov) == 'number' and cameraController._base_fov or 80
-                        local fovOffset = IsRivalsModToggleEnabled('P4S2T9') and (targetFov - baseFov) or 0
+                        local fovOffset = fovEnabled and (targetFov - baseFov) or 0
                         cameraController:SetExternalFOVOffset('KiciaHook', fovOffset)
                     end
-                    if IsRivalsModToggleEnabled('P4S2T10') then
+                    if viewModelEnabled then
                         if state.CameraViewModelOriginal == nil then
                             state.CameraViewModelOriginal = cameraController.ViewModelOffsetCFrame
                         end
@@ -8676,9 +8721,19 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsModsState.RefreshViewmodelEffects()
                 local state = RivalsModsState
+                local motionActive = IsRivalsModToggleEnabled('P1S31T1')
+                local animationHookActive = IsRivalsModToggleEnabled('P1S31T2')
+                    or IsRivalsModToggleEnabled('P1S31T3')
+                    or IsRivalsModToggleEnabled('P1S31T4')
+                    or IsRivalsModToggleEnabled('P1S31T5')
+                if not motionActive and not animationHookActive then
+                    return
+                end
                 local fighter = ResolveLocalFighter()
                 local items = fighter and type(fighter.Items) == 'table' and fighter.Items or {}
-                state.ApplyViewmodelMotionSuppression(items)
+                if motionActive then
+                    state.ApplyViewmodelMotionSuppression(items)
+                end
                 RivalsRuntimeBridge.NativeRemovals.SyncAnimationHook()
             end
             function RivalsModsState.RestoreClientModifiers()
@@ -12104,6 +12159,19 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.ViewmodelVisuals.Update(deltaTime)
                 local visuals = RivalsRuntimeBridge.ViewmodelVisuals
+                local crosshairActive = visuals.ReadToggle('P1S26T1')
+                local motionActive = visuals.ReadToggle('P1S31T1')
+                local animationActive = visuals.ReadToggle('P1S31T2')
+                    or visuals.ReadToggle('P1S31T3')
+                    or visuals.ReadToggle('P1S31T4')
+                    or visuals.ReadToggle('P1S31T5')
+                if not crosshairActive and not motionActive and not animationActive
+                    and visuals.Crosshair == nil
+                    and next(visuals.AppearanceSnapshots) == nil
+                    and next(visuals.TextureSnapshots) == nil
+                    and next(visuals.Highlights) == nil then
+                    return
+                end
                 if tick() - visuals.LastReconcileAt >= 0.25 then
                     visuals.LastReconcileAt = tick()
                     visuals.ReconcileModels()
@@ -13310,19 +13378,25 @@ ErrorReporter.set_game(GameName)
                 local movement = RivalsRuntimeBridge.Movement
                 movement.WalkMultiplier = movement.ReadNumber('P10S3S1', 2)
                 movement.WalkMultiplierEnabled = active == true
-                movement.AttemptLoadWalkSpeedHook()
+                if active == true or movement.WalkSpeedHookLoaded then
+                    movement.AttemptLoadWalkSpeedHook()
+                end
             end
             function RivalsRuntimeBridge.Movement.UpdateSliding(active)
                 local movement = RivalsRuntimeBridge.Movement
                 movement.SlidingMultiplier = movement.ReadNumber('P10S3S2', 10)
                 movement.SlidingMultiplierEnabled = active == true
-                movement.AttemptLoadWalkSpeedHook()
+                if active == true or movement.WalkSpeedHookLoaded then
+                    movement.AttemptLoadWalkSpeedHook()
+                end
             end
             function RivalsRuntimeBridge.Movement.UpdateJumpPower(active)
                 local movement = RivalsRuntimeBridge.Movement
                 movement.JumpPowerMultiplier = movement.ReadNumber('P10S3S3', 2)
                 movement.JumpPowerEnabled = active == true
-                movement.AttemptLoadJumpPowerHook()
+                if active == true or movement.JumpPowerHookLoaded then
+                    movement.AttemptLoadJumpPowerHook()
+                end
             end
             function RivalsRuntimeBridge.Movement.LaunchLongJump()
                 local movement = RivalsRuntimeBridge.Movement
@@ -13834,6 +13908,9 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.AnimationPlayer.Update()
                 local player = RivalsRuntimeBridge.AnimationPlayer
+                if not player.ReadEnabled() and not player.Track and not player.AnimatorWait then
+                    return
+                end
                 local character = LP.Character
                 local humanoid = character and character:FindFirstChildOfClass('Humanoid') or nil
                 if character ~= player.Character or humanoid ~= player.Humanoid then
@@ -16000,6 +16077,9 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsRuntimeBridge.CombatFeedback.Update()
                 local feedback = RivalsRuntimeBridge.CombatFeedback
+                if not feedback.IsEnabled() and #feedback.Tracers == 0 and #feedback.Chams == 0 then
+                    return
+                end
                 feedback.UpdateTracers()
                 local now = tick()
                 for index = #feedback.Chams, 1, -1 do
@@ -18047,6 +18127,14 @@ ErrorReporter.set_game(GameName)
                 item.StartShooting = wrappedStartShooting
             end
             local function UpdateAimbot()
+                local silentToggleEnabled = Toggles.P2S1T1 and Toggles.P2S1T1.Value == true
+                local triggerToggleEnabled = Toggles.P2S1T7 and Toggles.P2S1T7.Value == true
+                if not silentToggleEnabled and not triggerToggleEnabled then
+                    AimbotBridge.ResetAimbotRuntimeState()
+                    AimbotBridge.ResetTriggerbotReactionState()
+                    RivalsRuntimeBridge.DestroyAimbotStatusNotification()
+                    return
+                end
                 if not (Toggles.P2S1T6 and Toggles.P2S1T6.Value) then
                     RivalsRuntimeBridge.DestroyAimbotStatusNotification()
                 end
@@ -30070,23 +30158,170 @@ local RivalsRuntime = {}
                     end
                 end
             end
+            local function RunRivalsFrameBatch(entries, deltaTime)
+                for i = 1, #entries do
+                    local entry = entries[i]
+                    local active = true
+                    if entry.Active then
+                        active = entry.Active()
+                    end
+                    if active then
+                        local ok, err = pcall(entry.Callback, deltaTime)
+                        if not ok then
+                            ReportRivalsRuntimeIssue(entry.Name, err)
+                        end
+                    end
+                end
+            end
             function RivalsRuntime.StartLoops()
-                Connections:register('ESP_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('ESP_Render', RivalsRuntimeBridge.UpdateESP)))
-                Connections:register('Throwable_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Throwable_Render', WorldESPState.UpdateThrowable)))
-                Connections:register('Hazard_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Hazard_Render', WorldESPState.UpdateHazard)))
-                Connections:register('CombatFeedback_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('CombatFeedback_Render', RivalsRuntimeBridge.CombatFeedback.Update)))
-                Connections:register('ViewmodelVisuals_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('ViewmodelVisuals_Render', RivalsRuntimeBridge.ViewmodelVisuals.Update)))
-                Connections:register('Movement_PreSimulation', RunService.PreSimulation:Connect(GuardRivalsCallback('Movement_PreSimulation', RivalsRuntimeBridge.Movement.Update)))
-                Connections:register('MovementRecorder_PreSimulation', RunService.PreSimulation:Connect(GuardRivalsCallback('MovementRecorder_PreSimulation', RivalsRuntimeBridge.MovementRecorder.Update)))
-                Connections:register('Movement_BlankFlight', RunService.RenderStepped:Connect(GuardRivalsCallback('Movement_BlankFlight', RivalsRuntimeBridge.Movement.BlankFlightVelocity)))
-                Connections:register('AnimationPlayer_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('AnimationPlayer_Render', RivalsRuntimeBridge.AnimationPlayer.Update)))
-                Connections:register('CameraModifiers_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('CameraModifiers_Render', RivalsModsState.UpdateCameraModifiers)))
-                Connections:register('MovementRecorder_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('MovementRecorder_Render', RivalsRuntimeBridge.MovementRecorder.UpdateRender)))
-                Connections:register('Flickbot_Render', RunService.RenderStepped:Connect(GuardRivalsCallback('Flickbot_Render', RivalsRuntimeBridge.UpdateFlickbot)))
-                Connections:register('CameraAim_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('CameraAim_Heartbeat', RivalsRuntimeBridge.UpdateCameraAim)))
-                Connections:register('Aimbot_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('Aimbot_Heartbeat', RivalsRuntimeBridge.UpdateAimbot)))
-                Connections:register('Ragebot_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('Ragebot_Heartbeat', RivalsRuntimeBridge.UpdateRagebot)))
-                Connections:register('TripmineAutomation_Heartbeat', RunService.Heartbeat:Connect(GuardRivalsCallback('TripmineAutomation_Heartbeat', RivalsRuntimeBridge.UpdateTripmineAutomation)))
+                local renderEntries = {
+                    {
+                        Name = 'ESP_Render',
+                        Callback = RivalsRuntimeBridge.UpdateESP,
+                        Active = function() return EspRenderSettings.Enabled == true end,
+                    },
+                    {
+                        Name = 'Throwable_Render',
+                        Callback = WorldESPState.UpdateThrowable,
+                        Active = function() return EspRenderSettings.ShowThrowable == true end,
+                    },
+                    {
+                        Name = 'Hazard_Render',
+                        Callback = WorldESPState.UpdateHazard,
+                        Active = function() return EspRenderSettings.ShowThrowable == true end,
+                    },
+                    {
+                        Name = 'CombatFeedback_Render',
+                        Callback = RivalsRuntimeBridge.CombatFeedback.Update,
+                        Active = function()
+                            local feedback = RivalsRuntimeBridge.CombatFeedback
+                            return feedback.IsEnabled() or #feedback.Tracers > 0 or #feedback.Chams > 0
+                        end,
+                    },
+                    {
+                        Name = 'ViewmodelVisuals_Render',
+                        Callback = RivalsRuntimeBridge.ViewmodelVisuals.Update,
+                        Active = function()
+                            local visuals = RivalsRuntimeBridge.ViewmodelVisuals
+                            return visuals.ReadToggle('P1S26T1')
+                                or visuals.ReadToggle('P1S31T1')
+                                or visuals.ReadToggle('P1S31T2')
+                                or visuals.ReadToggle('P1S31T3')
+                                or visuals.ReadToggle('P1S31T4')
+                                or visuals.ReadToggle('P1S31T5')
+                                or visuals.Crosshair ~= nil
+                                or next(visuals.AppearanceSnapshots) ~= nil
+                                or next(visuals.TextureSnapshots) ~= nil
+                                or next(visuals.Highlights) ~= nil
+                        end,
+                    },
+                    {
+                        Name = 'Movement_BlankFlight',
+                        Callback = RivalsRuntimeBridge.Movement.BlankFlightVelocity,
+                        Active = function() return RivalsRuntimeBridge.Movement.Flight ~= nil end,
+                    },
+                    {
+                        Name = 'AnimationPlayer_Render',
+                        Callback = RivalsRuntimeBridge.AnimationPlayer.Update,
+                        Active = function()
+                            local player = RivalsRuntimeBridge.AnimationPlayer
+                            return player.ReadEnabled() or player.Track ~= nil or player.AnimatorWait ~= nil
+                        end,
+                    },
+                    {
+                        Name = 'CameraModifiers_Render',
+                        Callback = RivalsModsState.UpdateCameraModifiers,
+                        Active = function()
+                            local state = RivalsModsState
+                            return IsRivalsModToggleEnabled('P4S2T6')
+                                or IsRivalsModToggleEnabled('P4S2T8')
+                                or IsRivalsModToggleEnabled('P4S2T9')
+                                or IsRivalsModToggleEnabled('P4S2T10')
+                                or state.CameraShakeOriginalEnabled ~= nil
+                                or state.CameraThirdPersonCaptured
+                                or state.CameraViewModelOriginal ~= nil
+                        end,
+                    },
+                    {
+                        Name = 'MovementRecorder_Render',
+                        Callback = RivalsRuntimeBridge.MovementRecorder.UpdateRender,
+                        Active = function()
+                            local recorder = RivalsRuntimeBridge.MovementRecorder
+                            return recorder.ReadToggle('P10S4T1') or recorder.Mode ~= 'Idle'
+                        end,
+                    },
+                    {
+                        Name = 'Flickbot_Render',
+                        Callback = RivalsRuntimeBridge.UpdateFlickbot,
+                        Active = function()
+                            local flickbot = RivalsRuntimeBridge.Flickbot
+                            return (Toggles.P2S1T12 and Toggles.P2S1T12.Value == true)
+                                or flickbot.State ~= 'Idle' or flickbot.WasHeld
+                        end,
+                    },
+                }
+                local simulationEntries = {
+                    {
+                        Name = 'Movement_PreSimulation',
+                        Callback = RivalsRuntimeBridge.Movement.Update,
+                        Active = function()
+                            local movement = RivalsRuntimeBridge.Movement
+                            return movement.ReadToggle('P10S3T1') or movement.ReadToggle('P10S3T2')
+                                or movement.ReadToggle('P10S3T3') or movement.ReadToggle('P10S3T4')
+                                or movement.ReadToggle('P10S3T5') or movement.ReadToggle('P10S3T6')
+                                or movement.ReadToggle('P10S3T7') or movement.Flight ~= nil
+                                or movement.NoclipEnabled or movement.LongJumpPressed
+                        end,
+                    },
+                    {
+                        Name = 'MovementRecorder_PreSimulation',
+                        Callback = RivalsRuntimeBridge.MovementRecorder.Update,
+                        Active = function()
+                            local recorder = RivalsRuntimeBridge.MovementRecorder
+                            return recorder.ReadToggle('P10S4T1') or recorder.PendingKind ~= nil or recorder.Mode ~= 'Idle'
+                        end,
+                    },
+                }
+                local heartbeatEntries = {
+                    {
+                        Name = 'CameraAim_Heartbeat',
+                        Callback = RivalsRuntimeBridge.UpdateCameraAim,
+                        Active = function()
+                            return Toggles.P2S1T1 and Toggles.P2S1T1.Value == true
+                                and Options.P2S1D1 and Options.P2S1D1.Value == 'Camera'
+                        end,
+                    },
+                    {
+                        Name = 'Aimbot_Heartbeat',
+                        Callback = RivalsRuntimeBridge.UpdateAimbot,
+                        Active = function()
+                            return (Toggles.P2S1T1 and Toggles.P2S1T1.Value == true)
+                                or (Toggles.P2S1T7 and Toggles.P2S1T7.Value == true)
+                        end,
+                    },
+                    {
+                        Name = 'Ragebot_Heartbeat',
+                        Callback = RivalsRuntimeBridge.UpdateRagebot,
+                        Active = function()
+                            return (Toggles.P8S4T1 and Toggles.P8S4T1.Value == true)
+                                or RivalsRagebotState.UndergroundDefenseActive == true
+                        end,
+                    },
+                    {
+                        Name = 'TripmineAutomation_Heartbeat',
+                        Callback = RivalsRuntimeBridge.UpdateTripmineAutomation,
+                        Active = function() return Toggles.P8S8T1 and Toggles.P8S8T1.Value == true end,
+                    },
+                }
+                Connections:register('Rivals_RenderScheduler', RunService.RenderStepped:Connect(function(deltaTime)
+                    RunRivalsFrameBatch(renderEntries, deltaTime)
+                end))
+                Connections:register('Rivals_PreSimulationScheduler', RunService.PreSimulation:Connect(function(deltaTime)
+                    RunRivalsFrameBatch(simulationEntries, deltaTime)
+                end))
+                Connections:register('Rivals_HeartbeatScheduler', RunService.Heartbeat:Connect(function(deltaTime)
+                    RunRivalsFrameBatch(heartbeatEntries, deltaTime)
+                end))
                 local AutoQueueRemotes = ReplicatedStorage:FindFirstChild('Remotes')
                 local AutoQueueMatchmaking = AutoQueueRemotes and AutoQueueRemotes:FindFirstChild('Matchmaking')
                 local AutoQueueStatus = AutoQueueMatchmaking and AutoQueueMatchmaking:FindFirstChild('UpdateQueueStatus')
