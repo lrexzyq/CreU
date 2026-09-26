@@ -239,7 +239,12 @@ local function undergroundCharacterBounds(char)
     if minY == math.huge or maxY == -math.huge then
         return nil
     end
-    return boxCFrame, boxSize, minY, maxY
+    return {
+        boxCFrame,
+        boxSize,
+        minY,
+        maxY,
+    }
 end
 
 local function undergroundReadEnvironmentId(player, char)
@@ -308,7 +313,11 @@ local function undergroundProbeSurface(char, root)
     if not bounds then
         return nil
     end
-    local _, _, minY, maxY = bounds
+    local minY = bounds[3]
+    local maxY = bounds[4]
+    if type(minY) ~= 'number' or type(maxY) ~= 'number' then
+        return nil
+    end
 
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
@@ -28416,23 +28425,23 @@ ErrorReporter.set_game(GameName)
                                 return
                             end
                             UndergroundBusy = true
-                            if value then
-                                local started = startUnderground()
-                                if not started then
-                                    task.defer(GuardRivalsCallback('Underground_DisableAfterStartFail', function()
-                                        if UndergroundToggle and UndergroundToggle.Value == true then
-                                            UndergroundToggle:SetValue(false)
-                                        end
-                                    end))
+                            local ok, started = pcall(function()
+                                if value then
+                                    return startUnderground()
                                 end
-                            else
                                 stopUnderground()
-                            end
+                                return true
+                            end)
                             UndergroundBusy = false
+                            if value and (not ok or started ~= true) then
+                                task.defer(GuardRivalsCallback('Underground_DisableAfterStartFail', function()
+                                    if UndergroundToggle and UndergroundToggle.Value == true then
+                                        UndergroundToggle:SetValue(false)
+                                    end
+                                end))
+                            end
                         end,
                     })
-                    Rage:AddLabel("Underground: AUTO DEPTH • 180° • ADAPTIVE")
-                    Rage:AddLabel("Nearby same-environment underground players increase depth automatically.")
                 do
                     local Mods = Tabs.Combat:AddRightGroupbox("Weapon Mods", "swords")
                     Mods:AddToggle("P4S1T1", {
@@ -30163,7 +30172,13 @@ local RivalsRuntime = {}
                     local entry = entries[i]
                     local active = true
                     if entry.Active then
-                        active = entry.Active()
+                        local okActive, activeValue = pcall(entry.Active)
+                        if okActive then
+                            active = activeValue == true
+                        else
+                            active = false
+                            ReportRivalsRuntimeIssue(entry.Name .. '_Active', activeValue)
+                        end
                     end
                     if active then
                         local ok, err = pcall(entry.Callback, deltaTime)
@@ -30174,6 +30189,10 @@ local RivalsRuntime = {}
                 end
             end
             function RivalsRuntime.StartLoops()
+                local function SchedulerToggleEnabled(toggleId)
+                    local toggle = Toggles and Toggles[toggleId]
+                    return toggle ~= nil and toggle.Value == true
+                end
                 local renderEntries = {
                     {
                         Name = 'ESP_Render',
@@ -30233,10 +30252,10 @@ local RivalsRuntime = {}
                         Callback = RivalsModsState.UpdateCameraModifiers,
                         Active = function()
                             local state = RivalsModsState
-                            return IsRivalsModToggleEnabled('P4S2T6')
-                                or IsRivalsModToggleEnabled('P4S2T8')
-                                or IsRivalsModToggleEnabled('P4S2T9')
-                                or IsRivalsModToggleEnabled('P4S2T10')
+                            return SchedulerToggleEnabled('P4S2T6')
+                                or SchedulerToggleEnabled('P4S2T8')
+                                or SchedulerToggleEnabled('P4S2T9')
+                                or SchedulerToggleEnabled('P4S2T10')
                                 or state.CameraShakeOriginalEnabled ~= nil
                                 or state.CameraThirdPersonCaptured
                                 or state.CameraViewModelOriginal ~= nil
