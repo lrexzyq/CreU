@@ -1146,10 +1146,13 @@ return {
                 RageShieldBackstab = function() return true end,
                 RageAttackContinuity = function() return true end,
                 RageGumMode = function()
-                    return togValue('P8S4T11', false) and 'on' or 'off'
+                    local value = optValue('P8S4D3', 'off')
+                    if value == 'off' or value == 'lite' or value == 'on' then
+                        return value
+                    end
+                    return 'off'
                 end,
                 RageGumVoidFire = function() return false end,
-                RagePartGlue = function() return togValue('P8S4T11', false) end,
                 RageOrbitRadius = function() return 60 end,
                 RageOrbitDwell = function() return 0.30 end,
                 RageOrbitHeight = function() return 8 end,
@@ -1626,46 +1629,6 @@ return {
                 pcall(setIdentity, previous)
                 return ok, result
             end
-            local function fireCrefyAutoShoot(objectId, hitPart, shootPos, targetPos, isRaycast)
-                if objectId == nil or hitPart == nil or hitPart.Parent == nil then
-                    return false
-                end
-                if typeof(shootPos) ~= 'Vector3' or typeof(targetPos) ~= 'Vector3' then
-                    return false
-                end
-                if not KiciaRagebot.isFiniteVector3(shootPos) or not KiciaRagebot.isFiniteVector3(targetPos) then
-                    return false
-                end
-                local remote = resolveUseItemRemote()
-                local token = enc('StartShooting')
-                local util = resolveUtilityModule()
-                if remote == nil or token == nil or util == nil then
-                    return false
-                end
-                local aimCF = safeLookCFrame(shootPos, targetPos)
-                if aimCF == nil then
-                    return false
-                end
-                local ok0, encoded0 = pcall(util.EncodeCFrame, util, aimCF)
-                local ok1, encoded1 = pcall(util.EncodeCFrame, util, aimCF)
-                local ok3, encoded3 = pcall(util.EncodeCFrame, util, CFrame.new(0.43, 0.25, 0.42))
-                if not ok0 or not ok1 or not ok3 or encoded0 == nil or encoded1 == nil or encoded3 == nil then
-                    return false
-                end
-                local inner = {
-                    ['\0'] = encoded0,
-                    ['\1'] = encoded1,
-                    ['\2'] = hitPart,
-                    ['\3'] = encoded3,
-                }
-                local payload
-                if isRaycast == true then
-                    payload = { ['\1'] = inner, ['\2'] = true }
-                else
-                    payload = { ['\1'] = inner }
-                end
-                return pcall(rbFireServerNative, remote, objectId, token, payload, nil)
-            end
             local function fireMeleeAttack(objectId, a, b, c, d)
                 local remote = resolveUseItemRemote()
                 local token = enc('StartShooting')
@@ -1752,11 +1715,6 @@ return {
                     end
                 end
 
-                if not heavy and objectId ~= nil then
-                    if fireCrefyAutoShoot(objectId, hitboxHead, eyeCF and eyeCF.Position or aimWorldPos, aimWorldPos, false) then
-                        return true
-                    end
-                end
 
                 local fighter = resolveLocalFighter()
                 local actionName = heavy and 'StartAiming' or 'StartShooting'
@@ -2883,54 +2841,102 @@ local CharacterController = {}
             end
             function KiciaRagebot.collectEnemies()
                 local out = {}
+                local seenPlayers = {}
                 local controller = resolveFighterController()
                 local objects = controller and rawget(controller, 'Objects') or nil
-                if type(objects) ~= 'table' then
-                    return out
+
+                -- Prefer the game's FighterController when available, but do not make target
+                -- acquisition depend on it. Some runtime revisions briefly expose an empty/missing
+                -- Objects table while Players/characters are already fully replicated.
+                if type(objects) == 'table' then
+                    -- FighterController.Objects is usually an array, but some runtime revisions expose
+                    -- it as a dictionary. next() handles both layouts without dropping targets.
+                    for _, fighter in next, objects do
+                        local ok, entry = pcall(function()
+                            local player = rawget(fighter, 'Player')
+                            local entity = rawget(fighter, 'Entity')
+                            local model = entity and rawget(entity, 'Model') or nil
+                            if not model then
+                                return nil
+                            end
+                            if player ~= nil and not KiciaRagebot.isEnemyPlayer(player) then
+                                return nil
+                            end
+                            local hitboxHead = model:FindFirstChild('HitboxHead') or model:FindFirstChild('Head')
+                            local hitboxBody = model:FindFirstChild('HitboxBody')
+                            local rootPart = model:FindFirstChild('HumanoidRootPart') or hitboxBody
+                            if not rootPart or not rootPart:IsA('BasePart') then
+                                return nil
+                            end
+                            if not hitboxHead or not hitboxHead:IsA('BasePart') then
+                                return nil
+                            end
+                            local humanoid = model:FindFirstChildOfClass('Humanoid')
+                            local entry = {
+                                fighter = fighter,
+                                player = player,
+                                entity = entity,
+                                model = model,
+                                hitboxHead = hitboxHead,
+                                hitboxBody = hitboxBody,
+                                rootPart = rootPart,
+                                itemObserver = rawget(fighter, 'itemObserver') or rawget(fighter, 'ItemObserver'),
+                                alive = humanoid == nil or humanoid.Health > 0,
+                                health = humanoid and humanoid.Health or math.huge,
+                                invincible = KiciaRagebot.isTargetInvincible(entity),
+                                protected = false,
+                                hacker = false,
+                                equippedGunProjectile = false,
+                            }
+                            return refreshTargetEntry(entry)
+                        end)
+                        if ok and entry then
+                            out[#out + 1] = entry
+                            if entry.player ~= nil then
+                                seenPlayers[entry.player] = true
+                            end
+                        end
+                    end
                 end
-                -- FighterController.Objects is usually an array, but some runtime revisions expose
-                -- it as a dictionary. next() handles both layouts without dropping targets.
-                for _, fighter in next, objects do
-                    local ok, entry = pcall(function()
-                        local player = rawget(fighter, 'Player')
-                        local entity = rawget(fighter, 'Entity')
-                        local model = entity and rawget(entity, 'Model') or nil
-                        if not model then
-                            return nil
+
+                -- Fill gaps from Players so a temporarily incomplete FighterController does not
+                -- make the Ragebot blind. Existing fighter entries stay preferred because they
+                -- carry richer runtime state (fighter/entity/item observer).
+                for _, player in ipairs(Players:GetPlayers()) do
+                    if player ~= LPRB and not seenPlayers[player] and KiciaRagebot.isEnemyPlayer(player) then
+                        local ok, entry = pcall(function()
+                            local model = player.Character
+                            if not model or model.Parent == nil then
+                                return nil
+                            end
+                            local hitboxHead = model:FindFirstChild('HitboxHead') or model:FindFirstChild('Head')
+                            local hitboxBody = model:FindFirstChild('HitboxBody')
+                            local rootPart = model:FindFirstChild('HumanoidRootPart') or hitboxBody
+                            if not hitboxHead or not hitboxHead:IsA('BasePart')
+                                or not rootPart or not rootPart:IsA('BasePart') then
+                                return nil
+                            end
+                            local humanoid = model:FindFirstChildOfClass('Humanoid')
+                            return refreshTargetEntry({
+                                fighter = nil,
+                                player = player,
+                                entity = nil,
+                                model = model,
+                                hitboxHead = hitboxHead,
+                                hitboxBody = hitboxBody,
+                                rootPart = rootPart,
+                                itemObserver = nil,
+                                alive = humanoid == nil or humanoid.Health > 0,
+                                health = humanoid and humanoid.Health or math.huge,
+                                invincible = false,
+                                protected = false,
+                                hacker = false,
+                                equippedGunProjectile = false,
+                            })
+                        end)
+                        if ok and entry then
+                            out[#out + 1] = entry
                         end
-                        if player ~= nil and not KiciaRagebot.isEnemyPlayer(player) then
-                            return nil
-                        end
-                        local hitboxHead = model:FindFirstChild('HitboxHead')
-                        local hitboxBody = model:FindFirstChild('HitboxBody')
-                        local rootPart = model:FindFirstChild('HumanoidRootPart') or hitboxBody
-                        if not rootPart or not rootPart:IsA('BasePart') then
-                            return nil
-                        end
-                        if not hitboxHead or not hitboxHead:IsA('BasePart') then
-                            return nil
-                        end
-                        local humanoid = model:FindFirstChildOfClass('Humanoid')
-                        local entry = {
-                            fighter = fighter,
-                            player = player,
-                            entity = entity,
-                            model = model,
-                            hitboxHead = hitboxHead,
-                            hitboxBody = hitboxBody,
-                            rootPart = rootPart,
-                            itemObserver = rawget(fighter, 'itemObserver') or rawget(fighter, 'ItemObserver'),
-                            alive = humanoid == nil or humanoid.Health > 0,
-                            health = humanoid and humanoid.Health or math.huge,
-                            invincible = KiciaRagebot.isTargetInvincible(entity),
-                            protected = false,
-                            hacker = false,
-                            equippedGunProjectile = false,
-                        }
-                        return refreshTargetEntry(entry)
-                    end)
-                    if ok and entry then
-                        out[#out + 1] = entry
                     end
                 end
                 return out
@@ -3441,8 +3447,9 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             end
             function KiciaRagebot.rageGumMode()
                 local m = Setting.RageGumMode()
-                if m ~= 'off' and m ~= 'lite' and m ~= 'on' then m = 'off' end
-                if m == 'off' and Setting.RagePartGlue() then return 'on' end
+                if m ~= 'off' and m ~= 'lite' and m ~= 'on' then
+                    m = 'off'
+                end
                 return m
             end
             function KiciaRagebot.resolveEquippedIndex(fighter, items)
@@ -4151,10 +4158,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     finalShotMuzzleCF = finalShotEyeCF and (finalShotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
                     if finalShotEyeCF == nil or finalShotMuzzleCF == nil then
                         return false
-                    end
-                    local simpleSent = fireCrefyAutoShoot(objectId, hitboxHead, cframe.Position, finalShotAimWorldPos, isRaycast)
-                    if simpleSent == true then
-                        return true
                     end
                     return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, glued, false) == true
                 end
@@ -19266,6 +19269,7 @@ ErrorReporter.set_game(GameName)
             }
             local RivalsCosmeticsState = {
                 PlayerDataHooked = false,
+                ItemDataHooked = false,
                 RefreshingDropdownValues = 0,
                 PreviewWeaponName = nil,
                 SelectedEditorWeaponName = nil,
@@ -24303,15 +24307,12 @@ ErrorReporter.set_game(GameName)
                             end
                             inventory[cosmeticName] = itemSet
                         elseif RivalsCosmetics.IsNonFinisherUnlockCosmetic(cosmeticName, cosmeticData) then
-                            if cosmeticType == 'Wrap' or cosmeticType == 'Charm' then
-                                local itemSet = {}
-                                for itemName in pairs(allItemNames) do
-                                    itemSet[itemName] = true
-                                end
-                                inventory[cosmeticName] = itemSet
-                            else
-                                inventory[cosmeticName] = true
-                            end
+                            -- Native CosmeticInventory ownership is keyed by cosmetic name.
+                            -- LuaHook's working semantics expose every non-finisher catalog entry
+                            -- as a simple truthy ownership flag; do not replace Wrap/Charm with a
+                            -- weapon-set table because native UI/OwnsCosmetic callers may interpret
+                            -- the nested table as an invalid ownership record.
+                            inventory[cosmeticName] = true
                         end
                     end
                 end
@@ -24450,7 +24451,6 @@ ErrorReporter.set_game(GameName)
                     return originalValue
                 end
                 if fieldName == 'CosmeticInventory' then
-                    RivalsCosmetics.BuildNativeUnlockedInventory()
                     return RivalsCosmetics.BuildNativeUnlockedInventory() or originalValue
                 end
                 if fieldName == 'FavoritedCosmetics' then
@@ -24914,8 +24914,12 @@ ErrorReporter.set_game(GameName)
                     or type(debug.getconstants) ~= 'function' or type(debug.setconstant) ~= 'function' then
                     return false
                 end
+                local okConstants, constants = pcall(debug.getconstants, getWeaponData)
+                if not okConstants or type(constants) ~= 'table' then
+                    return false
+                end
                 local constantIndex = nil
-                for index, value in pairs(debug.getconstants(getWeaponData)) do
+                for index, value in pairs(constants) do
                     if value == 'GetWeaponData' then
                         constantIndex = index
                         break
@@ -24925,7 +24929,16 @@ ErrorReporter.set_game(GameName)
                     return false
                 end
                 local previousSentinel = rawget(playerDataUtility, RIVALS_GET_WEAPON_DATA_SENTINEL)
-                debug.setconstant(getWeaponData, constantIndex, RIVALS_GET_WEAPON_DATA_SENTINEL)
+                local okSet = pcall(debug.setconstant, getWeaponData, constantIndex, RIVALS_GET_WEAPON_DATA_SENTINEL)
+                if not okSet then
+                    return false
+                end
+                local verifyOk, verifyConstants = pcall(debug.getconstants, getWeaponData)
+                if not verifyOk or type(verifyConstants) ~= 'table'
+                    or verifyConstants[constantIndex] ~= RIVALS_GET_WEAPON_DATA_SENTINEL then
+                    pcall(debug.setconstant, getWeaponData, constantIndex, 'GetWeaponData')
+                    return false
+                end
                 local weaponDataWrapper = function(_, playerData, weaponName)
                     local originalWeaponData = RivalsCosmetics.FindOriginalWeaponData(weaponName)
                     if originalWeaponData == nil then
@@ -24943,7 +24956,11 @@ ErrorReporter.set_game(GameName)
                     end
                     return RivalsCosmetics.OverrideWeaponData(weaponName, originalWeaponData)
                 end
-                rawset(playerDataUtility, RIVALS_GET_WEAPON_DATA_SENTINEL, weaponDataWrapper)
+                local okRawSet = pcall(rawset, playerDataUtility, RIVALS_GET_WEAPON_DATA_SENTINEL, weaponDataWrapper)
+                if not okRawSet or rawget(playerDataUtility, RIVALS_GET_WEAPON_DATA_SENTINEL) ~= weaponDataWrapper then
+                    pcall(debug.setconstant, getWeaponData, constantIndex, 'GetWeaponData')
+                    return false
+                end
                 RivalsCosmeticsState.PlayerDataUtility = playerDataUtility
                 RivalsCosmeticsState.PlayerDataUtilityGetWeaponData = previousSentinel
                 RivalsCosmeticsState.PlayerDataUtilityGetWeaponDataWrapper = weaponDataWrapper
@@ -24991,20 +25008,26 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.PlayerDataController = playerDataController
                 local dataLoaded = RivalsCosmetics.LoadPlayerDataProxy(currentData)
                 local itemHookLoaded = RivalsCosmetics.EnsureItemDataHook()
-                if RivalsCosmeticsState.PlayerDataAddedConnection == nil then
+                RivalsCosmeticsState.ItemDataHooked = itemHookLoaded == true
+                if dataLoaded == true and RivalsCosmeticsState.PlayerDataAddedConnection == nil then
                     local playerDataAdded = rawget(playerDataController, 'PlayerDataAdded')
                     if type(playerDataAdded) == 'table' and type(playerDataAdded.Connect) == 'function' then
                         RivalsCosmeticsState.PlayerDataAddedConnection = playerDataAdded:Connect(function()
                             task.defer(function()
                                 local nextCurrentData = rawget(playerDataController, 'CurrentData')
                                 RivalsCosmetics.LoadPlayerDataProxy(nextCurrentData)
+                                if RivalsCosmetics.IsEnabled() and RivalsCosmeticsState.ItemDataHooked ~= true then
+                                    RivalsCosmeticsState.ItemDataHooked = RivalsCosmetics.EnsureItemDataHook() == true
+                                end
                                 RivalsCosmetics.RefreshNativeCosmeticsScene()
                             end)
                         end)
                     end
                 end
                 RivalsCosmeticsState.PlayerDataHooked = dataLoaded == true
-                return dataLoaded == true and itemHookLoaded == true
+                -- Player-data inventory/ownership is the core Unlock All path. Weapon-data
+                -- overriding is optional because executor/runtime capabilities can differ.
+                return dataLoaded == true
             end
             function RivalsCosmetics.RestorePlayerDataHook()
                 local playerDataAddedConnection = RivalsCosmeticsState.PlayerDataAddedConnection
@@ -25016,6 +25039,7 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmetics.RestorePlayerDataProxy()
                 RivalsCosmeticsState.PlayerDataController = nil
                 RivalsCosmeticsState.PlayerDataHooked = false
+                RivalsCosmeticsState.ItemDataHooked = false
                 return true
             end
             function RivalsCosmetics.EncodeGameKey(key)
@@ -29298,11 +29322,16 @@ local P3 = Tabs.Automation
                 end))
 
                 local P3Ragebot = P3:AddLeftGroupbox('Ragebot Automation')
-                P3Ragebot:AddToggle('P8S4T11', {
+                P3Ragebot:AddDropdown('P8S4D3', {
+                    Values = { 'off', 'lite', 'on' },
+                    Default = 'off',
+                    Multi = false,
                     Text = 'Glue',
-                    Default = false,
-                    Tooltip = 'When enabled, Ragebot uses PartGlue for attack positioning; when disabled, Ragebot uses pure TP/CFrame positioning.',
-                    Callback = GuardRivalsCallback('Ragebot_Glue_ToggleChanged', function()
+                    Tooltip = 'off = pure TP/CFrame positioning; lite = light RepRoot glue; on = full PartGlue positioning.',
+                    Callback = GuardRivalsCallback('Ragebot_Glue_ModeChanged', function(value)
+                        if value ~= 'off' and value ~= 'lite' and value ~= 'on' then
+                            value = 'off'
+                        end
                         pcall(RivalsRuntimeBridge.ResetKiciaRagebot)
                     end),
                 })
