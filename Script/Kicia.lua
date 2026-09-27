@@ -31527,7 +31527,7 @@ CosmeticsMasterToggle:AddKeyPicker('P5S1T2K', {
     SyncToggleState = true,
 })
 
-P5S4:AddLabel('Unlock All only. The game's current Custom Loadout remains the source of truth for Skin, Wrap, Charm, Finisher, and Emote.')
+P5S4:AddLabel("Unlock All only. The game's current Custom Loadout remains the source of truth for Skin, Wrap, Charm, Finisher, and Emote.")
 P5S4:AddLabel('No weapon/cosmetic picker is used by this script.')
 
 RivalsCosmeticsState.CosmeticsUiLoaded = false
