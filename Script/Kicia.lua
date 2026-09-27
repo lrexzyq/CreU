@@ -19704,6 +19704,9 @@ ErrorReporter.set_game(GameName)
                 NativeFavoritesSeeded = false,
                 NativeCosmeticsController = nil,
                 NativeCosmeticsControllerSource = nil,
+                NativeCosmeticsControllerLastScan = 0,
+                NativeCosmeticsControllerResolutionGeneration = 0,
+                NativeCosmeticsSnapshotController = nil,
                 -- Unlock-only mode: the game's own Custom Loadout remains the sole
                 -- source of equipped Skin/Wrap/Charm/Finisher/Emote choices.
                 UnlockOnlyMode = true,
@@ -19712,8 +19715,11 @@ ErrorReporter.set_game(GameName)
                 NativeUnlockerWasEnabled = nil,
                 NativeUnlockerApplied = false,
                 NativeCosmeticsConfig = nil,
+                NativeCosmeticsConfigSetterOwner = nil,
                 NativeCosmeticsConfigOriginalTypes = nil,
                 NativeCosmeticsConfigOriginalRarities = nil,
+                NativeCosmeticsConfigDesiredTypes = nil,
+                NativeCosmeticsConfigDesiredRarities = nil,
                 NativeCosmeticsConfigApplied = false,
                 NativeSkinChangerWasEnabled = nil,
                 NativeSkinChangerOriginalSelections = {},
@@ -24647,6 +24653,9 @@ ErrorReporter.set_game(GameName)
                 return RivalsCosmetics.RefreshFavoriteApplication()
             end
             function RivalsCosmetics.SetSelectedEditorWeapon(weaponName)
+                if RivalsCosmeticsState.UnlockOnlyMode == true then
+                    return false
+                end
                 if not RivalsCosmetics.IsKnownEditorWeaponName(weaponName) then
                     return false
                 end
@@ -24673,6 +24682,9 @@ ErrorReporter.set_game(GameName)
                 return RivalsCosmetics.ResolveValidDropdownValue(value, values) == value
             end
             function RivalsCosmetics.SetSelectionForSelectedEditorWeapon(kind, value)
+                if RivalsCosmeticsState.UnlockOnlyMode == true then
+                    return false
+                end
                 local previewWeaponName = RivalsCosmetics.ResolveSelectedEditorWeaponName()
                 if not previewWeaponName or not RivalsCosmetics.IsValidEditorSelection(previewWeaponName, kind, value) then
                     return false
@@ -24845,22 +24857,57 @@ ErrorReporter.set_game(GameName)
                 if type(cached) == 'table' then
                     return cached
                 end
+
                 local cosmeticLibrary = RivalsCosmetics.ResolveCosmeticLibrary()
                 local cosmetics = cosmeticLibrary and cosmeticLibrary.Cosmetics or nil
                 if type(cosmetics) ~= 'table' then
                     return nil
                 end
+
+                local itemLibrary = RivalsCosmetics.ResolveItemLibrary()
+                local itemNames = itemLibrary and itemLibrary.Items or nil
+                local allItemNames = {}
+                if type(itemNames) == 'table' then
+                    for itemName in pairs(itemNames) do
+                        if type(itemName) == 'string' and itemName ~= '' then
+                            allItemNames[itemName] = true
+                        end
+                    end
+                end
+                if next(allItemNames) == nil then
+                    -- Last-resort fallback: derive usable item names from the catalog
+                    -- itself. This keeps Wrap/Charm/Finisher ownership meaningful even
+                    -- when ItemLibrary has not finished loading yet.
+                    for _, cosmeticData in pairs(cosmetics) do
+                        if type(cosmeticData) == 'table' then
+                            local itemName = cosmeticData.ItemName
+                            if type(itemName) == 'string' and itemName ~= '' then
+                                allItemNames[itemName] = true
+                            end
+                        end
+                    end
+                end
+
                 local inventory = {}
                 for cosmeticName, cosmeticData in pairs(cosmetics) do
-                    if type(cosmeticName) == 'string' and type(cosmeticData) == 'table'
+                    if type(cosmeticName) == 'string'
+                        and cosmeticName ~= ''
+                        and type(cosmeticData) == 'table'
                         and RivalsCosmetics.IsNonFinisherUnlockCosmetic(cosmeticName, cosmeticData) then
-                        -- Exact unlock-all ownership semantics: one truthy flag per catalog cosmetic.
-                        inventory[cosmeticName] = true
+                        local cosmeticType = cosmeticData.Type or cosmeticData.CosmeticType
+                        if cosmeticType == 'Skin' or cosmeticType == 'Emote' then
+                            inventory[cosmeticName] = true
+                        elseif cosmeticType == 'Wrap'
+                            or cosmeticType == 'Charm'
+                            or cosmeticType == 'Finisher' then
+                            inventory[cosmeticName] = allItemNames
+                        end
                     end
                 end
                 RivalsCosmeticsState.NativeUnlockedInventory = inventory
                 return inventory
             end
+
             function RivalsCosmetics.EnsureUnlockedOwnershipHooks()
                 local cosmeticLibrary = RivalsCosmetics.ResolveCosmeticLibrary()
                 if type(cosmeticLibrary) ~= 'table' then
@@ -25530,19 +25577,88 @@ ErrorReporter.set_game(GameName)
                 return nil
             end
 
-            function RivalsCosmetics.ResolveNativeCosmeticsController(forceRefresh)
-                local cached = RivalsCosmeticsState.NativeCosmeticsController
-                if not forceRefresh and type(cached) == 'table' then
-                    if getMethodFromObject(cached, 'SetRuntimeEnabled')
-                        and getMethodFromObject(cached, 'SetUnlockerEnabled')
-                        and getMethodFromObject(cached, 'SetUnlockedTypes')
-                        and getMethodFromObject(cached, 'SetUnlockedRarities') then
-                        return cached
+            local NATIVE_COSMETICS_CONTROLLER_METHODS = {
+                'SetRuntimeEnabled',
+                'SetUnlockerEnabled',
+                'SetUnlockedTypes',
+                'SetUnlockedRarities',
+                'SetSkinChangerChoice',
+                'GetSkinChangerSelections',
+                'SetEmote',
+            }
+
+            local function isNativeCosmeticsControllerShape(object)
+                if type(object) ~= 'table'
+                    or type(rawget(object, '_catalog')) ~= 'table'
+                    or type(rawget(object, '_items')) ~= 'table'
+                    or type(rawget(object, '_emotes')) ~= 'table'
+                    or type(rawget(object, '_unlockerController')) ~= 'table' then
+                    return false
+                end
+                for _, methodName in ipairs(NATIVE_COSMETICS_CONTROLLER_METHODS) do
+                    if type(getMethodFromObject(object, methodName)) ~= 'function' then
+                        return false
                     end
                 end
+                return true
+            end
+
+            local function isNativeCosmeticsConfigShape(object, controller)
+                if type(object) ~= 'table' then
+                    return false
+                end
+                local linkedController = rawget(object, '_cosmetics')
+                if type(linkedController) ~= 'table'
+                    or (type(controller) == 'table' and linkedController ~= controller) then
+                    return false
+                end
+                if type(getMethodFromObject(object, 'SetRuntimeEnabled')) ~= 'function'
+                    or type(getMethodFromObject(object, 'SetUnlockedTypes')) ~= 'function'
+                    or type(getMethodFromObject(object, 'SetUnlockedRarities')) ~= 'function'
+                    or type(getMethodFromObject(object, 'GetStateConfigState')) ~= 'function' then
+                    return false
+                end
+                return isNativeCosmeticsControllerShape(linkedController)
+            end
+
+            local function nativeCosmeticsPairLooksValid(controller, config)
+                if not isNativeCosmeticsControllerShape(controller) then
+                    return false
+                end
+                if type(config) == 'table' and rawget(config, '_cosmetics') ~= controller then
+                    return false
+                end
+                return true
+            end
+
+            local function getNativeCosmeticsMonotonicTime()
+                if type(time) == 'function' then
+                    local ok, value = pcall(time)
+                    if ok and type(value) == 'number' then
+                        return value
+                    end
+                end
+                return os.clock()
+            end
+
+            function RivalsCosmetics.ResolveNativeCosmeticsController(forceRefresh)
+                local cached = RivalsCosmeticsState.NativeCosmeticsController
+                local cachedConfig = RivalsCosmeticsState.NativeCosmeticsConfig
+                local now = getNativeCosmeticsMonotonicTime()
+
+                if not forceRefresh and nativeCosmeticsPairLooksValid(cached, cachedConfig) then
+                    return cached
+                end
+
+                local lastScan = tonumber(RivalsCosmeticsState.NativeCosmeticsControllerLastScan) or 0
+                if not forceRefresh and now - lastScan < 1 then
+                    return nil
+                end
+                RivalsCosmeticsState.NativeCosmeticsControllerLastScan = now
 
                 RivalsCosmeticsState.NativeCosmeticsController = nil
                 RivalsCosmeticsState.NativeCosmeticsControllerSource = nil
+                RivalsCosmeticsState.NativeCosmeticsConfig = nil
 
                 local env = ResolveGlobalEnv()
                 local getgcFn = type(env) == 'table' and rawget(env, 'getgc') or nil
@@ -25558,38 +25674,80 @@ ErrorReporter.set_game(GameName)
                     return nil
                 end
 
-                local best = nil
-                local bestScore = 0
+                local configs = {}
+                local controllers = {}
+                local roots = {}
+
                 for _, object in ipairs(objects) do
                     if type(object) == 'table' then
-                        local score = 0
-                        if getMethodFromObject(object, 'SetRuntimeEnabled') then score = score + 6 end
-                        if getMethodFromObject(object, 'SetUnlockerEnabled') then score = score + 5 end
-                        if getMethodFromObject(object, 'SetUnlockedTypes') then score = score + 5 end
-                        if getMethodFromObject(object, 'SetUnlockedRarities') then score = score + 5 end
-                        if getMethodFromObject(object, 'SetSkinChangerChoice') then score = score + 2 end
-                        if getMethodFromObject(object, 'GetSkinChangerSelections') then score = score + 2 end
-                        if getMethodFromObject(object, 'SetSkinChangerEnabled') then score = score + 1 end
-                        if getMethodFromObject(object, 'SetEmote') then score = score + 2 end
+                        if isNativeCosmeticsControllerShape(object) then
+                            local score = 100
+                            if rawget(object, '_runtimeEnabled') == true then
+                                score = score + 3
+                            end
+                            controllers[#controllers + 1] = { object = object, score = score }
+                        end
 
-                        -- Match the concrete native cosmetics controller shape from
-                        -- kicia stuff.lua, not merely any table with similarly named methods.
-                        if type(rawget(object, '_catalog')) == 'table' then score = score + 5 end
-                        if type(rawget(object, '_items')) == 'table' then score = score + 5 end
-                        if type(rawget(object, '_emotes')) == 'table' then score = score + 5 end
-                        if type(rawget(object, '_unlockerController')) == 'table' then score = score + 5 end
+                        local linkedController = rawget(object, '_cosmetics')
+                        if isNativeCosmeticsConfigShape(object, linkedController) then
+                            local score = 130
+                            if type(rawget(object, '_stateConfig')) == 'table' then
+                                score = score + 2
+                            end
+                            if rawget(object, 'stateConfigLoaded') ~= nil then
+                                score = score + 1
+                            end
+                            configs[#configs + 1] = {
+                                config = object,
+                                controller = linkedController,
+                                score = score,
+                            }
+                        end
 
-                        if score > bestScore and score >= 26 then
-                            best = object
-                            bestScore = score
+                        local rootController = rawget(object, 'cosmetics')
+                        local rootConfig = rawget(object, 'cosmeticsConfig')
+                        if type(rootController) == 'table'
+                            and type(rootConfig) == 'table'
+                            and isNativeCosmeticsControllerShape(rootController)
+                            and isNativeCosmeticsConfigShape(rootConfig, rootController)
+                            and rawget(rootConfig, '_cosmetics') == rootController then
+                            local current = roots[rootController] or 0
+                            roots[rootController] = current + 40
                         end
                     end
                 end
 
-                if best then
-                    RivalsCosmeticsState.NativeCosmeticsController = best
-                    RivalsCosmeticsState.NativeCosmeticsControllerSource = 'GC:RuntimeUnlocker'
-                    return best
+                local bestPair, bestScore = nil, -math.huge
+                for _, candidate in ipairs(configs) do
+                    local score = candidate.score + (roots[candidate.controller] or 0)
+                    if score > bestScore then
+                        bestPair = candidate
+                        bestScore = score
+                    end
+                end
+
+                if bestPair then
+                    RivalsCosmeticsState.NativeCosmeticsController = bestPair.controller
+                    RivalsCosmeticsState.NativeCosmeticsControllerSource = 'GC:NativeCosmeticsConfigPair'
+                    RivalsCosmeticsState.NativeCosmeticsConfig = bestPair.config
+                    RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration =
+                        (RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration or 0) + 1
+                    return bestPair.controller
+                end
+
+                local bestController, bestControllerScore = nil, -math.huge
+                for _, candidate in ipairs(controllers) do
+                    if candidate.score > bestControllerScore then
+                        bestController = candidate.object
+                        bestControllerScore = candidate.score
+                    end
+                end
+                if bestController then
+                    RivalsCosmeticsState.NativeCosmeticsController = bestController
+                    RivalsCosmeticsState.NativeCosmeticsControllerSource = 'GC:NativeCosmeticsController'
+                    RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration =
+                        (RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration or 0) + 1
+                    return bestController
                 end
                 return nil
             end
@@ -25670,7 +25828,7 @@ ErrorReporter.set_game(GameName)
 
             function RivalsCosmetics.RestoreNativeSkinChanger()
                 local controller = RivalsCosmeticsState.NativeCosmeticsController
-                if type(controller) ~= 'table' then
+                if not isNativeCosmeticsControllerShape(controller) then
                     controller = RivalsCosmetics.ResolveNativeCosmeticsController(true)
                 end
                 if type(controller) ~= 'table' then
@@ -26226,57 +26384,42 @@ ErrorReporter.set_game(GameName)
                 return cloned
             end
 
-            function RivalsCosmetics.ResolveNativeCosmeticsConfig()
+            function RivalsCosmetics.ResolveNativeCosmeticsConfig(forceRefresh)
+                local controller = RivalsCosmeticsState.NativeCosmeticsController
                 local cached = RivalsCosmeticsState.NativeCosmeticsConfig
-                local nativeController = RivalsCosmeticsState.NativeCosmeticsController
-                if type(nativeController) ~= 'table' then
-                    nativeController = RivalsCosmetics.ResolveNativeCosmeticsController()
+
+                if type(controller) ~= 'table' then
+                    controller = RivalsCosmetics.ResolveNativeCosmeticsController(forceRefresh == true)
                 end
-                if type(cached) == 'table'
+
+                if nativeCosmeticsPairLooksValid(controller, cached)
+                    and type(cached) == 'table'
                     and type(getMethodFromObject(cached, 'SetUnlockedTypes')) == 'function'
-                    and type(getMethodFromObject(cached, 'SetUnlockedRarities')) == 'function'
-                    and (type(nativeController) ~= 'table' or rawget(cached, '_cosmetics') == nativeController) then
+                    and type(getMethodFromObject(cached, 'SetUnlockedRarities')) == 'function' then
                     return cached
                 end
 
-                RivalsCosmeticsState.NativeCosmeticsConfig = nil
-
-                local env = ResolveGlobalEnv()
-                local getgcFn = type(env) == 'table' and rawget(env, 'getgc') or nil
-                if type(getgcFn) ~= 'function' then
-                    getgcFn = rawget(_G, 'getgc')
-                end
-                if type(getgcFn) ~= 'function' then
-                    return nil
-                end
-
-                local ok, objects = pcall(getgcFn, true)
-                if not ok or type(objects) ~= 'table' then
-                    return nil
-                end
-
-                local best, bestScore = nil, 0
-                for _, object in ipairs(objects) do
-                    if type(object) == 'table' then
-                        local setTypes = getMethodFromObject(object, 'SetUnlockedTypes')
-                        local setRarities = getMethodFromObject(object, 'SetUnlockedRarities')
-                        local getState = getMethodFromObject(object, 'GetStateConfigState')
-                        local score = 0
-                        if type(setTypes) == 'function' then score = score + 6 end
-                        if type(setRarities) == 'function' then score = score + 6 end
-                        if type(getState) == 'function' then score = score + 5 end
-                        if type(getMethodFromObject(object, 'SetRuntimeEnabled')) == 'function' then score = score + 2 end
-                        if type(nativeController) == 'table' and rawget(object, '_cosmetics') == nativeController then
-                            score = score + 20
-                        end
-                        if score > bestScore and score >= 12 then
-                            best, bestScore = object, score
-                        end
+                if type(controller) == 'table' then
+                    local linked = rawget(controller, '__kiciaCosmeticsConfig')
+                    if isNativeCosmeticsConfigShape(linked, controller) then
+                        RivalsCosmeticsState.NativeCosmeticsConfig = linked
+                        return linked
                     end
                 end
-                if best then
-                    RivalsCosmeticsState.NativeCosmeticsConfig = best
-                    return best
+
+                -- A controller can natively SetUnlockedTypes/SetUnlockedRarities without
+                -- a separate cosmeticsConfig wrapper. Do not force another getgc scan on
+                -- every ApplyAll call just to look for an optional wrapper. A forced scan is
+                -- only useful during explicit re-discovery/recovery.
+                if forceRefresh == true then
+                    RivalsCosmeticsState.NativeCosmeticsConfig = nil
+                    RivalsCosmetics.ResolveNativeCosmeticsController(true)
+                    local resolvedController = RivalsCosmeticsState.NativeCosmeticsController
+                    local resolvedConfig = RivalsCosmeticsState.NativeCosmeticsConfig
+                    if nativeCosmeticsPairLooksValid(resolvedController, resolvedConfig)
+                        and type(resolvedConfig) == 'table' then
+                        return resolvedConfig
+                    end
                 end
                 return nil
             end
@@ -26324,8 +26467,25 @@ ErrorReporter.set_game(GameName)
             function RivalsCosmetics.ApplyNativeCosmeticsConfig()
                 local controller = RivalsCosmetics.ResolveNativeCosmeticsController()
                 local config = RivalsCosmetics.ResolveNativeCosmeticsConfig()
-                local allTypes, allRarities = RivalsCosmetics.ResolveAllNativeCosmeticTypesAndRarities()
-                if type(controller) ~= 'table' or type(allTypes) ~= 'table' or type(allRarities) ~= 'table' then
+                if type(controller) ~= 'table' then
+                    return false
+                end
+
+                -- Weapon switches can cause ApplyAll() to be called repeatedly. Native
+                -- SetUnlockedTypes/SetUnlockedRarities both rebuild the entire cosmetic
+                -- catalog and sync every item, so never repeat that work when our desired
+                -- catalog gates are already active on the same native controller.
+                if RivalsCosmeticsState.NativeCosmeticsConfigApplied
+                    and RivalsCosmetics.NativeUnlockStateMatchesDesired() then
+                    return true
+                end
+
+                local allTypes = RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes
+                local allRarities = RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities
+                if type(allTypes) ~= 'table' or type(allRarities) ~= 'table' then
+                    allTypes, allRarities = RivalsCosmetics.ResolveAllNativeCosmeticTypesAndRarities()
+                end
+                if type(allTypes) ~= 'table' or type(allRarities) ~= 'table' then
                     return false
                 end
 
@@ -26333,19 +26493,9 @@ ErrorReporter.set_game(GameName)
                     or RivalsCosmeticsState.NativeCosmeticsConfigOriginalRarities == nil then
                     local originalTypes, originalRarities
 
-                    -- Prefer the exact kicia stuff.lua cosmeticsConfig state. This keeps
-                    -- its Custom Loadout UI and catalog in the same state as native Unlock All.
-                    local getState = type(config) == 'table'
-                        and getMethodFromObject(config, 'GetStateConfigState') or nil
-                    if type(getState) == 'function' then
-                        local okState, state = pcall(getState, config)
-                        if okState and type(state) == 'table' then
-                            originalTypes = state.types
-                            originalRarities = state.rarities
-                        end
-                    end
-
-                    -- Fallback to the live native catalog when the config state is not loaded.
+                    -- The live catalog is authoritative at the moment unlock-all starts.
+                    -- The saved cosmeticsConfig state may describe a preset rather than the
+                    -- currently-applied catalog filters.
                     local catalog = rawget(controller, '_catalog')
                     if type(originalTypes) ~= 'table' and type(catalog) == 'table' then
                         local getTypes = getMethodFromObject(catalog, 'GetIncludedTypes')
@@ -26362,6 +26512,17 @@ ErrorReporter.set_game(GameName)
                         end
                     end
 
+                    if type(originalTypes) ~= 'table' or type(originalRarities) ~= 'table' then
+                        local getState = type(config) == 'table'
+                            and getMethodFromObject(config, 'GetStateConfigState') or nil
+                        if type(getState) == 'function' then
+                            local okState, state = pcall(getState, config)
+                            if okState and type(state) == 'table' then
+                                originalTypes = originalTypes or state.types
+                                originalRarities = originalRarities or state.rarities
+                            end
+                        end
+                    end
                     if type(originalTypes) ~= 'table' or type(originalRarities) ~= 'table' then
                         return false
                     end
@@ -26391,7 +26552,10 @@ ErrorReporter.set_game(GameName)
                     end
                     return false
                 end
-                RivalsCosmeticsState.NativeCosmeticsConfig = setterOwner
+                RivalsCosmeticsState.NativeCosmeticsConfig = type(config) == 'table' and config or nil
+                RivalsCosmeticsState.NativeCosmeticsConfigSetterOwner = setterOwner
+                RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes = cloneCosmeticSet(allTypes)
+                RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities = cloneCosmeticSet(allRarities)
                 RivalsCosmeticsState.NativeCosmeticsConfigApplied = true
                 return true
             end
@@ -26399,9 +26563,12 @@ ErrorReporter.set_game(GameName)
                 if not RivalsCosmeticsState.NativeCosmeticsConfigApplied then
                     RivalsCosmeticsState.NativeCosmeticsConfigOriginalTypes = nil
                     RivalsCosmeticsState.NativeCosmeticsConfigOriginalRarities = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities = nil
                     return true
                 end
-                local owner = RivalsCosmeticsState.NativeCosmeticsConfig
+                local owner = RivalsCosmeticsState.NativeCosmeticsConfigSetterOwner
+                    or RivalsCosmeticsState.NativeCosmeticsConfig
                 local controller = RivalsCosmeticsState.NativeCosmeticsController
                 if type(owner) ~= 'table' then
                     owner = RivalsCosmetics.ResolveNativeCosmeticsConfig()
@@ -26427,14 +26594,107 @@ ErrorReporter.set_game(GameName)
                 end
                 RivalsCosmeticsState.NativeCosmeticsConfigOriginalTypes = nil
                 RivalsCosmeticsState.NativeCosmeticsConfigOriginalRarities = nil
+                RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes = nil
+                RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities = nil
                 RivalsCosmeticsState.NativeCosmeticsConfigApplied = false
                 RivalsCosmeticsState.NativeCosmeticsConfig = nil
+                RivalsCosmeticsState.NativeCosmeticsConfigSetterOwner = nil
+                RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes = nil
+                RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities = nil
                 return restoredTypes and restoredRarities
             end
+            local function nativeCosmeticSetMatches(actual, desired)
+                if type(actual) ~= 'table' or type(desired) ~= 'table' then
+                    return false
+                end
+                for key, enabled in pairs(desired) do
+                    if enabled == true and actual[key] ~= true then
+                        return false
+                    end
+                end
+                for key, enabled in pairs(actual) do
+                    if enabled == true and desired[key] ~= true then
+                        return false
+                    end
+                end
+                return true
+            end
+
+            function RivalsCosmetics.NativeUnlockStateMatchesDesired()
+                local controller = RivalsCosmeticsState.NativeCosmeticsController
+                local config = RivalsCosmeticsState.NativeCosmeticsConfig
+                if not nativeCosmeticsPairLooksValid(controller, config) then
+                    return false
+                end
+                if rawget(controller, '_runtimeEnabled') ~= true then
+                    return false
+                end
+
+                local isUnlockerEnabled = getMethodFromObject(controller, 'IsUnlockerEnabled')
+                if type(isUnlockerEnabled) ~= 'function' then
+                    return false
+                end
+                local okUnlocker, unlockerEnabled = pcall(isUnlockerEnabled, controller)
+                if not okUnlocker or unlockerEnabled ~= true then
+                    return false
+                end
+
+                local catalog = rawget(controller, '_catalog')
+                if type(catalog) ~= 'table' then
+                    return false
+                end
+                local getTypes = getMethodFromObject(catalog, 'GetIncludedTypes')
+                local getRarities = getMethodFromObject(catalog, 'GetIncludedRarities')
+                local desiredTypes = RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes
+                local desiredRarities = RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities
+                if type(getTypes) ~= 'function'
+                    or type(getRarities) ~= 'function'
+                    or type(desiredTypes) ~= 'table'
+                    or type(desiredRarities) ~= 'table' then
+                    return false
+                end
+                local okTypes, actualTypes = pcall(getTypes, catalog)
+                local okRarities, actualRarities = pcall(getRarities, catalog)
+                if not okTypes or not okRarities then
+                    return false
+                end
+                return nativeCosmeticSetMatches(actualTypes, desiredTypes)
+                    and nativeCosmeticSetMatches(actualRarities, desiredRarities)
+            end
+
             function RivalsCosmetics.ApplyNativeCosmeticsRuntime()
-                local controller = RivalsCosmetics.ResolveNativeCosmeticsController()
+                local controller = RivalsCosmeticsState.NativeCosmeticsController
+                if type(controller) ~= 'table' then
+                    controller = RivalsCosmetics.ResolveNativeCosmeticsController()
+                end
                 if type(controller) ~= 'table' then
                     return false
+                end
+
+                -- A game reload can replace the native controller instance while leaving
+                -- the old Lua table alive. Never carry restore snapshots from the old
+                -- instance onto the new one.
+                if RivalsCosmeticsState.NativeCosmeticsSnapshotController ~= controller then
+                    RivalsCosmeticsState.NativeCosmeticsSnapshotController = controller
+                    RivalsCosmeticsState.NativeCosmeticsRuntimeWasEnabled = nil
+                    RivalsCosmeticsState.NativeUnlockerWasEnabled = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigOriginalTypes = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigOriginalRarities = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigDesiredTypes = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities = nil
+                    RivalsCosmeticsState.NativeCosmeticsConfigApplied = false
+                    RivalsCosmeticsState.NativeCosmeticsConfigSetterOwner = nil
+                    RivalsCosmeticsState.NativeUnlockerApplied = false
+                    RivalsCosmeticsState.NativeCosmeticsRuntimeApplied = false
+                end
+
+                -- Idempotent fast path: once native runtime + unlocker + catalog gates
+                -- are active, weapon/viewmodel changes do not require a second rebuild.
+                if RivalsCosmeticsState.NativeCosmeticsRuntimeApplied
+                    and RivalsCosmeticsState.NativeUnlockerApplied
+                    and RivalsCosmeticsState.NativeCosmeticsConfigApplied
+                    and RivalsCosmetics.NativeUnlockStateMatchesDesired() then
+                    return true
                 end
                 local setRuntimeEnabled = getMethodFromObject(controller, 'SetRuntimeEnabled')
                 local setUnlockerEnabled = getMethodFromObject(controller, 'SetUnlockerEnabled')
@@ -26518,6 +26778,7 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.NativeUnlockerApplied = false
                 RivalsCosmeticsState.NativeCosmeticsRuntimeWasEnabled = nil
                 RivalsCosmeticsState.NativeCosmeticsRuntimeApplied = false
+                RivalsCosmeticsState.NativeCosmeticsSnapshotController = nil
                 return true
             end
             function RivalsEmotes.ApplyConfiguredEmoteSlots()
@@ -28612,6 +28873,17 @@ ErrorReporter.set_game(GameName)
                 return result == true
             end
             function RivalsCosmetics.BindFirstPersonModels()
+                -- Native Custom Loadout is authoritative in Unlock-Only mode. No custom
+                -- first-person ChildAdded watcher is needed, and installing one would
+                -- cause ApplyAll() on every weapon model replacement.
+                if RivalsCosmeticsState.UnlockOnlyMode == true then
+                    if Connections then
+                        pcall(Connections.disconnect, Connections, {'Cosmetics_FirstPersonChildAdded'})
+                    end
+                    RivalsCosmeticsState.BoundFirstPersonModels = false
+                    RivalsCosmeticsState.BindingFirstPersonModels = false
+                    return true
+                end
                 if RivalsCosmeticsState.BoundFirstPersonModels then
                     return true
                 end
@@ -28715,12 +28987,17 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.OnlyUseFavoritesByWeapon = {}
                 RivalsCosmeticsState.NativeCosmeticsController = nil
                 RivalsCosmeticsState.NativeCosmeticsControllerSource = nil
+                RivalsCosmeticsState.NativeCosmeticsControllerLastScan = 0
+                RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration =
+                    (RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration or 0) + 1
+                RivalsCosmeticsState.NativeCosmeticsSnapshotController = nil
                 RivalsCosmeticsState.UnlockOnlyMode = true
                 RivalsCosmeticsState.NativeCosmeticsRuntimeWasEnabled = nil
                 RivalsCosmeticsState.NativeCosmeticsRuntimeApplied = false
                 RivalsCosmeticsState.NativeUnlockerWasEnabled = nil
                 RivalsCosmeticsState.NativeUnlockerApplied = false
                 RivalsCosmeticsState.NativeCosmeticsConfig = nil
+                RivalsCosmeticsState.NativeCosmeticsConfigSetterOwner = nil
                 RivalsCosmeticsState.NativeCosmeticsConfigOriginalTypes = nil
                 RivalsCosmeticsState.NativeCosmeticsConfigOriginalRarities = nil
                 RivalsCosmeticsState.NativeCosmeticsConfigApplied = false
@@ -28776,6 +29053,26 @@ ErrorReporter.set_game(GameName)
                 -- Unlock-only semantics: do not choose or override any equipped cosmetic.
                 RivalsCosmeticsState.UnlockOnlyMode = true
                 RivalsCosmeticsState.NativeUnlockedInventory = nil
+                if RivalsCosmeticsState.BoundFirstPersonModels and Connections then
+                    pcall(Connections.disconnect, Connections, {'Cosmetics_FirstPersonChildAdded'})
+                    RivalsCosmeticsState.BoundFirstPersonModels = false
+                end
+
+                -- ApplyAll is intentionally called from several lifecycle points. For the
+                -- unlock-only path it must become a cheap no-op after the first successful
+                -- native installation; rebuilding the catalog on every weapon switch is the
+                -- main source of the observed FPS drop.
+                if RivalsCosmeticsState.NativeCosmeticsRuntimeApplied
+                    and RivalsCosmeticsState.NativeUnlockerApplied
+                    and RivalsCosmeticsState.NativeCosmeticsConfigApplied
+                    and RivalsCosmetics.NativeUnlockStateMatchesDesired() then
+                    RivalsCosmeticsState.LastApplyResults = {
+                        ApplyNativeCosmeticsRuntime = true,
+                        IdempotentFastPath = true,
+                    }
+                    return true
+                end
+
                 local results = {}
                 local function safeApply(name, fn)
                     if type(fn) ~= 'function' then
@@ -29117,6 +29414,9 @@ ErrorReporter.set_game(GameName)
             end
 
             function RivalsCosmetics.ApplyCosmeticMultiUi()
+                if RivalsCosmeticsState.UnlockOnlyMode == true then
+                    return false
+                end
                 if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then
                     return false
                 end
@@ -29218,6 +29518,9 @@ ErrorReporter.set_game(GameName)
             end
 
             function RivalsCosmetics.ClearCosmeticMultiUi()
+                if RivalsCosmeticsState.UnlockOnlyMode == true then
+                    return false
+                end
                 local weaponName = RivalsCosmetics.ResolveCurrentCosmeticUiWeapon()
                 if not weaponName then
                     return false
