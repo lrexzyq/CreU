@@ -22981,6 +22981,10 @@ ErrorReporter.set_game(GameName)
             end
             RivalsRuntimeBridge.RegisterAutoQueuePlayAgainSignals = RivalsAutoQueue.RegisterPlayAgainSignals
             end
+            -- Cosmetic registries are consumed by the later UI block; keep these in the
+            -- enclosing initializer scope instead of the inner cosmetic `do` block.
+            local RivalsCosmetics
+            local RivalsEmotes
             do
             local DEFAULT_RIVALS_COSMETIC_VALUE = 'Default'
             local RIVALS_COSMETIC_UNSELECTED = 'Unselected'
@@ -22992,7 +22996,7 @@ ErrorReporter.set_game(GameName)
             local RIVALS_RANK_CHARM_OFF = 'Off'
             local RIVALS_RANK_CHARM_STATE_OPTION_ID = 'P5RANK_STATE'
             local RIVALS_FAVORITES_STATE_OPTION_ID = 'P5FAVORITES_STATE'
-            local RivalsCosmetics = {
+            RivalsCosmetics = {
                 Catalog = {},
                 SkinOptionIdsByWeapon = {},
                 WrapOptionIdsByWeapon = {},
@@ -23013,7 +23017,7 @@ ErrorReporter.set_game(GameName)
                 FavoriteKinds = {'Skin', 'Wrap', 'Charm'},
                 CosmeticPresetPath = 'KiciaHook/RIVALS Cosmetic Presets.json',
             }
-            local RivalsEmotes = {
+            RivalsEmotes = {
                 Catalog = {},
             }
             function RivalsCosmetics.IsCosmeticValueSelected(value)
