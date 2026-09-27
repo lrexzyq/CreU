@@ -19524,6 +19524,11 @@ ErrorReporter.set_game(GameName)
                 return Char, HumanoidRootPart, Humanoid
             end
             end
+            -- Shared cosmetic registries/state must outlive the inner implementation
+            -- block because the UI is declared later in the same initializer scope.
+            local RivalsCosmetics
+            local RivalsEmotes
+            local RivalsCosmeticsState
             do
             local RivalsRagebot = {
                 RespawnRequestInterval = 1,
@@ -19610,7 +19615,7 @@ ErrorReporter.set_game(GameName)
                 ConfigName = nil,
                 RefreshingDropdownValues = 0,
             }
-            local RivalsCosmeticsState = {
+            RivalsCosmeticsState = {
                 PlayerDataHooked = false,
                 ItemDataHooked = false,
                 RefreshingDropdownValues = 0,
@@ -22981,10 +22986,8 @@ ErrorReporter.set_game(GameName)
             end
             RivalsRuntimeBridge.RegisterAutoQueuePlayAgainSignals = RivalsAutoQueue.RegisterPlayAgainSignals
             end
-            -- Cosmetic registries are consumed by the later UI block; keep these in the
-            -- enclosing initializer scope instead of the inner cosmetic `do` block.
-            local RivalsCosmetics
-            local RivalsEmotes
+            -- Cosmetic registry assignments live in this implementation block; the
+            -- declarations themselves are in the enclosing initializer scope above.
             do
             local DEFAULT_RIVALS_COSMETIC_VALUE = 'Default'
             local RIVALS_COSMETIC_UNSELECTED = 'Unselected'
