@@ -1438,7 +1438,48 @@ return {
                 if math.abs(dir.Unit.Y) > 0.999 then
                     up = Vector3.new(0, 0, 1)
                 end
-                return CFrame.lookAt(fromPos, toPos, up)
+                local ok, result = pcall(CFrame.lookAt, fromPos, toPos, up)
+                if not ok or typeof(result) ~= 'CFrame' then
+                    return nil
+                end
+                return result
+            end
+
+            local function validCombatCFrame(cf)
+                if typeof(cf) ~= 'CFrame' then
+                    return false
+                end
+                local components = {cf:GetComponents()}
+                for i = 1, #components do
+                    local value = components[i]
+                    if type(value) ~= 'number' or value ~= value or math.abs(value) > 1000000 then
+                        return false
+                    end
+                end
+                return shotFiniteVector3(cf.Position)
+            end
+
+            local function saneCombatCFrame(cf, fallback)
+                if not validCombatCFrame(cf) then
+                    if validCombatCFrame(fallback) then
+                        return fallback
+                    end
+                    return nil
+                end
+
+                -- A zero-origin combat pose is almost always a stale/uninitialised pose.
+                -- Do not let it replace a clearly valid live client position. An actually
+                -- playable map position at the exact origin is preserved by using a tiny epsilon.
+                if validCombatCFrame(fallback) then
+                    local p = cf.Position
+                    local fp = fallback.Position
+                    local nearZero = math.abs(p.X) <= 0.001 and math.abs(p.Y) <= 0.001 and math.abs(p.Z) <= 0.001
+                    local fallbackAway = math.abs(fp.X) > 0.5 or math.abs(fp.Y) > 0.5 or math.abs(fp.Z) > 0.5
+                    if nearZero and fallbackAway then
+                        return fallback
+                    end
+                end
+                return cf
             end
             local eyeRiseParams = nil
             local function eyeRise(fromPos, targetCharacter)
@@ -1544,6 +1585,17 @@ return {
                 if eyeCF == nil or muzzleCF == nil then
                     return false
                 end
+                local localFighter = resolveLocalFighter()
+                local liveItem = localFighter and runtimeEquippedItem(localFighter) or nil
+                if liveItem == nil then
+                    return false
+                end
+                if itemObjectId(liveItem) ~= objectId then
+                    return false
+                end
+                if not finalGunGate(liveItem, hitboxHead, eyeCF.Position) then
+                    return false
+                end
 
                 local finalAimWorldPos
                 if glued then
@@ -1606,7 +1658,11 @@ return {
                 else
                     payload = { ['\1'] = inner }
                 end
-                return pcall(rbFireServerNative, remote, objectId, token, payload, nil)
+                local sendOk = pcall(rbFireServerNative, remote, objectId, token, payload, nil)
+                if sendOk then
+                    State.RageLastFireTime = os.clock()
+                end
+                return sendOk
             end
             local function withThreadIdentity2(fn)
                 if type(fn) ~= 'function' then
@@ -1677,7 +1733,7 @@ return {
                 if callResult == false then
                     return false
                 end
-                if callResult == true then
+                if callResult == true or callResult == nil then
                     return true
                 end
 
@@ -1702,11 +1758,20 @@ return {
                         if invokeMeleeMethod(item, 'HeavyAttack', eyeCF, muzzleCF, hitData) then
                             return true
                         end
+                        if invokeMeleeMethod(item, 'HeavyAttack', hitData) then
+                            return true
+                        end
+                        if invokeMeleeMethod(item, 'HeavyAttack', aimWorldPos) then
+                            return true
+                        end
                     elseif not heavy and type(item.Attack) == 'function' then
                         if type(item.StartShooting) == 'function' then
                             pcall(item.StartShooting, item, aimWorldPos)
                         end
                         if invokeMeleeMethod(item, 'Attack', aimWorldPos) then
+                            return true
+                        end
+                        if invokeMeleeMethod(item, 'Attack', hitData) then
                             return true
                         end
                         if invokeMeleeMethod(item, 'Attack', eyeCF, muzzleCF, hitData) then
@@ -1871,6 +1936,83 @@ return {
                 end
                 return false
             end
+            Setting.RAGE_FIRE_MAX_RANGE = 395.0
+            Setting.RAGE_MIN_FIRE_INTERVAL = 0.03
+            local function isLocalRuntimeItem(item)
+                if item == nil then return false end
+                local fighter = resolveLocalFighter()
+                local equipped = fighter and runtimeEquippedItem(fighter) or nil
+                if equipped == item then
+                    return true
+                end
+                local itemId = itemObjectId(item)
+                local equippedId = itemObjectId(equipped)
+                if itemId ~= nil and equippedId ~= nil and itemId == equippedId then
+                    return true
+                end
+                return itemIsEquipped(item)
+            end
+            local function finalGunLos(fromPos, hitboxHead)
+                if typeof(fromPos) ~= 'Vector3' or hitboxHead == nil or hitboxHead.Parent == nil then
+                    return false
+                end
+                local toPos = hitboxHead.Position
+                if not shotFiniteVector3(fromPos) or not shotFiniteVector3(toPos) then
+                    return false
+                end
+                local model = hitboxHead:FindFirstAncestorOfClass('Model')
+                local params = RaycastParams.new()
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                params.FilterDescendantsInstances = { GetChar() }
+                local hit = WorkspaceRB:Raycast(fromPos, toPos - fromPos, params)
+                if hit == nil then
+                    return true
+                end
+                if hit.Instance == hitboxHead then
+                    return true
+                end
+                if model ~= nil and hit.Instance ~= nil and hit.Instance:IsDescendantOf(model) then
+                    return true
+                end
+                return false
+            end
+            local function finalGunGate(item, hitboxHead, shotOrigin)
+                if item == nil or hitboxHead == nil or hitboxHead.Parent == nil then
+                    return false
+                end
+                local info = itemInfo(item)
+                if info == nil or itemType(item) ~= 'Gun' then
+                    return false
+                end
+                if not isLocalRuntimeItem(item) or itemIsReloading(item) or itemAmmo(item) <= 0 then
+                    return false
+                end
+                local root = GetRoot()
+                local origin = typeof(shotOrigin) == 'Vector3' and shotOrigin or (root and root.Position or nil)
+                if origin == nil or not shotFiniteVector3(origin) then
+                    return false
+                end
+                local distance = (origin - hitboxHead.Position).Magnitude
+                if distance ~= distance or distance > Setting.RAGE_FIRE_MAX_RANGE then
+                    return false
+                end
+                if not finalGunLos(origin, hitboxHead) then
+                    return false
+                end
+                local now = os.clock()
+                local last = tonumber(State.RageLastFireTime) or -math.huge
+                local shootCooldown = type(rawget(info, 'ShootCooldown')) == 'number' and rawget(info, 'ShootCooldown') or Setting.RAGE_MIN_FIRE_INTERVAL
+                local minInterval = math.max(Setting.RAGE_MIN_FIRE_INTERVAL, shootCooldown)
+                if now - last < minInterval then
+                    return false
+                end
+                local runtimeCooldown = rawget(item, '_shoot_cooldown')
+                if type(runtimeCooldown) == 'number' and runtimeCooldown > tick() then
+                    return false
+                end
+                return true
+            end
+
             local function equipItem(item, index, fighter)
                 if item == nil or index == nil then
                     return false
@@ -2067,18 +2209,43 @@ return {
                 return ok
             end
             function RootDesync:SetServerCFrame(cf)
+                if cf == nil then
+                    self._cframe = nil
+                    return true
+                end
+                if not validCombatCFrame(cf) then
+                    self._cframe = nil
+                    return false
+                end
                 self._cframe = cf
+                return true
             end
             function RootDesync:GetServerCFrame()
                 return self._cframe or self._rootPart.CFrame
             end
             function RootDesync:GetClientCFrame()
-                return self._oldCFrame or self._rootPart.CFrame
+                local rootPart = self._rootPart
+                local current = rootPart and rootPart.Parent and rootPart.CFrame or nil
+                local old = self._oldCFrame
+                if old ~= nil and current ~= nil and validCombatCFrame(current) then
+                    local op = old.Position
+                    local cp = current.Position
+                    local oldZero = math.abs(op.X) <= 0.001 and math.abs(op.Y) <= 0.001 and math.abs(op.Z) <= 0.001
+                    local curAway = math.abs(cp.X) > 0.5 or math.abs(cp.Y) > 0.5 or math.abs(cp.Z) > 0.5
+                    if oldZero and curAway then
+                        return current
+                    end
+                end
+                return old or current
             end
             function RootDesync:HeartbeatUpdate()
                 local rootPart = self._rootPart
                 local cf = self._cframe
                 if rootPart == nil or rootPart.Parent == nil or cf == nil then
+                    return false
+                end
+                if not validCombatCFrame(cf) then
+                    self._cframe = nil
                     return false
                 end
                 if self._oldCFrame == nil then
@@ -2425,9 +2592,19 @@ local CharacterController = {}
                 }, CharacterController)
             end
             function CharacterController:SetServerCFrame(cf)
-                if self._rootDesync then
-                    self._rootDesync:SetServerCFrame(cf)
+                if not self._rootDesync then
+                    return false
                 end
+                if cf == nil then
+                    return self._rootDesync:SetServerCFrame(nil)
+                end
+                local fallback = self:GetClientCFrame()
+                local safe = saneCombatCFrame(cf, fallback)
+                if safe == nil then
+                    self._rootDesync:SetServerCFrame(nil)
+                    return false
+                end
+                return self._rootDesync:SetServerCFrame(safe)
             end
             function CharacterController:GetClientCFrame()
                 return self._rootDesync and self._rootDesync:GetClientCFrame() or nil
@@ -2644,18 +2821,24 @@ local CharacterController = {}
             function PartGlue:Free(ourPart)
                 if ourPart == nil then return end
                 local binding = self._bindings[ourPart]
-                if binding == nil then
+                local previous = self._previousRepRoot[ourPart]
+                if binding ~= nil then
+                    self._bindings[ourPart] = nil
+                    local bound = type(binding) == 'table' and binding.hitbox or binding
+                    if bound ~= nil then
+                        self:_ReleaseGlue(bound)
+                    end
+                end
+                if previous == nil then
+                    self._previousRepRoot[ourPart] = nil
                     return
                 end
-                self._bindings[ourPart] = nil
-                local bound = type(binding) == 'table' and binding.hitbox or binding
-                if bound ~= nil then
-                    self:_ReleaseGlue(bound)
-                end
-                local previous = self._previousRepRoot[ourPart]
-                self._previousRepRoot[ourPart] = nil
-                if previous ~= nil then
-                    self:_SetRepRoot(ourPart, previous)
+                local restored = self:_SetRepRoot(ourPart, previous)
+                if restored then
+                    self._previousRepRoot[ourPart] = nil
+                else
+                    -- Keep the restore record so a later mode switch/cleanup gets another chance.
+                    self._previousRepRoot[ourPart] = previous
                 end
             end
             function PartGlue:Destroy()
@@ -2707,10 +2890,8 @@ local CharacterController = {}
                         theirEnvironmentId = character:GetAttribute('EnvironmentID')
                     end
                 end
-                if localEnvironmentId ~= nil then
-                    if theirEnvironmentId == nil or localEnvironmentId ~= theirEnvironmentId then
-                        return false
-                    end
+                if localEnvironmentId ~= nil and theirEnvironmentId ~= nil and localEnvironmentId ~= theirEnvironmentId then
+                    return false
                 end
                 local localTeamId = LPRB:GetAttribute('TeamID')
                 local theirTeamId = player:GetAttribute('TeamID')
@@ -2789,12 +2970,16 @@ local CharacterController = {}
                 end
                 entry.hacker = false
                 entry.equippedGunProjectile = false
+                entry.equippedAmmoState = nil
                 do
                     local equipped = runtimeEquippedItem(entry.fighter)
                     local equippedInfo = equipped and itemInfo(equipped) or nil
                     local equippedType = equippedInfo and rawget(equippedInfo, 'Type') or nil
-                    if equipped ~= nil and equippedType == 'Gun' and itemIsRaycast(equipped) ~= true then
-                        entry.equippedGunProjectile = true
+                    if equipped ~= nil and equippedType == 'Gun' then
+                        entry.equippedAmmoState = itemAmmo(equipped) > 0
+                        if itemIsRaycast(equipped) ~= true then
+                            entry.equippedGunProjectile = true
+                        end
                     end
                 end
                 local rageHackerCheck = RivalsRuntimeBridge and RivalsRuntimeBridge.IsRageHacker
@@ -3163,8 +3348,25 @@ local CharacterController = {}
             end
             function KiciaRagebot.itemIsMeleeLuaHook(item)
                 if item == nil then return false end
+                local explicitType = itemType(item)
+                if explicitType == 'Melee' then
+                    return true
+                end
+                if explicitType == 'Gun' then
+                    return false
+                end
                 local info = itemInfo(item)
-                return type(info) == 'table' and rawget(info, 'MaxAmmo') == nil
+                if type(info) ~= 'table' then
+                    return type(item.Attack) == 'function' or type(item.HeavyAttack) == 'function'
+                end
+                local infoType = rawget(info, 'Type')
+                if infoType == 'Melee' then
+                    return true
+                end
+                if infoType == 'Gun' then
+                    return false
+                end
+                return rawget(info, 'MaxAmmo') == nil
             end
             function KiciaRagebot.normalizedItemName(item)
                 if item == nil then return '' end
@@ -3372,6 +3574,7 @@ local CharacterController = {}
                 if not KiciaRagebot.isFiniteVector3(flank) or KiciaRagebot.ragePosIsOOB(flank) or not KiciaRagebot.rageHasLOS(flank, hitboxHead.Position, ignore) then return nil end
                 return flank, shield and 'Anti-riot' or (katana and 'Katana flank' or 'Shield flank')
             end
+            Setting.KNIFE_SERVER_TP_DIST = 3.5
             function KiciaRagebot.knifeBackstabPointRuntime(target, hitPart, ourRootPart)
                 if target == nil or target.model == nil or hitPart == nil then return nil end
                 if hitPart.Parent == nil or not hitPart:IsA('BasePart') then return nil end
@@ -3387,22 +3590,46 @@ local CharacterController = {}
 
                 local look = targetRoot.CFrame.LookVector
                 look = Vector3.new(look.X, 0, look.Z)
-                local dir
-                if look.Magnitude >= 1e-3 then
-                    dir = -look.Unit
-                else
+                if look.Magnitude < 1e-3 then
                     local attackerRoot = ourRootPart or GetRoot()
                     local delta = attackerRoot and attackerRoot.Position - targetRoot.Position or Vector3.zero
                     delta = Vector3.new(delta.X, 0, delta.Z)
-                    dir = delta.Magnitude >= 1e-3 and delta.Unit or Vector3.new(0, 0, -1)
+                    if delta.Magnitude >= 1e-3 then
+                        look = (-delta).Unit
+                    else
+                        look = Vector3.new(0, 0, -1)
+                    end
+                else
+                    look = look.Unit
                 end
 
-                -- Knife TP is intentionally zero-offset: target hitbox position + (0,0,0).
-                local candidate = hitPart.Position
+                -- The knife attack pose is the actual temporary server TP point.
+                -- Keep the client camera/root at its old position until the swing itself.
+                local distance = math.clamp(tonumber(Setting.KNIFE_SERVER_TP_DIST) or 3.5, 2.05, 4.95)
+                local candidate = targetRoot.Position - look * distance + Vector3.new(0, 0.6, 0)
+
+                -- If geometry blocks the ideal point, pull the TP point toward the target while
+                -- preserving the legal 2-5 stud backstab band whenever possible.
+                local rayParams = RaycastParams.new()
+                rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                rayParams.FilterDescendantsInstances = { target.model, GetChar() }
+                local ray = WorkspaceRB:Raycast(targetRoot.Position + Vector3.new(0, 0.6, 0), -look * distance, rayParams)
+                if ray ~= nil and ray.Instance ~= nil then
+                    local blockedDistance = (ray.Position - (targetRoot.Position + Vector3.new(0, 0.6, 0))).Magnitude
+                    local safeDistance = math.clamp(blockedDistance - 0.35, 2.05, 4.95)
+                    candidate = targetRoot.Position - look * safeDistance + Vector3.new(0, 0.6, 0)
+                end
+
                 if not KiciaRagebot.isFiniteVector3(candidate) then
                     return nil
                 end
-                return candidate, 'Backstab', dir
+                local actualDistance = (candidate - targetRoot.Position).Magnitude
+                if actualDistance < 2.0 or actualDistance > 5.0 then
+                    return nil
+                end
+                local attackDir = (targetRoot.Position - candidate)
+                attackDir = attackDir.Magnitude > 1e-3 and attackDir.Unit or (-look)
+                return candidate, 'BackstabTP', attackDir
             end
 function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 if target == nil then return nil end
@@ -3967,6 +4194,14 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 end
             end
             function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire)
+                local currentGumMode = KiciaRagebot.rageGumMode()
+                if currentGumMode == 'off' then
+                    -- Hard guarantee: off means no glue state and no PhysicsRepRootPart binding.
+                    self:ClearGlue()
+                    if self._partGlue ~= nil and ourRootPart ~= nil then
+                        pcall(function() self._partGlue:Free(ourRootPart) end)
+                    end
+                end
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
                 if hitboxHead == nil then
                     self:ClearGlue()
@@ -3982,11 +4217,11 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return ourRootPart.CFrame, nil
                 end
 
-                State.RageGumMode = KiciaRagebot.rageGumMode()
+                State.RageGumMode = currentGumMode
                 State.RageGumVoidFire = false
                 local void
                 local glued = false
-                local gumMode = KiciaRagebot.rageGumMode()
+                local gumMode = currentGumMode
                 if gumMode == 'off' then
                     self:ClearGlue()
                     local base = aimHeadPosition + offset
@@ -4069,6 +4304,9 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     local liveGum = KiciaRagebot.rageGumMode()
                     if liveGum == 'off' then
                         self:ClearGlue()
+                        if self._partGlue ~= nil and ourRootPart ~= nil then
+                            pcall(function() self._partGlue:Free(ourRootPart) end)
+                        end
                         liveVoid = CFrame.new(liveAimPosition + offset)
                     else
                         local okBind, result, bound = pcall(function()
@@ -4186,7 +4424,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
 
             function MeleeStrategy.new(partGlue)
                 return setmetatable({
-                    _partGlue = partGlue,
+                    -- Melee/knife has its own position + attack path. It must never acquire PartGlue.
+                    _partGlue = nil,
                     _shootLock = ShootLock.new(),
                     _hitboxWindowUntil = -1,
                     _attackCooldown = -1,
@@ -4208,20 +4447,22 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
 
                 local info = itemInfo(item)
                 if type(info) == 'table' then
-                    if rawget(info, 'MaxAmmo') ~= nil then
-                        return nil
-                    end
-
-                    local heavy = rawget(info, 'CriticalDamage') ~= nil
-                        and type(rawget(info, 'HeavyAttackCooldown')) == 'number'
+                    local explicitType = rawget(info, 'Type')
                     local knife = false
                     if type(KiciaRagebot.isLocalKnifeRuntime) == 'function' then
                         local okKnife, resultKnife = pcall(KiciaRagebot.isLocalKnifeRuntime, item)
                         knife = okKnife and resultKnife == true
                     end
+                    -- Knife identity wins over stale/misclassified gun fields such as MaxAmmo.
+                    if not knife and explicitType ~= 'Melee' then
+                        local hasAttackMethod = type(item.Attack) == 'function' or type(item.HeavyAttack) == 'function'
+                        if explicitType == 'Gun' or (rawget(info, 'MaxAmmo') ~= nil and not hasAttackMethod) then
+                            return nil
+                        end
+                    end
 
-
-
+                    local heavy = rawget(info, 'CriticalDamage') ~= nil
+                        and type(rawget(info, 'HeavyAttackCooldown')) == 'number'
 
                     return { heavy = heavy or knife, knife = knife }
                 end
@@ -4372,21 +4613,23 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 return distance >= Setting.KNIFE_BACKSTAB_MIN_RANGE and distance <= Setting.KNIFE_BACKSTAB_MAX_RANGE
             end
 
-            local function knifeBackstabStageCFrame(targetRootPart)
-                if targetRootPart == nil or not targetRootPart.Parent then
+            local function knifeBackstabStageCFrame(target, hitPart, ourRootPart)
+                if target == nil or target.model == nil or hitPart == nil then
                     return nil
                 end
-                local look = Vector3.new(targetRootPart.CFrame.LookVector.X, 0, targetRootPart.CFrame.LookVector.Z)
-                if look.Magnitude < 1e-3 then
+                local stagePos = KiciaRagebot.knifeBackstabPointRuntime(target, hitPart, ourRootPart)
+                if stagePos == nil or not KiciaRagebot.isFiniteVector3(stagePos) or KiciaRagebot.ragePosIsOOB(stagePos) then
                     return nil
                 end
-                look = look.Unit
-                local distance = (Setting.KNIFE_BACKSTAB_MIN_RANGE + Setting.KNIFE_BACKSTAB_MAX_RANGE) * 0.5
-                local stagePos = targetRootPart.Position - look * distance + Vector3.new(0, 0.6, 0)
-                if not KiciaRagebot.isFiniteVector3(stagePos) or KiciaRagebot.ragePosIsOOB(stagePos) then
+                local targetPos = hitPart.Position
+                if not KiciaRagebot.isFiniteVector3(targetPos) then
                     return nil
                 end
-                return CFrame.new(stagePos, targetRootPart.Position)
+                local stageCF = CFrame.lookAt(stagePos, targetPos)
+                if typeof(stageCF) ~= 'CFrame' then
+                    return nil
+                end
+                return stageCF
             end
 
             local function resolveMeleeAttackPose(profile, hitPart, targetRootPart, target, ourRootPart)
@@ -4415,7 +4658,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 return attackPos, aimPos, attackDir
             end
 
-            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, fallbackAttackDir, snapshotState)
+            function MeleeStrategy:_BuildWeaponAction(target, actionItem, profile, fallbackHitPart, fallbackRoot, aim1, aim2, fallbackAttackDir, snapshotState, characterController)
                 return function()
                     local liveFighter = resolveLocalFighter()
                     local runtimeItem = liveFighter and runtimeEquippedItem(liveFighter) or nil
@@ -4433,17 +4676,39 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     local liveHitPart, liveRoot = resolveLiveMeleeTarget(target)
                     if liveProfile.knife and snapshotState and snapshotState.rangeVerified ~= true then
                         snapshotState.cancel = true
-                        State.RageKnifeStatus = 'Knife range gate missing'
+                        State.RageKnifeStatus = 'Knife server range gate missing'
                         return false
+                    end
+                    if liveProfile.knife then
+                        local serverPose = snapshotState and snapshotState.serverAttackCF or nil
+                        if typeof(serverPose) ~= 'CFrame' or not KiciaRagebot.isFiniteVector3(serverPose.Position) then
+                            if snapshotState then snapshotState.cancel = true end
+                            State.RageKnifeStatus = 'Knife server TP pose missing'
+                            return false
+                        end
+                        local serverDistance = (serverPose.Position - liveRoot.Position).Magnitude
+                        if serverDistance < Setting.KNIFE_BACKSTAB_MIN_RANGE or serverDistance > Setting.KNIFE_BACKSTAB_MAX_RANGE then
+                            if snapshotState then snapshotState.cancel = true end
+                            State.RageKnifeStatus = 'Knife server TP failed 2-5 studs'
+                            return false
+                        end
                     end
                     local snapshotHitPart = snapshotState and snapshotState.hitPart or nil
                     local snapshotAttackPos = snapshotState and snapshotState.attackPos or nil
                     if snapshotHitPart ~= nil then
                         if liveHitPart ~= snapshotHitPart then
-                            State.RageKnifeStatus = 'melee hit part changed'
-                            return false
+                            local snapshotModel = snapshotHitPart:FindFirstAncestorOfClass('Model')
+                            local liveModel = liveHitPart and liveHitPart:FindFirstAncestorOfClass('Model') or nil
+                            if snapshotModel == nil or liveModel ~= snapshotModel then
+                                State.RageKnifeStatus = 'melee hit part changed'
+                                return false
+                            end
+                            if snapshotState then
+                                snapshotState.hitPart = liveHitPart
+                            end
+                        else
+                            liveHitPart = snapshotHitPart
                         end
-                        liveHitPart = snapshotHitPart
                     elseif liveHitPart == nil then
                         liveHitPart, liveRoot = fallbackHitPart, fallbackRoot
                     end
@@ -4454,7 +4719,33 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
 
                     local liveAttackPos, liveAimPos, liveAttackDir
                     if liveProfile.knife then
-                        liveAttackPos, liveAimPos, liveAttackDir = resolveMeleeAttackPose(liveProfile, liveHitPart, liveRoot, target, GetRoot())
+                        local serverPose = snapshotState and snapshotState.serverAttackCF or nil
+                        if typeof(serverPose) ~= 'CFrame' or not validCombatCFrame(serverPose) then
+                            if snapshotState then snapshotState.cancel = true end
+                            State.RageKnifeStatus = 'Knife TP snapshot invalid'
+                            return false
+                        end
+                        local currentDistance = (serverPose.Position - liveRoot.Position).Magnitude
+                        if currentDistance < Setting.KNIFE_BACKSTAB_MIN_RANGE or currentDistance > Setting.KNIFE_BACKSTAB_MAX_RANGE then
+                            if snapshotState then snapshotState.cancel = true end
+                            State.RageKnifeStatus = 'Knife TP snapshot outside 2-5 studs'
+                            return false
+                        end
+                        local targetDelta = liveHitPart.Position - serverPose.Position
+                        if not KiciaRagebot.isFiniteVector3(targetDelta) or targetDelta.Magnitude < 1e-3 then
+                            if snapshotState then snapshotState.cancel = true end
+                            State.RageKnifeStatus = 'Knife TP snapshot target invalid'
+                            return false
+                        end
+                        local facingDot = serverPose.LookVector:Dot(targetDelta.Unit)
+                        if facingDot < 0.10 then
+                            if snapshotState then snapshotState.cancel = true end
+                            State.RageKnifeStatus = 'Knife TP snapshot facing invalid'
+                            return false
+                        end
+                        liveAttackPos = serverPose.Position
+                        liveAimPos = liveHitPart.Position
+                        liveAttackDir = targetDelta.Unit
                     elseif snapshotAttackPos ~= nil then
                         liveAttackPos = snapshotAttackPos
                         liveAimPos = liveHitPart.Position
@@ -4495,6 +4786,27 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     State.RageFireHitPart = liveHitPart
                     State.RageFireStamp = tick()
 
+                    local knifeServerPoseApplied = false
+                    local function restoreKnifeServerPose()
+                        if not knifeServerPoseApplied then return end
+                        knifeServerPoseApplied = false
+                        if characterController ~= nil then
+                            pcall(function()
+                                characterController:RestoreNow()
+                                characterController:SetServerCFrame(nil)
+                            end)
+                        end
+                    end
+
+                    if liveProfile.knife and characterController ~= nil and snapshotState ~= nil then
+                        local serverPose = snapshotState.serverAttackCF
+                        if typeof(serverPose) == 'CFrame' then
+                            characterController:SetServerCFrame(serverPose)
+                            pcall(function() characterController:HeartbeatUpdate() end)
+                            knifeServerPoseApplied = true
+                        end
+                    end
+
                     local bypassHeavy = false
                     if liveProfile.knife and togValue('P4S1T8', false) and optValue('P4S1D2', 'Riot') == 'Knife' and type(liveItem.HeavyAttack) == 'function' then
                         pcall(function()
@@ -4518,6 +4830,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         self:_RecordBackstab()
                         State.RageKnifeSwings = (State.RageKnifeSwings or 0) + 1
                         State.Shots = (State.Shots or 0) + 1
+                        restoreKnifeServerPose()
                         return true
                     end
 
@@ -4526,6 +4839,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     end)
                     if not ok then
                         State.RageKnifeStatus = 'melee error: ' .. tostring(result)
+                        restoreKnifeServerPose()
                         return false
                     end
                     if result == true then
@@ -4545,9 +4859,11 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         end
                         State.RageKnifeSwings = (State.RageKnifeSwings or 0) + 1
                         State.Shots = (State.Shots or 0) + 1
+                        restoreKnifeServerPose()
                         return true
                     end
                     State.RageKnifeStatus = 'melee send failed'
+                    restoreKnifeServerPose()
                     return false
                 end
             end
@@ -4595,22 +4911,20 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 end
 
                 if profile.knife and now < self._attackCooldown then
-                    State.RageKnifeStatus = string.format('Knife retreat %.2fs', self._attackCooldown - now)
-                    local retreat = knifeRetreatCFrame(target, ourRootPart)
-                    if retreat ~= nil then
-                        return retreat, nil, nil, true, nil
-                    end
-                    return meleeFarMiss(), nil, nil, true, nil
+                    State.RageKnifeStatus = string.format('Knife cooldown %.2fs', self._attackCooldown - now)
+                    -- Never move the visible client/root during the knife cooldown.
+                    return ourRootPart.CFrame, nil, nil, true, nil
                 end
 
-                if profile.knife and not knifeBackstabInRange(ourRootPart, targetRootPart) then
-                    State.RageKnifeStatus = 'Knife returning to 2-5 studs'
-                    self._knifePendingStart = false
-                    local stageCF = knifeBackstabStageCFrame(targetRootPart)
-                    if stageCF ~= nil then
-                        return stageCF, nil, nil, true, nil
+                if profile.knife then
+                    -- The 2-5 stud position is generated for the server TP at swing time only.
+                    -- Plan itself never moves the visible client/root into the backstab window.
+                    if knifeBackstabStageCFrame(target, hitPart, ourRootPart) == nil then
+                        State.RageKnifeStatus = 'Knife server TP point unavailable'
+                        self._knifePendingStart = false
+                        return ourRootPart.CFrame, nil, nil, true, nil
                     end
-                    return ourRootPart.CFrame, nil, nil, true, nil
+                    State.RageKnifeStatus = 'Knife armed: TP -> backstab'
                 end
 
                 local attackPos, aimPos, attackDir = resolveMeleeAttackPose(profile, hitPart, targetRootPart, target, ourRootPart)
@@ -4628,7 +4942,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
 
                 local weaponAction = nil
                 local preFireRefresh = nil
-                local finalMeleeSnapshot = { hitPart = nil, attackPos = nil }
+                local finalMeleeSnapshot = { hitPart = nil, attackPos = nil, serverAttackCF = nil }
 
                 if profile.knife then
                     if not self._shootLock:ShouldFire(canFire == true, Setting.KNIFE_SWING_INTERVAL) then
@@ -4636,9 +4950,9 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     end
                     self._knifePendingStart = true
                     self._lastKnifeSwingAt = -math.huge
-                    finalMeleeSnapshot.returnCF = ourRootPart.CFrame
+                    finalMeleeSnapshot.returnCF = saneCombatCFrame(ourRootPart.CFrame, characterController and characterController:GetClientCFrame() or ourRootPart.CFrame) or ourRootPart.CFrame
                     finalMeleeSnapshot.cancel = false
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, attackDir, finalMeleeSnapshot)
+                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, nil, nil, attackDir, finalMeleeSnapshot, characterController)
                 else
                     if not self._shootLock:ShouldFire(canFire == true, math.max(dt or 0, 0) * Setting.ShootFrames()) then
                         return meleeFarMiss(), nil, nil, true, nil
@@ -4647,7 +4961,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     local meleePitch, meleeYaw, meleeRoll = attackCF:ToOrientation()
                     local aim1 = buildAim(AIM_ABOVE_ORIGIN, meleePitch, meleeYaw, meleeRoll)
                     local aim2 = buildAim(AIM_ABOVE_END, meleePitch, meleeYaw, meleeRoll)
-                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, attackDir, finalMeleeSnapshot)
+                    weaponAction = self:_BuildWeaponAction(target, actionItem, profile, hitPart, targetRootPart, aim1, aim2, attackDir, finalMeleeSnapshot, characterController)
                 end
 
                 if weaponAction == nil then
@@ -4670,20 +4984,40 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         return restoreCF
                     end
 
-                    if profile.knife and not knifeBackstabInRange(GetRoot(), liveRoot) then
-                        finalMeleeSnapshot.cancel = true
-                        finalMeleeSnapshot.rangeVerified = false
-                        self._knifePendingStart = false
-                        State.RageKnifeStatus = 'Knife recheck failed 2-5 studs'
-                        local restoreCF = finalMeleeSnapshot.returnCF or characterController:GetClientCFrame()
-                        characterController:SetServerCFrame(restoreCF)
-                        return restoreCF
-                    end
+                    local liveAttackPos, _, liveAttackDir = resolveMeleeAttackPose(profile, liveHitPart, liveRoot, target, ourRootPart)
                     if profile.knife then
+                        local stageCF = knifeBackstabStageCFrame(target, liveHitPart, ourRootPart)
+                        if stageCF == nil then
+                            finalMeleeSnapshot.cancel = true
+                            finalMeleeSnapshot.rangeVerified = false
+                            finalMeleeSnapshot.serverAttackCF = nil
+                            self._knifePendingStart = false
+                            State.RageKnifeStatus = 'Knife server stage failed'
+                            local restoreCF = finalMeleeSnapshot.returnCF or characterController:GetClientCFrame()
+                            characterController:SetServerCFrame(restoreCF)
+                            return restoreCF
+                        end
+                        local serverDistance = (stageCF.Position - liveRoot.Position).Magnitude
+                        if serverDistance < Setting.KNIFE_BACKSTAB_MIN_RANGE or serverDistance > Setting.KNIFE_BACKSTAB_MAX_RANGE then
+                            finalMeleeSnapshot.cancel = true
+                            finalMeleeSnapshot.rangeVerified = false
+                            finalMeleeSnapshot.serverAttackCF = nil
+                            self._knifePendingStart = false
+                            State.RageKnifeStatus = 'Knife server stage outside 2-5 studs'
+                            local restoreCF = finalMeleeSnapshot.returnCF or characterController:GetClientCFrame()
+                            characterController:SetServerCFrame(restoreCF)
+                            return restoreCF
+                        end
+                        finalMeleeSnapshot.serverAttackCF = stageCF
                         finalMeleeSnapshot.rangeVerified = true
+                        -- The payload origin must be the exact same point that is used by the
+                        -- temporary server TP, otherwise the remote can see a mismatched pose.
+                        liveAttackPos = stageCF.Position
+                        liveAttackDir = (liveRoot.Position - liveAttackPos).Magnitude > 1e-3
+                            and (liveRoot.Position - liveAttackPos).Unit
+                            or stageCF.LookVector
                     end
 
-                    local liveAttackPos, _, liveAttackDir = resolveMeleeAttackPose(profile, liveHitPart, liveRoot, target, ourRootPart)
                     if liveAttackPos == nil or not KiciaRagebot.isFiniteVector3(liveAttackPos) then
                         finalMeleeSnapshot.cancel = true
                         local restoreCF = finalMeleeSnapshot.returnCF or characterController:GetClientCFrame()
@@ -4692,12 +5026,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     end
 
                     local liveCF = CFrame.new(liveAttackPos)
-                    if profile.knife then
-                        local driver = characterController._viewAngleDriver
-                        if type(driver) == 'table' and type(driver.SendSilentTarget) == 'function' then
-                            pcall(function() driver:SendSilentTarget(liveRoot, Setting.KNIFE_BACKSTAB_MAX_RANGE) end)
-                        end
-                    end
+                    -- Do not send a silent camera target for knife. The backstab is driven by
+                    -- the temporary server TP pose, not by moving/rotating the visible camera.
 
                     pcall(function()
                         local liveFighter = resolveLocalFighter()
@@ -4712,8 +5042,22 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     finalMeleeSnapshot.hitPart = liveHitPart
                     finalMeleeSnapshot.attackPos = liveAttackPos
                     attackCF = liveCF
-                    characterController:SetServerCFrame(liveCF)
-                    return liveCF
+
+                    -- Controller keeps the client's existing CFrame here. The actual 2-5 stud
+                    -- TP is applied only inside weaponAction immediately before the backstab.
+                    local stableReturnCF = finalMeleeSnapshot.returnCF
+                    if not validCombatCFrame(stableReturnCF) then
+                        stableReturnCF = characterController:GetClientCFrame()
+                    end
+                    if not validCombatCFrame(stableReturnCF) then
+                        finalMeleeSnapshot.cancel = true
+                        finalMeleeSnapshot.serverAttackCF = nil
+                        self._knifePendingStart = false
+                        return ourRootPart.CFrame
+                    end
+                    finalMeleeSnapshot.returnCF = stableReturnCF
+                    characterController:SetServerCFrame(nil)
+                    return stableReturnCF
                 end
 
                 return attackCF, nil, weaponAction, true, preFireRefresh
@@ -5022,12 +5366,18 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                 return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
             end
 function Controller:_ApplyPlan(plan, target, characterController, fighter)
-                local cframe = plan.cframe
+                local cframe = saneCombatCFrame(plan.cframe, characterController:GetClientCFrame())
                 local zShift = tonumber(plan.undergroundZShift) or 0
                 if cframe ~= nil and (zShift == 5 or zShift == -5) then
-                    cframe = CFrame.new(cframe.Position + Vector3.new(0, 0, zShift)) * cframe.Rotation
+                    cframe = saneCombatCFrame(CFrame.new(cframe.Position + Vector3.new(0, 0, zShift)) * cframe.Rotation, characterController:GetClientCFrame())
                 end
                 local deferCFrameUntilPreFire = plan.deferCFrameUntilPreFire == true
+                if deferCFrameUntilPreFire then
+                    -- Knife pre-fire deliberately owns the only temporary server pose.
+                    -- Clear any previous frame so the preAction heartbeat cannot replay stale/zero CFrames.
+                    characterController:SetServerCFrame(nil)
+                    cframe = saneCombatCFrame(characterController:GetClientCFrame(), cframe)
+                end
                 local counterOverride = nil
                 if plan.weaponAction == nil and type(RivalsRagebot.GetRandomCounterOverrideCFrame) == 'function' then
                     counterOverride = RivalsRagebot.GetRandomCounterOverrideCFrame(tick())
@@ -5077,6 +5427,13 @@ function Controller:Update(dt)
                 end
                 local ourRootPart = self._boundRootPart
                 local clientCF = characterController:GetClientCFrame()
+                if not validCombatCFrame(clientCF) and validCombatCFrame(ourRootPart and ourRootPart.CFrame or nil) then
+                    clientCF = ourRootPart.CFrame
+                end
+                if not validCombatCFrame(clientCF) then
+                    self:_Reset()
+                    return
+                end
                 local now = os.clock()
                 local target = KiciaRagebot.selectTarget(self._lastTarget)
                 self._lastTarget = target
@@ -5177,6 +5534,7 @@ function Controller:GetLastTargetWorld()
                 self._lastTargetAt = -math.huge
                 self._lastTargetWorld = nil
                 self._lastDefensiveViewAngles = nil
+                State.RageLastFireTime = -math.huge
                 rageSwapPendingIndex = nil
                 rageSwapPendingUntil = 0
                 self:_ApplyForcedCrouch(false)
@@ -19304,6 +19662,13 @@ ErrorReporter.set_game(GameName)
                 PlayerDataGetWeaponDataFunction = nil,
                 PlayerDataGetWeaponDataConstantIndex = nil,
                 PlayerDataGetWeaponDataConstantValue = nil,
+                DirectDataGetOriginal = nil,
+                DirectDataGetWrapper = nil,
+                DirectDataGetOwner = nil,
+                DirectGetWeaponDataOriginal = nil,
+                DirectGetWeaponDataWrapper = nil,
+                DirectGetWeaponDataOwner = nil,
+                DirectDataHooksInstalled = false,
                 OriginalWrapProperties = setmetatable({}, { __mode = 'k' }),
                 OriginalInjectedItemCosmetics = setmetatable({}, { __mode = 'k' }),
                 WorldTripmineEntries = setmetatable({}, { __mode = 'k' }),
@@ -20634,8 +20999,11 @@ ErrorReporter.set_game(GameName)
                 Options = Options,
                 Toggles = Toggles,
                 FighterDataCache = FighterDataCache,
-                GetChar = function() return Char end,
-                GetRoot = function() return HumanoidRootPart end,
+                GetChar = function() return LP and LP.Character or Char end,
+                GetRoot = function()
+                    local character = LP and LP.Character or Char
+                    return character and character:FindFirstChild('HumanoidRootPart') or HumanoidRootPart
+                end,
                 Genv = __kicia_hook_genv,
             })
             do
@@ -22628,7 +22996,7 @@ ErrorReporter.set_game(GameName)
                     RankName = 'P5RANK_RANK',
                     RankLeaderboard = 'P5RANK_LEADERBOARD',
                 },
-                FavoriteKinds = {'Skin', 'Wrap', 'Charm', 'Finisher'},
+                FavoriteKinds = {'Skin', 'Wrap', 'Charm'},
                 CosmeticPresetPath = 'KiciaHook/RIVALS Cosmetic Presets.json',
             }
             local RivalsEmotes = {
@@ -24138,7 +24506,6 @@ ErrorReporter.set_game(GameName)
                 local skin = RivalsCosmetics.ResolveSkinSelectionValue(weaponName)
                 local wrap = RivalsCosmetics.ResolveWrapSelectionValue(weaponName)
                 local charm = RivalsCosmetics.ResolveCharmSelectionValue(weaponName)
-                local finisher = RivalsCosmetics.ResolveFinisherSelectionValue(weaponName)
                 if skin ~= nil and skin ~= RIVALS_COSMETIC_UNSELECTED then
                     selection.skin = skin
                     hasSelection = true
@@ -24154,10 +24521,7 @@ ErrorReporter.set_game(GameName)
                     selection.charm = charm
                     hasSelection = true
                 end
-                if finisher ~= nil and finisher ~= RIVALS_COSMETIC_UNSELECTED then
-                    selection.finisher = finisher
-                    hasSelection = true
-                end
+                -- Finishers intentionally ignored by the replacement Unlock All.
                 return hasSelection and selection or nil
             end
             function RivalsCosmetics.BuildKiciaCosmeticPayload(cosmeticName, inverted)
@@ -24199,9 +24563,6 @@ ErrorReporter.set_game(GameName)
                     end
                     if selection.charm ~= nil then
                         overriddenWeaponData.Charm = RivalsCosmetics.BuildKiciaCosmeticPayload(selection.charm)
-                    end
-                    if selection.finisher ~= nil then
-                        overriddenWeaponData.Finisher = RivalsCosmetics.BuildKiciaCosmeticPayload(selection.finisher)
                     end
                 end
                 overriddenWeaponData.Charm = RivalsCosmetics.PatchRankCharmPayload(overriddenWeaponData.Charm)
@@ -24268,7 +24629,8 @@ ErrorReporter.set_game(GameName)
                 if cosmeticType == 'Finisher' then
                     return false
                 end
-                if type(cosmeticType) == 'string' and cosmeticType ~= '' then
+                if cosmeticType == 'Skin' or cosmeticType == 'Wrap' or cosmeticType == 'Wrapping'
+                    or cosmeticType == 'Charm' or cosmeticType == 'Dance' or cosmeticType == 'Emote' then
                     return true
                 end
                 local lowerName = string.lower(cosmeticName)
@@ -24284,36 +24646,16 @@ ErrorReporter.set_game(GameName)
                     return cached
                 end
                 local cosmeticLibrary = RivalsCosmetics.ResolveCosmeticLibrary()
-                local itemLibrary = RivalsCosmetics.ResolveItemLibrary()
                 local cosmetics = cosmeticLibrary and cosmeticLibrary.Cosmetics or nil
-                local items = itemLibrary and itemLibrary.Items or nil
-                if type(cosmetics) ~= 'table' or type(items) ~= 'table' then
+                if type(cosmetics) ~= 'table' then
                     return nil
-                end
-                local allItemNames = {}
-                for itemName in pairs(items) do
-                    if type(itemName) == 'string' and itemName ~= '' then
-                        allItemNames[itemName] = true
-                    end
                 end
                 local inventory = {}
                 for cosmeticName, cosmeticData in pairs(cosmetics) do
-                    if type(cosmeticName) == 'string' and type(cosmeticData) == 'table' then
-                        local cosmeticType = cosmeticData.Type
-                        if cosmeticType == 'Finisher' then
-                            local itemSet = {}
-                            for itemName in pairs(allItemNames) do
-                                itemSet[itemName] = true
-                            end
-                            inventory[cosmeticName] = itemSet
-                        elseif RivalsCosmetics.IsNonFinisherUnlockCosmetic(cosmeticName, cosmeticData) then
-                            -- Native CosmeticInventory ownership is keyed by cosmetic name.
-                            -- LuaHook's working semantics expose every non-finisher catalog entry
-                            -- as a simple truthy ownership flag; do not replace Wrap/Charm with a
-                            -- weapon-set table because native UI/OwnsCosmetic callers may interpret
-                            -- the nested table as an invalid ownership record.
-                            inventory[cosmeticName] = true
-                        end
+                    if type(cosmeticName) == 'string' and type(cosmeticData) == 'table'
+                        and RivalsCosmetics.IsNonFinisherUnlockCosmetic(cosmeticName, cosmeticData) then
+                        -- Exact unlock-all ownership semantics: one truthy flag per catalog cosmetic.
+                        inventory[cosmeticName] = true
                     end
                 end
                 RivalsCosmeticsState.NativeUnlockedInventory = inventory
@@ -24329,65 +24671,49 @@ ErrorReporter.set_game(GameName)
                     hookState = {}
                     RivalsCosmeticsState.UnlockedOwnershipHooks = hookState
                 end
-                if hookState.Library == cosmeticLibrary then
-                    local expected = tonumber(hookState.Expected) or 0
-                    local intact = hookState.Active == true and expected > 0
-                    for _, methodName in ipairs({'OwnsCosmetic', 'OwnsCosmeticNormally', 'OwnsCosmeticUniversally', 'OwnsCosmeticForWeapon'}) do
-                        local original = hookState[methodName]
+                local methods = {'OwnsCosmetic', 'OwnsCosmeticNormally', 'OwnsCosmeticUniversally', 'OwnsCosmeticForWeapon'}
+                if hookState.Library == cosmeticLibrary and hookState.Active == true then
+                    local intact = true
+                    for _, methodName in ipairs(methods) do
                         local wrapper = hookState[methodName .. '_Wrapper']
-                        if type(original) == 'function' and rawget(cosmeticLibrary, methodName) ~= wrapper then
+                        local owner = hookState[methodName .. '_Owner'] or cosmeticLibrary
+                        if wrapper ~= nil and (type(owner) ~= 'table' or rawget(owner, methodName) ~= wrapper) then
                             intact = false
                             break
                         end
                     end
-                    if intact then
-                        return true
-                    end
+                    if intact then return true end
                 end
+
                 RivalsCosmetics.RestoreUnlockedOwnershipHooks()
                 hookState = RivalsCosmeticsState.UnlockedOwnershipHooks
                 hookState.Library = cosmeticLibrary
-                local function install(methodName)
-                    local original = cosmeticLibrary[methodName]
-                    if type(original) ~= 'function' then
-                        return false
-                    end
-                    local wrapper = function(self, inventory, name, weapon)
-                        local cosmetics = self and self.Cosmetics
-                        local cosmeticData = type(cosmetics) == 'table' and cosmetics[name] or nil
-                        if RivalsCosmetics.IsNonFinisherUnlockCosmetic(name, cosmeticData) then
-                            return true
-                        end
-                        return original(self, inventory, name, weapon)
-                    end
-                    local okAssign = pcall(function()
-                        cosmeticLibrary[methodName] = wrapper
-                    end)
-                    if not okAssign or cosmeticLibrary[methodName] ~= wrapper then
-                        return false
-                    end
-                    hookState[methodName] = original
-                    hookState[methodName .. '_Wrapper'] = wrapper
-                    return true
-                end
-                local expected = 0
+
                 local installed = 0
-                local failures = {}
-                for _, methodName in ipairs({'OwnsCosmetic', 'OwnsCosmeticNormally', 'OwnsCosmeticUniversally', 'OwnsCosmeticForWeapon'}) do
-                    local existing = cosmeticLibrary[methodName]
-                    if type(existing) == 'function' then
+                local expected = 0
+                for _, methodName in ipairs(methods) do
+                    local owner, original = resolveDirectMethodOwner(cosmeticLibrary, methodName)
+                    if type(owner) == 'table' and type(original) == 'function' then
                         expected = expected + 1
-                        if install(methodName) then
+                        local wrapper = function(self, inventory, name, weapon)
+                            local cosmetics = self and self.Cosmetics
+                            local cosmeticData = type(cosmetics) == 'table' and cosmetics[name] or nil
+                            if RivalsCosmetics.IsNonFinisherUnlockCosmetic(name, cosmeticData) then
+                                return true
+                            end
+                            return original(self, inventory, name, weapon)
+                        end
+                        local ok = pcall(function() rawset(owner, methodName, wrapper) end)
+                        if ok and rawget(owner, methodName) == wrapper then
+                            hookState[methodName] = original
+                            hookState[methodName .. '_Wrapper'] = wrapper
+                            hookState[methodName .. '_Owner'] = owner
                             installed = installed + 1
-                        else
-                            failures[#failures + 1] = methodName
                         end
                     end
                 end
                 hookState.Expected = expected
                 hookState.Installed = installed
-                hookState.Failures = failures
-                hookState.Partial = expected > 0 and installed < expected
                 hookState.Active = expected > 0 and installed == expected
                 if not hookState.Active then
                     RivalsCosmetics.RestoreUnlockedOwnershipHooks()
@@ -24395,28 +24721,34 @@ ErrorReporter.set_game(GameName)
                 end
                 return true
             end
+
             function RivalsCosmetics.RestoreUnlockedOwnershipHooks()
                 local hookState = RivalsCosmeticsState.UnlockedOwnershipHooks
                 if type(hookState) ~= 'table' then
                     RivalsCosmeticsState.UnlockedOwnershipHooks = {}
                     return true
                 end
+                local fullyRestored = true
                 local library = hookState.Library
                 if type(library) == 'table' then
                     for _, methodName in ipairs({'OwnsCosmetic', 'OwnsCosmeticNormally', 'OwnsCosmeticUniversally', 'OwnsCosmeticForWeapon'}) do
                         local original = hookState[methodName]
                         local wrapper = hookState[methodName .. '_Wrapper']
-                        if type(original) == 'function' then
-                            local current = rawget(library, methodName)
-                            if current == wrapper then
-                                library[methodName] = original
+                        local owner = hookState[methodName .. '_Owner'] or library
+                        if type(original) == 'function' and type(owner) == 'table' and rawget(owner, methodName) == wrapper then
+                            local ok = pcall(function() rawset(owner, methodName, original) end)
+                            if not ok or rawget(owner, methodName) ~= original then
+                                fullyRestored = false
                             end
                         end
                     end
                 end
-                RivalsCosmeticsState.UnlockedOwnershipHooks = {}
-                return true
+                if fullyRestored then
+                    RivalsCosmeticsState.UnlockedOwnershipHooks = {}
+                end
+                return fullyRestored
             end
+
             function RivalsCosmetics.CloneNativeFavorites(value)
                 local cloned = {}
                 if type(value) ~= 'table' then
@@ -24451,369 +24783,18 @@ ErrorReporter.set_game(GameName)
                     return originalValue
                 end
                 if fieldName == 'CosmeticInventory' then
-                    return RivalsCosmetics.BuildNativeUnlockedInventory() or originalValue
+                    local result = type(originalValue) == 'table' and table.clone(originalValue) or {}
+                    local unlocked = RivalsCosmetics.BuildNativeUnlockedInventory() or {}
+                    for name in pairs(unlocked) do
+                        result[name] = true
+                    end
+                    return result
                 end
                 if fieldName == 'FavoritedCosmetics' then
                     RivalsCosmetics.SeedNativeFavorites(originalValue)
                     return RivalsCosmeticsState.FavoritedCosmeticsByWeapon
                 end
                 return originalValue
-            end
-            function RivalsCosmetics.EnsureNativeDataView()
-                if not RivalsCosmetics.IsEnabled() then
-                    return false
-                end
-                return type(RivalsCosmetics.BuildNativeUnlockedInventory()) == 'table'
-            end
-            function RivalsCosmetics.TriggerNativeDataChanged(fieldName)
-                local playerDataController = RivalsCosmetics.ResolvePlayerDataController()
-                local currentData = playerDataController and playerDataController.CurrentData or nil
-                if type(currentData) ~= 'table' then
-                    return false
-                end
-                local events = rawget(currentData, '_value_changed_events')
-                local signal = type(events) == 'table' and events[fieldName] or nil
-                if type(signal) == 'table' and type(signal.Fire) == 'function' then
-                    return pcall(signal.Fire, signal)
-                end
-                return false
-            end
-            function RivalsCosmetics.RefreshNativeCosmeticsScene()
-                RivalsCosmetics.TriggerNativeDataChanged('CosmeticInventory')
-                RivalsCosmetics.TriggerNativeDataChanged('FavoritedCosmetics')
-                local equipment = RivalsCosmetics.ResolveEquipmentModule()
-                local interface = equipment and equipment.Interface or nil
-                local customize = interface and interface.Customize or nil
-                local cosmetics = customize and customize.Cosmetics or nil
-                if type(cosmetics) ~= 'table' then
-                    return false
-                end
-                local onStateChanged = cosmetics.OnStateChanged
-                if type(onStateChanged) ~= 'function' then
-                    return false
-                end
-                task.spawn(function()
-                    local previousIdentity = type(getthreadidentity) == 'function' and getthreadidentity() or nil
-                    if type(setthreadidentity) == 'function' then
-                        pcall(setthreadidentity, 2)
-                    end
-                    pcall(onStateChanged, cosmetics)
-                    if previousIdentity ~= nil and type(setthreadidentity) == 'function' then
-                        pcall(setthreadidentity, previousIdentity)
-                    end
-                end)
-                return true
-            end
-            function RivalsCosmetics.ReadEquipmentStateValue(fieldName)
-                local equipment = RivalsCosmetics.ResolveEquipmentModule()
-                local equipmentState = equipment and equipment.EquipmentState or nil
-                if type(equipmentState) ~= 'table' then
-                    return nil
-                end
-                local ok, value = pcall(function()
-                    return equipmentState[fieldName]
-                end)
-                return ok and value or nil
-            end
-            function RivalsCosmetics.NormalizeNativeStateName(value)
-                if type(value) == 'string' then
-                    return value
-                end
-                if type(value) == 'table' and type(value.Name) == 'string' then
-                    return value.Name
-                end
-                if typeof(value) == 'EnumItem' then
-                    return value.Name
-                end
-                return nil
-            end
-            function RivalsCosmetics.ResolveNativeFavoriteName(cosmeticName, cosmeticType)
-                local nativeName = cosmeticName
-                if cosmeticName == RIVALS_COSMETIC_NONE then
-                    nativeName = 'NONE_COSMETIC'
-                elseif cosmeticName == RIVALS_COSMETIC_RANDOM then
-                    nativeName = 'RANDOM_COSMETIC'
-                end
-                local cosmeticLibrary = RivalsCosmetics.ResolveCosmeticLibrary()
-                if type(cosmeticLibrary) == 'table' and type(cosmeticLibrary.GetNoneSpecificCosmeticName) == 'function' then
-                    local ok, resolved = pcall(cosmeticLibrary.GetNoneSpecificCosmeticName, cosmeticLibrary, nativeName, cosmeticType)
-                    if ok and type(resolved) == 'string' and resolved ~= '' then
-                        return resolved
-                    end
-                end
-                return nativeName
-            end
-            function RivalsCosmetics.QueueNativeStateSave()
-                RivalsCosmeticsState.NativeSaveToken = RivalsCosmeticsState.NativeSaveToken + 1
-                local saveToken = RivalsCosmeticsState.NativeSaveToken
-                task.delay(0.2, function()
-                    if RivalsCosmeticsState.NativeSaveToken == saveToken then
-                        pcall(RivalsCosmetics.SaveSelectionsToConfig)
-                    end
-                end)
-            end
-            function RivalsCosmetics.CaptureNativeSelection(toggleFavorite, toggleOnlyUseFavorites, invertedOverride)
-                if not RivalsCosmetics.IsEnabled() then
-                    return false
-                end
-                local weaponName = RivalsCosmetics.NormalizeNativeStateName(RivalsCosmetics.ReadEquipmentStateValue('SelectedWeapon'))
-                local cosmeticType = RivalsCosmetics.NormalizeNativeStateName(RivalsCosmetics.ReadEquipmentStateValue('CustomizingType'))
-                local cosmeticName = RivalsCosmetics.NormalizeNativeStateName(RivalsCosmetics.ReadEquipmentStateValue('SelectedCosmetic'))
-                if type(weaponName) ~= 'string' or not RivalsCosmetics.IsFavoriteKind(cosmeticType) then
-                    return false
-                end
-                if type(cosmeticName) ~= 'string' or cosmeticName == '' or cosmeticName == 'NONE_COSMETIC' then
-                    cosmeticName = RIVALS_COSMETIC_NONE
-                elseif cosmeticName == 'RANDOM_COSMETIC' then
-                    cosmeticName = RIVALS_COSMETIC_RANDOM
-                end
-                local changed = false
-                if toggleFavorite then
-                    local favoriteName = RivalsCosmetics.ResolveNativeFavoriteName(cosmeticName, cosmeticType)
-                    if cosmeticName == RIVALS_COSMETIC_NONE then
-                        favoriteName = 'NONE_COSMETIC_' .. cosmeticType
-                    end
-                    changed = RivalsCosmetics.SetFavorited(
-                        weaponName,
-                        favoriteName,
-                        not RivalsCosmetics.IsFavorited(weaponName, favoriteName)
-                    ) or changed
-                else
-                    if toggleOnlyUseFavorites then
-                        changed = RivalsCosmetics.SetOnlyUseFavorites(
-                            weaponName,
-                            cosmeticType,
-                            not RivalsCosmetics.UsesOnlyFavorites(weaponName, cosmeticType)
-                        ) or changed
-                    end
-                    if RivalsCosmetics.ResolveStoredSelectionValue(weaponName, cosmeticType) ~= cosmeticName then
-                        changed = RivalsCosmetics.SetStoredSelection(weaponName, cosmeticType, cosmeticName) or changed
-                    end
-                    if cosmeticType == 'Wrap' then
-                        local inverted = invertedOverride
-                        if inverted == nil then
-                            inverted = RivalsCosmeticsState.NativeInvertedValue
-                        end
-                        inverted = inverted == true
-                        if RivalsCosmetics.ResolveStoredSelectionValue(weaponName, 'WrapInverted') ~= inverted then
-                            changed = RivalsCosmetics.SetStoredSelection(weaponName, 'WrapInverted', inverted) or changed
-                        end
-                    end
-                end
-                if not changed then
-                    return false
-                end
-                RivalsCosmetics.TriggerNativeDataChanged('WeaponInventory')
-                RivalsCosmetics.TriggerNativeDataChanged('WeaponData')
-                pcall(RivalsCosmetics.ReloadWeaponViewModel, weaponName)
-                pcall(RivalsCosmetics.ApplyWraps)
-                pcall(RivalsCosmetics.RefreshNativeCosmeticsScene)
-                RivalsCosmetics.QueueNativeStateSave()
-                return true
-            end
-            function RivalsCosmetics.EnsureNativeInvertedState()
-                local existingRestore = RivalsCosmeticsState.NativeEquipmentStateRestore
-                if type(existingRestore) == 'table' and type(existingRestore.EquipmentState) == 'table' then
-                    if getmetatable(existingRestore.EquipmentState) == existingRestore.HookMetatable then
-                        return true
-                    end
-                    RivalsCosmeticsState.NativeEquipmentStateRestore = nil
-                end
-                local equipment = RivalsCosmetics.ResolveEquipmentModule()
-                local equipmentState = type(equipment) == 'table' and rawget(equipment, 'EquipmentState') or nil
-                local originalMetatable = type(equipmentState) == 'table' and getmetatable(equipmentState) or nil
-                local originalIndex = type(originalMetatable) == 'table' and rawget(originalMetatable, '__index') or nil
-                if type(equipmentState) ~= 'table' or originalMetatable == nil or originalIndex == nil then
-                    return false
-                end
-                local selectedWeapon = rawget(equipmentState, 'SelectedWeapon')
-                if type(selectedWeapon) == 'string' and selectedWeapon ~= '' then
-                    RivalsCosmeticsState.NativeInvertedValue = RivalsCosmetics.ResolveWrapInvertedValue(selectedWeapon) == true
-                end
-                rawset(equipmentState, 'CosmeticInverted', nil)
-                setmetatable(equipmentState, {
-                    __index = function(_, key)
-                        if key == 'CosmeticInverted' then
-                            local weaponName = rawget(equipmentState, 'SelectedWeapon')
-                            if type(weaponName) == 'string' and weaponName ~= '' then
-                                RivalsCosmeticsState.NativeInvertedValue = RivalsCosmetics.ResolveWrapInvertedValue(weaponName) == true
-                                return RivalsCosmeticsState.NativeInvertedValue
-                            end
-                        end
-                        if type(originalIndex) == 'table' then
-                            return rawget(originalIndex, key)
-                        end
-                        return originalIndex(equipmentState, key)
-                    end,
-                    __newindex = function(target, key, value)
-                        if key ~= 'CosmeticInverted' or value == nil then
-                            rawset(target, key, value)
-                            return
-                        end
-                        RivalsCosmeticsState.NativeInvertedValue = value == true
-                        RivalsCosmetics.CaptureNativeSelection(false, false, RivalsCosmeticsState.NativeInvertedValue)
-                    end,
-                })
-                local hookMetatable = getmetatable(equipmentState)
-                RivalsCosmeticsState.NativeEquipmentStateRestore = {
-                    EquipmentState = equipmentState,
-                    Metatable = originalMetatable,
-                    HookMetatable = hookMetatable,
-                }
-                return true
-            end
-            function RivalsCosmetics.EnsureNativeCosmeticSlotBinding()
-                if RivalsCosmeticsState.NativeCosmeticSlotConstructor ~= nil then
-                    local constructor = RivalsCosmeticsState.NativeCosmeticSlotConstructor
-                    local proxy = RivalsCosmeticsState.NativeCosmeticSlotProxy
-                    if type(constructor) == 'function' and proxy ~= nil and type(debug.getupvalue) == 'function' then
-                        local current = debug.getupvalue(constructor, 1)
-                        if current == proxy then
-                            return true
-                        end
-                    end
-                    RivalsCosmetics.RestoreNativeUiBindings()
-                end
-                local cosmeticSlot = RivalsCosmetics.ResolveCosmeticSlot()
-                local constructor = type(cosmeticSlot) == 'table' and rawget(cosmeticSlot, 'new') or nil
-                if type(constructor) ~= 'function' or type(debug.getupvalue) ~= 'function'
-                    or type(debug.setupvalue) ~= 'function' then
-                    return false
-                end
-                local prototype = debug.getupvalue(constructor, 1)
-                if type(prototype) ~= 'table' then
-                    return false
-                end
-                local proxy = {}
-                proxy.__index = function(instance, key)
-                    if key ~= 'Frame' then
-                        return rawget(prototype, key)
-                    end
-                    if type(debug.info) == 'function' and type(debug.getupvalues) == 'function' then
-                        local source, caller = debug.info(2, 'sf')
-                        local upvalues = type(caller) == 'function' and debug.getupvalues(caller) or nil
-                        if type(source) == 'string' and source:match('Cosmetics$')
-                            and type(upvalues) == 'table' and type(upvalues[9]) == 'boolean' then
-                            debug.setupvalue(caller, 9, false)
-                        end
-                    end
-                    return rawget(instance, RIVALS_COSMETIC_SLOT_FRAME_SENTINEL)
-                end
-                proxy.__newindex = function(instance, key, value)
-                    if key ~= 'Frame' then
-                        rawset(instance, key, value)
-                        return
-                    end
-                    local source = type(debug.info) == 'function' and debug.info(3, 's') or nil
-                    if type(source) == 'string' and source:match('Cosmetics$')
-                        and rawget(instance, 'IsLocked') ~= true and value ~= nil then
-                        local button = value:FindFirstChild('Button')
-                        if button ~= nil then
-                            local oldConnection = RivalsCosmeticsState.NativeCosmeticSlotConnections[button]
-                            if oldConnection then
-                                pcall(function() oldConnection:Disconnect() end)
-                            end
-                            RivalsCosmeticsState.NativeCosmeticSlotConnections[button] = button.MouseButton1Click:Connect(function()
-                                RivalsCosmetics.CaptureNativeSelection(false, false)
-                            end)
-                        end
-                    end
-                    rawset(instance, RIVALS_COSMETIC_SLOT_FRAME_SENTINEL, value)
-                end
-                debug.setupvalue(constructor, 1, proxy)
-                RivalsCosmeticsState.NativeCosmeticSlotConstructor = constructor
-                RivalsCosmeticsState.NativeCosmeticSlotPrototype = prototype
-                RivalsCosmeticsState.NativeCosmeticSlotProxy = proxy
-                return true
-            end
-            function RivalsCosmetics.ResolveNativeOptionButton(optionName)
-                local equipment = RivalsCosmetics.ResolveEquipmentModule()
-                local interface = type(equipment) == 'table' and rawget(equipment, 'Interface') or nil
-                local customize = type(interface) == 'table' and rawget(interface, 'Customize') or nil
-                local options = type(customize) == 'table' and rawget(customize, 'Options') or nil
-                local container = type(options) == 'table' and rawget(options, 'Container') or nil
-                local option = container and container:FindFirstChild(optionName) or nil
-                local inner = option and option:FindFirstChild('Container') or nil
-                return inner and inner:FindFirstChild('Button') or nil
-            end
-            function RivalsCosmetics.EnsureNativeUiBindings()
-                if RivalsCosmeticsState.NativeUiBound then
-                    local slotConstructor = RivalsCosmeticsState.NativeCosmeticSlotConstructor
-                    local slotProxy = RivalsCosmeticsState.NativeCosmeticSlotProxy
-                    local equipmentRestore = RivalsCosmeticsState.NativeEquipmentStateRestore
-                    local slotIntact = false
-                    local invertedIntact = false
-                    if type(slotConstructor) == 'function' and slotProxy ~= nil and type(debug.getupvalue) == 'function' then
-                        slotIntact = debug.getupvalue(slotConstructor, 1) == slotProxy
-                    end
-                    if type(equipmentRestore) == 'table' and type(equipmentRestore.EquipmentState) == 'table' then
-                        invertedIntact = getmetatable(equipmentRestore.EquipmentState) == equipmentRestore.HookMetatable
-                    end
-                    if slotIntact and invertedIntact then
-                        return true
-                    end
-                    RivalsCosmetics.RestoreNativeUiBindings()
-                end
-                if not RivalsCosmetics.EnsureNativeCosmeticSlotBinding()
-                    or not RivalsCosmetics.EnsureNativeInvertedState() then
-                    RivalsCosmetics.RestoreNativeUiBindings()
-                    return false
-                end
-                local favoritedButton = RivalsCosmetics.ResolveNativeOptionButton('Favorited')
-                local onlyUseFavoritesButton = RivalsCosmetics.ResolveNativeOptionButton('OnlyUseFavorites')
-                if favoritedButton ~= nil then
-                    RivalsCosmeticsState.NativeFavoriteConnection = favoritedButton.MouseButton1Click:Connect(function()
-                        RivalsCosmetics.CaptureNativeSelection(true, false)
-                    end)
-                end
-                if onlyUseFavoritesButton ~= nil then
-                    RivalsCosmeticsState.NativeOnlyUseFavoritesConnection = onlyUseFavoritesButton.MouseButton1Click:Connect(function()
-                        RivalsCosmetics.CaptureNativeSelection(false, true)
-                    end)
-                end
-                RivalsCosmeticsState.NativeUiBound = true
-                return true
-            end
-            function RivalsCosmetics.RestoreNativeUiBindings()
-                local favoriteConnection = RivalsCosmeticsState.NativeFavoriteConnection
-                if favoriteConnection ~= nil then
-                    favoriteConnection:Disconnect()
-                end
-                local onlyUseFavoritesConnection = RivalsCosmeticsState.NativeOnlyUseFavoritesConnection
-                if onlyUseFavoritesConnection ~= nil then
-                    onlyUseFavoritesConnection:Disconnect()
-                end
-                local equipmentRestore = RivalsCosmeticsState.NativeEquipmentStateRestore
-                if type(equipmentRestore) == 'table' and type(equipmentRestore.EquipmentState) == 'table' then
-                    local currentMeta = getmetatable(equipmentRestore.EquipmentState)
-                    if currentMeta == equipmentRestore.HookMetatable then
-                        setmetatable(equipmentRestore.EquipmentState, equipmentRestore.Metatable)
-                    end
-                end
-                local constructor = RivalsCosmeticsState.NativeCosmeticSlotConstructor
-                local prototype = RivalsCosmeticsState.NativeCosmeticSlotPrototype
-                local hookProxy = RivalsCosmeticsState.NativeCosmeticSlotProxy
-                for button, connection in pairs(RivalsCosmeticsState.NativeCosmeticSlotConnections or {}) do
-                    if connection then
-                        pcall(function() connection:Disconnect() end)
-                    end
-                    RivalsCosmeticsState.NativeCosmeticSlotConnections[button] = nil
-                end
-                if type(constructor) == 'function' and type(prototype) == 'table'
-                    and type(debug.getupvalue) == 'function' and type(debug.setupvalue) == 'function' then
-                    local current = debug.getupvalue(constructor, 1)
-                    if current == hookProxy then
-                        debug.setupvalue(constructor, 1, prototype)
-                    end
-                end
-                RivalsCosmeticsState.NativeFavoriteConnection = nil
-                RivalsCosmeticsState.NativeOnlyUseFavoritesConnection = nil
-                RivalsCosmeticsState.NativeEquipmentStateRestore = nil
-                RivalsCosmeticsState.NativeCosmeticSlotConstructor = nil
-                RivalsCosmeticsState.NativeCosmeticSlotPrototype = nil
-                RivalsCosmeticsState.NativeCosmeticSlotProxy = nil
-                RivalsCosmeticsState.NativeUiBound = false
-                return true
             end
             function RivalsCosmetics.ResolveOriginalPlayerDataField(fieldName)
                 local restore = RivalsCosmeticsState.PlayerDataRestore
@@ -24870,6 +24851,115 @@ ErrorReporter.set_game(GameName)
                 }
                 return true
             end
+            local function resolveDirectMethodOwner(controller, methodName)
+                if type(controller) ~= 'table' then return nil, nil end
+                local direct = rawget(controller, methodName)
+                if type(direct) == 'function' then
+                    return controller, direct
+                end
+                local mt = getmetatable(controller)
+                local index = type(mt) == 'table' and rawget(mt, '__index') or nil
+                if type(index) == 'table' and type(rawget(index, methodName)) == 'function' then
+                    return index, rawget(index, methodName)
+                end
+                return nil, nil
+            end
+
+            function RivalsCosmetics.EnsureDirectDataHooks()
+                local controller = RivalsCosmetics.ResolvePlayerDataController()
+                if type(controller) ~= 'table' then return false end
+
+                local getOwner, originalGet = resolveDirectMethodOwner(controller, 'Get')
+                if type(getOwner) == 'table' and type(originalGet) == 'function' then
+                    local current = rawget(getOwner, 'Get')
+                    if RivalsCosmeticsState.DirectDataGetOwner == getOwner
+                        and current == RivalsCosmeticsState.DirectDataGetWrapper then
+                        -- already installed
+                    else
+                        if RivalsCosmeticsState.DirectDataGetOwner ~= nil then
+                            RivalsCosmetics.RestoreDirectDataHooks()
+                            getOwner, originalGet = resolveDirectMethodOwner(controller, 'Get')
+                        end
+                        local wrapper = function(self, key)
+                            local data = originalGet(self, key)
+                            if key == 'CosmeticInventory' then
+                                local result = type(data) == 'table' and table.clone(data) or {}
+                                local unlocked = RivalsCosmetics.BuildNativeUnlockedInventory() or {}
+                                for name in pairs(unlocked) do result[name] = true end
+                                return result
+                            elseif key == 'FavoritedCosmetics' then
+                                RivalsCosmetics.SeedNativeFavorites(data)
+                                return RivalsCosmeticsState.FavoritedCosmeticsByWeapon
+                            end
+                            return data
+                        end
+                        local ok = pcall(function() rawset(getOwner, 'Get', wrapper) end)
+                        if ok and rawget(getOwner, 'Get') == wrapper then
+                            RivalsCosmeticsState.DirectDataGetOwner = getOwner
+                            RivalsCosmeticsState.DirectDataGetOriginal = originalGet
+                            RivalsCosmeticsState.DirectDataGetWrapper = wrapper
+                        end
+                    end
+                end
+
+                local weaponOwner, originalWeaponGet = resolveDirectMethodOwner(controller, 'GetWeaponData')
+                if type(weaponOwner) == 'table' and type(originalWeaponGet) == 'function' then
+                    local current = rawget(weaponOwner, 'GetWeaponData')
+                    if RivalsCosmeticsState.DirectGetWeaponDataOwner ~= weaponOwner
+                        or current ~= RivalsCosmeticsState.DirectGetWeaponDataWrapper then
+                        if RivalsCosmeticsState.DirectGetWeaponDataOwner ~= nil then
+                            RivalsCosmetics.RestoreDirectDataHooks()
+                            weaponOwner, originalWeaponGet = resolveDirectMethodOwner(controller, 'GetWeaponData')
+                        end
+                        local wrapper = function(self, weaponName)
+                            local data = originalWeaponGet(self, weaponName)
+                            if type(data) ~= 'table' or not RivalsCosmetics.IsEnabled() then
+                                return data
+                            end
+                            return RivalsCosmetics.OverrideWeaponData(weaponName, data)
+                        end
+                        local ok = pcall(function() rawset(weaponOwner, 'GetWeaponData', wrapper) end)
+                        if ok and rawget(weaponOwner, 'GetWeaponData') == wrapper then
+                            RivalsCosmeticsState.DirectGetWeaponDataOwner = weaponOwner
+                            RivalsCosmeticsState.DirectGetWeaponDataOriginal = originalWeaponGet
+                            RivalsCosmeticsState.DirectGetWeaponDataWrapper = wrapper
+                        end
+                    end
+                end
+
+                RivalsCosmeticsState.DirectDataHooksInstalled =
+                    RivalsCosmeticsState.DirectDataGetOwner ~= nil
+                    or RivalsCosmeticsState.DirectGetWeaponDataOwner ~= nil
+                return RivalsCosmeticsState.DirectDataHooksInstalled == true
+            end
+
+            function RivalsCosmetics.RestoreDirectDataHooks()
+                local owner = RivalsCosmeticsState.DirectDataGetOwner
+                local wrapper = RivalsCosmeticsState.DirectDataGetWrapper
+                local original = RivalsCosmeticsState.DirectDataGetOriginal
+                if type(owner) == 'table' and type(wrapper) == 'function' and type(original) == 'function' then
+                    if rawget(owner, 'Get') == wrapper then
+                        pcall(function() rawset(owner, 'Get', original) end)
+                    end
+                end
+                local weaponOwner = RivalsCosmeticsState.DirectGetWeaponDataOwner
+                local weaponWrapper = RivalsCosmeticsState.DirectGetWeaponDataWrapper
+                local weaponOriginal = RivalsCosmeticsState.DirectGetWeaponDataOriginal
+                if type(weaponOwner) == 'table' and type(weaponWrapper) == 'function' and type(weaponOriginal) == 'function' then
+                    if rawget(weaponOwner, 'GetWeaponData') == weaponWrapper then
+                        pcall(function() rawset(weaponOwner, 'GetWeaponData', weaponOriginal) end)
+                    end
+                end
+                RivalsCosmeticsState.DirectDataGetOwner = nil
+                RivalsCosmeticsState.DirectDataGetOriginal = nil
+                RivalsCosmeticsState.DirectDataGetWrapper = nil
+                RivalsCosmeticsState.DirectGetWeaponDataOwner = nil
+                RivalsCosmeticsState.DirectGetWeaponDataOriginal = nil
+                RivalsCosmeticsState.DirectGetWeaponDataWrapper = nil
+                RivalsCosmeticsState.DirectDataHooksInstalled = false
+                return true
+            end
+
             function RivalsCosmetics.ResolvePlayerDataGetWeaponDataFunction()
                 local playerDataController = RivalsCosmetics.ResolvePlayerDataController()
                 local metatable = type(playerDataController) == 'table' and getmetatable(playerDataController) or nil
@@ -25007,8 +25097,8 @@ ErrorReporter.set_game(GameName)
                 end
                 RivalsCosmeticsState.PlayerDataController = playerDataController
                 local dataLoaded = RivalsCosmetics.LoadPlayerDataProxy(currentData)
-                local itemHookLoaded = RivalsCosmetics.EnsureItemDataHook()
-                RivalsCosmeticsState.ItemDataHooked = itemHookLoaded == true
+                local directHooksLoaded = RivalsCosmetics.EnsureDirectDataHooks()
+                RivalsCosmeticsState.ItemDataHooked = directHooksLoaded == true
                 if dataLoaded == true and RivalsCosmeticsState.PlayerDataAddedConnection == nil then
                     local playerDataAdded = rawget(playerDataController, 'PlayerDataAdded')
                     if type(playerDataAdded) == 'table' and type(playerDataAdded.Connect) == 'function' then
@@ -25017,7 +25107,7 @@ ErrorReporter.set_game(GameName)
                                 local nextCurrentData = rawget(playerDataController, 'CurrentData')
                                 RivalsCosmetics.LoadPlayerDataProxy(nextCurrentData)
                                 if RivalsCosmetics.IsEnabled() and RivalsCosmeticsState.ItemDataHooked ~= true then
-                                    RivalsCosmeticsState.ItemDataHooked = RivalsCosmetics.EnsureItemDataHook() == true
+                                    RivalsCosmeticsState.ItemDataHooked = RivalsCosmetics.EnsureDirectDataHooks() == true
                                 end
                                 RivalsCosmetics.RefreshNativeCosmeticsScene()
                             end)
@@ -25035,6 +25125,7 @@ ErrorReporter.set_game(GameName)
                     playerDataAddedConnection:Disconnect()
                 end
                 RivalsCosmeticsState.PlayerDataAddedConnection = nil
+                RivalsCosmetics.RestoreDirectDataHooks()
                 RivalsCosmetics.RestoreItemDataHook()
                 RivalsCosmetics.RestorePlayerDataProxy()
                 RivalsCosmeticsState.PlayerDataController = nil
@@ -25191,39 +25282,9 @@ ErrorReporter.set_game(GameName)
                 return true
             end
             function RivalsCosmetics.EnsureFinisherHook()
-                if RivalsCosmeticsState.ClientEntityFinisherHooked then
-                    local clientEntity = RivalsCosmeticsState.HookedClientEntityClass
-                    local wrapper = RivalsCosmeticsState.ClientEntityPlayFinisherWrapper
-                    if type(clientEntity) == 'table' and type(wrapper) == 'function'
-                        and rawget(clientEntity, '_PlayFinisher') == wrapper then
-                        return true
-                    end
-                    RivalsCosmetics.RestoreFinisherHook()
-                end
-                local clientEntity = RivalsCosmetics.ResolveClientEntityClass()
-                if type(clientEntity) ~= 'table' or type(clientEntity._PlayFinisher) ~= 'function' then
-                    return false
-                end
-                local previousOriginalPlayFinisher = rawget(clientEntity, '__KiciaHookOriginalPlayFinisher')
-                if rawget(clientEntity, '__KiciaHookFinisherHooked') == true and type(previousOriginalPlayFinisher) == 'function' then
-                    clientEntity._PlayFinisher = previousOriginalPlayFinisher
-                end
-                local originalPlayFinisher = clientEntity._PlayFinisher
-                local wrappedPlayFinisher = function(self, finisherName, ...)
-                    local selectedFinisherName = RivalsCosmetics.ResolveSelectedPlaybackFinisherName()
-                    if type(selectedFinisherName) == 'string' and selectedFinisherName ~= '' then
-                        return originalPlayFinisher(self, selectedFinisherName, ...)
-                    end
-                    return originalPlayFinisher(self, finisherName, ...)
-                end
-                RivalsCosmeticsState.HookedClientEntityClass = clientEntity
-                RivalsCosmeticsState.OriginalClientEntityPlayFinisher = originalPlayFinisher
-                RivalsCosmeticsState.ClientEntityPlayFinisherWrapper = wrappedPlayFinisher
-                clientEntity.__KiciaHookOriginalPlayFinisher = originalPlayFinisher
-                clientEntity.__KiciaHookFinisherHooked = true
-                clientEntity._PlayFinisher = wrappedPlayFinisher
-                RivalsCosmeticsState.ClientEntityFinisherHooked = true
-                return true
+                -- Finishers are intentionally removed from the new Unlock All implementation.
+                -- Keep the public function for compatibility with legacy callers, but never install a hook.
+                return false
             end
             function RivalsCosmetics.RestoreFinisherHook()
                 local clientEntity = RivalsCosmeticsState.HookedClientEntityClass
@@ -25960,7 +26021,7 @@ ErrorReporter.set_game(GameName)
                     skins = RivalsCosmetics.CloneSerializable(RivalsCosmeticsState.SelectedSkinByWeapon),
                     wraps = RivalsCosmetics.CloneSerializable(RivalsCosmeticsState.SelectedWrapByWeapon),
                     charms = RivalsCosmetics.CloneSerializable(RivalsCosmeticsState.SelectedCharmByWeapon),
-                    finishers = RivalsCosmetics.CloneSerializable(RivalsCosmeticsState.SelectedFinisherByWeapon),
+                    finishers = {},
                     wrapInverted = RivalsCosmetics.CloneSerializable(RivalsCosmeticsState.SelectedWrapInvertedByWeapon),
                     favorites = RivalsCosmetics.ResolveFavoritesState(),
                     rankCharmOverrides = RivalsCosmetics.NormalizeRankCharmOverrides(RivalsCosmeticsState.RankCharmOverridesBySeason),
@@ -25980,7 +26041,7 @@ ErrorReporter.set_game(GameName)
                     skins = RivalsCosmetics.NormalizePresetSelectionTable(value.skins, 'Skin'),
                     wraps = RivalsCosmetics.NormalizePresetSelectionTable(value.wraps, 'Wrap'),
                     charms = RivalsCosmetics.NormalizePresetSelectionTable(value.charms, 'Charm'),
-                    finishers = RivalsCosmetics.NormalizePresetSelectionTable(value.finishers, 'Finisher'),
+                    finishers = {},
                     wrapInverted = RivalsCosmetics.NormalizePresetSelectionTable(value.wrapInverted, 'WrapInverted'),
                     favorites = favorites,
                     rankCharmOverrides = RivalsCosmetics.NormalizeRankCharmOverrides(value.rankCharmOverrides),
@@ -26142,7 +26203,7 @@ ErrorReporter.set_game(GameName)
                     RivalsCosmeticsState.SelectedSkinByWeapon = snapshot.skins
                     RivalsCosmeticsState.SelectedWrapByWeapon = snapshot.wraps
                     RivalsCosmeticsState.SelectedCharmByWeapon = snapshot.charms
-                    RivalsCosmeticsState.SelectedFinisherByWeapon = snapshot.finishers
+                    RivalsCosmeticsState.SelectedFinisherByWeapon = {}
                     RivalsCosmeticsState.SelectedWrapInvertedByWeapon = snapshot.wrapInverted
                     RivalsCosmeticsState.FavoritedCosmeticsByWeapon = snapshot.favorites.favorites
                     RivalsCosmeticsState.OnlyUseFavoritesByWeapon = snapshot.favorites.onlyUse
@@ -27046,9 +27107,8 @@ ErrorReporter.set_game(GameName)
                     selectionValue = RivalsCosmetics.ResolveWrapSelectionValue(weaponName)
                 elseif kind == 'Charm' then
                     selectionValue = RivalsCosmetics.ResolveCharmSelectionValue(weaponName)
-                elseif kind == 'Finisher' then
-                    selectionValue = RivalsCosmetics.ResolveFinisherSelectionValue(weaponName)
                 else
+                    -- Finishers are intentionally excluded from this replacement.
                     return nil, false
                 end
                 if RivalsCosmetics.IsCosmeticValueSelected(selectionValue) then
@@ -27102,12 +27162,6 @@ ErrorReporter.set_game(GameName)
                         if shouldSetCharm then
                             RivalsCosmetics.CaptureOriginalItemCosmetics(item)
                             item.Charm = charmData
-                            changed = true
-                        end
-                        local finisherData, shouldSetFinisher = RivalsCosmetics.ResolveSelectedCosmeticApplyData(weaponName, 'Finisher', item.Finisher)
-                        if shouldSetFinisher then
-                            RivalsCosmetics.CaptureOriginalItemCosmetics(item)
-                            item.Finisher = finisherData
                             changed = true
                         end
                         if changed and type(currentData.Replicate) == 'function' then
@@ -27495,7 +27549,8 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmetics.RestorePlayerDataHook()
                 RivalsCosmetics.RestoreNativeUiBindings()
                 RivalsCosmetics.RestoreClientViewModelHook()
-                RivalsCosmetics.RestoreFinisherHook()
+                -- Finishers are not part of the replacement; only undo a stale legacy hook if one exists.
+                pcall(RivalsCosmetics.RestoreFinisherHook)
                 RivalsEmotes.RestoreEmoteControllerHook()
                 pcall(RivalsCosmetics.RefreshNativeCosmeticsScene)
                 return true
@@ -27528,6 +27583,7 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.CosmeticsUiLoading = false
                 RivalsCosmeticsState.CosmeticsConfigName = nil
                 RivalsCosmeticsState.NativeUnlockedInventory = nil
+                RivalsCosmetics.RestoreDirectDataHooks()
                 RivalsCosmeticsState.UnlockedOwnershipHooks = {}
                 RivalsCosmeticsState.NativeCosmeticSlotConnections = setmetatable({}, { __mode = 'k' })
                 RivalsCosmeticsState.NativeFavoritesSeeded = false
@@ -27546,6 +27602,8 @@ ErrorReporter.set_game(GameName)
                 if not RivalsCosmetics.ShouldUseCosmeticsRuntime() then
                     return false
                 end
+                -- New Unlock All has no finisher path; clean up any stale finisher hook left by an older load.
+                pcall(RivalsCosmetics.RestoreFinisherHook)
                 RivalsCosmeticsState.NativeUnlockedInventory = nil
                 local results = {}
                 local function safeApply(name, fn)
@@ -27580,7 +27638,7 @@ ErrorReporter.set_game(GameName)
                 safeApply('BindFirstPersonModels', RivalsCosmetics.BindFirstPersonModels)
                 safeApply('ApplySelectedWeaponCosmetics', RivalsCosmetics.ApplySelectedWeaponCosmetics)
                 safeApply('ApplyActiveWeaponCosmetics', RivalsCosmetics.ApplyActiveWeaponCosmetics)
-                safeApply('EnsureFinisherHook', RivalsCosmetics.EnsureFinisherHook)
+                -- No Finisher unlock/equip hook: this replacement intentionally excludes Finishers.
                 safeApply('RivalsEmotes.ApplyAll', RivalsEmotes.ApplyAll)
                 safeApply('ApplyWraps', RivalsCosmetics.ApplyWraps)
                 safeApply('BindSpawnedWorldCosmetics', RivalsCosmetics.BindSpawnedWorldCosmetics)
@@ -27609,9 +27667,6 @@ ErrorReporter.set_game(GameName)
                     if charmName ~= nil then
                         RivalsCosmeticsState.PendingCharmSelectionByWeapon[previewWeaponName] = charmName
                     end
-                    if finisherName ~= nil then
-                        RivalsCosmeticsState.PendingFinisherSelectionByWeapon[previewWeaponName] = finisherName
-                    end
                     RivalsCosmetics.SetPreviewWeaponName(previewWeaponName)
                 end
                 local previewOk, previewResult = pcall(RivalsCosmetics.UpdatePreviewViewport)
@@ -27636,9 +27691,6 @@ ErrorReporter.set_game(GameName)
                         end
                         if charmName ~= nil then
                             RivalsCosmeticsState.PendingCharmSelectionByWeapon[previewWeaponName] = charmName
-                        end
-                        if finisherName ~= nil then
-                            RivalsCosmeticsState.PendingFinisherSelectionByWeapon[previewWeaponName] = finisherName
                         end
                     end
                     local applyResult = RivalsCosmetics.ApplyAll()
@@ -29921,7 +29973,7 @@ local P5S4 = Tabs.Misc:AddLeftGroupbox('Unlock All')
 P5S4:AddToggle('P5S1T2', {
     Text = 'Unlock All Cosmetics',
     Default = false,
-    Tooltip = 'Unlocks skins, wraps, charms, finishers, and emotes in the game\'s Customize menus. Equip them there like normal.',
+    Tooltip = 'Unlocks skins, wraps, charms, dances, and emotes in the game\'s Customize menus. Finishers are excluded.',
     Callback = GuardRivalsCallback('Cosmetics_Enabled_Changed', function(enabled)
         if enabled then
             pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
