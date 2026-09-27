@@ -1392,54 +1392,94 @@ do
         end
     end)
 
-    local Watermark = Library:AddWatermark({
-        {
-            Text = "CreU Showcase",
-            Accent = true,
-        },
+    local WatermarkSegmentBuilders = {
+        ["Player Name"] = function()
+            return {
+                Icon = "user",
+                Text = function()
+                    return LocalPlayer.Name
+                end,
+            }
+        end,
+        ["FPS"] = function()
+            return {
+                Icon = "activity",
+                Text = function()
+                    return string.format("%d FPS", FPS)
+                end,
+            }
+        end,
+        ["Ping"] = function()
+            return {
+                Icon = "wifi",
+                Text = function()
+                    local Ping = 0
 
-        {
-            Icon = "user",
-            Text = function()
-                return LocalPlayer.Name
-            end,
-        },
+                    pcall(function()
+                        Ping = math.floor(
+                            Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+                                + 0.5
+                        )
+                    end)
 
-        {
-            Icon = "activity",
-            Text = function()
-                return string.format("%d FPS", FPS)
-            end,
-        },
+                    return string.format("%d ms", Ping)
+                end,
+            }
+        end,
+        ["Time"] = function()
+            return {
+                Icon = "clock",
+                Text = function()
+                    return os.date("%H:%M:%S")
+                end,
+            }
+        end,
+    }
 
-        {
-            Icon = "wifi",
-            Text = function()
-                local Ping = 0
+    -- Builds the full Segments list AddWatermark expects: the fixed title
+    -- segment first, then one segment per name in `Selected` (in a fixed
+    -- order, not the order the user happened to check them in), then the
+    -- fixed closing segment.
+    --
+    -- Stored on Library (not a plain local) because this needs to be
+    -- called from the "Watermark Fields" multi-dropdown's Callback in the
+    -- Settings tab, which is a SEPARATE top-level `do...end` block --
+    -- separate blocks don't share locals with each other, only Library
+    -- (or Options/Toggles/getgenv) are visible from both. The closures
+    -- inside WatermarkSegmentBuilders above still correctly capture this
+    -- block's FPS/LocalPlayer/Stats upvalues either way, since Lua
+    -- closures bind to where a function is DEFINED, not where it's
+    -- later called from.
+    Library._BuildWatermarkSegments = function(Selected)
+        local SelectedSet = {}
+        for _, Name in ipairs(Selected) do
+            SelectedSet[Name] = true
+        end
 
-                pcall(function()
-                    Ping = math.floor(
-                        Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-                            + 0.5
-                    )
-                end)
+        local Segments = {
+            {
+                Text = "CreU Showcase",
+                Accent = true,
+            },
+        }
 
-                return string.format("%d ms", Ping)
-            end,
-        },
+        for _, Name in ipairs({ "Player Name", "FPS", "Ping", "Time" }) do
+            if SelectedSet[Name] then
+                table.insert(Segments, WatermarkSegmentBuilders[Name]())
+            end
+        end
 
-        {
-            Icon = "clock",
-            Text = function()
-                return os.date("%H:%M:%S")
-            end,
-        },
-
-        {
+        table.insert(Segments, {
             Text = "--enjoy!",
             Accent = true,
-        },
-    })
+        })
+
+        return Segments
+    end
+
+    local WatermarkDefaultFields = { "Player Name", "FPS", "Ping", "Time" }
+
+    local Watermark = Library:AddWatermark(Library._BuildWatermarkSegments(WatermarkDefaultFields))
 
     if Watermark then
         Watermark.RefreshRate = 1
@@ -1481,6 +1521,49 @@ do
                 Library:SetWatermarkVisible(Value)
             end
         end,
+    })
+
+    -- DependencyBox: the "which fields to show" dropdown below is only
+    -- relevant while the watermark itself is on, so it's hidden entirely
+    -- until the Watermark toggle above is enabled -- same
+    -- AddDependencyBox/SetupDependencies pattern used elsewhere in this
+    -- file (see the Dependency tab).
+    local WatermarkFieldsDepbox = Menu:AddDependencyBox()
+
+    WatermarkFieldsDepbox:AddDropdown("WatermarkFields", {
+        Text = "Watermark Fields",
+        Tooltip = "Choose which fields the watermark shows",
+        Values = { "Player Name", "FPS", "Ping", "Time" },
+        Default = { "Player Name", "FPS", "Ping", "Time" },
+        Multi = true,
+        SelectAllButtons = true,
+
+        Callback = function(Value)
+            -- Value is a Multi dropdown's internal shape: a dict like
+            -- {["FPS"] = true, ["Ping"] = true}, not an ordered list --
+            -- so the fixed order below (not whatever order the user
+            -- happened to check things in) decides the watermark's
+            -- left-to-right field order.
+            local Selected = {}
+            for _, Name in ipairs({ "Player Name", "FPS", "Ping", "Time" }) do
+                if Value[Name] then
+                    table.insert(Selected, Name)
+                end
+            end
+
+            -- Library._BuildWatermarkSegments (not a plain local -- see
+            -- where it's defined, in the Home tab's `do...end` block)
+            -- because this Callback runs in a different top-level block
+            -- that doesn't share locals with that one.
+            local RebuiltWatermark = Library:AddWatermark(Library._BuildWatermarkSegments(Selected))
+            if RebuiltWatermark then
+                RebuiltWatermark.RefreshRate = 1
+            end
+        end,
+    })
+
+    WatermarkFieldsDepbox:SetupDependencies({
+        { Toggles.Watermark, true },
     })
 
     Menu:AddToggle("ShowKeybinds", {
