@@ -1101,9 +1101,9 @@ return {
                 RageFireHitPart = nil,
                 RageFireStamp = 0,
                 RageClientAnchorCFrame = nil,
-                RageTeleportMode = 'ue',
-                RageTeleportVoidFire = false,
-                RageTeleportVoidFires = 0,
+                RageGumMode = 'ue',
+                RageGumVoidFire = false,
+                RageGumVoidFires = 0,
                 RageKnifeStatus = 'idle',
                 RageKnifeSwings = 0,
                 Shots = 0,
@@ -1148,11 +1148,13 @@ return {
                 RageMode = function() return 'Polar' end,
                 RageShieldBackstab = function() return true end,
                 RageAttackContinuity = function() return true end,
-                RageTeleportMode = function() return 'ue' end,
-                RageTeleportVoidFire = function() return false end,
+                RageGumMode = function()
+                    return 'ue'
+                end,
+                RageGumVoidFire = function() return false end,
                 RageOrbitRadius = function() return 60 end,
                 RageOrbitDwell = function() return 0.30 end,
-                RageOrbitHeight = function() return 0 end,
+                RageOrbitHeight = function() return 8 end,
                 RageOrbitJitter = function() return true end,
             }
             Setting.AUTO_TRANSLOCATE_DURATION = 0.15
@@ -1374,7 +1376,6 @@ return {
             Setting.EYE_UP_SANE = 2.5
             Setting.EYE_MUZZLE_SEP = 0.07
             Setting.UE_TP_PRIMARY_RADIUS = 3.2
-            -- UE TP vertical offset is intentionally fixed at zero.
             Setting.UE_TP_PRIMARY_HEIGHT = 0
             Setting.UE_TP_PRIMARY_DELAY = 0.035
             Setting.UE_TP_SECONDARY_RADIUS = 2.6
@@ -1384,6 +1385,31 @@ return {
             Setting.UE_TP_JITTER_RADIUS = 1.05
             Setting.UE_TP_JITTER_HEIGHT = 0
             Setting.UE_TP_JITTER_REFRESH = 0.07
+            Setting.GLUE_PARK_OFF = Vector3.zero
+            local GLUE_CHAR0 = {
+                ['\0'] = -9e37,
+                ['\1'] = 0,
+                ['\2'] = 0,
+                ['\3'] = -math.pi / 2,
+                ['\4'] = math.pi,
+                ['\5'] = math.pi,
+            }
+            local GLUE_CHAR1 = {
+                ['\0'] = 0,
+                ['\1'] = -90000000,
+                ['\2'] = 0,
+                ['\3'] = -math.pi / 2,
+                ['\4'] = math.pi,
+                ['\5'] = math.pi,
+            }
+            local GLUE_CHAR3 = {
+                ['\0'] = 0,
+                ['\1'] = 0,
+                ['\2'] = 0,
+                ['\3'] = 0,
+                ['\4'] = 0,
+                ['\5'] = 0,
+            }
             local function resolveUtilityModule()
                 local cached = cachedUtilityModule
                 if type(cached) == 'table' and type(rawget(cached, 'EncodeCFrame')) == 'function' then
@@ -1538,21 +1564,17 @@ return {
                 end
                 return nil
             end
-            local function verifyUETeleport(hitboxHead, tpActive)
-                if not tpActive then
-                    return true
-                end
-                local ownRoot = GetRoot()
-                return ownRoot ~= nil and ownRoot.Parent ~= nil and hitboxHead ~= nil and hitboxHead.Parent ~= nil
+            local function verifyFullHeadGlue(hitboxHead, glued)
+                return glued ~= true
             end
-            local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, tpActive, forceAimPayload)
+            local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, glued, forceAimPayload)
                 local remote = resolveUseItemRemote()
                 local token = enc('StartShooting')
                 hitboxHead = resolveFullHeadPart(hitboxHead)
                 if not remote or not token or not objectId or hitboxHead == nil then
                     return false
                 end
-                if not verifyUETeleport(hitboxHead, tpActive) then
+                if not verifyFullHeadGlue(hitboxHead, glued) then
                     return false
                 end
                 if eyeCF == nil or muzzleCF == nil then
@@ -1560,20 +1582,27 @@ return {
                 end
                 local localFighter = resolveLocalFighter()
                 local liveItem = localFighter and runtimeEquippedItem(localFighter) or nil
-                if liveItem == nil or itemObjectId(liveItem) ~= objectId then
+                if liveItem == nil then
                     return false
                 end
-                local finalAimWorldPos = aimWorldPos
-                if not KiciaRagebot.isFiniteVector3(finalAimWorldPos) then
+                if itemObjectId(liveItem) ~= objectId then
+                    return false
+                end
+                local finalAimWorldPos
+                if glued then
                     finalAimWorldPos = hitboxHead.Position
+                else
+                    finalAimWorldPos = aimWorldPos
+                    if not KiciaRagebot.isFiniteVector3(finalAimWorldPos) then
+                        finalAimWorldPos = hitboxHead.Position
+                    end
                 end
                 local eyeBase = eyeCF.Position
-                if not KiciaRagebot.isFiniteVector3(eyeBase) then
+                if not glued then
                     local liveRoot = GetRoot()
-                    eyeBase = liveRoot and liveRoot.Position or nil
-                end
-                if not KiciaRagebot.isFiniteVector3(eyeBase) then
-                    return false
+                    if liveRoot ~= nil and liveRoot.Parent ~= nil and KiciaRagebot.isFiniteVector3(liveRoot.Position) then
+                        eyeBase = liveRoot.Position
+                    end
                 end
                 local finalEyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, hitboxHead.Parent), 0)
                 local finalEyeCF = safeLookCFrame(finalEyePos, finalAimWorldPos)
@@ -1581,30 +1610,42 @@ return {
                 if finalEyeCF == nil or finalMuzzleCF == nil then
                     return false
                 end
-                if not finalGunGate(liveItem, hitboxHead, finalEyeCF.Position) then
+                -- Gate the exact origin that will be encoded. Gum-on deliberately maps this
+                -- through RageClientAnchorCFrame inside finalGunGate; non-Gum uses finalEyeCF.
+                if not finalGunGate(liveItem, hitboxHead, finalEyeCF.Position, glued) then
                     return false
                 end
                 eyeCF = finalEyeCF
                 muzzleCF = finalMuzzleCF
                 aimWorldPos = finalAimWorldPos
-                local inner = {}
-                if forceAimPayload then
-                    inner = { ['\0'] = aim1, ['\1'] = aim2, ['\2'] = hitboxHead, ['\3'] = extra }
+                local inner
+                if glued then
+                    inner = {
+                        ['\0'] = GLUE_CHAR0,
+                        ['\1'] = GLUE_CHAR1,
+                        ['\2'] = hitboxHead,
+                        ['\3'] = GLUE_CHAR3,
+                    }
                 else
-                    local encoded = encodeWorldShotFields(inner, eyeCF, muzzleCF, hitboxHead, aimWorldPos, 0.30)
-                    if not encoded then
-                        State.RageBlankCanary = (State.RageBlankCanary or 0) + 1
-                        return false
+                    inner = {}
+                    if forceAimPayload then
+                        inner = { ['\0'] = aim1, ['\1'] = aim2, ['\2'] = hitboxHead, ['\3'] = extra }
+                    else
+                        local encoded = encodeWorldShotFields(inner, eyeCF, muzzleCF, hitboxHead, aimWorldPos, 0.30)
+                        if not encoded then
+                            State.RageBlankCanary = (State.RageBlankCanary or 0) + 1
+                            return false
+                        end
                     end
                 end
                 pcall(function()
                     local fighter = resolveLocalFighter()
-                    local equippedItem = fighter and rawget(fighter, 'EquippedItem') or nil
-                    local liveData = type(equippedItem) == 'table' and rawget(equippedItem, 'Data') or nil
-                    if equippedItem ~= nil and liveData ~= nil and rawget(liveData, 'ObjectID') == objectId then
-                        equippedItem._shoot_cooldown = 0
-                        equippedItem._shoot_cooldown_no_ammo = 0
-                        equippedItem._last_shot = tick() - 1
+                    local liveItem = fighter and rawget(fighter, 'EquippedItem') or nil
+                    local liveData = type(liveItem) == 'table' and rawget(liveItem, 'Data') or nil
+                    if liveItem ~= nil and liveData ~= nil and rawget(liveData, 'ObjectID') == objectId then
+                        liveItem._shoot_cooldown = 0
+                        liveItem._shoot_cooldown_no_ammo = 0
+                        liveItem._last_shot = tick() - 1
                     end
                 end)
                 local payload
@@ -1617,7 +1658,6 @@ return {
                 local sendOk = callOk and callResult ~= false
                 if sendOk then
                     State.RageLastFireTime = os.clock()
-                    State.Shots = (State.Shots or 0) + 1
                 end
                 return sendOk
             end
@@ -2000,7 +2040,7 @@ return {
                 end
                 return false
             end
-            local function finalGunGate(item, hitboxHead, shotOrigin)
+            local function finalGunGate(item, hitboxHead, shotOrigin, glued)
                 if item == nil or hitboxHead == nil or hitboxHead.Parent == nil then
                     return false
                 end
@@ -2012,7 +2052,6 @@ return {
                     return false
                 end
                 local model = hitboxHead:FindFirstAncestorOfClass('Model') or hitboxHead.Parent
-                local targetRoot = model and model:FindFirstChild('HumanoidRootPart') or nil
                 local humanoid = model and model:FindFirstChildOfClass('Humanoid') or nil
                 if humanoid ~= nil and humanoid.Health <= 0 then
                     return false
@@ -2021,10 +2060,6 @@ return {
                     return false
                 end
                 local logicalTargetPos = hitboxHead.Position
-                if targetRoot ~= nil and targetRoot:IsA('BasePart') and targetRoot.Parent == model
-                    and shotFiniteVector3(targetRoot.Position) then
-                    logicalTargetPos = hitboxHead.Position
-                end
                 if logicalTargetPos == nil or not shotFiniteVector3(logicalTargetPos) then
                     return false
                 end
@@ -2692,11 +2727,6 @@ local CharacterController = {}
                     rbFireServerNative(remote, token, offValue, nil)
                 end
             end
-            local VOID_CFRAME = CFrame.new(
-                math.random(-100000, -10000),
-                100000,
-                math.random(-100000, 10000)
-            )
             local UETeleport = {}
             UETeleport.__index = UETeleport
             function UETeleport.new()
@@ -2707,65 +2737,66 @@ local CharacterController = {}
                     _shieldState = nil,
                     _slotIndex = nil,
                     _lastCFrame = nil,
-                    _nextTeleportAt = 0,
-                    _randomPosition = nil,
-                    _randomAt = 0,
+                    _nextAt = 0,
+                    _jitter = nil,
+                    _jitterAt = 0,
                 }, UETeleport)
             end
             function UETeleport:_PickPosition(targetHead, targetRoot, shieldState, slotIndex, now)
                 if targetHead == nil or targetRoot == nil or targetHead.Parent == nil or targetRoot.Parent == nil then
                     return nil
                 end
-                local headPosition = targetHead.Position
-                if not KiciaRagebot.isFiniteVector3(headPosition) or not KiciaRagebot.isFiniteVector3(targetRoot.Position) then
+                local hp = targetHead.Position
+                local rp = targetRoot.Position
+                if not KiciaRagebot.isFiniteVector3(hp) or not KiciaRagebot.isFiniteVector3(rp) then
                     return nil
                 end
                 if shieldState == 'Above' or shieldState == 'Below' then
-                    local pos = targetRoot.Position - targetRoot.CFrame.LookVector * Setting.UE_TP_SHIELD_BACK
-                    return KiciaRagebot.isFiniteVector3(pos) and pos or nil
+                    local p = rp - targetRoot.CFrame.LookVector * math.clamp(tonumber(Setting.UE_TP_SHIELD_BACK) or 3, 1, 8)
+                    return KiciaRagebot.isFiniteVector3(p) and p or nil
                 end
                 local look = targetRoot.CFrame.LookVector
                 local right = targetRoot.CFrame.RightVector
-                -- LarpUE Teleport defaults: back + left + right, front disabled.
                 local dirs = { -look, -right, right }
-                local baseDir = dirs[rbRandom:NextInteger(1, #dirs)]
+                local dir = dirs[rbRandom:NextInteger(1, #dirs)]
                 local secondary = tonumber(slotIndex) == 2
-                local radius = secondary and Setting.UE_TP_SECONDARY_RADIUS or Setting.UE_TP_PRIMARY_RADIUS
-                -- Keep all UE teleport height offsets exactly zero; jitter is horizontal-only.
-                local basePos = headPosition + baseDir * math.clamp(radius, 1.25, 5)
+                local radius = secondary and tonumber(Setting.UE_TP_SECONDARY_RADIUS) or tonumber(Setting.UE_TP_PRIMARY_RADIUS)
+                local p = hp + dir * math.clamp(radius or 3.2, 1.25, 5)
                 if secondary then
-                    if self._randomPosition == nil or now - self._randomAt >= Setting.UE_TP_JITTER_REFRESH then
-                        self._randomAt = now
-                        local jitterAngle = rbRandom:NextNumber(0, math.pi * 2)
-                        local jitterDir = Vector3.new(math.cos(jitterAngle), 0, math.sin(jitterAngle))
-                        self._randomPosition = jitterDir * (rbRandom:NextNumber() * Setting.UE_TP_JITTER_RADIUS)
-                            + Vector3.zero
+                    if self._jitter == nil or now - self._jitterAt >= (tonumber(Setting.UE_TP_JITTER_REFRESH) or 0.07) then
+                        self._jitterAt = now
+                        local a = rbRandom:NextNumber(0, math.pi * 2)
+                        local r = rbRandom:NextNumber(0, tonumber(Setting.UE_TP_JITTER_RADIUS) or 1.05)
+                        self._jitter = Vector3.new(math.cos(a), 0, math.sin(a)) * r
                     end
-                    basePos += self._randomPosition or Vector3.zero
+                    p = p + (self._jitter or Vector3.zero)
                 else
-                    self._randomPosition = nil
-                    self._randomAt = now
+                    self._jitter = nil
+                    self._jitterAt = now
                 end
-                return KiciaRagebot.isFiniteVector3(basePos) and basePos or nil
+                -- UE TP height is fixed at zero: preserve target-head Y exactly.
+                p = Vector3.new(p.X, hp.Y, p.Z)
+                return KiciaRagebot.isFiniteVector3(p) and p or nil
             end
             function UETeleport:Acquire(rootPart, targetHead, targetRoot, shieldState, slotIndex)
                 if rootPart == nil or rootPart.Parent == nil or targetHead == nil or targetRoot == nil then
                     self:Reset()
                     return rootPart and rootPart.CFrame or nil, false
                 end
-                if self._rootPart ~= rootPart or self._targetRoot ~= targetRoot or self._targetHead ~= targetHead or self._shieldState ~= shieldState or self._slotIndex ~= slotIndex then
+                if self._rootPart ~= rootPart or self._targetRoot ~= targetRoot or self._targetHead ~= targetHead
+                    or self._shieldState ~= shieldState or self._slotIndex ~= slotIndex then
                     self._rootPart = rootPart
                     self._targetRoot = targetRoot
                     self._targetHead = targetHead
                     self._shieldState = shieldState
                     self._slotIndex = slotIndex
                     self._lastCFrame = nil
-                    self._nextTeleportAt = 0
-                    self._randomPosition = nil
-                    self._randomAt = 0
+                    self._nextAt = 0
+                    self._jitter = nil
+                    self._jitterAt = 0
                 end
                 local now = os.clock()
-                if self._lastCFrame ~= nil and now < self._nextTeleportAt and validCombatCFrame(self._lastCFrame) then
+                if self._lastCFrame ~= nil and now < self._nextAt and validCombatCFrame(self._lastCFrame) then
                     return self._lastCFrame, true
                 end
                 local position = self:_PickPosition(targetHead, targetRoot, shieldState, slotIndex, now)
@@ -2773,24 +2804,18 @@ local CharacterController = {}
                     self._lastCFrame = nil
                     return rootPart.CFrame, false
                 end
-                local fallback = self._lastCFrame or rootPart.CFrame
-                local ok, cf = pcall(CFrame.new, position, targetHead.Position)
-                if not ok or typeof(cf) ~= 'CFrame' then
+                local cf = safeLookCFrame(position, targetHead.Position) or CFrame.new(position)
+                if not validCombatCFrame(cf) then
                     self._lastCFrame = nil
-                    return fallback, false
-                end
-                cf = saneCombatCFrame(cf, fallback)
-                if cf == nil then
-                    self._lastCFrame = nil
-                    return fallback, false
+                    return rootPart.CFrame, false
                 end
                 self._lastCFrame = cf
-                local delay = tonumber(slotIndex) == 2 and Setting.UE_TP_SECONDARY_DELAY or Setting.UE_TP_PRIMARY_DELAY
-                self._nextTeleportAt = now + math.max(0.01, delay)
+                local delay = tonumber(slotIndex) == 2 and tonumber(Setting.UE_TP_SECONDARY_DELAY) or tonumber(Setting.UE_TP_PRIMARY_DELAY)
+                self._nextAt = now + math.max(0.01, delay or 0.035)
                 return cf, true
             end
             function UETeleport:Free(rootPart)
-                if rootPart == nil or self._rootPart == rootPart then
+                if rootPart == nil or rootPart == self._rootPart then
                     self:Reset()
                 end
             end
@@ -2801,9 +2826,9 @@ local CharacterController = {}
                 self._shieldState = nil
                 self._slotIndex = nil
                 self._lastCFrame = nil
-                self._nextTeleportAt = 0
-                self._randomPosition = nil
-                self._randomAt = 0
+                self._nextAt = 0
+                self._jitter = nil
+                self._jitterAt = 0
             end
             function UETeleport:Destroy()
                 self:Reset()
@@ -2964,14 +2989,7 @@ local CharacterController = {}
                 end
                 return nil
             end
-            local TargetCollectCache = { entries = nil, builtAt = -math.huge }
-            local TARGET_COLLECT_CACHE_TTL = 0.035
-            function KiciaRagebot.collectEnemies(forceRefresh)
-                local cacheNow = os.clock()
-                if not forceRefresh and TargetCollectCache.entries ~= nil
-                    and cacheNow - TargetCollectCache.builtAt < TARGET_COLLECT_CACHE_TTL then
-                    return TargetCollectCache.entries
-                end
+            function KiciaRagebot.collectEnemies()
                 local out = {}
                 local seenPlayers = {}
                 local controller = resolveFighterController()
@@ -3081,13 +3099,7 @@ local CharacterController = {}
                         end
                     end
                 end
-                TargetCollectCache.entries = out
-                TargetCollectCache.builtAt = cacheNow
                 return out
-            end
-            function KiciaRagebot.invalidateTargetCache()
-                TargetCollectCache.entries = nil
-                TargetCollectCache.builtAt = -math.huge
             end
             function KiciaRagebot.isValidTarget(entry)
                 if entry == nil or not entry.alive or entry.deflecting then
@@ -3157,7 +3169,7 @@ local CharacterController = {}
             end
 
             function KiciaRagebot.selectTarget(preferredTarget)
-                local enemies = KiciaRagebot.collectEnemies(false)
+                local enemies = KiciaRagebot.collectEnemies()
                 local myRoot = GetRoot()
                 local prioritizeHackers = Setting.PrioritizeHackers()
                 local valid = {}
@@ -3233,12 +3245,7 @@ local CharacterController = {}
                     if math.abs(a.health - b.health) > 10 then
                         return a.health < b.health
                     end
-                    if a.distance ~= b.distance then
-                        return a.distance < b.distance
-                    end
-                    local aName = a.player and (a.player.Name or a.player.DisplayName) or a.model and a.model.Name or ''
-                    local bName = b.player and (b.player.Name or b.player.DisplayName) or b.model and b.model.Name or ''
-                    return tostring(aName) < tostring(bName)
+                    return a.distance < b.distance
                 end)
                 return valid[1]
             end
@@ -3624,7 +3631,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     for i = 0, 5 do
                         local ang = rageOrbitAngle + i * (math.pi / 3)
                         local jitter = Setting.RageOrbitJitter() and ((math.random() - 0.5) * 14) or 0
-                        local h = 0
+                        local h = Setting.RageOrbitHeight() + jitter
                         local pos = Vector3.new(
                             aimPos.X + math.cos(ang) * radius,
                             math.max(aimPos.Y + h, KiciaRagebot.rageKillFloor() + 6),
@@ -3641,9 +3648,9 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 rageOrbitVantageUntil = 0
                 return nil
             end
-            function KiciaRagebot.rageTeleportMode()
-                local m = Setting.RageTeleportMode()
-                if m ~= 'off' and m ~= 'lite' and m ~= 'on' and m ~= 'ue' then
+            function KiciaRagebot.rageGumMode()
+                local m = Setting.RageGumMode()
+                if m ~= 'off' and m ~= 'lite' and m ~= 'on' then
                     m = 'off'
                 end
                 return m
@@ -4110,16 +4117,24 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             end
             local HitscanStrategy = {}
             HitscanStrategy.__index = HitscanStrategy
+            local function inferGunSlot(item)
+                local info = itemInfo(item)
+                local className = info and rawget(info, 'Class')
+                if type(className) == 'string' and className:lower():find('secondary', 1, true) then
+                    return 2
+                end
+                return 1
+            end
             function HitscanStrategy.new(ueTeleport)
                 return setmetatable({ _ueTeleport = ueTeleport, _shootLock = ShootLock.new(), _tpActive = false }, HitscanStrategy)
             end
             function HitscanStrategy:ClearTeleport()
                 if self._ueTeleport ~= nil then
-                    self._ueTeleport:Free(nil)
+                    self._ueTeleport:Reset()
                 end
                 self._tpActive = false
             end
-            function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire, slotIndex)
+            function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
                 if hitboxHead == nil or targetRootPart == nil then
                     self:ClearTeleport()
@@ -4134,21 +4149,25 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     self:ClearTeleport()
                     return ourRootPart.CFrame, nil
                 end
-                local tpCFrame, tpOk = self._ueTeleport:Acquire(ourRootPart, hitboxHead, targetRootPart, shieldState, slotIndex)
-                if not tpOk or tpCFrame == nil then
+                local slotIndex = inferGunSlot(item)
+                local tpCallOk, tpCFrame, tpOk = pcall(self._ueTeleport.Acquire, self._ueTeleport, ourRootPart, hitboxHead, targetRootPart, shieldState, slotIndex)
+                if not tpCallOk or not tpOk or tpCFrame == nil then
                     self:ClearTeleport()
                     return ourRootPart.CFrame, nil
                 end
                 self._tpActive = true
-                local cframe = tpCFrame
+                local cframe
                 if directHeadAim then
-                    local ok, faced = pcall(CFrame.new, tpCFrame.Position + offset, aimHeadPosition)
-                    cframe = ok and saneCombatCFrame(faced, tpCFrame) or tpCFrame
+                    cframe = CFrame.new(tpCFrame.Position + offset, aimHeadPosition)
                 elseif above then
-                    cframe = saneCombatCFrame(tpCFrame + offset, tpCFrame)
+                    cframe = tpCFrame + offset
                 else
-                    local ok, faced = pcall(CFrame.new, tpCFrame.Position + offset, aimHeadPosition)
-                    cframe = ok and saneCombatCFrame(faced, tpCFrame) or tpCFrame
+                    cframe = CFrame.new(tpCFrame.Position + offset, aimHeadPosition)
+                end
+                targetRootPart = target.rootPart
+                if targetRootPart == nil or targetRootPart.Parent == nil or not targetRootPart:IsA('BasePart') then
+                    self:ClearTeleport()
+                    return ourRootPart.CFrame, nil
                 end
                 local _, oy, oz = targetRootPart.CFrame:ToOrientation()
                 local pitch = above and PITCH_ABOVE or PITCH_BELOW
@@ -4159,11 +4178,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 end
                 local objectId = itemObjectId(item)
                 local isRaycast = itemIsRaycast(item)
-                local preFireRefresh
-                local finalShotEyeCF = nil
-                local finalShotMuzzleCF = nil
-                local finalShotAimWorldPos = nil
-                preFireRefresh = function(characterController)
+                local finalShotEyeCF, finalShotMuzzleCF, finalShotAimWorldPos = nil, nil, nil
+                local preFireRefresh = function(characterController)
                     if not characterController or target == nil or target.model == nil or target.model.Parent == nil then
                         return cframe
                     end
@@ -4175,40 +4191,28 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     if liveAimPosition == nil then
                         return cframe
                     end
-                    hitboxHead = liveHead
-                    targetRootPart = liveRoot
+                    hitboxHead, targetRootPart = liveHead, liveRoot
                     shieldState = classifyAboveBelow(target)
                     above = shieldState ~= 'Below'
                     directHeadAim = shieldState == 'None'
                     offset = resolveCombatGunOffset(shieldState)
-                    local liveTP, bound = self._ueTeleport:Acquire(ourRootPart, liveHead, liveRoot, shieldState, slotIndex)
-                    if not bound or liveTP == nil then
+                    local liveCallOk, liveTP, liveOk = pcall(self._ueTeleport.Acquire, self._ueTeleport, ourRootPart, liveHead, liveRoot, shieldState, inferGunSlot(item))
+                    if not liveCallOk or not liveOk or liveTP == nil then
                         return cframe
                     end
                     self._tpActive = true
-                    local refreshed = liveTP
                     if directHeadAim then
-                        local ok, faced = pcall(CFrame.new, liveTP.Position + offset, liveAimPosition)
-                        refreshed = ok and saneCombatCFrame(faced, liveTP) or liveTP
+                        cframe = CFrame.new(liveTP.Position + offset, liveAimPosition)
                     elseif above then
-                        refreshed = saneCombatCFrame(liveTP + offset, liveTP)
+                        cframe = liveTP + offset
                     else
-                        local ok, faced = pcall(CFrame.new, liveTP.Position + offset, liveAimPosition)
-                        refreshed = ok and saneCombatCFrame(faced, liveTP) or liveTP
+                        cframe = CFrame.new(liveTP.Position + offset, liveAimPosition)
                     end
-                    cframe = refreshed
-                    local snapshotEyePos = refreshed.Position + Vector3.new(0, eyeRise(refreshed.Position, target.model), 0)
-                    local snapshotEyeCF = safeLookCFrame(snapshotEyePos, liveAimPosition)
-                    local snapshotMuzzleCF = snapshotEyeCF and (snapshotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
-                    if snapshotEyeCF ~= nil and snapshotMuzzleCF ~= nil then
-                        finalShotAimWorldPos = liveAimPosition
-                        finalShotEyeCF = snapshotEyeCF
-                        finalShotMuzzleCF = snapshotMuzzleCF
-                        if characterController:SetServerCFrame(refreshed) ~= true then
-                            self._tpActive = false
-                            return nil
-                        end
-                    end
+                    local eyeBase = cframe.Position
+                    local eyePos = eyeBase + Vector3.new(0, eyeRise(eyeBase, target.model), 0)
+                    finalShotAimWorldPos = liveAimPosition
+                    finalShotEyeCF = safeLookCFrame(eyePos, finalShotAimWorldPos)
+                    finalShotMuzzleCF = finalShotEyeCF and (finalShotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
                     return cframe
                 end
                 local function weaponAction()
@@ -4217,20 +4221,23 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     end
                     local liveHead, liveRoot = resolveLiveTarget(target)
                     if liveHead ~= nil and liveRoot ~= nil then
-                        hitboxHead = liveHead
-                        targetRootPart = liveRoot
+                        hitboxHead, targetRootPart = liveHead, liveRoot
+                    end
+                    if hitboxHead.Parent == nil or targetRootPart.Parent == nil then
+                        return false
                     end
                     finalShotAimWorldPos = resolveHitscanAimPosition(target, hitboxHead, targetRootPart)
                     if finalShotAimWorldPos == nil then
                         return false
                     end
-                    local shotEyePos = cframe.Position + Vector3.new(0, eyeRise(cframe.Position, target.model), 0)
+                    local shotEyeBase = cframe.Position
+                    local shotEyePos = shotEyeBase + Vector3.new(0, eyeRise(shotEyeBase, target.model), 0)
                     finalShotEyeCF = safeLookCFrame(shotEyePos, finalShotAimWorldPos)
                     finalShotMuzzleCF = finalShotEyeCF and (finalShotEyeCF - Vector3.new(0, Setting.EYE_MUZZLE_SEP, 0)) or nil
                     if finalShotEyeCF == nil or finalShotMuzzleCF == nil then
                         return false
                     end
-                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, true, false) == true
+                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, false, false) == true
                 end
                 return cframe, weaponAction, preFireRefresh
             end
@@ -4238,7 +4245,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                 self._shootLock:Reset()
                 self:ClearTeleport()
             end
-
 
             Setting.MELEE_DWELL_S = 0.03
             Setting.BACKSTAB_WINDOW = 0
@@ -4254,7 +4260,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
 
             function MeleeStrategy.new()
                 return setmetatable({
-                    -- Melee/knife owns its own action-time TP path.
                     _shootLock = ShootLock.new(),
                     _hitboxWindowUntil = -1,
                     _attackCooldown = -1,
@@ -5108,7 +5113,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     self._hitscanStrategy:ResetState()
                     return self:_EvadePlan(clientCF, mode)
                 end
-                local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire, action.index)
+                local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire)
                 return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
             end
 function Controller:_ApplyPlan(plan, target, characterController, fighter)
@@ -5185,7 +5190,6 @@ function Controller:Update(dt)
                 -- without making the range/LOS check compare the target against the void location.
                 State.RageClientAnchorCFrame = clientCF
                 local now = os.clock()
-
                 local target = KiciaRagebot.selectTarget(self._lastTarget)
                 self._lastTarget = target
                 self._lastTargetAt = target and now or -math.huge
@@ -5215,6 +5219,9 @@ function Controller:Update(dt)
                     local evasionOption = Options and Options.P8S4D2 and Options.P8S4D2.Value or mode
                     self._hitscanStrategy:ResetState()
                     self._meleeStrategy:ResetState()
+                    if self._ueTeleport and ourRootPart then
+                        self._ueTeleport:Reset()
+                    end
                     if undergroundEnabled and evasionOption ~= 'Auto' then
                         pcall(stopUnderground)
                         local undergroundToggle = Toggles and Toggles.P8S4T10
@@ -5242,25 +5249,21 @@ function Controller:Update(dt)
                 if preActionHeartbeat and plan.preFireRefresh == nil then
                     characterController:HeartbeatUpdate()
                 end
-                local preFireFailed = false
                 if plan.preFireRefresh ~= nil and plan.weaponAction ~= nil then
+
+
+
+
+
+
                     if preActionHeartbeat then
                         characterController:HeartbeatUpdate()
                     end
                     local refreshed = plan.preFireRefresh(characterController)
-                    if refreshed == nil then
-                        preFireFailed = true
-                    elseif characterController:SetServerCFrame(refreshed) ~= true then
-                        preFireFailed = true
-                    else
+                    if refreshed ~= nil then
+                        characterController:SetServerCFrame(refreshed)
                         characterController:HeartbeatUpdate()
                     end
-                end
-                if preFireFailed then
-                    if not preActionHeartbeat then
-                        characterController:HeartbeatUpdate()
-                    end
-                    return
                 end
                 if plan.forceViewBeforeAction and plan.viewAngles ~= nil then
                     characterController:ForceViewAngles(20, plan.viewAngles)
@@ -5285,7 +5288,6 @@ function Controller:GetLastTargetWorld()
                 rageOrbitTargetKey = nil
                 self._lastTargetAt = -math.huge
                 self._lastTargetWorld = nil
-                KiciaRagebot.invalidateTargetCache()
                 self._lastDefensiveViewAngles = nil
                 State.RageLastFireTime = -math.huge
                 State.RageClientAnchorCFrame = nil
@@ -5306,8 +5308,8 @@ function Controller:GetLastTargetWorld()
                 AutoEvasion.randomHoldUntil = 0
                 AutoEvasion.reloading = false
                 AutoEvasion.shotPending = false
-                State.RageTeleportMode = KiciaRagebot.rageTeleportMode()
-                State.RageTeleportVoidFire = false
+                State.RageGumMode = KiciaRagebot.rageGumMode()
+                State.RageGumVoidFire = false
                 if self._characterController then
                     self._characterController:RestoreNow()
                     self._characterController:SetServerCFrame(nil)
@@ -5325,6 +5327,7 @@ function Controller:GetLastTargetWorld()
                 end
                 if self._ueTeleport then
                     self._ueTeleport:Destroy()
+                    self._ueTeleport = nil
                 end
                 applyEnabledFFlags(false)
             end
@@ -5640,7 +5643,6 @@ local function ensureController()
                 end
             end
             function KiciaRagebot.Destroy()
-                KiciaRagebot.invalidateTargetCache()
                 if controllerInstance then
                     controllerInstance:Destroy()
                     controllerInstance = nil
@@ -14260,7 +14262,6 @@ ErrorReporter.set_game(GameName)
                     pcall(spoofer.Cleanup, player)
                 end
             end
-            do
             RivalsRuntimeBridge.FullSpoof = {
                 Started = false,
                 Connections = {},
@@ -14948,7 +14949,6 @@ ErrorReporter.set_game(GameName)
                 state.PlayerDataController = nil
                 state.PlayerGui = nil
                 state.Started = false
-            end
             end
 
             RivalsRuntimeBridge.AnimationPlayer = {
@@ -19986,9 +19986,9 @@ ErrorReporter.set_game(GameName)
                 WeaponRanges           = {
                     ['Shotgun'] = { In = 5, Out = 5 },
                 },
-                HeightBase             = 0,
-                HeightWobbleAmp        = 0,
-                HeightWobbleRateHz     = 0,
+                HeightBase             = 3,
+                HeightWobbleAmp        = 2,
+                HeightWobbleRateHz     = 2.7,
                 OOBBufferDistance      = 4,
                 KillSeatBufferDistance     = 1.5,
                 KillSeatScoreRayLength     = 8,
@@ -20238,13 +20238,14 @@ ErrorReporter.set_game(GameName)
                 return toggle and ranges.In or ranges.Out
             end
             function RivalsRagebot.ResolveHeightOffset(clockSec)
-                -- Ragebot vertical offset is intentionally fixed at zero.
-                return 0
+                local t = clockSec or 0
+                local offset = RivalsRagebot.HeightBase + math.sin(2 * math.pi * RivalsRagebot.HeightWobbleRateHz * t) * RivalsRagebot.HeightWobbleAmp
+                return math.clamp(offset, 0, 0.1)
             end
             function RivalsRagebot.ResolveRagebotCFrame(targetRootPart, radius, heightOffset, phaseRad, maxWorldY)
                 local localOffset = Vector3.new(
                     math.sin(phaseRad) * radius,
-                    0,
+                    heightOffset,
                     math.cos(phaseRad) * radius
                 )
                 local worldPos = targetRootPart.CFrame:PointToWorldSpace(localOffset)
@@ -26297,7 +26298,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            function RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, kind, original)
+            local function restoreNativeSelectionKind(controller, weaponName, kind, original)
                 local setter = getMethodFromObject(controller, 'SetSkinChangerChoice')
                 if type(setter) ~= 'function' then
                     return false
@@ -26338,10 +26339,10 @@ ErrorReporter.set_game(GameName)
                 for weaponName in pairs(RivalsCosmeticsState.NativeSkinChangerTouchedWeapons) do
                     local snapshot = RivalsCosmeticsState.NativeSkinChangerOriginalSelections[weaponName]
                     local original = type(snapshot) == 'table' and snapshot.Value or nil
-                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Skin', original)
-                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Wrap', original)
-                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Charm', original)
-                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Finisher', original)
+                    restoreNativeSelectionKind(controller, weaponName, 'Skin', original)
+                    restoreNativeSelectionKind(controller, weaponName, 'Wrap', original)
+                    restoreNativeSelectionKind(controller, weaponName, 'Charm', original)
+                    restoreNativeSelectionKind(controller, weaponName, 'Finisher', original)
                 end
 
                 if type(setEnabled) == 'function' and RivalsCosmeticsState.NativeSkinChangerWasEnabled ~= nil then
@@ -26418,7 +26419,7 @@ ErrorReporter.set_game(GameName)
                 end
 
                 local weaponSet = {}
-                function RivalsCosmetics.AddWeaponToSet(weaponSet, name)
+                local function addWeapon(name)
                     if type(name) ~= 'string' or name == '' or name == RIVALS_COSMETIC_ALL_WEAPONS then
                         return
                     end
@@ -26428,7 +26429,7 @@ ErrorReporter.set_game(GameName)
                 end
 
                 if type(targetWeaponName) == 'string' and targetWeaponName ~= '' then
-                    RivalsCosmetics.AddWeaponToSet(weaponSet, targetWeaponName)
+                    addWeapon(targetWeaponName)
                 else
                     for _, tableName in ipairs({
                         'SelectedSkinByWeapon',
@@ -26440,7 +26441,7 @@ ErrorReporter.set_game(GameName)
                         local byWeapon = RivalsCosmeticsState[tableName]
                         if type(byWeapon) == 'table' then
                             for weaponName in pairs(byWeapon) do
-                                RivalsCosmetics.AddWeaponToSet(weaponSet, weaponName)
+                                addWeapon(weaponName)
                             end
                         end
                     end
@@ -26448,18 +26449,18 @@ ErrorReporter.set_game(GameName)
                         local byWeapon = RivalsCosmeticsState.CosmeticMultiSelectionsByWeapon[kind]
                         if type(byWeapon) == 'table' then
                             for weaponName in pairs(byWeapon) do
-                                RivalsCosmetics.AddWeaponToSet(weaponSet, weaponName)
+                                addWeapon(weaponName)
                             end
                         end
                     end
                     for weaponName in pairs(RivalsCosmeticsState.NativeSkinChangerTouchedWeapons) do
-                        RivalsCosmetics.AddWeaponToSet(weaponSet, weaponName)
+                        addWeapon(weaponName)
                     end
-                    RivalsCosmetics.AddWeaponToSet(weaponSet, RivalsCosmeticsState.SelectedEditorWeaponName)
-                    RivalsCosmetics.AddWeaponToSet(weaponSet, RivalsCosmeticsState.PreviewWeaponName)
+                    addWeapon(RivalsCosmeticsState.SelectedEditorWeaponName)
+                    addWeapon(RivalsCosmeticsState.PreviewWeaponName)
                     local fighter = ResolveLocalFighter()
                     local item = fighter and fighter.EquippedItem or nil
-                    RivalsCosmetics.AddWeaponToSet(weaponSet, item and item.Name)
+                    addWeapon(item and item.Name)
                 end
 
                 local weapons = {}
@@ -26477,7 +26478,7 @@ ErrorReporter.set_game(GameName)
 
                 local appliedAny = false
                 local allOk = true
-                function RivalsCosmetics.ApplyNativeSelectionKind(controller, weaponName, kind)
+                local function applyKind(weaponName, kind)
                     if not RivalsCosmeticsState.NativeSkinChangerOriginalSelections[weaponName] then
                         if not RivalsCosmetics.CaptureNativeSkinChangerSelection(controller, weaponName) then
                             return false
@@ -26488,18 +26489,18 @@ ErrorReporter.set_game(GameName)
                     local stored = RivalsCosmetics.ResolveStoredSelectionValue(weaponName, kind)
                     local inverted = RivalsCosmetics.ResolveWrapInvertedValue(weaponName)
                     if stored == nil or stored == RIVALS_COSMETIC_UNSELECTED then
-                        return RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, kind, original)
+                        return restoreNativeSelectionKind(controller, weaponName, kind, original)
                     end
                     local effective = RivalsCosmetics.ResolveEffectiveSelectionValue(weaponName, kind, stored)
                     if effective == nil or effective == RIVALS_COSMETIC_UNSELECTED then
-                        return RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, kind, original)
+                        return restoreNativeSelectionKind(controller, weaponName, kind, original)
                     end
                     return setNativeCosmeticChoice(controller, weaponName, kind, effective, inverted)
                 end
 
                 for _, weaponName in ipairs(weapons) do
                     for _, kind in ipairs({'Skin', 'Wrap', 'Charm', 'Finisher'}) do
-                        local ok = RivalsCosmetics.ApplyNativeSelectionKind(controller, weaponName, kind)
+                        local ok = applyKind(weaponName, kind)
                         if ok then
                             appliedAny = true
                         else
@@ -29708,12 +29709,7 @@ ErrorReporter.set_game(GameName)
                     return success
                 end
 
-                local resolveOk, nativeController = pcall(RivalsCosmetics.ResolveNativeCosmeticsController)
-                if not resolveOk then
-                    results.ResolveNativeCosmeticsController = false
-                    RivalsCosmeticsState.LastApplyResults = results
-                    return false
-                end
+                local nativeController = RivalsCosmetics.ResolveNativeCosmeticsController()
                 if nativeController then
                     results.ApplyNativeCosmeticsRuntime = safeApply(
                         'ApplyNativeCosmeticsRuntime',
@@ -31905,6 +31901,9 @@ local P3 = Tabs.Automation
                     RivalsRuntimeBridge.RegisterAutoRespawnSignals()
                 end))
 
+                local P3Ragebot = P3:AddLeftGroupbox('Ragebot Automation')
+                -- UE-style TP is the internal hitscan positioning path.
+
                 local P3S8 = P3:AddLeftGroupbox('Subspace Tripmines')
                 P3S8:AddToggle('P8S8T1', {
                     Text = 'Auto Trigger',
@@ -32801,11 +32800,7 @@ presets:AddDropdown('P5PRESET_AUTOLOAD_NAME', { Values = presetNames, Default = 
 presets:AddDropdown('P5PRESET_AUTOSAVE_NAME', { Values = presetNames, Default = presetNames[1], AllowNull = true, Searchable = true, Text = 'Auto-save preset', Callback = function(value) pcall(RivalsCosmetics.SetCosmeticPresetSetting, 'autoSaveName', value) end })
 
 local previewBox = P11:AddLeftGroupbox('3D Preview')
-local previewModelOk, previewModel = pcall(RivalsCosmetics.BuildPreviewViewportModel)
-if not previewModelOk or previewModel == nil then
-    previewModel = Instance.new('Model')
-    previewModel.Name = 'CosmeticPreviewFallback'
-end
+local previewModel = RivalsCosmetics.BuildPreviewViewportModel()
 local previewViewport = previewBox:AddViewport('P5S3V1', {
     Object = previewModel,
     Clone = false,
@@ -32875,290 +32870,283 @@ task.spawn(GuardRivalsCallback('Cosmetics_UI_RefreshLoop', function()
     return true
 end))
 
-do
-    RivalsRuntimeBridge.BuildSpoofTabUi = function()
-        local P12 = Tabs.Spoof
+local P12 = Tabs.Spoof
 
-        local playerSpooferLabels = {
-            Winstreak = 'Win Streak',
-            Level = 'Level',
-            CasualWins = 'Casual Wins',
-            RankedWins = 'Ranked Wins',
-            RankedElo = 'Ranked ELO',
-            WinPercent = 'Win Percent',
-            FavoriteMap = 'Favorite Map',
-            NametagStatus = 'Nametag Status',
-            Influencer = 'Influencer',
-            RobloxEmployee = 'Roblox Employee',
-            NosniyTeam = "Nosniy's Team",
-        }
-        local playerSpooferScopes = {
-            { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
-            { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
-        }
-        for _, scope in ipairs(playerSpooferScopes) do
-            local spooferGroup = scope.side == 'Left'
-                and P12:AddLeftGroupbox(scope.title)
-                or P12:AddRightGroupbox(scope.title)
-            for _, field in ipairs(RivalsRuntimeBridge.PlayerSpoofer.AttributeFields) do
-                local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
-                local toggle = spooferGroup:AddToggle(toggleId, {
-                    Text = playerSpooferLabels[field.key],
+                local playerSpooferLabels = {
+                    Winstreak = 'Win Streak',
+                    Level = 'Level',
+                    CasualWins = 'Casual Wins',
+                    RankedWins = 'Ranked Wins',
+                    RankedElo = 'Ranked ELO',
+                    WinPercent = 'Win Percent',
+                    FavoriteMap = 'Favorite Map',
+                    NametagStatus = 'Nametag Status',
+                    Influencer = 'Influencer',
+                    RobloxEmployee = 'Roblox Employee',
+                    NosniyTeam = "Nosniy's Team",
+                }
+                local playerSpooferScopes = {
+                    { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
+                    { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
+                }
+                for _, scope in ipairs(playerSpooferScopes) do
+                    local spooferGroup = scope.side == 'Left'
+                        and P12:AddLeftGroupbox(scope.title)
+                        or P12:AddRightGroupbox(scope.title)
+                    for _, field in ipairs(RivalsRuntimeBridge.PlayerSpoofer.AttributeFields) do
+                        local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
+                        local toggle = spooferGroup:AddToggle(toggleId, {
+                            Text = playerSpooferLabels[field.key],
+                            Default = false,
+                        })
+                        toggle:OnChanged(GuardRivalsCallback(
+                            'PlayerSpoofer_Toggle', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
+                        if field.control ~= 'const' then
+                            local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
+                            local default = scope.suffix == 'You' and field.youDefault or field.othDefault
+                            local valueBox = spooferGroup:AddDependencyBox()
+                            valueBox:AddInput(valueId, {
+                                Text = 'Value',
+                                Default = default,
+                                AllowEmpty = true,
+                                EmptyReset = '',
+                            })
+                            Options[valueId]:OnChanged(GuardRivalsCallback(
+                                'PlayerSpoofer_Value', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
+                            valueBox:SetupDependencies({{ Toggles[toggleId], true }})
+                        end
+                    end
+                end
+
+                local P12S2 = P12:AddRightGroupbox('Device Spoof')
+                P12S2:AddToggle('P10S7T1', {
+                    Text = 'Device Spoof',
+                    Default = false,
+                    Tooltip = 'Reports your input device to the server as the chosen platform.',
+                })
+                P12S2:AddDropdown('P10S7D1', {
+                    Values = { 'Desktop', 'Mobile', 'Console', 'VR' },
+                    Default = 'VR',
+                    Text = 'Spoof Type',
+                    Tooltip = 'Which device type you appear to be playing on.',
+                })
+                Toggles.P10S7T1:OnChanged(GuardRivalsCallback(
+                    'DeviceSpoof_Toggle', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
+                Options.P10S7D1:OnChanged(GuardRivalsCallback(
+                    'DeviceSpoof_SpoofType', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
+
+
+                local profileDisplay = P12:AddLeftGroupbox('Local Profile Display')
+                profileDisplay:AddLabel('Client-side display spoof. Real account properties remain unchanged.', true)
+                profileDisplay:AddToggle('PSpoofYouNameT', {
+                    Text = 'Spoof username',
                     Default = false,
                 })
-                toggle:OnChanged(GuardRivalsCallback(
-                    'PlayerSpoofer_Toggle', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
-                if field.control ~= 'const' then
-                    local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
-                    local default = scope.suffix == 'You' and field.youDefault or field.othDefault
-                    local valueBox = spooferGroup:AddDependencyBox()
-                    valueBox:AddInput(valueId, {
-                        Text = 'Value',
-                        Default = default,
-                        AllowEmpty = true,
-                        EmptyReset = '',
+                profileDisplay:AddInput('PSpoofYouNameV', {
+                    Text = 'Username',
+                    Default = 'ProPlayer',
+                    AllowEmpty = false,
+                    Finished = false,
+                })
+                profileDisplay:AddToggle('PSpoofYouDisplayNameT', {
+                    Text = 'Spoof display name',
+                    Default = false,
+                })
+                profileDisplay:AddInput('PSpoofYouDisplayNameV', {
+                    Text = 'Display name',
+                    Default = 'ProPlayer',
+                    AllowEmpty = false,
+                    Finished = false,
+                })
+                Toggles.PSpoofYouNameT:OnChanged(GuardRivalsCallback('FullSpoof_NameToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+                Toggles.PSpoofYouDisplayNameT:OnChanged(GuardRivalsCallback('FullSpoof_DisplayToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+                Options.PSpoofYouNameV:OnChanged(GuardRivalsCallback('FullSpoof_NameValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+                Options.PSpoofYouDisplayNameV:OnChanged(GuardRivalsCallback('FullSpoof_DisplayValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+
+                local displayData = P12:AddLeftGroupbox('Local Display Data')
+                displayData:AddLabel('Local profile/economy values only; not spendable and not server-authoritative.', true)
+                local currencySpecs = {
+                    { key = 'WeaponKeys', label = 'Weapon Keys' },
+                    { key = 'UnlockTokens', label = 'Unlock Tokens' },
+                    { key = 'EventCurrency', label = 'Event Currency' },
+                    { key = 'Glory', label = 'Glory' },
+                    { key = 'SkinTickets', label = 'Skin Tickets' },
+                }
+                for _, spec in ipairs(currencySpecs) do
+                    local toggleId = 'P12FS' .. spec.key .. 'T'
+                    local valueId = 'P12FS' .. spec.key .. 'V'
+                    local toggle = displayData:AddToggle(toggleId, {
+                        Text = 'Override ' .. spec.label,
+                        Default = false,
                     })
-                    Options[valueId]:OnChanged(GuardRivalsCallback(
-                        'PlayerSpoofer_Value', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
-                    valueBox:SetupDependencies({{ Toggles[toggleId], true }})
+                    local dep = displayData:AddDependencyBox()
+                    dep:AddInput(valueId, {
+                        Text = spec.label,
+                        Default = '0',
+                        Numeric = true,
+                        Finished = false,
+                    })
+                    dep:SetupDependencies({ { toggle, true } })
+                    Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
+                        RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].enabled = value == true
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end))
+                    Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
+                        RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].amount = math.max(0, tonumber(value) or 0)
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end))
                 end
-            end
-        end
+                displayData:AddButton({
+                    Text = 'Refresh display data',
+                    Func = GuardRivalsCallback('FullSpoof_DataRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
+                })
 
-        local P12S2 = P12:AddRightGroupbox('Device Spoof')
-        P12S2:AddToggle('P10S7T1', {
-            Text = 'Device Spoof',
-            Default = false,
-            Tooltip = 'Reports your input device to the server as the chosen platform.',
-        })
-        P12S2:AddDropdown('P10S7D1', {
-            Values = { 'Desktop', 'Mobile', 'Console', 'VR' },
-            Default = 'VR',
-            Text = 'Spoof Type',
-            Tooltip = 'Which device type you appear to be playing on.',
-        })
-        Toggles.P10S7T1:OnChanged(GuardRivalsCallback(
-            'DeviceSpoof_Toggle', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
-        Options.P10S7D1:OnChanged(GuardRivalsCallback(
-            'DeviceSpoof_SpoofType', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
+                local historyBox = P12:AddRightGroupbox('Duel History Display')
+                historyBox:AddLabel('Local-only override for the displayed match/history data.', true)
+                local historyToggle = historyBox:AddToggle('P12FSHistoryT', {
+                    Text = 'Override displayed match',
+                    Default = false,
+                })
+                local historyNumeric = {
+                    { key = 'match_index', label = 'Match index', default = 1 },
+                    { key = 'dueler_index', label = 'Dueler index', default = 1 },
+                    { key = 'team1score', label = 'Team 1 score', default = 5 },
+                    { key = 'team2score', label = 'Team 2 score', default = 0 },
+                    { key = 'kills', label = 'Kills', default = 15 },
+                    { key = 'deaths', label = 'Deaths', default = 2 },
+                    { key = 'assists', label = 'Assists', default = 6 },
+                    { key = 'damage', label = 'Damage', default = 5000 },
+                    { key = 'elo', label = 'ELO', default = 2000 },
+                    { key = 'elo_change', label = 'ELO change', default = 35 },
+                }
+                for _, spec in ipairs(historyNumeric) do
+                    local id = 'P12FSHistory' .. spec.key
+                    local dep = historyBox:AddDependencyBox()
+                    dep:AddInput(id, {
+                        Text = spec.label,
+                        Default = tostring(spec.default),
+                        Numeric = true,
+                        Finished = false,
+                    })
+                    dep:SetupDependencies({ { historyToggle, true } })
+                    Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
+                        local n = tonumber(value) or spec.default
+                        if spec.key == 'match_index' or spec.key == 'dueler_index' then n = math.max(1, math.floor(n)) end
+                        RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = n
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end))
+                end
+                for _, spec in ipairs({
+                    { key = 'username', label = 'Username', default = '' },
+                    { key = 'display_name', label = 'Display name', default = '' },
+                    { key = 'map', label = 'Map', default = 'Factory' },
+                }) do
+                    local id = 'P12FSHistory' .. spec.key
+                    local dep = historyBox:AddDependencyBox()
+                    dep:AddInput(id, {
+                        Text = spec.label,
+                        Default = spec.default,
+                        Finished = false,
+                    })
+                    dep:SetupDependencies({ { historyToggle, true } })
+                    Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
+                        RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = tostring(value or '')
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end))
+                end
+                historyBox:AddDropdown('P12FSHistoryMode', {
+                    Text = 'Mode',
+                    Values = { 'Ranked', 'Casual' },
+                    Default = 'Ranked',
+                })
+                historyBox:AddDropdown('P12FSHistoryResult', {
+                    Text = 'Result',
+                    Values = { 'Victory', 'Defeat' },
+                    Default = 'Victory',
+                })
+                Options.P12FSHistoryMode:OnChanged(GuardRivalsCallback('FullSpoof_HistoryMode', function(value)
+                    RivalsRuntimeBridge.FullSpoof.State.History.mode = value
+                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                end))
+                Options.P12FSHistoryResult:OnChanged(GuardRivalsCallback('FullSpoof_HistoryResult', function(value)
+                    RivalsRuntimeBridge.FullSpoof.State.History.result = value
+                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                end))
+                Toggles.P12FSHistoryT:OnChanged(GuardRivalsCallback('FullSpoof_HistoryToggle', function(value)
+                    RivalsRuntimeBridge.FullSpoof.State.History.enabled = value == true
+                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                end))
+                historyBox:AddButton({
+                    Text = 'Refresh history',
+                    Func = GuardRivalsCallback('FullSpoof_HistoryRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
+                })
 
+                local badgeBox = P12:AddRightGroupbox('Local Badge Attributes')
+                badgeBox:AddLabel('Client display attributes only; no account permissions are granted.', true)
+                for _, spec in ipairs({
+                    { key = 'Premium', label = 'Premium' },
+                    { key = 'Verified', label = 'Verified' },
+                    { key = 'Influencer', label = 'Influencer' },
+                    { key = 'Admin', label = 'Admin' },
+                }) do
+                    badgeBox:AddToggle('P12FSBadge' .. spec.key, {
+                        Text = spec.label,
+                        Default = false,
+                        Callback = GuardRivalsCallback('FullSpoof_Badge_' .. spec.key, RivalsRuntimeBridge.FullSpoof.RefreshAll),
+                    })
+                end
+                badgeBox:AddButton({
+                    Text = 'Restore badge attributes',
+                    Func = GuardRivalsCallback('FullSpoof_BadgeRestore', function()
+                        RivalsRuntimeBridge.FullSpoof.RestoreBadges()
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end),
+                })
 
-        local profileDisplay = P12:AddLeftGroupbox('Local Profile Display')
-        profileDisplay:AddLabel('Client-side display spoof. Real account properties remain unchanged.', true)
-        profileDisplay:AddToggle('PSpoofYouNameT', {
-            Text = 'Spoof username',
-            Default = false,
-        })
-        profileDisplay:AddInput('PSpoofYouNameV', {
-            Text = 'Username',
-            Default = 'ProPlayer',
-            AllowEmpty = false,
-            Finished = false,
-        })
-        profileDisplay:AddToggle('PSpoofYouDisplayNameT', {
-            Text = 'Spoof display name',
-            Default = false,
-        })
-        profileDisplay:AddInput('PSpoofYouDisplayNameV', {
-            Text = 'Display name',
-            Default = 'ProPlayer',
-            AllowEmpty = false,
-            Finished = false,
-        })
-        Toggles.PSpoofYouNameT:OnChanged(GuardRivalsCallback('FullSpoof_NameToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-        Toggles.PSpoofYouDisplayNameT:OnChanged(GuardRivalsCallback('FullSpoof_DisplayToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-        Options.PSpoofYouNameV:OnChanged(GuardRivalsCallback('FullSpoof_NameValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-        Options.PSpoofYouDisplayNameV:OnChanged(GuardRivalsCallback('FullSpoof_DisplayValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-
-        local displayData = P12:AddLeftGroupbox('Local Display Data')
-        displayData:AddLabel('Local profile/economy values only; not spendable and not server-authoritative.', true)
-        local currencySpecs = {
-            { key = 'WeaponKeys', label = 'Weapon Keys' },
-            { key = 'UnlockTokens', label = 'Unlock Tokens' },
-            { key = 'EventCurrency', label = 'Event Currency' },
-            { key = 'Glory', label = 'Glory' },
-            { key = 'SkinTickets', label = 'Skin Tickets' },
-        }
-        for _, spec in ipairs(currencySpecs) do
-            local toggleId = 'P12FS' .. spec.key .. 'T'
-            local valueId = 'P12FS' .. spec.key .. 'V'
-            local toggle = displayData:AddToggle(toggleId, {
-                Text = 'Override ' .. spec.label,
-                Default = false,
-            })
-            local dep = displayData:AddDependencyBox()
-            dep:AddInput(valueId, {
-                Text = spec.label,
-                Default = '0',
-                Numeric = true,
-                Finished = false,
-            })
-            dep:SetupDependencies({ { toggle, true } })
-            Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
-                RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].enabled = value == true
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end))
-            Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
-                RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].amount = math.max(0, tonumber(value) or 0)
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end))
-        end
-        displayData:AddButton({
-            Text = 'Refresh display data',
-            Func = GuardRivalsCallback('FullSpoof_DataRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
-        })
-
-        local historyBox = P12:AddRightGroupbox('Duel History Display')
-        historyBox:AddLabel('Local-only override for the displayed match/history data.', true)
-        local historyToggle = historyBox:AddToggle('P12FSHistoryT', {
-            Text = 'Override displayed match',
-            Default = false,
-        })
-        local historyNumeric = {
-            { key = 'match_index', label = 'Match index', default = 1 },
-            { key = 'dueler_index', label = 'Dueler index', default = 1 },
-            { key = 'team1score', label = 'Team 1 score', default = 5 },
-            { key = 'team2score', label = 'Team 2 score', default = 0 },
-            { key = 'kills', label = 'Kills', default = 15 },
-            { key = 'deaths', label = 'Deaths', default = 2 },
-            { key = 'assists', label = 'Assists', default = 6 },
-            { key = 'damage', label = 'Damage', default = 5000 },
-            { key = 'elo', label = 'ELO', default = 2000 },
-            { key = 'elo_change', label = 'ELO change', default = 35 },
-        }
-        for _, spec in ipairs(historyNumeric) do
-            local id = 'P12FSHistory' .. spec.key
-            local dep = historyBox:AddDependencyBox()
-            dep:AddInput(id, {
-                Text = spec.label,
-                Default = tostring(spec.default),
-                Numeric = true,
-                Finished = false,
-            })
-            dep:SetupDependencies({ { historyToggle, true } })
-            Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
-                local n = tonumber(value) or spec.default
-                if spec.key == 'match_index' or spec.key == 'dueler_index' then n = math.max(1, math.floor(n)) end
-                RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = n
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end))
-        end
-        for _, spec in ipairs({
-            { key = 'username', label = 'Username', default = '' },
-            { key = 'display_name', label = 'Display name', default = '' },
-            { key = 'map', label = 'Map', default = 'Factory' },
-        }) do
-            local id = 'P12FSHistory' .. spec.key
-            local dep = historyBox:AddDependencyBox()
-            dep:AddInput(id, {
-                Text = spec.label,
-                Default = spec.default,
-                Finished = false,
-            })
-            dep:SetupDependencies({ { historyToggle, true } })
-            Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
-                RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = tostring(value or '')
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end))
-        end
-        historyBox:AddDropdown('P12FSHistoryMode', {
-            Text = 'Mode',
-            Values = { 'Ranked', 'Casual' },
-            Default = 'Ranked',
-        })
-        historyBox:AddDropdown('P12FSHistoryResult', {
-            Text = 'Result',
-            Values = { 'Victory', 'Defeat' },
-            Default = 'Victory',
-        })
-        Options.P12FSHistoryMode:OnChanged(GuardRivalsCallback('FullSpoof_HistoryMode', function(value)
-            RivalsRuntimeBridge.FullSpoof.State.History.mode = value
-            RivalsRuntimeBridge.FullSpoof.RefreshAll()
-        end))
-        Options.P12FSHistoryResult:OnChanged(GuardRivalsCallback('FullSpoof_HistoryResult', function(value)
-            RivalsRuntimeBridge.FullSpoof.State.History.result = value
-            RivalsRuntimeBridge.FullSpoof.RefreshAll()
-        end))
-        Toggles.P12FSHistoryT:OnChanged(GuardRivalsCallback('FullSpoof_HistoryToggle', function(value)
-            RivalsRuntimeBridge.FullSpoof.State.History.enabled = value == true
-            RivalsRuntimeBridge.FullSpoof.RefreshAll()
-        end))
-        historyBox:AddButton({
-            Text = 'Refresh history',
-            Func = GuardRivalsCallback('FullSpoof_HistoryRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
-        })
-
-        local badgeBox = P12:AddRightGroupbox('Local Badge Attributes')
-        badgeBox:AddLabel('Client display attributes only; no account permissions are granted.', true)
-        for _, spec in ipairs({
-            { key = 'Premium', label = 'Premium' },
-            { key = 'Verified', label = 'Verified' },
-            { key = 'Influencer', label = 'Influencer' },
-            { key = 'Admin', label = 'Admin' },
-        }) do
-            badgeBox:AddToggle('P12FSBadge' .. spec.key, {
-                Text = spec.label,
-                Default = false,
-                Callback = GuardRivalsCallback('FullSpoof_Badge_' .. spec.key, RivalsRuntimeBridge.FullSpoof.RefreshAll),
-            })
-        end
-        badgeBox:AddButton({
-            Text = 'Restore badge attributes',
-            Func = GuardRivalsCallback('FullSpoof_BadgeRestore', function()
-                RivalsRuntimeBridge.FullSpoof.RestoreBadges()
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end),
-        })
-
-        local boardBox = P12:AddRightGroupbox('Leaderboard Display')
-        boardBox:AddLabel('Local leaderboard ordering/value spoof; reverts cleanly on unload.', true)
-        local boardSpecs = {
-            { key = 'ELO', label = 'Highest ELO', default = 2400 },
-            { key = 'Level', label = 'Highest Level', default = 999 },
-            { key = 'Streak', label = 'Current Highest Win Streak', default = 999 },
-            { key = 'Kills', label = 'Most Eliminations', default = 9999 },
-            { key = 'Wins', label = 'Most Wins', default = 9999 },
-        }
-        for _, spec in ipairs(boardSpecs) do
-            local toggleId = 'P12FSBoard' .. spec.key .. 'T'
-            local valueId = 'P12FSBoard' .. spec.key .. 'V'
-            local toggle = boardBox:AddToggle(toggleId, {
-                Text = 'Override ' .. spec.label,
-                Default = false,
-            })
-            local dep = boardBox:AddDependencyBox()
-            dep:AddInput(valueId, {
-                Text = spec.label,
-                Default = tostring(spec.default),
-                Numeric = true,
-                Finished = false,
-            })
-            dep:SetupDependencies({ { toggle, true } })
-            RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key] = { enabled = false, value = spec.default }
-            Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
-                RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].enabled = value == true
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end))
-            Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
-                RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].value = tonumber(value) or spec.default
-                RivalsRuntimeBridge.FullSpoof.RefreshAll()
-            end))
-        end
-        local boardStatus = boardBox:AddLabel('Boards: waiting', true)
-        boardBox:AddButton({
-            Text = 'Refresh leaderboards',
-            Func = GuardRivalsCallback('FullSpoof_BoardRefresh', function()
-                local available = RivalsRuntimeBridge.FullSpoof.ApplyBoards()
-                boardStatus:SetText('Boards available: ' .. tostring(available))
-            end),
-        })
-    end
-    RivalsRuntimeBridge.BuildSpoofTabUi()
-    RivalsRuntimeBridge.BuildSpoofTabUi = nil
-end
+                local boardBox = P12:AddRightGroupbox('Leaderboard Display')
+                boardBox:AddLabel('Local leaderboard ordering/value spoof; reverts cleanly on unload.', true)
+                local boardSpecs = {
+                    { key = 'ELO', label = 'Highest ELO', default = 2400 },
+                    { key = 'Level', label = 'Highest Level', default = 999 },
+                    { key = 'Streak', label = 'Current Highest Win Streak', default = 999 },
+                    { key = 'Kills', label = 'Most Eliminations', default = 9999 },
+                    { key = 'Wins', label = 'Most Wins', default = 9999 },
+                }
+                for _, spec in ipairs(boardSpecs) do
+                    local toggleId = 'P12FSBoard' .. spec.key .. 'T'
+                    local valueId = 'P12FSBoard' .. spec.key .. 'V'
+                    local toggle = boardBox:AddToggle(toggleId, {
+                        Text = 'Override ' .. spec.label,
+                        Default = false,
+                    })
+                    local dep = boardBox:AddDependencyBox()
+                    dep:AddInput(valueId, {
+                        Text = spec.label,
+                        Default = tostring(spec.default),
+                        Numeric = true,
+                        Finished = false,
+                    })
+                    dep:SetupDependencies({ { toggle, true } })
+                    RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key] = { enabled = false, value = spec.default }
+                    Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
+                        RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].enabled = value == true
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end))
+                    Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
+                        RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].value = tonumber(value) or spec.default
+                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    end))
+                end
+                local boardStatus = boardBox:AddLabel('Boards: waiting', true)
+                boardBox:AddButton({
+                    Text = 'Refresh leaderboards',
+                    Func = GuardRivalsCallback('FullSpoof_BoardRefresh', function()
+                        local available = RivalsRuntimeBridge.FullSpoof.ApplyBoards()
+                        boardStatus:SetText('Boards available: ' .. tostring(available))
+                    end),
+                })
 
 
-RivalsRuntimeBridge.BuildMiscTabUi = function()
 local P10 = Tabs.Misc
                 local RIVALS_REWARD_CLAIM_DELAY = 0.2
                 local RIVALS_REWARD_SETTLE_DELAY = 0.6
@@ -33921,10 +33909,6 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings)
 SaveManager:LoadAutoloadConfig()
 
-end
-RivalsRuntimeBridge.BuildMiscTabUi()
-RivalsRuntimeBridge.BuildMiscTabUi = nil
-
 local RivalsRuntime = {}
             function RivalsRuntime.ResetState()
                 stopUnderground()
@@ -33936,7 +33920,7 @@ local RivalsRuntime = {}
                 RivalsRuntimeBridge.DeviceSpoof.Destroy()
                 RivalsRuntimeBridge.PlayerSpoofer.Destroy()
                 if RivalsRuntimeBridge.FullSpoof and type(RivalsRuntimeBridge.FullSpoof.Destroy) == 'function' then
-                    pcall(RivalsRuntimeBridge.FullSpoof.Destroy)
+                    RivalsRuntimeBridge.FullSpoof.Destroy()
                 end
                 RivalsRuntimeBridge.AnimationPlayer.Destroy()
                 RivalsRuntimeBridge.MovementRecorder.Destroy()
@@ -33944,7 +33928,7 @@ local RivalsRuntime = {}
                     RivalsRuntimeBridge.DestroyKiciaRagebot()
                 end
                 RivalsRuntimeBridge.CombatFeedback.Destroy()
-                pcall(RivalsRuntimeBridge.ResetRivalsCosmetics)
+                RivalsRuntimeBridge.ResetRivalsCosmetics()
                 RivalsModsState.RestoreHooks()
                 AimbotBridge.ResetAimbotRuntimeState()
                 AimbotBridge.ResetTriggerbotReactionState()
@@ -33997,16 +33981,8 @@ local RivalsRuntime = {}
                 if EspRenderSettings.Enabled then
                     ReconcileESPPlayers()
                 end
-                Library:GiveSignal(Players.PlayerAdded:Connect(GuardRivalsCallback('Ragebot_PlayerAdded', function()
-                    if RivalsRuntimeBridge.KiciaRagebot and type(RivalsRuntimeBridge.KiciaRagebot.invalidateTargetCache) == 'function' then
-                        RivalsRuntimeBridge.KiciaRagebot.invalidateTargetCache()
-                    end
-                end)))
                 Library:GiveSignal(Players.PlayerRemoving:Connect(GuardRivalsCallback('Player_Removing', function(player)
                     DestroyESP(player)
-                    if RivalsRuntimeBridge.KiciaRagebot and type(RivalsRuntimeBridge.KiciaRagebot.invalidateTargetCache) == 'function' then
-                        RivalsRuntimeBridge.KiciaRagebot.invalidateTargetCache()
-                    end
                 end)))
                 EnsureWeaponInfoTracking()
             end
@@ -34267,7 +34243,7 @@ local RivalsRuntime = {}
                 RefreshLocalPickupHealthObserver()
                 AttachWeaponInfoObservers(LP)
                 RivalsModsState.EnsureHooks()
-                pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
+                RivalsRuntimeBridge.ApplyRivalsCosmetics()
                 RivalsRuntimeBridge.RegisterAutoRespawnSignals()
                 RivalsRuntimeBridge.RegisterAutoBanSignals()
                 RivalsRuntimeBridge.RegisterAutoQueuePlayAgainSignals()
@@ -34298,7 +34274,7 @@ local RivalsRuntime = {}
                         AttachWeaponInfoObservers(LP)
                         RivalsModsState.EnsureHooks()
                         UpdateRivalsPickupFeatures()
-                        pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
+                        RivalsRuntimeBridge.ApplyRivalsCosmetics()
                     end))
                 end
                 if LP.Character then
@@ -34336,10 +34312,10 @@ local RivalsRuntime = {}
                 RivalsRuntimeBridge.ViewmodelVisuals.RefreshAll()
                 RivalsRuntimeBridge.NativeRemovals.RefreshAll()
                 RivalsRuntimeBridge.Movement.RefreshAll()
-                pcall(RivalsRuntimeBridge.DeviceSpoof.RefreshAll)
-                pcall(RivalsRuntimeBridge.PlayerSpoofer.RefreshAll)
+                RivalsRuntimeBridge.DeviceSpoof.RefreshAll()
+                RivalsRuntimeBridge.PlayerSpoofer.RefreshAll()
                 if RivalsRuntimeBridge.FullSpoof and type(RivalsRuntimeBridge.FullSpoof.RefreshAll) == 'function' then
-                    pcall(RivalsRuntimeBridge.FullSpoof.RefreshAll)
+                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
                 end
                 RivalsRuntimeBridge.AnimationPlayer.RefreshAll()
                 Library:OnUnload(GuardRivalsCallback('Runtime_Unload', function()
@@ -34353,9 +34329,9 @@ local RivalsRuntime = {}
                 RivalsRuntime.RegisterCharacterLifecycle()
                 RivalsRuntime.StartLoops()
                 RivalsRuntimeBridge.EnsureMatchBoundaryDetection()
-                pcall(RivalsRuntimeBridge.BindRivalsCosmetics)
+                RivalsRuntimeBridge.BindRivalsCosmetics()
                 RivalsRuntimeBridge.BindAutoLoadoutControllers()
-                pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
+                RivalsRuntimeBridge.ApplyRivalsCosmetics()
                 RivalsRuntimeBridge.QueueAutoLoadoutSubmission()
                 if Library and type(Library.Notify) == 'function' then
                     Library:Notify({ Title = 'Kicia', Description = 'Loaded', Time = 5 })

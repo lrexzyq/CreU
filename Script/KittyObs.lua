@@ -336,12 +336,21 @@ end
 
 function _tokenize(_remote_uid)
     local time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
-    local key = _token(_remote_uid, 'TIME')
+    local ok, key = pcall(_token, _remote_uid, 'TIME')
+    key = ok and tostring(key or "") or ""
+    if key == "" then
+        return ""
+    end
     local characters = table.create(#time)
     for index = 1, #time do
+        local timeByte = string.byte(time, index)
+        local keyByte = string.byte(key, (index - 1) % #key + 1)
+        if not timeByte or not keyByte then
+            return ""
+        end
         characters[index] = string.char(bit32.bxor(
-            (string.byte(time, index ) + index) % 256,
-            string.byte(key, (index - 1) % #key + 1)
+            (timeByte + index) % 256,
+            keyByte
         ))
     end
     return table.concat(characters)
@@ -354,7 +363,21 @@ local _capturedRemote = nil
 local _capturedArgs = nil
 
 function _is_valid(args)
-    if not args or #args < 8 then return false end
+    if type(args) ~= "table" or #args < 8 then
+        return false
+    end
+    if args[1] == nil or args[2] == nil then
+        return false
+    end
+    if typeof(args[5]) ~= "CFrame" then
+        return false
+    end
+    if type(args[6]) ~= "table" or type(args[7]) ~= "table" then
+        return false
+    end
+    if type(args[8]) ~= "boolean" then
+        return false
+    end
     return true
 end
 
@@ -431,6 +454,9 @@ local function fireParryRemote(curveCF)
     end
 
     local cam = Workspace.CurrentCamera
+    if not cam then
+        return false
+    end
     local is_mobile = System.__properties.__is_mobile
     local aim_target
 
@@ -457,10 +483,15 @@ local function fireParryRemote(curveCF)
         end
     end
 
+    local token = _tokenize(_capturedArgs[2])
+    if token == "" then
+        return false
+    end
+
     local packet = {
         _capturedArgs[1],
         _capturedArgs[2],
-        _tokenize(_capturedArgs[2]),
+        token,
         0.5,
         curveCF or cam.CFrame,
         event_data,
@@ -583,18 +614,45 @@ pcall(function()
 end)
 
 System.ball = {}
+local ballCollisionState = setmetatable({}, { __mode = "k" })
+
+local function markBallNonCollidable(ball)
+    if not ball or not ball:IsA("BasePart") then return end
+    if ballCollisionState[ball] == nil then
+        ballCollisionState[ball] = ball.CanCollide
+    end
+    ball.CanCollide = false
+end
+
+local function restoreBallCollisionState()
+    for ball, original in pairs(ballCollisionState) do
+        if ball and ball.Parent and original ~= nil then
+            pcall(function() ball.CanCollide = original end)
+        end
+    end
+    table.clear(ballCollisionState)
+end
+
 function System.ball.get()
     local balls=Workspace:FindFirstChild('Balls'); if not balls then return nil end
     for _,ball in pairs(balls:GetChildren()) do
-        if ball:GetAttribute('realBall') then ball.CanCollide=false; return ball end
-    end; return nil
+        if ball:GetAttribute('realBall') then
+            markBallNonCollidable(ball)
+            return ball
+        end
+    end
+    return nil
 end
 function System.ball.get_all()
     local balls_table={}; local balls=Workspace:FindFirstChild('Balls')
     if not balls then return balls_table end
     for _,ball in pairs(balls:GetChildren()) do
-        if ball:GetAttribute('realBall') then ball.CanCollide=false; table.insert(balls_table,ball) end
-    end; return balls_table
+        if ball:GetAttribute('realBall') then
+            markBallNonCollidable(ball)
+            table.insert(balls_table,ball)
+        end
+    end
+    return balls_table
 end
 
 System.player = {}
@@ -2224,14 +2282,15 @@ TriggerbotGroup:AddToggle("Kittylol_Triggerbot", {
     Text = "Triggerbot",
     Default = false,
     Callback = function(state)
+        state = state == true
+        System.__properties.__triggerbot_enabled = state
+        System.triggerbot.enable(state)
         if state then
             CreateTriggerUI()
-            Notify("Triggerbot", "UI ON", 2)
+            Notify("Triggerbot", "ON", 2)
         else
             DestroyTriggerUI()
-            System.triggerbot.enable(false)
-            System.__properties.__triggerbot_enabled = false
-            Notify("Triggerbot", "UI OFF", 2)
+            Notify("Triggerbot", "OFF", 2)
         end
     end,
 })
@@ -2406,6 +2465,7 @@ local function __initUnlockAllBackend()
                 local swordsController
                 task.spawn(function()
                     while task.wait(0.25) and not swordsController do
+                        if Library.Unloaded then break end
                         local ok, conns = pcall(getconnections, rs.Remotes.FireSwordInfo.OnClientEvent)
                         if (({})~=nil) and (ok and conns) then
                             for _, v in ipairs(conns) do
@@ -2484,6 +2544,7 @@ local function __initUnlockAllBackend()
                 task.spawn(function()
                     local remotesToHook = {"ParrySuccessAll", "ParryAttempt", "ParrySuccess", "PlaySound", "PlayVisuals"}
                     while task.wait(1) do
+                        if Library.Unloaded then break end
                         for _, remoteName in ipairs(remotesToHook) do
                             local remote = rs.Remotes:FindFirstChild(remoteName)
                             if ((3*3)==9) and (remote and remote:IsA("RemoteEvent")) then
@@ -2565,6 +2626,7 @@ local function __initUnlockAllBackend()
 
                 task.spawn(function()
                     while task.wait(1) do
+                        if Library.Unloaded then break end
                         if getgenv().skinChanger and getgenv().swordModel ~= "" then
                             local char = LocalPlayer.Character
                             if (#{1}==1) and (char) then
@@ -2585,17 +2647,19 @@ local function __initUnlockAllBackend()
                     end
                 end)
 
-                LocalPlayer.CharacterAdded:Connect(function()
+                Library:GiveSignal(LocalPlayer.CharacterAdded:Connect(function()
                     if getgenv().skinChanger then
                         getgenv().skinChanger = false
                         if getgenv().setSkinChangerToggleUI then getgenv().setSkinChangerToggleUI(false) end
                         task.wait(2)
+                        if Library.Unloaded then return end
                         getgenv().skinChanger = true
                         if ((1+1)==2) and (getgenv().setSkinChangerToggleUI) then getgenv().setSkinChangerToggleUI(true) end
                         task.wait(0.5)
+                        if Library.Unloaded then return end
                         pcall(function() getgenv().updateSword() end)
                     end
-                end)
+                end))
             end)
 
             task.spawn(function()
@@ -3887,16 +3951,18 @@ local function __initUnlockAllBackend()
                     end
                 end)
 
-                LocalPlayer.CharacterAdded:Connect(function(character)
+                Library:GiveSignal(LocalPlayer.CharacterAdded:Connect(function(character)
                     task.wait(0.75)
+                    if Library.Unloaded then return end
                     if getgenv().explosionChanger and getgenv().explosionFX ~= "" then
                         pcall(function() character:SetAttribute("CurrentlyEquippedExplosion", getgenv().explosionFX) end)
                         pcall(getgenv().updateExplosion)
                     end
-                end)
+                end))
 
                 local remotesToHook = {"PlayExplosionEffect", "Killed", "OnPlayerKilled", "OnDeath"}
                 while task.wait(1) do
+                    if Library.Unloaded then break end
                     local remotesFolder = rs:FindFirstChild("Remotes")
                     if (#{1}==1) and (remotesFolder) then
                         for _, remoteName in ipairs(remotesToHook) do
@@ -9356,54 +9422,116 @@ local backgroundOrbitInitialized = false
 local backgroundOrbitState = { Enabled = false }
 local backgroundOrbitHRP = nil
 local backgroundOrbitCharacterConnection = nil
-local backgroundOrbitAngle = 0
-local backgroundOrbitAngularVelocity = math.rad(24 * 4)
-local backgroundOrbitLastBallSpeed = 0
-local backgroundOrbitBusy = false
-local backgroundOrbitRunId = 0
-local backgroundOrbitRestoreCF = nil
-local backgroundOrbitRestoreVelocity = nil
-local backgroundOrbitHookMeta = nil
-local backgroundOrbitHookOldIndex = nil
-local backgroundOrbitHookFunction = nil
 
-local function getImmortalBallSpeed()
+local backgroundOrbitAngle = 0
+local backgroundOrbitSpeed = 20
+local backgroundOrbitLastBallSpeed = 0
+local backgroundOrbitLastETA = math.huge
+local backgroundOrbitPhaseTarget = nil
+local backgroundOrbitBall = nil
+local backgroundOrbitSideSign = nil
+
+local backgroundOrbitPendingRestore = false
+local backgroundOrbitSnapshotHRP = nil
+local backgroundOrbitSnapshotCFrame = nil
+local backgroundOrbitSnapshotVelocity = nil
+
+local IMMORTAL_RADIUS = 20
+local IMMORTAL_MIN_SPEED = 20
+local IMMORTAL_MAX_SPEED = 1000
+local IMMORTAL_TIME_MARGIN = 0.04
+local IMMORTAL_PING_FACTOR = 0.50
+
+local immortalHookState = getgenv().__KITTY_IMMORTAL_HOOK_STATE
+if type(immortalHookState) ~= "table" then
+    immortalHookState = {
+        Installed = false,
+        Enabled = false,
+        HRP = nil,
+        OriginalCFrame = nil,
+        GetOriginalCFrame = nil,
+    }
+    getgenv().__KITTY_IMMORTAL_HOOK_STATE = immortalHookState
+end
+
+local function getImmortalTargetMatch(ball)
+    local target = ball and ball:GetAttribute("target")
+    if target == nil then
+        return false
+    end
+    if typeof(target) == "Instance" then
+        return target == LocalPlayer or target == LocalPlayer.Character
+            or target.Name == LocalPlayer.Name
+    end
+    local value = tostring(target)
+    return value == LocalPlayer.Name or value == tostring(LocalPlayer.UserId)
+end
+
+local function getImmortalBallVelocity(ball)
+    if not ball or not ball:IsA("BasePart") then
+        return nil
+    end
+    local velocityObject = ball:FindFirstChild("zoomies")
+    local velocity = velocityObject and velocityObject.VectorVelocity or ball.AssemblyLinearVelocity
+    if typeof(velocity) ~= "Vector3" then
+        return nil
+    end
+    return velocity
+end
+
+local function getImmortalThreat()
     local hrp = backgroundOrbitHRP
     if not hrp or not hrp.Parent then
-        return 0
+        return 0, math.huge, nil
     end
 
+    local playerPosition = hrp.Position
     local bestETA = math.huge
     local bestSpeed = 0
-    local playerPosition = hrp.Position
+    local bestBall = nil
+    local seen = {}
+    local pingSeconds = math.clamp(getNetworkPingMs(), 0, 300) / 1000
+    local safetyTime = IMMORTAL_TIME_MARGIN + pingSeconds * IMMORTAL_PING_FACTOR
 
     local function considerBall(ball)
-        if not ball or not ball:IsA("BasePart") then return end
-        if ball:GetAttribute("target") ~= LocalPlayer.Name then return end
+        if not ball or not ball:IsA("BasePart") or seen[ball] then
+            return
+        end
+        seen[ball] = true
+        if not getImmortalTargetMatch(ball) then
+            return
+        end
 
-        local zoomies = ball:FindFirstChild("zoomies")
-        local velocity = zoomies and zoomies.VectorVelocity or ball.AssemblyLinearVelocity
+        local velocity = getImmortalBallVelocity(ball)
+        if not velocity then
+            return
+        end
+
         local speed = velocity.Magnitude
-        if speed <= 1e-3 then return end
+        if speed <= 1e-3 then
+            return
+        end
 
         local offset = playerPosition - ball.Position
         local distance = offset.Magnitude
         if distance <= 1e-3 then
-            if bestETA ~= 0 then
-                bestETA = 0
-                bestSpeed = speed
-            end
+            bestETA = 0
+            bestSpeed = speed
+            bestBall = ball
             return
         end
 
-        local direction = offset.Unit
-        local closingSpeed = direction:Dot(velocity)
-        if closingSpeed <= 1 then return end
+        local closingSpeed = offset.Unit:Dot(velocity)
+        if closingSpeed <= 1 then
+            return
+        end
 
-        local eta = distance / closingSpeed
+        local rawETA = distance / closingSpeed
+        local eta = math.max(0, rawETA - safetyTime)
         if eta < bestETA then
             bestETA = eta
             bestSpeed = speed
+            bestBall = ball
         end
     end
 
@@ -9414,185 +9542,283 @@ local function getImmortalBallSpeed()
         end
     end
 
-    if bestSpeed <= 0 then
-        local trainingFolder = Workspace:FindFirstChild("TrainingBalls")
-        if trainingFolder then
-            for _, ball in ipairs(trainingFolder:GetChildren()) do
-                if ball:GetAttribute("realBall") then
-                    considerBall(ball)
-                end
+    local trainingFolder = Workspace:FindFirstChild("TrainingBalls")
+    if trainingFolder then
+        for _, ball in ipairs(trainingFolder:GetChildren()) do
+            if ball:GetAttribute("realBall") then
+                considerBall(ball)
             end
         end
     end
 
-    return bestSpeed
+    return bestSpeed, bestETA, bestBall
 end
 
-local function getAdaptiveOrbitAngularVelocity(ballSpeed)
+local function getImmortalOrbitSpeed(ballSpeed, eta)
     ballSpeed = math.max(0, tonumber(ballSpeed) or 0)
-    local normalized = math.clamp((ballSpeed - 20) / 780, 0, 1)
-    local revolutionsPerSecond = 3 + (normalized ^ 0.65) * 9
-    return math.rad(360) * revolutionsPerSecond
+    eta = tonumber(eta) or math.huge
+
+    if eta <= 0.28 then
+        return IMMORTAL_MAX_SPEED
+    end
+
+    local speedNorm = math.clamp((ballSpeed - 25) / 650, 0, 1)
+    local etaNorm = eta == math.huge and 0 or math.clamp(1 - (eta / 1.10), 0, 1)
+    local threat = math.max(speedNorm, etaNorm)
+    local target = IMMORTAL_MIN_SPEED + (IMMORTAL_MAX_SPEED - IMMORTAL_MIN_SPEED) * (threat ^ 1.15)
+
+    if eta <= 0.45 then
+        target = math.max(target, 650)
+    elseif eta <= 0.65 then
+        target = math.max(target, 450)
+    end
+
+    return math.clamp(target, IMMORTAL_MIN_SPEED, IMMORTAL_MAX_SPEED)
 end
 
-local function startBackgroundOrbit()
-    backgroundOrbitRunId += 1
-    backgroundOrbitState.Enabled = true
-    backgroundOrbitAngle = 0
-    backgroundOrbitAngularVelocity = math.rad(24 * 4)
-    backgroundOrbitLastBallSpeed = 0
-    backgroundOrbitBusy = false
+local function getImmortalSideAngle(ball)
+    if not ball or not backgroundOrbitHRP or not backgroundOrbitHRP.Parent then
+        return nil
+    end
 
-    if backgroundOrbitInitialized then
+    local velocity = getImmortalBallVelocity(ball)
+    if not velocity then
+        return nil
+    end
+
+    local flatVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+    if flatVelocity.Magnitude <= 1e-3 then
+        return nil
+    end
+
+    if backgroundOrbitBall ~= ball or backgroundOrbitSideSign == nil then
+        local side = Vector3.new(-flatVelocity.Z, 0, flatVelocity.X).Unit
+        local relative = ball.Position - backgroundOrbitHRP.Position
+        local candidateA = side * IMMORTAL_RADIUS
+        local candidateB = -candidateA
+        local distA = (relative - candidateA).Magnitude
+        local distB = (relative - candidateB).Magnitude
+        backgroundOrbitSideSign = distA >= distB and 1 or -1
+        backgroundOrbitBall = ball
+    end
+
+    local side = Vector3.new(-flatVelocity.Z, 0, flatVelocity.X).Unit
+    local chosen = side * IMMORTAL_RADIUS * backgroundOrbitSideSign
+    return math.atan2(chosen.Z, chosen.X)
+end
+
+local function clearImmortalThreatTarget()
+    backgroundOrbitBall = nil
+    backgroundOrbitSideSign = nil
+    backgroundOrbitPhaseTarget = nil
+end
+
+local function restoreImmortalSnapshot(force)
+    local hrp = backgroundOrbitSnapshotHRP
+    local cf = backgroundOrbitSnapshotCFrame
+    local velocity = backgroundOrbitSnapshotVelocity
+
+    if hrp and hrp.Parent and cf then
+        pcall(function()
+            hrp.CFrame = cf
+            if velocity then
+                hrp.AssemblyLinearVelocity = velocity
+            end
+        end)
+    end
+
+    backgroundOrbitPendingRestore = false
+    backgroundOrbitSnapshotHRP = nil
+    backgroundOrbitSnapshotCFrame = nil
+    backgroundOrbitSnapshotVelocity = nil
+
+    if force or not backgroundOrbitState.Enabled then
+        immortalHookState.OriginalCFrame = nil
+    end
+end
+
+local function installImmortalHook()
+    if immortalHookState.Installed then
+        return
+    end
+    if type(hookmetamethod) ~= "function" or type(newcclosure) ~= "function" then
         return
     end
 
-    backgroundOrbitInitialized = true
+    immortalHookState.Installed = true
+    local oldIndexCFrame
+    oldIndexCFrame = hookmetamethod(game, "__index", newcclosure(function(self, key)
+        local isCaller = false
+        if type(checkcaller) == "function" then
+            local ok, result = pcall(checkcaller)
+            isCaller = ok and result == true
+        end
+
+        if not immortalHookState.Enabled or isCaller then
+            return oldIndexCFrame(self, key)
+        end
+
+        if key == "CFrame"
+            and immortalHookState.HRP
+            and self == immortalHookState.HRP
+            and immortalHookState.OriginalCFrame then
+            return immortalHookState.OriginalCFrame
+        end
+
+        return oldIndexCFrame(self, key)
+    end))
+    immortalHookState.GetOriginalCFrame = function(instance)
+        return oldIndexCFrame(instance, "CFrame")
+    end
+end
+
+local function startBackgroundOrbit()
+    backgroundOrbitState.Enabled = true
+    backgroundOrbitAngle = 0
+    backgroundOrbitSpeed = IMMORTAL_MIN_SPEED
+    backgroundOrbitLastBallSpeed = 0
+    backgroundOrbitLastETA = math.huge
+    clearImmortalThreatTarget()
+
+    installImmortalHook()
 
     local function onCharacter(char)
+        if not backgroundOrbitState.Enabled then
+            return
+        end
         backgroundOrbitHRP = char:WaitForChild("HumanoidRootPart", 5)
         backgroundOrbitAngle = 0
+        clearImmortalThreatTarget()
+        immortalHookState.HRP = backgroundOrbitHRP
+        immortalHookState.OriginalCFrame = nil
     end
 
-    backgroundOrbitCharacterConnection =
-        LocalPlayer.CharacterAdded:Connect(onCharacter)
+    if not backgroundOrbitCharacterConnection then
+        backgroundOrbitCharacterConnection =
+            Library:GiveSignal(LocalPlayer.CharacterAdded:Connect(onCharacter))
+    end
 
     if LocalPlayer.Character then
         onCharacter(LocalPlayer.Character)
     end
 
-    local DesyncTypes = {}
-    if getrawmetatable then
-        pcall(function() backgroundOrbitHookMeta = getrawmetatable(game) end)
-    end
+    immortalHookState.Enabled = true
+    immortalHookState.HRP = backgroundOrbitHRP
 
-    if hookmetamethod and newcclosure then
-        local oldIndexCFrame
-        local hookFunction = newcclosure(function(self, key)
-            if not backgroundOrbitState.Enabled or checkcaller() then
-                return oldIndexCFrame(self, key)
+    bindCoreConnection(
+        "immortal_restore",
+        RunService.RenderStepped,
+        function()
+            if backgroundOrbitPendingRestore then
+                restoreImmortalSnapshot(false)
             end
+        end
+    )
 
-            if key == "CFrame" and backgroundOrbitHRP and self == backgroundOrbitHRP then
-                return DesyncTypes[1] or oldIndexCFrame(self, key)
-            end
+    bindCoreConnection("immortal_orbit", RunService.Heartbeat, function(dt)
+        if not backgroundOrbitState.Enabled or not backgroundOrbitHRP then
+            return
+        end
 
-            return oldIndexCFrame(self, key)
-        end)
-        oldIndexCFrame = hookmetamethod(game, "__index", hookFunction)
-        backgroundOrbitHookOldIndex = oldIndexCFrame
-        backgroundOrbitHookFunction = hookFunction
-    end
-
-    System.__properties.__connections.immortal_orbit =
-        RunService.Heartbeat:Connect(function(dt)
-            if not backgroundOrbitState.Enabled or not backgroundOrbitHRP or backgroundOrbitBusy then
+        if not backgroundOrbitHRP.Parent then
+            backgroundOrbitHRP = LocalPlayer.Character
+                and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            clearImmortalThreatTarget()
+            immortalHookState.HRP = backgroundOrbitHRP
+            immortalHookState.OriginalCFrame = nil
+            if not backgroundOrbitHRP then
                 return
             end
+            backgroundOrbitAngle = 0
+        end
 
-            if not backgroundOrbitHRP.Parent then
-                backgroundOrbitHRP = LocalPlayer.Character
-                    and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
-                if not backgroundOrbitHRP then
-                    return
-                end
+        local hrp = backgroundOrbitHRP
+        local originalCFrame
+        if type(immortalHookState.GetOriginalCFrame) == "function" then
+            local ok, value = pcall(immortalHookState.GetOriginalCFrame, hrp)
+            if ok and typeof(value) == "CFrame" then
+                originalCFrame = value
             end
+        end
+        originalCFrame = originalCFrame or hrp.CFrame
+        local originalVelocity = hrp.AssemblyLinearVelocity
 
-            backgroundOrbitBusy = true
-            local runId = backgroundOrbitRunId
+        backgroundOrbitSnapshotHRP = hrp
+        backgroundOrbitSnapshotCFrame = originalCFrame
+        backgroundOrbitSnapshotVelocity = originalVelocity
+        backgroundOrbitPendingRestore = true
+        immortalHookState.HRP = hrp
+        immortalHookState.OriginalCFrame = originalCFrame
 
-            local restored = false
-            local ok = pcall(function()
-                DesyncTypes[1] = backgroundOrbitHRP.CFrame
-                DesyncTypes[2] = backgroundOrbitHRP.AssemblyLinearVelocity
-                backgroundOrbitRestoreCF = DesyncTypes[1]
-                backgroundOrbitRestoreVelocity = DesyncTypes[2]
+        dt = math.clamp(tonumber(dt) or 1 / 60, 1 / 240, 1 / 15)
 
-                local ballSpeed = getImmortalBallSpeed()
-                backgroundOrbitLastBallSpeed = ballSpeed
+        local ballSpeed, eta, ball = getImmortalThreat()
+        backgroundOrbitLastBallSpeed = ballSpeed > 0 and ballSpeed or 0
+        backgroundOrbitLastETA = ballSpeed > 0 and eta or math.huge
 
-                dt = math.clamp(tonumber(dt) or 1 / 60, 1 / 240, 1 / 15)
+        local targetSpeed = getImmortalOrbitSpeed(backgroundOrbitLastBallSpeed, backgroundOrbitLastETA)
+        if backgroundOrbitLastETA <= 0.28 then
+            backgroundOrbitSpeed = IMMORTAL_MAX_SPEED
+        else
+            local speedBlend = math.clamp(
+                dt * (backgroundOrbitLastETA < 0.45 and 22 or 9),
+                0,
+                1
+            )
+            backgroundOrbitSpeed += (targetSpeed - backgroundOrbitSpeed) * speedBlend
+        end
 
-                local desiredVelocity = getAdaptiveOrbitAngularVelocity(ballSpeed)
-                local blend = math.clamp(dt * 10, 0, 1)
-                backgroundOrbitAngularVelocity += (desiredVelocity - backgroundOrbitAngularVelocity) * blend
-
-                local maxStep = math.rad(120)
-                local step = math.clamp(backgroundOrbitAngularVelocity * dt, 0, maxStep)
-                backgroundOrbitAngle += step
-
-                local pos = Vector3.new(
-                    math.cos(backgroundOrbitAngle) * 20,
-                    0,
-                    math.sin(backgroundOrbitAngle) * 20
-                )
-
-                backgroundOrbitHRP.CFrame = DesyncTypes[1] + pos
-                backgroundOrbitHRP.AssemblyLinearVelocity = Vector3.zero
-
-                RunService.RenderStepped:Wait()
-
-                if runId ~= backgroundOrbitRunId then
-                    return
-                end
-
-                if backgroundOrbitHRP and backgroundOrbitHRP.Parent then
-                    backgroundOrbitHRP.CFrame = DesyncTypes[1]
-                    backgroundOrbitHRP.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.zero
-                end
-                restored = true
-            end)
-
-            if not restored and DesyncTypes[1] and backgroundOrbitHRP and backgroundOrbitHRP.Parent then
-                pcall(function()
-                    backgroundOrbitHRP.CFrame = DesyncTypes[1]
-                    backgroundOrbitHRP.AssemblyLinearVelocity = DesyncTypes[2] or Vector3.zero
-                end)
+        if ball then
+            local sideAngle = getImmortalSideAngle(ball)
+            if sideAngle then
+                backgroundOrbitPhaseTarget = sideAngle
             end
+        else
+            clearImmortalThreatTarget()
+            backgroundOrbitPhaseTarget = backgroundOrbitAngle
+        end
 
-            backgroundOrbitBusy = false
-        end)
+        local delta = 0
+        if backgroundOrbitPhaseTarget then
+            delta = math.atan2(
+                math.sin(backgroundOrbitPhaseTarget - backgroundOrbitAngle),
+                math.cos(backgroundOrbitPhaseTarget - backgroundOrbitAngle)
+            )
+        end
 
-    System.__properties.__connections.immortal_offset =
-        RunService.Heartbeat:Connect(function()
-            if not backgroundOrbitState.Enabled then
-                return
-            end
+        local angularVelocity = math.pi * 2 * backgroundOrbitSpeed / 5
+        local step = math.clamp(angularVelocity * dt, -math.rad(140), math.rad(140))
 
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if backgroundOrbitPhaseTarget and backgroundOrbitLastETA <= 0.18 then
+            backgroundOrbitAngle = backgroundOrbitPhaseTarget
+        elseif backgroundOrbitPhaseTarget and backgroundOrbitLastETA <= 0.35 then
+            backgroundOrbitAngle += math.clamp(delta, -step, step)
+        elseif math.abs(delta) > math.rad(8) and backgroundOrbitLastETA < 0.75 then
+            backgroundOrbitAngle += math.clamp(delta, -step, step)
+        else
+            backgroundOrbitAngle += step
+        end
 
-            if hrp then
-                hrp.CFrame = hrp.CFrame + Vector3.new(0, 0.01, 0)
-            end
-        end)
-end
+        local pos = Vector3.new(
+            math.cos(backgroundOrbitAngle) * IMMORTAL_RADIUS,
+            0,
+            math.sin(backgroundOrbitAngle) * IMMORTAL_RADIUS
+        )
 
-local function restoreBackgroundOrbitHook()
-    if not backgroundOrbitHookOldIndex or not hookmetamethod then return end
-    pcall(function()
-        hookmetamethod(game, "__index", backgroundOrbitHookOldIndex)
+        hrp.CFrame = originalCFrame + pos
+        hrp.AssemblyLinearVelocity = Vector3.zero
     end)
-    backgroundOrbitHookOldIndex = nil
-    backgroundOrbitHookFunction = nil
-    backgroundOrbitHookMeta = nil
 end
 
 local function stopBackgroundOrbit()
     backgroundOrbitState.Enabled = false
-    backgroundOrbitRunId += 1
-    backgroundOrbitAngle = 0
-    backgroundOrbitAngularVelocity = math.rad(24 * 4)
     backgroundOrbitLastBallSpeed = 0
-    if backgroundOrbitRestoreCF and backgroundOrbitHRP and backgroundOrbitHRP.Parent then
-        pcall(function()
-            backgroundOrbitHRP.CFrame = backgroundOrbitRestoreCF
-            backgroundOrbitHRP.AssemblyLinearVelocity = backgroundOrbitRestoreVelocity or Vector3.zero
-        end)
-    end
-    backgroundOrbitRestoreCF = nil
-    backgroundOrbitRestoreVelocity = nil
+    backgroundOrbitLastETA = math.huge
+    backgroundOrbitSpeed = IMMORTAL_MIN_SPEED
+    clearImmortalThreatTarget()
+    restoreImmortalSnapshot(true)
+    immortalHookState.Enabled = false
+    immortalHookState.HRP = nil
 end
 
 getgenv().AutoVote = getgenv().AutoVote or false
@@ -10542,7 +10768,11 @@ Menu:AddToggle("AlwaysOnTop", {
 Menu:AddToggle("WindowGlow", {
     Text = "Window Glow",
     Default = false,
-    Callback = function(Value) Window:SetGlow(Value) end,
+    Callback = function(Value)
+        if type(Window.SetGlow) == "function" then
+            pcall(Window.SetGlow, Window, Value)
+        end
+    end,
 })
 Menu:AddDropdown("NotificationSide", {
     Text = "Notification Side",
@@ -10558,9 +10788,14 @@ Menu:AddDropdown("DPIScale", {
 })
 Menu:AddSlider("CornerRadius", {
     Text = "Corner Radius",
-    Default = Library.CornerRadius,
+    Default = Library.CornerRadius or 8,
     Min = 0, Max = 20, Rounding = 0,
-    Callback = function(Value) Window:SetCornerRadius(Value) end,
+    Callback = function(Value)
+        Library.CornerRadius = Value
+        if type(Window.SetCornerRadius) == "function" then
+            pcall(Window.SetCornerRadius, Window, Value)
+        end
+    end,
 })
 Menu:AddDivider()
 Menu:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
@@ -10583,6 +10818,7 @@ ThemeManager:ApplyToTab(Tabs.Settings)
 SaveManager:LoadAutoloadConfig()
 
 Library:OnUnload(function()
+    pcall(function() restoreBallCollisionState() end)
     pcall(function() System.autoparry.stop() end)
     pcall(function() System.auto_spam.stop() end)
     pcall(function() System.manual_spam.stop() end)
@@ -10600,10 +10836,10 @@ Library:OnUnload(function()
     end)
     pcall(function() stopBackgroundOrbit() end)
     pcall(function() disconnectCoreConnection("immortal_orbit") end)
+    pcall(function() disconnectCoreConnection("immortal_restore") end)
     pcall(function() disconnectCoreConnection("immortal_offset") end)
     pcall(function()
         if backgroundOrbitCharacterConnection then backgroundOrbitCharacterConnection:Disconnect(); backgroundOrbitCharacterConnection=nil end
-        restoreBackgroundOrbitHook()
     end)
     pcall(function()
         if getgenv().FOVLoop then getgenv().FOVLoop:Disconnect(); getgenv().FOVLoop=nil end
