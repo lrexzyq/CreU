@@ -1,14 +1,21 @@
-local InputService = game:GetService('UserInputService');
-local TextService = game:GetService('TextService');
-local CoreGui = game:GetService('CoreGui');
-local Teams = game:GetService('Teams');
-local Players = game:GetService('Players');
-local RunService = game:GetService('RunService')
-local TweenService = game:GetService('TweenService');
-local Lighting = game:GetService('Lighting');
+local cloneref = (cloneref or clonereference or function(instance)
+    return instance
+end)
+local function GetService(Name)
+    return cloneref(game:GetService(Name))
+end
+
+local InputService = GetService('UserInputService');
+local TextService = GetService('TextService');
+local CoreGui = GetService('CoreGui');
+local Teams = GetService('Teams');
+local Players = GetService('Players');
+local RunService = GetService('RunService')
+local TweenService = GetService('TweenService');
+local Lighting = GetService('Lighting');
 local RenderStepped = RunService.RenderStepped;
-local LocalPlayer = Players.LocalPlayer;
-local Mouse = LocalPlayer:GetMouse();
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait();
+local Mouse = cloneref(LocalPlayer:GetMouse());
 
 local LucideIcons = {
     ["accessibility"] = "rbxassetid://10709751939",
@@ -917,11 +924,29 @@ local function Base64Decode(data)
 end
 
 local ProtectGui = protectgui or (syn and syn.protect_gui) or (function() end);
+local GetHui = gethui or function() return CoreGui end;
 
 local ScreenGui = Instance.new('ScreenGui');
-ProtectGui(ScreenGui);
+ScreenGui.Name = 'CreU';
+ScreenGui.ResetOnSpawn = false;
+pcall(ProtectGui, ScreenGui);
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global;
-ScreenGui.Parent = CoreGui;
+
+local function SafeParentGui(Gui)
+    local Ok = pcall(function()
+        Gui.Parent = GetHui();
+    end);
+    if not (Ok and Gui.Parent) then
+        Ok = pcall(function()
+            Gui.Parent = CoreGui;
+        end);
+    end
+    if not (Ok and Gui.Parent) then
+        Gui.Parent = LocalPlayer:WaitForChild('PlayerGui', 10);
+    end
+end
+
+SafeParentGui(ScreenGui);
 
 local Toggles = {};
 local Options = {};
@@ -1029,7 +1054,7 @@ function Library:SetFontSize(Size)
             end
         end
     end
-    local mobileUI = CoreGui:FindFirstChild("LinoriaMobileUI")
+    local mobileUI = Library._MobileGui or GetHui():FindFirstChild("LinoriaMobileUI") or CoreGui:FindFirstChild("LinoriaMobileUI")
     if mobileUI then
         for _, descendant in pairs(mobileUI:GetDescendants()) do
             if descendant:IsA("TextLabel") or descendant:IsA("TextBox") or descendant:IsA("TextButton") then
@@ -1085,21 +1110,31 @@ function Library:SafeCallback(f, ...)
     if (not f) then
         return;
     end;
-    if not Library.NotifyOnError then
-        return f(...);
-    end;
 
+    -- FIX: previously, when Library.NotifyOnError was false (the
+    -- default), this called f(...) directly with NO pcall at all --
+    -- so "SafeCallback" only actually protected against errors when
+    -- NotifyOnError happened to be true, and any error thrown inside a
+    -- Toggle/Slider/Dropdown/Button callback with the default settings
+    -- would propagate uncaught. pcall now always runs; NotifyOnError only
+    -- controls whether a caught error also surfaces as a Notify.
     local success, event = pcall(f, ...);
     if not success then
-        if type(event) ~= 'string' then
-
-            return Library:Notify(tostring(event));
+        if Library.NotifyOnError then
+            if type(event) ~= 'string' then
+                Library:Notify(tostring(event));
+            else
+                local _, i = event:find(":%d+: ");
+                if not i then
+                    Library:Notify(event);
+                else
+                    Library:Notify(event:sub(i + 1), 3);
+                end;
+            end;
         end;
-        local _, i = event:find(":%d+: ");
-        if not i then
-            return Library:Notify(event);
+        if Library.DebugCreateErrors then
+            warn('[CreU] callback error:', event);
         end;
-        return Library:Notify(event:sub(i + 1), 3);
     end;
 end;
 
@@ -1685,7 +1720,7 @@ function Library:Unload()
     if Library._MobileGui and Library._MobileGui.Parent then
         Library._MobileGui:Destroy()
     else
-        local MobileGui = CoreGui:FindFirstChild('LinoriaMobileUI')
+        local MobileGui = GetHui():FindFirstChild('LinoriaMobileUI') or CoreGui:FindFirstChild('LinoriaMobileUI')
         if MobileGui then MobileGui:Destroy() end
     end
     Library._MobileGui = nil
@@ -2342,6 +2377,9 @@ do
         end;
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
+            if Library.Unloaded then
+                return
+            end
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
                 local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize;
                 local DFPos = DisplayFrame.AbsolutePosition;
@@ -3142,6 +3180,9 @@ do
         end)
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
+            if Library.Unloaded then
+                return
+            end
             if Input == KeyPicker._ControlInput or Input == KeyPicker._MobileBindInput then
                 return
             end
@@ -3186,6 +3227,9 @@ do
         end))
 
         Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
+            if Library.Unloaded then
+                return
+            end
             if Input == KeyPicker._ControlInput or Input == KeyPicker._MobileBindInput then
                 if Input == KeyPicker._ControlInput then KeyPicker._ControlInput = nil end
                 if Input == KeyPicker._MobileBindInput then KeyPicker._MobileBindInput = nil end
@@ -5245,6 +5289,9 @@ function Funcs:AddDropdown(Idx, Info)
         end);
 
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
+            if Library.Unloaded then
+                return
+            end
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 if not ListOuter.Visible then return end
                 local Pos = Input.Position;
@@ -7381,6 +7428,9 @@ function Library:CreateWindow(...)
 
     if Window.Minimizable and Config.MinimizeKeybind then
         Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
+            if Library.Unloaded then
+                return
+            end
             if not Processed and Input.UserInputType == Enum.UserInputType.Keyboard and Input.KeyCode == Config.MinimizeKeybind then
                 Window:SetMinimized(not Window.Minimized)
             end
@@ -8033,6 +8083,9 @@ function Library:CreateWindow(...)
     end
 
     Library:GiveSignal(InputService.InputBegan:Connect(function(Input, Processed)
+        if Library.Unloaded then
+            return
+        end
         if Processed then
             return
         end
@@ -8115,9 +8168,10 @@ Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange));
 if InputService.TouchEnabled then
     local MobileGui = Instance.new("ScreenGui")
     MobileGui.Name = "LinoriaMobileUI"
+    MobileGui.ResetOnSpawn = false
     MobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    ProtectGui(MobileGui)
-    MobileGui.Parent = CoreGui
+    pcall(ProtectGui, MobileGui)
+    SafeParentGui(MobileGui)
     Library._MobileGui = MobileGui
     local MobileScale = Instance.new('UIScale')
     MobileScale.Scale = Library.DPIScale or 1
@@ -8246,6 +8300,9 @@ if InputService.TouchEnabled then
         end)
 
         Library:GiveSignal(InputService.InputChanged:Connect(function(input)
+            if Library.Unloaded then
+                return
+            end
             if input == dragInput and dragging then
                 local delta = input.Position - dragStart
                 if delta.Magnitude > 10 then
