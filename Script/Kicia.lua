@@ -1150,37 +1150,6 @@ return {
                 RageAttackContinuity = function() return true end,
                 RageTeleportMode = function() return 'ue' end,
                 RageTeleportVoidFire = function() return false end,
-                TargetMode = function()
-                    local value = optValue('P8S4D4', 'Smart')
-                    if value == 'Closest' or value == 'Lowest Health' or value == 'Smart' then
-                        return value
-                    end
-                    return 'Smart'
-                end,
-                PrioritizedPlayer = function()
-                    local value = optValue('P8S4D6', nil)
-                    return type(value) == 'string' and value ~= '' and value or nil
-                end,
-                PriorityAttackers = function() return togValue('P8S4T12', false) end,
-                PriorityVoided = function() return togValue('P8S4T13', false) end,
-                StickyTarget = function() return togValue('P8S4T14', true) end,
-                TargetSwitchInterval = function()
-                    local value = tonumber(optValue('P8S4S6', 0.08)) or 0.08
-                    return math.clamp(value, 0.02, 0.5)
-                end,
-                TeleportGuard = function() return togValue('P8S4T15', true) end,
-                TeleportGuardDistance = function()
-                    local value = tonumber(optValue('P8S4S7', 80)) or 80
-                    return math.clamp(value, 25, 500)
-                end,
-                PreferredWeapon = function()
-                    local value = optValue('P8S4D5', 'Auto')
-                    if value == 'Auto' or value == 'Primary' or value == 'Secondary' or value == 'Melee' then
-                        return value
-                    end
-                    return 'Auto'
-                end,
-                AutoEquipPreferred = function() return togValue('P8S4T11', false) end,
                 RageOrbitRadius = function() return 60 end,
                 RageOrbitDwell = function() return 0.30 end,
                 RageOrbitHeight = function() return 0 end,
@@ -1569,21 +1538,41 @@ return {
                 end
                 return nil
             end
-            local function verifyUETeleport(hitboxHead, tpActive)
+            local function verifyUETeleport(hitboxHead, tpActive, characterController, expectedCFrame)
                 if not tpActive then
                     return true
                 end
                 local ownRoot = GetRoot()
-                return ownRoot ~= nil and ownRoot.Parent ~= nil and hitboxHead ~= nil and hitboxHead.Parent ~= nil
+                if ownRoot == nil or ownRoot.Parent == nil or hitboxHead == nil or hitboxHead.Parent == nil then
+                    return false
+                end
+                if expectedCFrame ~= nil and not validCombatCFrame(expectedCFrame) then
+                    return false
+                end
+                if characterController == nil or type(characterController.GetServerCFrame) ~= 'function' then
+                    return false
+                end
+                if expectedCFrame == nil or not validCombatCFrame(expectedCFrame) then
+                    return false
+                end
+                local ok, serverCF = pcall(characterController.GetServerCFrame, characterController)
+                if not ok or typeof(serverCF) ~= 'CFrame' then
+                    return false
+                end
+                local delta = (serverCF.Position - expectedCFrame.Position).Magnitude
+                if delta > 0.05 then
+                    return false
+                end
+                return true
             end
-            local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, tpActive, forceAimPayload)
+            local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, tpActive, forceAimPayload, characterController, expectedTPPose)
                 local remote = resolveUseItemRemote()
                 local token = enc('StartShooting')
                 hitboxHead = resolveFullHeadPart(hitboxHead)
                 if not remote or not token or not objectId or hitboxHead == nil then
                     return false
                 end
-                if not verifyUETeleport(hitboxHead, tpActive) then
+                if not verifyUETeleport(hitboxHead, tpActive, characterController, expectedTPPose) then
                     return false
                 end
                 if eyeCF == nil or muzzleCF == nil then
@@ -2180,8 +2169,8 @@ return {
             -- Normal guns stay on exact zero combat offset. Riot Shield keeps the
             -- legacy above/below offsets from the original Kicia implementation.
             local OFFSET_NORMAL = Vector3.zero
-            local OFFSET_RIOT_ABOVE = Vector3.new(0, -0.7, 0.05)
-            local OFFSET_RIOT_BELOW = Vector3.new(0, -3.85, 0.05)
+            local OFFSET_RIOT_ABOVE = Vector3.new(0, 0, 0.05)
+            local OFFSET_RIOT_BELOW = Vector3.new(0, 0, 0.05)
             local PITCH_ABOVE = -math.pi / 2
             local PITCH_BELOW = math.pi / 2
             local function getTargetCameraRotation(target)
@@ -2668,6 +2657,9 @@ local CharacterController = {}
             end
             function CharacterController:GetClientCFrame()
                 return self._rootDesync and self._rootDesync:GetClientCFrame() or nil
+            end
+            function CharacterController:GetServerCFrame()
+                return self._rootDesync and self._rootDesync:GetServerCFrame() or nil
             end
             function CharacterController:SendViewAngles(priority, value)
                 self._viewAngleDriver:SendViewAngles(priority, value)
@@ -3187,17 +3179,11 @@ local CharacterController = {}
                 return detected, heightPriority, speed, measuredSpeed
             end
 
-            function KiciaRagebot.selectTarget(preferredTarget, holdPreferred)
+            function KiciaRagebot.selectTarget(preferredTarget)
                 local enemies = KiciaRagebot.collectEnemies(false)
                 local myRoot = GetRoot()
                 local prioritizeHackers = Setting.PrioritizeHackers()
-                local prioritizeAttackers = Setting.PriorityAttackers()
-                local prioritizeVoided = Setting.PriorityVoided()
-                local targetMode = Setting.TargetMode()
                 local valid = {}
-                local explicitName = Setting.PrioritizedPlayer()
-                local explicitTarget = nil
-
                 for _, entry in ipairs(enemies) do
                     if KiciaRagebot.isValidTarget(entry) then
                         local distance = math.huge
@@ -3212,92 +3198,70 @@ local CharacterController = {}
                         if distance == math.huge or distance > Setting.RAGE_TRIGGER_DISTANCE then
                             continue
                         end
-
-                        local hackerPriority, heightPriority, velocity, measuredVelocity = false, -math.huge, 0, 0
                         if prioritizeHackers then
-                            hackerPriority, heightPriority, velocity, measuredVelocity = KiciaRagebot.getHackerPriorityState(entry)
+                            local hackerPriority, heightPriority, velocity, measuredVelocity = KiciaRagebot.getHackerPriorityState(entry)
+                            entry.hackerPriority = hackerPriority
+                            entry.hackerPriorityY = heightPriority
+                            entry.hackerPrioritySpeed = velocity
+                            entry.hackerMeasuredSpeed = measuredVelocity
+                        else
+                            entry.hackerPriority = false
+                            entry.hackerPriorityY = -math.huge
+                            entry.hackerPrioritySpeed = 0
+                            entry.hackerMeasuredSpeed = 0
                         end
-                        entry.hackerPriority = hackerPriority
-                        entry.hackerPriorityY = heightPriority
-                        entry.hackerPrioritySpeed = velocity
-                        entry.hackerMeasuredSpeed = measuredVelocity
-
-                        local pos = entry.rootPart and entry.rootPart.Position or nil
-                        entry.voidedPriority = prioritizeVoided and pos ~= nil and pos.Magnitude >= 1000000 or false
-                        entry.attackerPriority = prioritizeAttackers and (entry.equippedAmmoState == true or entry.equippedGunProjectile == true) or false
-
-                        if explicitName and entry.player and entry.player.Name == explicitName then
-                            explicitTarget = entry
-                        elseif explicitName and entry.player and entry.player.DisplayName == explicitName then
-                            explicitTarget = entry
-                        end
-
                         valid[#valid + 1] = entry
                     end
                 end
-
                 if #valid == 0 then
                     return nil
                 end
-
-                if explicitTarget ~= nil then
-                    return explicitTarget
-                end
-
-                if holdPreferred and preferredTarget ~= nil then
+                if preferredTarget ~= nil then
+                    local preferred = nil
+                    local hasPriorityCandidate = false
                     for _, candidate in ipairs(valid) do
-                        if (candidate.player ~= nil and preferredTarget.player ~= nil and candidate.player == preferredTarget.player)
-                            or (candidate.model ~= nil and preferredTarget.model ~= nil and candidate.model == preferredTarget.model) then
-                            return candidate
+                        if candidate.hackerPriority == true then
+                            hasPriorityCandidate = true
                         end
+                        if candidate.player ~= nil and preferredTarget.player ~= nil
+                            and candidate.player == preferredTarget.player then
+                            preferred = candidate
+                        elseif candidate.model ~= nil and preferredTarget.model ~= nil
+                            and candidate.model == preferredTarget.model then
+                            preferred = candidate
+                        end
+                    end
+                    if preferred ~= nil and (not prioritizeHackers or not hasPriorityCandidate) then
+                        return preferred
                     end
                 end
-
                 table.sort(valid, function(a, b)
-                    if prioritizeHackers and a.hackerPriority ~= b.hackerPriority then
-                        return a.hackerPriority == true
-                    end
-                    if prioritizeHackers and a.hackerPriority and b.hackerPriority then
-                        if a.hackerPriorityY ~= b.hackerPriorityY then
-                            return a.hackerPriorityY > b.hackerPriorityY
+                    if prioritizeHackers then
+                        if a.hackerPriority ~= b.hackerPriority then
+                            return a.hackerPriority == true
                         end
-                        if a.hackerPrioritySpeed ~= b.hackerPrioritySpeed then
-                            return a.hackerPrioritySpeed > b.hackerPrioritySpeed
+                        if a.hackerPriority and b.hackerPriority then
+                            if a.hackerPriorityY ~= b.hackerPriorityY then
+                                return a.hackerPriorityY > b.hackerPriorityY
+                            end
+                            if a.hackerPrioritySpeed ~= b.hackerPrioritySpeed then
+                                return a.hackerPrioritySpeed > b.hackerPrioritySpeed
+                            end
                         end
-                    end
-
-                    if a.voidedPriority ~= b.voidedPriority then
-                        return a.voidedPriority == true
-                    end
-                    if a.attackerPriority ~= b.attackerPriority then
-                        return a.attackerPriority == true
-                    end
-                    if not prioritizeHackers and a.hacker ~= b.hacker then
-                        return a.hacker == true
-                    end
-
-                    if targetMode == 'Closest' then
-                        if a.distance ~= b.distance then
-                            return a.distance < b.distance
-                        end
-                        return a.health < b.health
-                    elseif targetMode == 'Lowest Health' then
-                        if a.health ~= b.health then
-                            return a.health < b.health
-                        end
-                        return a.distance < b.distance
                     else
-                        -- Smart keeps Kicia's old health hysteresis while adding attacker/void priority.
-                        if math.abs(a.health - b.health) > 10 then
-                            return a.health < b.health
+                        if a.hacker ~= b.hacker then
+                            return a.hacker == true
                         end
-                        if a.distance ~= b.distance then
-                            return a.distance < b.distance
-                        end
-                        local aName = a.player and (a.player.Name or a.player.DisplayName) or a.model and a.model.Name or ''
-                        local bName = b.player and (b.player.Name or b.player.DisplayName) or b.model and b.model.Name or ''
-                        return tostring(aName) < tostring(bName)
                     end
+                    if math.abs(a.health - b.health) > 10 then
+                        return a.health < b.health
+                    end
+                    if a.distance ~= b.distance then
+                        return a.distance < b.distance
+                    end
+                    local aName = a.player and (a.player.Name or a.player.DisplayName) or a.model and a.model.Name or ''
+                    local bName = b.player and (b.player.Name or b.player.DisplayName) or b.model and b.model.Name or ''
+                    return tostring(aName) < tostring(bName)
                 end)
                 return valid[1]
             end
@@ -3702,8 +3666,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             end
             function KiciaRagebot.rageTeleportMode()
                 local m = Setting.RageTeleportMode()
-                if m ~= 'off' and m ~= 'lite' and m ~= 'on' then
-                    m = 'off'
+                if m ~= 'off' and m ~= 'lite' and m ~= 'on' and m ~= 'ue' then
+                    m = 'ue'
                 end
                 return m
             end
@@ -3760,18 +3724,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return nil
                 end
                 local equippedIndex, equippedItem = KiciaRagebot.resolveEquippedIndex(fighter, items)
-                if Setting.AutoEquipPreferred() then
-                    local preferred = Setting.PreferredWeapon()
-                    local preferredSlot = preferred == 'Primary' and 1 or preferred == 'Secondary' and 2 or preferred == 'Melee' and 3 or nil
-                    local desired = preferredSlot and enabled[preferredSlot] or nil
-                    if desired ~= nil and desired.item ~= equippedItem then
-                        local desiredUsable = desired.type == 'Melee'
-                            or (desired.type == 'Gun' and itemAmmo(desired.item) > 0 and not itemIsReloading(desired.item))
-                        if desiredUsable then
-                            return { type = 'Swap', item = desired.item, itemType = desired.type, index = desired.index }
-                        end
-                    end
-                end
                 if rageSwapPendingIndex ~= nil then
                     if equippedIndex == rageSwapPendingIndex then
                         rageSwapPendingIndex = nil
@@ -4182,13 +4134,14 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             local HitscanStrategy = {}
             HitscanStrategy.__index = HitscanStrategy
             function HitscanStrategy.new(ueTeleport)
-                return setmetatable({ _ueTeleport = ueTeleport, _shootLock = ShootLock.new(), _tpActive = false }, HitscanStrategy)
+                return setmetatable({ _ueTeleport = ueTeleport, _shootLock = ShootLock.new(), _tpActive = false, _tpApplied = false }, HitscanStrategy)
             end
             function HitscanStrategy:ClearTeleport()
                 if self._ueTeleport ~= nil then
                     self._ueTeleport:Free(nil)
                 end
                 self._tpActive = false
+                self._tpApplied = false
             end
             function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire, slotIndex)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
@@ -4211,6 +4164,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return ourRootPart.CFrame, nil
                 end
                 self._tpActive = true
+                self._tpApplied = false
                 local cframe = tpCFrame
                 if directHeadAim then
                     local ok, faced = pcall(CFrame.new, tpCFrame.Position + offset, aimHeadPosition)
@@ -4257,6 +4211,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         return cframe
                     end
                     self._tpActive = true
+                    self._tpApplied = false
                     local refreshed = liveTP
                     if directHeadAim then
                         local ok, faced = pcall(CFrame.new, liveTP.Position + offset, liveAimPosition)
@@ -4275,9 +4230,8 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = liveAimPosition
                         finalShotEyeCF = snapshotEyeCF
                         finalShotMuzzleCF = snapshotMuzzleCF
-                        characterController:SetServerCFrame(refreshed)
                     end
-                    return cframe
+                    return cframe, snapshotEyeCF ~= nil and snapshotMuzzleCF ~= nil
                 end
                 local function weaponAction()
                     if hitboxHead == nil or hitboxHead.Parent == nil or targetRootPart == nil or targetRootPart.Parent == nil then
@@ -4298,7 +4252,10 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     if finalShotEyeCF == nil or finalShotMuzzleCF == nil then
                         return false
                     end
-                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, true, false) == true
+                    if self._tpActive and not self._tpApplied then
+                        return false
+                    end
+                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, self._tpActive, false, characterController, cframe) == true
                 end
                 return cframe, weaponAction, preFireRefresh
             end
@@ -5040,7 +4997,6 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     _characterController = nil,
                     _boundRootPart = nil,
                     _lastTarget = nil,
-                    _lastTargetAt = -math.huge,
                     _lastTargetWorld = nil,
                     _lastClientPosition = nil,
                     _teleportGuardUntil = 0,
@@ -5179,7 +5135,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     return self:_EvadePlan(clientCF, mode)
                 end
                 local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire, action.index)
-                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
+                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, requiresUETeleport = true, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
             end
 function Controller:_ApplyPlan(plan, target, characterController, fighter)
                 local cframe = saneCombatCFrame(plan.cframe, characterController:GetClientCFrame())
@@ -5250,24 +5206,21 @@ function Controller:Update(dt)
                     self:_Reset()
                     return
                 end
-                -- Snapshot the real client pose before any Gum/TP spoof is applied this frame.
-                -- Gun final gates use this anchor so Gum-on can move the replication root to VOID
-                -- without making the range/LOS check compare the target against the void location.
+                -- Snapshot the real client pose before any temporary TP/evasion pose is applied.
+                -- Gun final gates use this stable client anchor for range/LOS checks.
                 State.RageClientAnchorCFrame = clientCF
                 local now = os.clock()
 
-                -- Ported from LarpUE's teleport safety concept, but applied to Kicia's real
-                -- client pose so fake/replication CFrames cannot trigger false positives.
+                -- Ported from LarpUE's teleport safety concept, using Kicia's real client pose.
                 local currentPosition = clientCF.Position
                 local lastPosition = self._lastClientPosition
-                if Setting.TeleportGuard() and lastPosition ~= nil and KiciaRagebot.isFiniteVector3(currentPosition)
+                if lastPosition ~= nil and KiciaRagebot.isFiniteVector3(currentPosition)
                     and KiciaRagebot.isFiniteVector3(lastPosition) then
                     local delta = currentPosition - lastPosition
                     local distance = delta.Magnitude
-                    if distance >= Setting.TeleportGuardDistance() then
+                    if distance >= 80 then
                         self._teleportGuardUntil = math.max(self._teleportGuardUntil or 0, now + 0.75)
                         self._lastTarget = nil
-                        self._lastTargetAt = -math.huge
                         self._lastTargetWorld = nil
                         self._hitscanStrategy:ResetState()
                         self._meleeStrategy:ResetState()
@@ -5277,7 +5230,6 @@ function Controller:Update(dt)
 
                 if now < (self._teleportGuardUntil or 0) then
                     self._lastTarget = nil
-                    self._lastTargetAt = -math.huge
                     self._lastTargetWorld = nil
                     self._hitscanStrategy:ResetState()
                     self._meleeStrategy:ResetState()
@@ -5287,14 +5239,7 @@ function Controller:Update(dt)
                 end
 
                 local previousTarget = self._lastTarget
-                local previousTargetAt = self._lastTargetAt
-                local holdPreferred = Setting.StickyTarget()
-                    and previousTarget ~= nil
-                    and now - previousTargetAt < Setting.TargetSwitchInterval()
-                local target = KiciaRagebot.selectTarget(previousTarget, holdPreferred)
-                if target ~= previousTarget then
-                    self._lastTargetAt = target and now or -math.huge
-                end
+                local target = KiciaRagebot.selectTarget(previousTarget)
                 self._lastTarget = target
                 local action = KiciaRagebot.getAction(fighter)
                 local evasionOption = Options and Options.P8S4D2 and Options.P8S4D2.Value or 'Random'
@@ -5359,16 +5304,27 @@ function Controller:Update(dt)
                     if preActionHeartbeat then
                         characterController:HeartbeatUpdate()
                     end
-                    local refreshed = plan.preFireRefresh(characterController)
-                    if refreshed ~= nil then
-                        characterController:SetServerCFrame(refreshed)
+                    local refreshed, refreshOk = plan.preFireRefresh(characterController)
+                    if refreshOk == false then
+                        plan.abortAction = true
+                        characterController:SetServerCFrame(nil)
+                        characterController:HeartbeatUpdate()
+                    elseif refreshed ~= nil then
+                        local applied = characterController:SetServerCFrame(refreshed) == true
+                        if plan.requiresUETeleport == true then
+                            self._hitscanStrategy._tpApplied = applied
+                        end
+                        if not applied then
+                            plan.abortAction = true
+                            characterController:SetServerCFrame(nil)
+                        end
                         characterController:HeartbeatUpdate()
                     end
                 end
                 if plan.forceViewBeforeAction and plan.viewAngles ~= nil then
                     characterController:ForceViewAngles(20, plan.viewAngles)
                 end
-                if plan.weaponAction ~= nil then
+                if plan.weaponAction ~= nil and plan.abortAction ~= true then
                     local actionOk = plan.weaponAction()
                     if evasionOption == 'Auto' and action ~= nil and action.type == 'Attack' and actionOk ~= false then
                         markAutoEvasionShot(now)
@@ -5386,7 +5342,6 @@ function Controller:GetLastTargetWorld()
                 rageOrbitVantage = nil
                 rageOrbitVantageUntil = 0
                 rageOrbitTargetKey = nil
-                self._lastTargetAt = -math.huge
                 self._lastTargetWorld = nil
                 self._lastClientPosition = nil
                 self._teleportGuardUntil = 0
@@ -31719,83 +31674,6 @@ ErrorReporter.set_game(GameName)
                         Default = false,
                         Tooltip = "Prioritize targets moving at 67+ studs/s or outside +/-500 studs on Y; higher Y wins among flagged targets.",
                     })
-                    Rage:AddDropdown("P8S4D4", {
-                        Values = { "Smart", "Closest", "Lowest Health" },
-                        Default = "Smart",
-                        Multi = false,
-                        Text = "Target Mode",
-                        Tooltip = "Smart preserves Kicia's health hysteresis while prioritizing armed/voided targets when enabled.",
-                    })
-                    Rage:AddDropdown("P8S4D5", {
-                        Values = { "Auto", "Primary", "Secondary", "Melee" },
-                        Default = "Auto",
-                        Multi = false,
-                        Text = "Preferred Weapon",
-                    })
-                    Rage:AddToggle("P8S4T11", {
-                        Text = "Auto Equip Preferred",
-                        Default = false,
-                    })
-                    Rage:AddToggle("P8S4T12", {
-                        Text = "Prioritize Attackers",
-                        Default = false,
-                        Tooltip = "Prefer enemies with an active gun/ammo state.",
-                    })
-                    Rage:AddToggle("P8S4T13", {
-                        Text = "Prioritize Voided",
-                        Default = false,
-                        Tooltip = "Prefer enemy roots currently far outside the normal world origin.",
-                    })
-                    Rage:AddToggle("P8S4T14", {
-                        Text = "Sticky Target",
-                        Default = true,
-                    })
-                    Rage:AddSlider("P8S4S6", {
-                        Text = "Target Lock",
-                        Default = 0.08,
-                        Min = 0.02,
-                        Max = 0.5,
-                        Rounding = 2,
-                        Suffix = " s",
-                        Compact = true,
-                    })
-                    Rage:AddToggle("P8S4T15", {
-                        Text = "Teleport Guard",
-                        Default = true,
-                    })
-                    Rage:AddSlider("P8S4S7", {
-                        Text = "Teleport Threshold",
-                        Default = 80,
-                        Min = 25,
-                        Max = 500,
-                        Rounding = 0,
-                        Suffix = " studs",
-                        Compact = true,
-                    })
-                    local function getRagePriorityPlayers()
-                        local names = {}
-                        for _, player in ipairs(game:GetService('Players'):GetPlayers()) do
-                            if player ~= game:GetService('Players').LocalPlayer then
-                                names[#names + 1] = player.Name
-                            end
-                        end
-                        table.sort(names)
-                        return names
-                    end
-                    local RagePriorityPlayer = Rage:AddDropdown("P8S4D6", {
-                        Values = getRagePriorityPlayers(),
-                        Default = nil,
-                        AllowNull = true,
-                        Searchable = true,
-                        Multi = false,
-                        Text = "Priority Target",
-                    })
-                    Rage:Clean(game:GetService('Players').PlayerAdded:Connect(function()
-                        pcall(function() RagePriorityPlayer:SetValues(getRagePriorityPlayers()) end)
-                    end))
-                    Rage:Clean(game:GetService('Players').PlayerRemoving:Connect(function()
-                        pcall(function() RagePriorityPlayer:SetValues(getRagePriorityPlayers()) end)
-                    end))
                     Rage:AddSlider("P8S4S2", {
                         Text = "Shoot Frames",
                         Default = 1,
