@@ -1538,41 +1538,21 @@ return {
                 end
                 return nil
             end
-            local function verifyUETeleport(hitboxHead, tpActive, characterController, expectedCFrame)
+            local function verifyUETeleport(hitboxHead, tpActive)
                 if not tpActive then
                     return true
                 end
                 local ownRoot = GetRoot()
-                if ownRoot == nil or ownRoot.Parent == nil or hitboxHead == nil or hitboxHead.Parent == nil then
-                    return false
-                end
-                if expectedCFrame ~= nil and not validCombatCFrame(expectedCFrame) then
-                    return false
-                end
-                if characterController == nil or type(characterController.GetServerCFrame) ~= 'function' then
-                    return false
-                end
-                if expectedCFrame == nil or not validCombatCFrame(expectedCFrame) then
-                    return false
-                end
-                local ok, serverCF = pcall(characterController.GetServerCFrame, characterController)
-                if not ok or typeof(serverCF) ~= 'CFrame' then
-                    return false
-                end
-                local delta = (serverCF.Position - expectedCFrame.Position).Magnitude
-                if delta > 0.05 then
-                    return false
-                end
-                return true
+                return ownRoot ~= nil and ownRoot.Parent ~= nil and hitboxHead ~= nil and hitboxHead.Parent ~= nil
             end
-            local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, tpActive, forceAimPayload, characterController, expectedTPPose)
+            local function fireGun(objectId, isRaycast, eyeCF, muzzleCF, hitboxHead, aimWorldPos, aim1, aim2, extra, tpActive, forceAimPayload)
                 local remote = resolveUseItemRemote()
                 local token = enc('StartShooting')
                 hitboxHead = resolveFullHeadPart(hitboxHead)
                 if not remote or not token or not objectId or hitboxHead == nil then
                     return false
                 end
-                if not verifyUETeleport(hitboxHead, tpActive, characterController, expectedTPPose) then
+                if not verifyUETeleport(hitboxHead, tpActive) then
                     return false
                 end
                 if eyeCF == nil or muzzleCF == nil then
@@ -2169,8 +2149,8 @@ return {
             -- Normal guns stay on exact zero combat offset. Riot Shield keeps the
             -- legacy above/below offsets from the original Kicia implementation.
             local OFFSET_NORMAL = Vector3.zero
-            local OFFSET_RIOT_ABOVE = Vector3.new(0, 0, 0.05)
-            local OFFSET_RIOT_BELOW = Vector3.new(0, 0, 0.05)
+            local OFFSET_RIOT_ABOVE = Vector3.new(0, -0.7, 0.05)
+            local OFFSET_RIOT_BELOW = Vector3.new(0, -3.85, 0.05)
             local PITCH_ABOVE = -math.pi / 2
             local PITCH_BELOW = math.pi / 2
             local function getTargetCameraRotation(target)
@@ -2657,9 +2637,6 @@ local CharacterController = {}
             end
             function CharacterController:GetClientCFrame()
                 return self._rootDesync and self._rootDesync:GetClientCFrame() or nil
-            end
-            function CharacterController:GetServerCFrame()
-                return self._rootDesync and self._rootDesync:GetServerCFrame() or nil
             end
             function CharacterController:SendViewAngles(priority, value)
                 self._viewAngleDriver:SendViewAngles(priority, value)
@@ -3667,7 +3644,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             function KiciaRagebot.rageTeleportMode()
                 local m = Setting.RageTeleportMode()
                 if m ~= 'off' and m ~= 'lite' and m ~= 'on' and m ~= 'ue' then
-                    m = 'ue'
+                    m = 'off'
                 end
                 return m
             end
@@ -4134,14 +4111,13 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             local HitscanStrategy = {}
             HitscanStrategy.__index = HitscanStrategy
             function HitscanStrategy.new(ueTeleport)
-                return setmetatable({ _ueTeleport = ueTeleport, _shootLock = ShootLock.new(), _tpActive = false, _tpApplied = false }, HitscanStrategy)
+                return setmetatable({ _ueTeleport = ueTeleport, _shootLock = ShootLock.new(), _tpActive = false }, HitscanStrategy)
             end
             function HitscanStrategy:ClearTeleport()
                 if self._ueTeleport ~= nil then
                     self._ueTeleport:Free(nil)
                 end
                 self._tpActive = false
-                self._tpApplied = false
             end
             function HitscanStrategy:Plan(dt, target, item, ourRootPart, canFire, slotIndex)
                 local hitboxHead, targetRootPart = resolveLiveTarget(target)
@@ -4164,7 +4140,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return ourRootPart.CFrame, nil
                 end
                 self._tpActive = true
-                self._tpApplied = false
                 local cframe = tpCFrame
                 if directHeadAim then
                     local ok, faced = pcall(CFrame.new, tpCFrame.Position + offset, aimHeadPosition)
@@ -4211,7 +4186,6 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         return cframe
                     end
                     self._tpActive = true
-                    self._tpApplied = false
                     local refreshed = liveTP
                     if directHeadAim then
                         local ok, faced = pcall(CFrame.new, liveTP.Position + offset, liveAimPosition)
@@ -4230,8 +4204,12 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                         finalShotAimWorldPos = liveAimPosition
                         finalShotEyeCF = snapshotEyeCF
                         finalShotMuzzleCF = snapshotMuzzleCF
+                        if characterController:SetServerCFrame(refreshed) ~= true then
+                            self._tpActive = false
+                            return nil
+                        end
                     end
-                    return cframe, snapshotEyeCF ~= nil and snapshotMuzzleCF ~= nil
+                    return cframe
                 end
                 local function weaponAction()
                     if hitboxHead == nil or hitboxHead.Parent == nil or targetRootPart == nil or targetRootPart.Parent == nil then
@@ -4252,10 +4230,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     if finalShotEyeCF == nil or finalShotMuzzleCF == nil then
                         return false
                     end
-                    if self._tpActive and not self._tpApplied then
-                        return false
-                    end
-                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, self._tpActive, false, characterController, cframe) == true
+                    return fireGun(objectId, isRaycast, finalShotEyeCF, finalShotMuzzleCF, hitboxHead, finalShotAimWorldPos, aim1, aim2, AIM_EXTRA, true, false) == true
                 end
                 return cframe, weaponAction, preFireRefresh
             end
@@ -4997,9 +4972,8 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     _characterController = nil,
                     _boundRootPart = nil,
                     _lastTarget = nil,
+                    _lastTargetAt = -math.huge,
                     _lastTargetWorld = nil,
-                    _lastClientPosition = nil,
-                    _teleportGuardUntil = 0,
                     _temporalHoldCount = 0,
                     _temporalLastGap = 0,
                     _lastDefensiveViewAngles = nil,
@@ -5135,7 +5109,7 @@ local ORIGINAL_FALLEN_PARTS_HEIGHT = nil
                     return self:_EvadePlan(clientCF, mode)
                 end
                 local cframe, weaponAction, preFireRefresh = self._hitscanStrategy:Plan(dt, target, action.item, ourRootPart, canFire, action.index)
-                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, requiresUETeleport = true, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
+                return { cframe = cframe, weaponAction = weaponAction, preFireRefresh = preFireRefresh, shouldForceCrouch = true, isAimPose = weaponAction ~= nil, preActionHeartbeat = weaponAction ~= nil, undergroundZShift = undergroundZShift }
             end
 function Controller:_ApplyPlan(plan, target, characterController, fighter)
                 local cframe = saneCombatCFrame(plan.cframe, characterController:GetClientCFrame())
@@ -5206,41 +5180,15 @@ function Controller:Update(dt)
                     self:_Reset()
                     return
                 end
-                -- Snapshot the real client pose before any temporary TP/evasion pose is applied.
-                -- Gun final gates use this stable client anchor for range/LOS checks.
+                -- Snapshot the real client pose before any Gum/TP spoof is applied this frame.
+                -- Gun final gates use this anchor so Gum-on can move the replication root to VOID
+                -- without making the range/LOS check compare the target against the void location.
                 State.RageClientAnchorCFrame = clientCF
                 local now = os.clock()
 
-                -- Ported from LarpUE's teleport safety concept, using Kicia's real client pose.
-                local currentPosition = clientCF.Position
-                local lastPosition = self._lastClientPosition
-                if lastPosition ~= nil and KiciaRagebot.isFiniteVector3(currentPosition)
-                    and KiciaRagebot.isFiniteVector3(lastPosition) then
-                    local delta = currentPosition - lastPosition
-                    local distance = delta.Magnitude
-                    if distance >= 80 then
-                        self._teleportGuardUntil = math.max(self._teleportGuardUntil or 0, now + 0.75)
-                        self._lastTarget = nil
-                        self._lastTargetWorld = nil
-                        self._hitscanStrategy:ResetState()
-                        self._meleeStrategy:ResetState()
-                    end
-                end
-                self._lastClientPosition = currentPosition
-
-                if now < (self._teleportGuardUntil or 0) then
-                    self._lastTarget = nil
-                    self._lastTargetWorld = nil
-                    self._hitscanStrategy:ResetState()
-                    self._meleeStrategy:ResetState()
-                    characterController:SetServerCFrame(clientCF)
-                    characterController:HeartbeatUpdate()
-                    return
-                end
-
-                local previousTarget = self._lastTarget
-                local target = KiciaRagebot.selectTarget(previousTarget)
+                local target = KiciaRagebot.selectTarget(self._lastTarget)
                 self._lastTarget = target
+                self._lastTargetAt = target and now or -math.huge
                 local action = KiciaRagebot.getAction(fighter)
                 local evasionOption = Options and Options.P8S4D2 and Options.P8S4D2.Value or 'Random'
                 local mode
@@ -5294,37 +5242,30 @@ function Controller:Update(dt)
                 if preActionHeartbeat and plan.preFireRefresh == nil then
                     characterController:HeartbeatUpdate()
                 end
+                local preFireFailed = false
                 if plan.preFireRefresh ~= nil and plan.weaponAction ~= nil then
-
-
-
-
-
-
                     if preActionHeartbeat then
                         characterController:HeartbeatUpdate()
                     end
-                    local refreshed, refreshOk = plan.preFireRefresh(characterController)
-                    if refreshOk == false then
-                        plan.abortAction = true
-                        characterController:SetServerCFrame(nil)
-                        characterController:HeartbeatUpdate()
-                    elseif refreshed ~= nil then
-                        local applied = characterController:SetServerCFrame(refreshed) == true
-                        if plan.requiresUETeleport == true then
-                            self._hitscanStrategy._tpApplied = applied
-                        end
-                        if not applied then
-                            plan.abortAction = true
-                            characterController:SetServerCFrame(nil)
-                        end
+                    local refreshed = plan.preFireRefresh(characterController)
+                    if refreshed == nil then
+                        preFireFailed = true
+                    elseif characterController:SetServerCFrame(refreshed) ~= true then
+                        preFireFailed = true
+                    else
                         characterController:HeartbeatUpdate()
                     end
+                end
+                if preFireFailed then
+                    if not preActionHeartbeat then
+                        characterController:HeartbeatUpdate()
+                    end
+                    return
                 end
                 if plan.forceViewBeforeAction and plan.viewAngles ~= nil then
                     characterController:ForceViewAngles(20, plan.viewAngles)
                 end
-                if plan.weaponAction ~= nil and plan.abortAction ~= true then
+                if plan.weaponAction ~= nil then
                     local actionOk = plan.weaponAction()
                     if evasionOption == 'Auto' and action ~= nil and action.type == 'Attack' and actionOk ~= false then
                         markAutoEvasionShot(now)
@@ -5342,9 +5283,8 @@ function Controller:GetLastTargetWorld()
                 rageOrbitVantage = nil
                 rageOrbitVantageUntil = 0
                 rageOrbitTargetKey = nil
+                self._lastTargetAt = -math.huge
                 self._lastTargetWorld = nil
-                self._lastClientPosition = nil
-                self._teleportGuardUntil = 0
                 KiciaRagebot.invalidateTargetCache()
                 self._lastDefensiveViewAngles = nil
                 State.RageLastFireTime = -math.huge
@@ -14320,6 +14260,7 @@ ErrorReporter.set_game(GameName)
                     pcall(spoofer.Cleanup, player)
                 end
             end
+            do
             RivalsRuntimeBridge.FullSpoof = {
                 Started = false,
                 Connections = {},
@@ -15007,6 +14948,7 @@ ErrorReporter.set_game(GameName)
                 state.PlayerDataController = nil
                 state.PlayerGui = nil
                 state.Started = false
+            end
             end
 
             RivalsRuntimeBridge.AnimationPlayer = {
@@ -26355,7 +26297,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            local function restoreNativeSelectionKind(controller, weaponName, kind, original)
+            function RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, kind, original)
                 local setter = getMethodFromObject(controller, 'SetSkinChangerChoice')
                 if type(setter) ~= 'function' then
                     return false
@@ -26396,10 +26338,10 @@ ErrorReporter.set_game(GameName)
                 for weaponName in pairs(RivalsCosmeticsState.NativeSkinChangerTouchedWeapons) do
                     local snapshot = RivalsCosmeticsState.NativeSkinChangerOriginalSelections[weaponName]
                     local original = type(snapshot) == 'table' and snapshot.Value or nil
-                    restoreNativeSelectionKind(controller, weaponName, 'Skin', original)
-                    restoreNativeSelectionKind(controller, weaponName, 'Wrap', original)
-                    restoreNativeSelectionKind(controller, weaponName, 'Charm', original)
-                    restoreNativeSelectionKind(controller, weaponName, 'Finisher', original)
+                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Skin', original)
+                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Wrap', original)
+                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Charm', original)
+                    RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, 'Finisher', original)
                 end
 
                 if type(setEnabled) == 'function' and RivalsCosmeticsState.NativeSkinChangerWasEnabled ~= nil then
@@ -26476,7 +26418,7 @@ ErrorReporter.set_game(GameName)
                 end
 
                 local weaponSet = {}
-                local function addWeapon(name)
+                function RivalsCosmetics.AddWeaponToSet(weaponSet, name)
                     if type(name) ~= 'string' or name == '' or name == RIVALS_COSMETIC_ALL_WEAPONS then
                         return
                     end
@@ -26486,7 +26428,7 @@ ErrorReporter.set_game(GameName)
                 end
 
                 if type(targetWeaponName) == 'string' and targetWeaponName ~= '' then
-                    addWeapon(targetWeaponName)
+                    RivalsCosmetics.AddWeaponToSet(weaponSet, targetWeaponName)
                 else
                     for _, tableName in ipairs({
                         'SelectedSkinByWeapon',
@@ -26498,7 +26440,7 @@ ErrorReporter.set_game(GameName)
                         local byWeapon = RivalsCosmeticsState[tableName]
                         if type(byWeapon) == 'table' then
                             for weaponName in pairs(byWeapon) do
-                                addWeapon(weaponName)
+                                RivalsCosmetics.AddWeaponToSet(weaponSet, weaponName)
                             end
                         end
                     end
@@ -26506,18 +26448,18 @@ ErrorReporter.set_game(GameName)
                         local byWeapon = RivalsCosmeticsState.CosmeticMultiSelectionsByWeapon[kind]
                         if type(byWeapon) == 'table' then
                             for weaponName in pairs(byWeapon) do
-                                addWeapon(weaponName)
+                                RivalsCosmetics.AddWeaponToSet(weaponSet, weaponName)
                             end
                         end
                     end
                     for weaponName in pairs(RivalsCosmeticsState.NativeSkinChangerTouchedWeapons) do
-                        addWeapon(weaponName)
+                        RivalsCosmetics.AddWeaponToSet(weaponSet, weaponName)
                     end
-                    addWeapon(RivalsCosmeticsState.SelectedEditorWeaponName)
-                    addWeapon(RivalsCosmeticsState.PreviewWeaponName)
+                    RivalsCosmetics.AddWeaponToSet(weaponSet, RivalsCosmeticsState.SelectedEditorWeaponName)
+                    RivalsCosmetics.AddWeaponToSet(weaponSet, RivalsCosmeticsState.PreviewWeaponName)
                     local fighter = ResolveLocalFighter()
                     local item = fighter and fighter.EquippedItem or nil
-                    addWeapon(item and item.Name)
+                    RivalsCosmetics.AddWeaponToSet(weaponSet, item and item.Name)
                 end
 
                 local weapons = {}
@@ -26535,7 +26477,7 @@ ErrorReporter.set_game(GameName)
 
                 local appliedAny = false
                 local allOk = true
-                local function applyKind(weaponName, kind)
+                function RivalsCosmetics.ApplyNativeSelectionKind(controller, weaponName, kind)
                     if not RivalsCosmeticsState.NativeSkinChangerOriginalSelections[weaponName] then
                         if not RivalsCosmetics.CaptureNativeSkinChangerSelection(controller, weaponName) then
                             return false
@@ -26546,18 +26488,18 @@ ErrorReporter.set_game(GameName)
                     local stored = RivalsCosmetics.ResolveStoredSelectionValue(weaponName, kind)
                     local inverted = RivalsCosmetics.ResolveWrapInvertedValue(weaponName)
                     if stored == nil or stored == RIVALS_COSMETIC_UNSELECTED then
-                        return restoreNativeSelectionKind(controller, weaponName, kind, original)
+                        return RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, kind, original)
                     end
                     local effective = RivalsCosmetics.ResolveEffectiveSelectionValue(weaponName, kind, stored)
                     if effective == nil or effective == RIVALS_COSMETIC_UNSELECTED then
-                        return restoreNativeSelectionKind(controller, weaponName, kind, original)
+                        return RivalsCosmetics.RestoreNativeSelectionKind(controller, weaponName, kind, original)
                     end
                     return setNativeCosmeticChoice(controller, weaponName, kind, effective, inverted)
                 end
 
                 for _, weaponName in ipairs(weapons) do
                     for _, kind in ipairs({'Skin', 'Wrap', 'Charm', 'Finisher'}) do
-                        local ok = applyKind(weaponName, kind)
+                        local ok = RivalsCosmetics.ApplyNativeSelectionKind(controller, weaponName, kind)
                         if ok then
                             appliedAny = true
                         else
@@ -29766,7 +29708,12 @@ ErrorReporter.set_game(GameName)
                     return success
                 end
 
-                local nativeController = RivalsCosmetics.ResolveNativeCosmeticsController()
+                local resolveOk, nativeController = pcall(RivalsCosmetics.ResolveNativeCosmeticsController)
+                if not resolveOk then
+                    results.ResolveNativeCosmeticsController = false
+                    RivalsCosmeticsState.LastApplyResults = results
+                    return false
+                end
                 if nativeController then
                     results.ApplyNativeCosmeticsRuntime = safeApply(
                         'ApplyNativeCosmeticsRuntime',
@@ -32854,7 +32801,11 @@ presets:AddDropdown('P5PRESET_AUTOLOAD_NAME', { Values = presetNames, Default = 
 presets:AddDropdown('P5PRESET_AUTOSAVE_NAME', { Values = presetNames, Default = presetNames[1], AllowNull = true, Searchable = true, Text = 'Auto-save preset', Callback = function(value) pcall(RivalsCosmetics.SetCosmeticPresetSetting, 'autoSaveName', value) end })
 
 local previewBox = P11:AddLeftGroupbox('3D Preview')
-local previewModel = RivalsCosmetics.BuildPreviewViewportModel()
+local previewModelOk, previewModel = pcall(RivalsCosmetics.BuildPreviewViewportModel)
+if not previewModelOk or previewModel == nil then
+    previewModel = Instance.new('Model')
+    previewModel.Name = 'CosmeticPreviewFallback'
+end
 local previewViewport = previewBox:AddViewport('P5S3V1', {
     Object = previewModel,
     Clone = false,
@@ -32925,7 +32876,7 @@ task.spawn(GuardRivalsCallback('Cosmetics_UI_RefreshLoop', function()
 end))
 
 do
-    local function BuildSpoofTabUi()
+    RivalsRuntimeBridge.BuildSpoofTabUi = function()
         local P12 = Tabs.Spoof
 
         local playerSpooferLabels = {
@@ -33202,10 +33153,12 @@ do
             end),
         })
     end
-    BuildSpoofTabUi()
+    RivalsRuntimeBridge.BuildSpoofTabUi()
+    RivalsRuntimeBridge.BuildSpoofTabUi = nil
 end
 
 
+RivalsRuntimeBridge.BuildMiscTabUi = function()
 local P10 = Tabs.Misc
                 local RIVALS_REWARD_CLAIM_DELAY = 0.2
                 local RIVALS_REWARD_SETTLE_DELAY = 0.6
@@ -33968,6 +33921,10 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings)
 SaveManager:LoadAutoloadConfig()
 
+end
+RivalsRuntimeBridge.BuildMiscTabUi()
+RivalsRuntimeBridge.BuildMiscTabUi = nil
+
 local RivalsRuntime = {}
             function RivalsRuntime.ResetState()
                 stopUnderground()
@@ -33979,7 +33936,7 @@ local RivalsRuntime = {}
                 RivalsRuntimeBridge.DeviceSpoof.Destroy()
                 RivalsRuntimeBridge.PlayerSpoofer.Destroy()
                 if RivalsRuntimeBridge.FullSpoof and type(RivalsRuntimeBridge.FullSpoof.Destroy) == 'function' then
-                    RivalsRuntimeBridge.FullSpoof.Destroy()
+                    pcall(RivalsRuntimeBridge.FullSpoof.Destroy)
                 end
                 RivalsRuntimeBridge.AnimationPlayer.Destroy()
                 RivalsRuntimeBridge.MovementRecorder.Destroy()
@@ -33987,7 +33944,7 @@ local RivalsRuntime = {}
                     RivalsRuntimeBridge.DestroyKiciaRagebot()
                 end
                 RivalsRuntimeBridge.CombatFeedback.Destroy()
-                RivalsRuntimeBridge.ResetRivalsCosmetics()
+                pcall(RivalsRuntimeBridge.ResetRivalsCosmetics)
                 RivalsModsState.RestoreHooks()
                 AimbotBridge.ResetAimbotRuntimeState()
                 AimbotBridge.ResetTriggerbotReactionState()
@@ -34310,7 +34267,7 @@ local RivalsRuntime = {}
                 RefreshLocalPickupHealthObserver()
                 AttachWeaponInfoObservers(LP)
                 RivalsModsState.EnsureHooks()
-                RivalsRuntimeBridge.ApplyRivalsCosmetics()
+                pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
                 RivalsRuntimeBridge.RegisterAutoRespawnSignals()
                 RivalsRuntimeBridge.RegisterAutoBanSignals()
                 RivalsRuntimeBridge.RegisterAutoQueuePlayAgainSignals()
@@ -34341,7 +34298,7 @@ local RivalsRuntime = {}
                         AttachWeaponInfoObservers(LP)
                         RivalsModsState.EnsureHooks()
                         UpdateRivalsPickupFeatures()
-                        RivalsRuntimeBridge.ApplyRivalsCosmetics()
+                        pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
                     end))
                 end
                 if LP.Character then
@@ -34379,10 +34336,10 @@ local RivalsRuntime = {}
                 RivalsRuntimeBridge.ViewmodelVisuals.RefreshAll()
                 RivalsRuntimeBridge.NativeRemovals.RefreshAll()
                 RivalsRuntimeBridge.Movement.RefreshAll()
-                RivalsRuntimeBridge.DeviceSpoof.RefreshAll()
-                RivalsRuntimeBridge.PlayerSpoofer.RefreshAll()
+                pcall(RivalsRuntimeBridge.DeviceSpoof.RefreshAll)
+                pcall(RivalsRuntimeBridge.PlayerSpoofer.RefreshAll)
                 if RivalsRuntimeBridge.FullSpoof and type(RivalsRuntimeBridge.FullSpoof.RefreshAll) == 'function' then
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
+                    pcall(RivalsRuntimeBridge.FullSpoof.RefreshAll)
                 end
                 RivalsRuntimeBridge.AnimationPlayer.RefreshAll()
                 Library:OnUnload(GuardRivalsCallback('Runtime_Unload', function()
@@ -34396,9 +34353,9 @@ local RivalsRuntime = {}
                 RivalsRuntime.RegisterCharacterLifecycle()
                 RivalsRuntime.StartLoops()
                 RivalsRuntimeBridge.EnsureMatchBoundaryDetection()
-                RivalsRuntimeBridge.BindRivalsCosmetics()
+                pcall(RivalsRuntimeBridge.BindRivalsCosmetics)
                 RivalsRuntimeBridge.BindAutoLoadoutControllers()
-                RivalsRuntimeBridge.ApplyRivalsCosmetics()
+                pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
                 RivalsRuntimeBridge.QueueAutoLoadoutSubmission()
                 if Library and type(Library.Notify) == 'function' then
                     Library:Notify({ Title = 'Kicia', Description = 'Loaded', Time = 5 })
