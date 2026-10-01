@@ -33046,281 +33046,286 @@ task.spawn(GuardRivalsCallback('Cosmetics_UI_RefreshLoop', function()
     return true
 end))
 
-local P12 = Tabs.Spoof
+do
+    local function BuildSpoofTabUi()
+        local P12 = Tabs.Spoof
 
-                local playerSpooferLabels = {
-                    Winstreak = 'Win Streak',
-                    Level = 'Level',
-                    CasualWins = 'Casual Wins',
-                    RankedWins = 'Ranked Wins',
-                    RankedElo = 'Ranked ELO',
-                    WinPercent = 'Win Percent',
-                    FavoriteMap = 'Favorite Map',
-                    NametagStatus = 'Nametag Status',
-                    Influencer = 'Influencer',
-                    RobloxEmployee = 'Roblox Employee',
-                    NosniyTeam = "Nosniy's Team",
-                }
-                local playerSpooferScopes = {
-                    { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
-                    { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
-                }
-                for _, scope in ipairs(playerSpooferScopes) do
-                    local spooferGroup = scope.side == 'Left'
-                        and P12:AddLeftGroupbox(scope.title)
-                        or P12:AddRightGroupbox(scope.title)
-                    for _, field in ipairs(RivalsRuntimeBridge.PlayerSpoofer.AttributeFields) do
-                        local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
-                        local toggle = spooferGroup:AddToggle(toggleId, {
-                            Text = playerSpooferLabels[field.key],
-                            Default = false,
-                        })
-                        toggle:OnChanged(GuardRivalsCallback(
-                            'PlayerSpoofer_Toggle', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
-                        if field.control ~= 'const' then
-                            local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
-                            local default = scope.suffix == 'You' and field.youDefault or field.othDefault
-                            local valueBox = spooferGroup:AddDependencyBox()
-                            valueBox:AddInput(valueId, {
-                                Text = 'Value',
-                                Default = default,
-                                AllowEmpty = true,
-                                EmptyReset = '',
-                            })
-                            Options[valueId]:OnChanged(GuardRivalsCallback(
-                                'PlayerSpoofer_Value', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
-                            valueBox:SetupDependencies({{ Toggles[toggleId], true }})
-                        end
-                    end
-                end
-
-                local P12S2 = P12:AddRightGroupbox('Device Spoof')
-                P12S2:AddToggle('P10S7T1', {
-                    Text = 'Device Spoof',
-                    Default = false,
-                    Tooltip = 'Reports your input device to the server as the chosen platform.',
-                })
-                P12S2:AddDropdown('P10S7D1', {
-                    Values = { 'Desktop', 'Mobile', 'Console', 'VR' },
-                    Default = 'VR',
-                    Text = 'Spoof Type',
-                    Tooltip = 'Which device type you appear to be playing on.',
-                })
-                Toggles.P10S7T1:OnChanged(GuardRivalsCallback(
-                    'DeviceSpoof_Toggle', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
-                Options.P10S7D1:OnChanged(GuardRivalsCallback(
-                    'DeviceSpoof_SpoofType', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
-
-
-                local profileDisplay = P12:AddLeftGroupbox('Local Profile Display')
-                profileDisplay:AddLabel('Client-side display spoof. Real account properties remain unchanged.', true)
-                profileDisplay:AddToggle('PSpoofYouNameT', {
-                    Text = 'Spoof username',
+        local playerSpooferLabels = {
+            Winstreak = 'Win Streak',
+            Level = 'Level',
+            CasualWins = 'Casual Wins',
+            RankedWins = 'Ranked Wins',
+            RankedElo = 'Ranked ELO',
+            WinPercent = 'Win Percent',
+            FavoriteMap = 'Favorite Map',
+            NametagStatus = 'Nametag Status',
+            Influencer = 'Influencer',
+            RobloxEmployee = 'Roblox Employee',
+            NosniyTeam = "Nosniy's Team",
+        }
+        local playerSpooferScopes = {
+            { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
+            { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
+        }
+        for _, scope in ipairs(playerSpooferScopes) do
+            local spooferGroup = scope.side == 'Left'
+                and P12:AddLeftGroupbox(scope.title)
+                or P12:AddRightGroupbox(scope.title)
+            for _, field in ipairs(RivalsRuntimeBridge.PlayerSpoofer.AttributeFields) do
+                local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
+                local toggle = spooferGroup:AddToggle(toggleId, {
+                    Text = playerSpooferLabels[field.key],
                     Default = false,
                 })
-                profileDisplay:AddInput('PSpoofYouNameV', {
-                    Text = 'Username',
-                    Default = 'ProPlayer',
-                    AllowEmpty = false,
-                    Finished = false,
-                })
-                profileDisplay:AddToggle('PSpoofYouDisplayNameT', {
-                    Text = 'Spoof display name',
-                    Default = false,
-                })
-                profileDisplay:AddInput('PSpoofYouDisplayNameV', {
-                    Text = 'Display name',
-                    Default = 'ProPlayer',
-                    AllowEmpty = false,
-                    Finished = false,
-                })
-                Toggles.PSpoofYouNameT:OnChanged(GuardRivalsCallback('FullSpoof_NameToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-                Toggles.PSpoofYouDisplayNameT:OnChanged(GuardRivalsCallback('FullSpoof_DisplayToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-                Options.PSpoofYouNameV:OnChanged(GuardRivalsCallback('FullSpoof_NameValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-                Options.PSpoofYouDisplayNameV:OnChanged(GuardRivalsCallback('FullSpoof_DisplayValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+                toggle:OnChanged(GuardRivalsCallback(
+                    'PlayerSpoofer_Toggle', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
+                if field.control ~= 'const' then
+                    local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
+                    local default = scope.suffix == 'You' and field.youDefault or field.othDefault
+                    local valueBox = spooferGroup:AddDependencyBox()
+                    valueBox:AddInput(valueId, {
+                        Text = 'Value',
+                        Default = default,
+                        AllowEmpty = true,
+                        EmptyReset = '',
+                    })
+                    Options[valueId]:OnChanged(GuardRivalsCallback(
+                        'PlayerSpoofer_Value', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
+                    valueBox:SetupDependencies({{ Toggles[toggleId], true }})
+                end
+            end
+        end
 
-                local displayData = P12:AddLeftGroupbox('Local Display Data')
-                displayData:AddLabel('Local profile/economy values only; not spendable and not server-authoritative.', true)
-                local currencySpecs = {
-                    { key = 'WeaponKeys', label = 'Weapon Keys' },
-                    { key = 'UnlockTokens', label = 'Unlock Tokens' },
-                    { key = 'EventCurrency', label = 'Event Currency' },
-                    { key = 'Glory', label = 'Glory' },
-                    { key = 'SkinTickets', label = 'Skin Tickets' },
-                }
-                for _, spec in ipairs(currencySpecs) do
-                    local toggleId = 'P12FS' .. spec.key .. 'T'
-                    local valueId = 'P12FS' .. spec.key .. 'V'
-                    local toggle = displayData:AddToggle(toggleId, {
-                        Text = 'Override ' .. spec.label,
-                        Default = false,
-                    })
-                    local dep = displayData:AddDependencyBox()
-                    dep:AddInput(valueId, {
-                        Text = spec.label,
-                        Default = '0',
-                        Numeric = true,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { toggle, true } })
-                    Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].enabled = value == true
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                    Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].amount = math.max(0, tonumber(value) or 0)
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                displayData:AddButton({
-                    Text = 'Refresh display data',
-                    Func = GuardRivalsCallback('FullSpoof_DataRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
-                })
+        local P12S2 = P12:AddRightGroupbox('Device Spoof')
+        P12S2:AddToggle('P10S7T1', {
+            Text = 'Device Spoof',
+            Default = false,
+            Tooltip = 'Reports your input device to the server as the chosen platform.',
+        })
+        P12S2:AddDropdown('P10S7D1', {
+            Values = { 'Desktop', 'Mobile', 'Console', 'VR' },
+            Default = 'VR',
+            Text = 'Spoof Type',
+            Tooltip = 'Which device type you appear to be playing on.',
+        })
+        Toggles.P10S7T1:OnChanged(GuardRivalsCallback(
+            'DeviceSpoof_Toggle', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
+        Options.P10S7D1:OnChanged(GuardRivalsCallback(
+            'DeviceSpoof_SpoofType', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
 
-                local historyBox = P12:AddRightGroupbox('Duel History Display')
-                historyBox:AddLabel('Local-only override for the displayed match/history data.', true)
-                local historyToggle = historyBox:AddToggle('P12FSHistoryT', {
-                    Text = 'Override displayed match',
-                    Default = false,
-                })
-                local historyNumeric = {
-                    { key = 'match_index', label = 'Match index', default = 1 },
-                    { key = 'dueler_index', label = 'Dueler index', default = 1 },
-                    { key = 'team1score', label = 'Team 1 score', default = 5 },
-                    { key = 'team2score', label = 'Team 2 score', default = 0 },
-                    { key = 'kills', label = 'Kills', default = 15 },
-                    { key = 'deaths', label = 'Deaths', default = 2 },
-                    { key = 'assists', label = 'Assists', default = 6 },
-                    { key = 'damage', label = 'Damage', default = 5000 },
-                    { key = 'elo', label = 'ELO', default = 2000 },
-                    { key = 'elo_change', label = 'ELO change', default = 35 },
-                }
-                for _, spec in ipairs(historyNumeric) do
-                    local id = 'P12FSHistory' .. spec.key
-                    local dep = historyBox:AddDependencyBox()
-                    dep:AddInput(id, {
-                        Text = spec.label,
-                        Default = tostring(spec.default),
-                        Numeric = true,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { historyToggle, true } })
-                    Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
-                        local n = tonumber(value) or spec.default
-                        if spec.key == 'match_index' or spec.key == 'dueler_index' then n = math.max(1, math.floor(n)) end
-                        RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = n
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                for _, spec in ipairs({
-                    { key = 'username', label = 'Username', default = '' },
-                    { key = 'display_name', label = 'Display name', default = '' },
-                    { key = 'map', label = 'Map', default = 'Factory' },
-                }) do
-                    local id = 'P12FSHistory' .. spec.key
-                    local dep = historyBox:AddDependencyBox()
-                    dep:AddInput(id, {
-                        Text = spec.label,
-                        Default = spec.default,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { historyToggle, true } })
-                    Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = tostring(value or '')
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                historyBox:AddDropdown('P12FSHistoryMode', {
-                    Text = 'Mode',
-                    Values = { 'Ranked', 'Casual' },
-                    Default = 'Ranked',
-                })
-                historyBox:AddDropdown('P12FSHistoryResult', {
-                    Text = 'Result',
-                    Values = { 'Victory', 'Defeat' },
-                    Default = 'Victory',
-                })
-                Options.P12FSHistoryMode:OnChanged(GuardRivalsCallback('FullSpoof_HistoryMode', function(value)
-                    RivalsRuntimeBridge.FullSpoof.State.History.mode = value
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end))
-                Options.P12FSHistoryResult:OnChanged(GuardRivalsCallback('FullSpoof_HistoryResult', function(value)
-                    RivalsRuntimeBridge.FullSpoof.State.History.result = value
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end))
-                Toggles.P12FSHistoryT:OnChanged(GuardRivalsCallback('FullSpoof_HistoryToggle', function(value)
-                    RivalsRuntimeBridge.FullSpoof.State.History.enabled = value == true
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end))
-                historyBox:AddButton({
-                    Text = 'Refresh history',
-                    Func = GuardRivalsCallback('FullSpoof_HistoryRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
-                })
 
-                local badgeBox = P12:AddRightGroupbox('Local Badge Attributes')
-                badgeBox:AddLabel('Client display attributes only; no account permissions are granted.', true)
-                for _, spec in ipairs({
-                    { key = 'Premium', label = 'Premium' },
-                    { key = 'Verified', label = 'Verified' },
-                    { key = 'Influencer', label = 'Influencer' },
-                    { key = 'Admin', label = 'Admin' },
-                }) do
-                    badgeBox:AddToggle('P12FSBadge' .. spec.key, {
-                        Text = spec.label,
-                        Default = false,
-                        Callback = GuardRivalsCallback('FullSpoof_Badge_' .. spec.key, RivalsRuntimeBridge.FullSpoof.RefreshAll),
-                    })
-                end
-                badgeBox:AddButton({
-                    Text = 'Restore badge attributes',
-                    Func = GuardRivalsCallback('FullSpoof_BadgeRestore', function()
-                        RivalsRuntimeBridge.FullSpoof.RestoreBadges()
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end),
-                })
+        local profileDisplay = P12:AddLeftGroupbox('Local Profile Display')
+        profileDisplay:AddLabel('Client-side display spoof. Real account properties remain unchanged.', true)
+        profileDisplay:AddToggle('PSpoofYouNameT', {
+            Text = 'Spoof username',
+            Default = false,
+        })
+        profileDisplay:AddInput('PSpoofYouNameV', {
+            Text = 'Username',
+            Default = 'ProPlayer',
+            AllowEmpty = false,
+            Finished = false,
+        })
+        profileDisplay:AddToggle('PSpoofYouDisplayNameT', {
+            Text = 'Spoof display name',
+            Default = false,
+        })
+        profileDisplay:AddInput('PSpoofYouDisplayNameV', {
+            Text = 'Display name',
+            Default = 'ProPlayer',
+            AllowEmpty = false,
+            Finished = false,
+        })
+        Toggles.PSpoofYouNameT:OnChanged(GuardRivalsCallback('FullSpoof_NameToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+        Toggles.PSpoofYouDisplayNameT:OnChanged(GuardRivalsCallback('FullSpoof_DisplayToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+        Options.PSpoofYouNameV:OnChanged(GuardRivalsCallback('FullSpoof_NameValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
+        Options.PSpoofYouDisplayNameV:OnChanged(GuardRivalsCallback('FullSpoof_DisplayValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
 
-                local boardBox = P12:AddRightGroupbox('Leaderboard Display')
-                boardBox:AddLabel('Local leaderboard ordering/value spoof; reverts cleanly on unload.', true)
-                local boardSpecs = {
-                    { key = 'ELO', label = 'Highest ELO', default = 2400 },
-                    { key = 'Level', label = 'Highest Level', default = 999 },
-                    { key = 'Streak', label = 'Current Highest Win Streak', default = 999 },
-                    { key = 'Kills', label = 'Most Eliminations', default = 9999 },
-                    { key = 'Wins', label = 'Most Wins', default = 9999 },
-                }
-                for _, spec in ipairs(boardSpecs) do
-                    local toggleId = 'P12FSBoard' .. spec.key .. 'T'
-                    local valueId = 'P12FSBoard' .. spec.key .. 'V'
-                    local toggle = boardBox:AddToggle(toggleId, {
-                        Text = 'Override ' .. spec.label,
-                        Default = false,
-                    })
-                    local dep = boardBox:AddDependencyBox()
-                    dep:AddInput(valueId, {
-                        Text = spec.label,
-                        Default = tostring(spec.default),
-                        Numeric = true,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { toggle, true } })
-                    RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key] = { enabled = false, value = spec.default }
-                    Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].enabled = value == true
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                    Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].value = tonumber(value) or spec.default
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                local boardStatus = boardBox:AddLabel('Boards: waiting', true)
-                boardBox:AddButton({
-                    Text = 'Refresh leaderboards',
-                    Func = GuardRivalsCallback('FullSpoof_BoardRefresh', function()
-                        local available = RivalsRuntimeBridge.FullSpoof.ApplyBoards()
-                        boardStatus:SetText('Boards available: ' .. tostring(available))
-                    end),
-                })
+        local displayData = P12:AddLeftGroupbox('Local Display Data')
+        displayData:AddLabel('Local profile/economy values only; not spendable and not server-authoritative.', true)
+        local currencySpecs = {
+            { key = 'WeaponKeys', label = 'Weapon Keys' },
+            { key = 'UnlockTokens', label = 'Unlock Tokens' },
+            { key = 'EventCurrency', label = 'Event Currency' },
+            { key = 'Glory', label = 'Glory' },
+            { key = 'SkinTickets', label = 'Skin Tickets' },
+        }
+        for _, spec in ipairs(currencySpecs) do
+            local toggleId = 'P12FS' .. spec.key .. 'T'
+            local valueId = 'P12FS' .. spec.key .. 'V'
+            local toggle = displayData:AddToggle(toggleId, {
+                Text = 'Override ' .. spec.label,
+                Default = false,
+            })
+            local dep = displayData:AddDependencyBox()
+            dep:AddInput(valueId, {
+                Text = spec.label,
+                Default = '0',
+                Numeric = true,
+                Finished = false,
+            })
+            dep:SetupDependencies({ { toggle, true } })
+            Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
+                RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].enabled = value == true
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end))
+            Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
+                RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].amount = math.max(0, tonumber(value) or 0)
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end))
+        end
+        displayData:AddButton({
+            Text = 'Refresh display data',
+            Func = GuardRivalsCallback('FullSpoof_DataRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
+        })
+
+        local historyBox = P12:AddRightGroupbox('Duel History Display')
+        historyBox:AddLabel('Local-only override for the displayed match/history data.', true)
+        local historyToggle = historyBox:AddToggle('P12FSHistoryT', {
+            Text = 'Override displayed match',
+            Default = false,
+        })
+        local historyNumeric = {
+            { key = 'match_index', label = 'Match index', default = 1 },
+            { key = 'dueler_index', label = 'Dueler index', default = 1 },
+            { key = 'team1score', label = 'Team 1 score', default = 5 },
+            { key = 'team2score', label = 'Team 2 score', default = 0 },
+            { key = 'kills', label = 'Kills', default = 15 },
+            { key = 'deaths', label = 'Deaths', default = 2 },
+            { key = 'assists', label = 'Assists', default = 6 },
+            { key = 'damage', label = 'Damage', default = 5000 },
+            { key = 'elo', label = 'ELO', default = 2000 },
+            { key = 'elo_change', label = 'ELO change', default = 35 },
+        }
+        for _, spec in ipairs(historyNumeric) do
+            local id = 'P12FSHistory' .. spec.key
+            local dep = historyBox:AddDependencyBox()
+            dep:AddInput(id, {
+                Text = spec.label,
+                Default = tostring(spec.default),
+                Numeric = true,
+                Finished = false,
+            })
+            dep:SetupDependencies({ { historyToggle, true } })
+            Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
+                local n = tonumber(value) or spec.default
+                if spec.key == 'match_index' or spec.key == 'dueler_index' then n = math.max(1, math.floor(n)) end
+                RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = n
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end))
+        end
+        for _, spec in ipairs({
+            { key = 'username', label = 'Username', default = '' },
+            { key = 'display_name', label = 'Display name', default = '' },
+            { key = 'map', label = 'Map', default = 'Factory' },
+        }) do
+            local id = 'P12FSHistory' .. spec.key
+            local dep = historyBox:AddDependencyBox()
+            dep:AddInput(id, {
+                Text = spec.label,
+                Default = spec.default,
+                Finished = false,
+            })
+            dep:SetupDependencies({ { historyToggle, true } })
+            Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
+                RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = tostring(value or '')
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end))
+        end
+        historyBox:AddDropdown('P12FSHistoryMode', {
+            Text = 'Mode',
+            Values = { 'Ranked', 'Casual' },
+            Default = 'Ranked',
+        })
+        historyBox:AddDropdown('P12FSHistoryResult', {
+            Text = 'Result',
+            Values = { 'Victory', 'Defeat' },
+            Default = 'Victory',
+        })
+        Options.P12FSHistoryMode:OnChanged(GuardRivalsCallback('FullSpoof_HistoryMode', function(value)
+            RivalsRuntimeBridge.FullSpoof.State.History.mode = value
+            RivalsRuntimeBridge.FullSpoof.RefreshAll()
+        end))
+        Options.P12FSHistoryResult:OnChanged(GuardRivalsCallback('FullSpoof_HistoryResult', function(value)
+            RivalsRuntimeBridge.FullSpoof.State.History.result = value
+            RivalsRuntimeBridge.FullSpoof.RefreshAll()
+        end))
+        Toggles.P12FSHistoryT:OnChanged(GuardRivalsCallback('FullSpoof_HistoryToggle', function(value)
+            RivalsRuntimeBridge.FullSpoof.State.History.enabled = value == true
+            RivalsRuntimeBridge.FullSpoof.RefreshAll()
+        end))
+        historyBox:AddButton({
+            Text = 'Refresh history',
+            Func = GuardRivalsCallback('FullSpoof_HistoryRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
+        })
+
+        local badgeBox = P12:AddRightGroupbox('Local Badge Attributes')
+        badgeBox:AddLabel('Client display attributes only; no account permissions are granted.', true)
+        for _, spec in ipairs({
+            { key = 'Premium', label = 'Premium' },
+            { key = 'Verified', label = 'Verified' },
+            { key = 'Influencer', label = 'Influencer' },
+            { key = 'Admin', label = 'Admin' },
+        }) do
+            badgeBox:AddToggle('P12FSBadge' .. spec.key, {
+                Text = spec.label,
+                Default = false,
+                Callback = GuardRivalsCallback('FullSpoof_Badge_' .. spec.key, RivalsRuntimeBridge.FullSpoof.RefreshAll),
+            })
+        end
+        badgeBox:AddButton({
+            Text = 'Restore badge attributes',
+            Func = GuardRivalsCallback('FullSpoof_BadgeRestore', function()
+                RivalsRuntimeBridge.FullSpoof.RestoreBadges()
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end),
+        })
+
+        local boardBox = P12:AddRightGroupbox('Leaderboard Display')
+        boardBox:AddLabel('Local leaderboard ordering/value spoof; reverts cleanly on unload.', true)
+        local boardSpecs = {
+            { key = 'ELO', label = 'Highest ELO', default = 2400 },
+            { key = 'Level', label = 'Highest Level', default = 999 },
+            { key = 'Streak', label = 'Current Highest Win Streak', default = 999 },
+            { key = 'Kills', label = 'Most Eliminations', default = 9999 },
+            { key = 'Wins', label = 'Most Wins', default = 9999 },
+        }
+        for _, spec in ipairs(boardSpecs) do
+            local toggleId = 'P12FSBoard' .. spec.key .. 'T'
+            local valueId = 'P12FSBoard' .. spec.key .. 'V'
+            local toggle = boardBox:AddToggle(toggleId, {
+                Text = 'Override ' .. spec.label,
+                Default = false,
+            })
+            local dep = boardBox:AddDependencyBox()
+            dep:AddInput(valueId, {
+                Text = spec.label,
+                Default = tostring(spec.default),
+                Numeric = true,
+                Finished = false,
+            })
+            dep:SetupDependencies({ { toggle, true } })
+            RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key] = { enabled = false, value = spec.default }
+            Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
+                RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].enabled = value == true
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end))
+            Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
+                RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].value = tonumber(value) or spec.default
+                RivalsRuntimeBridge.FullSpoof.RefreshAll()
+            end))
+        end
+        local boardStatus = boardBox:AddLabel('Boards: waiting', true)
+        boardBox:AddButton({
+            Text = 'Refresh leaderboards',
+            Func = GuardRivalsCallback('FullSpoof_BoardRefresh', function()
+                local available = RivalsRuntimeBridge.FullSpoof.ApplyBoards()
+                boardStatus:SetText('Boards available: ' .. tostring(available))
+            end),
+        })
+    end
+    BuildSpoofTabUi()
+end
 
 
 local P10 = Tabs.Misc

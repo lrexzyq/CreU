@@ -1018,145 +1018,135 @@ function System.auto_spam.stop()
 end
 
 System.autoparry = {}
-local autoparry_target_cache=setmetatable({}, {__mode="k"})
-
-local function reset_parry_state_after(delay, field)
-    task.delay(delay, function()
-        if field == "training" then
-            System.__properties.__training_parried=false
-        else
-            System.__properties.__parried=false
-        end
-    end)
-end
 
 function System.autoparry.start()
-    System.autoparry.stop()
-    System.__properties.__autoparry_enabled = true
-    System.__properties.__auto_ability_busy = false
-    System.__properties.__parried = false
-    System.__properties.__training_parried = false
+    if System.__properties.__connections.__autoparry then
+        System.__properties.__connections.__autoparry:Disconnect()
+    end
 
-    System.__properties.__connections.__autoparry=RunService.PreSimulation:Connect(function()
+    System.__properties.__autoparry_enabled = true
+    System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
         if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or
            not LocalPlayer.Character.PrimaryPart then return end
 
-        local balls=System.ball.get_all()
-        local one_ball=System.ball.get()
-        local training_ball=nil
-        local training_folder=Workspace:FindFirstChild("TrainingBalls")
-        if training_folder then
-            for _,Instance in pairs(training_folder:GetChildren()) do
-                if Instance:GetAttribute("realBall") then training_ball=Instance; break end
+        local balls = System.ball.get_all()
+        local one_ball = System.ball.get()
+        local training_ball = nil
+
+        if Workspace:FindFirstChild('TrainingBalls') then
+            for _, Instance in pairs(Workspace.TrainingBalls:GetChildren()) do
+                if Instance:GetAttribute('realBall') then
+                    training_ball = Instance
+                    break
+                end
             end
         end
 
-        for _,ball in pairs(balls) do
-            if System.__triggerbot.__enabled or getgenv().BallVelocityAbove800 then return end
+        for _, ball in pairs(balls) do
+            if System.__triggerbot.__enabled then return end
+            if getgenv().BallVelocityAbove800 then return end
             if not ball then continue end
-            local zoomies=ball:FindFirstChild("zoomies")
+
+            local zoomies = ball:FindFirstChild('zoomies')
             if not zoomies then continue end
 
-            local ball_target=ball:GetAttribute("target")
-            if autoparry_target_cache[ball] ~= ball_target then
-                autoparry_target_cache[ball] = ball_target
-                System.__properties.__parried=false
-            end
+            ball:GetAttributeChangedSignal('target'):Once(function()
+                System.__properties.__parried = false
+            end)
+
             if System.__properties.__parried then continue end
 
-            local root=LocalPlayer.Character.PrimaryPart
-            local offset=root.Position-ball.Position
-            local distance=offset.Magnitude
-            if distance < 1e-6 then continue end
-            local velocity=zoomies.VectorVelocity
-            local ping=Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-            local ping_threshold=math.clamp(ping/10,5,17)
-            local speed=velocity.Magnitude
-            local capped_speed_diff=math.min(math.max(speed-9.5,0),650)
-            local speed_divisor=(2.4+capped_speed_diff*0.002)*System.__properties.__divisor_multiplier
-            local parry_accuracy=ping_threshold+math.max(speed/speed_divisor,9.5)
-            local curved=System.detection.is_curved()
+            local ball_target = ball:GetAttribute('target')
+            local velocity = zoomies.VectorVelocity
+            local distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
+            local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
+            local ping_threshold = math.clamp(ping / 10, 5, 17)
+            local speed = velocity.Magnitude
+            local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+            local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+            local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+            local curved = System.detection.is_curved()
 
-            if ball:FindFirstChild("AeroDynamicSlashVFX") then
+            if ball:FindFirstChild('AeroDynamicSlashVFX') then
                 ball.AeroDynamicSlashVFX:Destroy()
-                System.__properties.__tornado_time=tick()
+                System.__properties.__tornado_time = tick()
             end
-            local tornado=Runtime:FindFirstChild("Tornado")
-            if tornado and (tick()-System.__properties.__tornado_time) <
-                (tornado:GetAttribute("TornadoTime") or 1)+0.314159 then continue end
-            if one_ball and one_ball:GetAttribute("target")==LocalPlayer.Name and curved then continue end
-            if ball:FindFirstChild("ComboCounter") then continue end
-            if root:FindFirstChild("SingularityCape") then continue end
+
+            if Runtime:FindFirstChild('Tornado') then
+                if (tick() - System.__properties.__tornado_time) <
+                   (Runtime.Tornado:GetAttribute('TornadoTime') or 1) + 0.314159 then
+                    continue
+                end
+            end
+
+            if one_ball and one_ball:GetAttribute('target') == LocalPlayer.Name and curved then continue end
+            if ball:FindFirstChild('ComboCounter') then continue end
+            if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then continue end
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
 
-            if ball_target==LocalPlayer.Name and distance <= parry_accuracy then
-                if getgenv().AutoAbility and not System.__properties.__auto_ability_busy then
-                    local playerGui=LocalPlayer:FindFirstChildOfClass("PlayerGui")
-                    local hotbar=playerGui and playerGui:FindFirstChild("Hotbar")
-                    local ability=hotbar and hotbar:FindFirstChild("Ability")
-                    local abilityCD=ability and ability:FindFirstChild("UIGradient")
-                    local abilities=LocalPlayer.Character:FindFirstChild("Abilities")
-                    if abilityCD and abilityCD.Offset.Y==0.5 and abilities then
-                        local usable=(abilities:FindFirstChild("Raging Deflection") and abilities["Raging Deflection"].Enabled) or
-                            (abilities:FindFirstChild("Rapture") and abilities["Rapture"].Enabled) or
-                            (abilities:FindFirstChild("Calming Deflection") and abilities["Calming Deflection"].Enabled) or
-                            (abilities:FindFirstChild("Aerodynamic Slash") and abilities["Aerodynamic Slash"].Enabled) or
-                            (abilities:FindFirstChild("Fracture") and abilities["Fracture"].Enabled) or
-                            (abilities:FindFirstChild("Death Slash") and abilities["Death Slash"].Enabled)
-                        if usable then
-                            System.__properties.__auto_ability_busy=true
-                            System.__properties.__parried=true
-                            ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
-                            task.delay(2.432,function()
-                                if System.__properties.__autoparry_enabled then
-                                    pcall(function()
-                                        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true)
-                                    end)
-                                end
-                                System.__properties.__auto_ability_busy=false
-                            end)
-                            reset_parry_state_after(1.0, "normal")
-                            continue
+            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                if getgenv().AutoAbility then
+                    local AbilityCD = LocalPlayer.PlayerGui.Hotbar.Ability.UIGradient
+                    if AbilityCD and AbilityCD.Offset.Y == 0.5 then
+                        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Abilities') then
+                            local abilities = LocalPlayer.Character.Abilities
+                            if (abilities:FindFirstChild('Raging Deflection') and abilities['Raging Deflection'].Enabled) or
+                               (abilities:FindFirstChild('Rapture') and abilities['Rapture'].Enabled) or
+                               (abilities:FindFirstChild('Calming Deflection') and abilities['Calming Deflection'].Enabled) or
+                               (abilities:FindFirstChild('Aerodynamic Slash') and abilities['Aerodynamic Slash'].Enabled) or
+                               (abilities:FindFirstChild('Fracture') and abilities['Fracture'].Enabled) or
+                               (abilities:FindFirstChild('Death Slash') and abilities['Death Slash'].Enabled) then
+                                System.__properties.__parried = true
+                                ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
+                                task.wait(2.432)
+                                ReplicatedStorage:WaitForChild('Remotes'):WaitForChild('DeathSlashShootActivation'):FireServer(true)
+                                continue
+                            end
                         end
                     end
                 end
             end
 
-            if ball_target==LocalPlayer.Name and distance <= parry_accuracy then
-                local ok=System.parry.execute_action()
-                if ok then
-                    System.__properties.__parried=true
-                    reset_parry_state_after(1.0, "normal")
-                end
+            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                System.parry.execute_action()
+                System.__properties.__parried = true
             end
+
+            local last_parrys = tick()
+            repeat RunService.Stepped:Wait()
+            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
+            System.__properties.__parried = false
         end
 
         if training_ball then
-            local zoomies=training_ball:FindFirstChild("zoomies")
-            if zoomies and not System.__properties.__training_parried then
-                local ball_target=training_ball:GetAttribute("target")
-                if autoparry_target_cache[training_ball] ~= ball_target then
-                    autoparry_target_cache[training_ball] = ball_target
-                    System.__properties.__training_parried=false
-                end
-                local root=LocalPlayer.Character.PrimaryPart
-                local offset=root.Position-training_ball.Position
-                local distance=offset.Magnitude
-                local velocity=zoomies.VectorVelocity
-                local speed=velocity.Magnitude
-                local ping=Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-                local ping_threshold=math.clamp(ping/10,5,17)
-                local capped_speed_diff=math.min(math.max(speed-9.5,0),650)
-                local speed_divisor=(2.4+capped_speed_diff*0.002)*System.__properties.__divisor_multiplier
-                local parry_accuracy=ping_threshold+math.max(speed/speed_divisor,9.5)
-                if ball_target==LocalPlayer.Name and distance >= 1e-6 and distance <= parry_accuracy then
-                    local ok=System.parry.execute_action()
-                    if ok then
-                        System.__properties.__training_parried=true
-                        reset_parry_state_after(1.0, "training")
+            local zoomies = training_ball:FindFirstChild('zoomies')
+            if zoomies then
+                training_ball:GetAttributeChangedSignal('target'):Once(function()
+                    System.__properties.__training_parried = false
+                end)
+
+                if not System.__properties.__training_parried then
+                    local ball_target = training_ball:GetAttribute('target')
+                    local velocity = zoomies.VectorVelocity
+                    local distance = LocalPlayer:DistanceFromCharacter(training_ball.Position)
+                    local speed = velocity.Magnitude
+                    local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
+                    local ping_threshold = math.clamp(ping / 10, 5, 17)
+                    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+
+                    if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                        System.parry.execute_action()
+                        System.__properties.__training_parried = true
+
+                        local last_parrys = tick()
+                        repeat RunService.Stepped:Wait()
+                        until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
+                        System.__properties.__training_parried = false
                     end
                 end
             end
@@ -1165,13 +1155,10 @@ function System.autoparry.start()
 end
 
 function System.autoparry.stop()
-    System.__properties.__autoparry_enabled=false
-    System.__properties.__auto_ability_busy=false
-    System.__properties.__parried=false
-    System.__properties.__training_parried=false
+    System.__properties.__autoparry_enabled = false
     if System.__properties.__connections.__autoparry then
         System.__properties.__connections.__autoparry:Disconnect()
-        System.__properties.__connections.__autoparry=nil
+        System.__properties.__connections.__autoparry = nil
     end
 end
 
@@ -9414,6 +9401,7 @@ local backgroundOrbitHRP = nil
 local backgroundOrbitCharacterConnection = nil
 local backgroundOrbitSpeed = 20
 local backgroundOrbitRadius = 20
+local backgroundOrbitAngle = 0
 
 local function startBackgroundOrbit()
     backgroundOrbitState.Enabled = true
@@ -9425,11 +9413,11 @@ local function startBackgroundOrbit()
     backgroundOrbitInitialized = true
 
     local function onCharacter(char)
-        backgroundOrbitHRP = char:WaitForChild("HumanoidRootPart", 5)
+        backgroundOrbitHRP = char:WaitForChild('HumanoidRootPart', 5)
+        backgroundOrbitAngle = 0
     end
 
-    backgroundOrbitCharacterConnection =
-        LocalPlayer.CharacterAdded:Connect(onCharacter)
+    backgroundOrbitCharacterConnection = LocalPlayer.CharacterAdded:Connect(onCharacter)
 
     if LocalPlayer.Character then
         onCharacter(LocalPlayer.Character)
@@ -9439,13 +9427,12 @@ local function startBackgroundOrbit()
     local oldIndexCFrame
 
     if hookmetamethod and newcclosure then
-        oldIndexCFrame = hookmetamethod(game, "__index", newcclosure(function(self, key)
-            local caller = checkcaller and checkcaller() or false
-            if not backgroundOrbitState.Enabled or caller then
+        oldIndexCFrame = hookmetamethod(game, '__index', newcclosure(function(self, key)
+            if not backgroundOrbitState.Enabled or (checkcaller and checkcaller()) then
                 return oldIndexCFrame(self, key)
             end
 
-            if key == "CFrame" and backgroundOrbitHRP and self == backgroundOrbitHRP then
+            if key == 'CFrame' and backgroundOrbitHRP and self == backgroundOrbitHRP then
                 return DesyncTypes[1] or oldIndexCFrame(self, key)
             end
 
@@ -9454,31 +9441,33 @@ local function startBackgroundOrbit()
     end
 
     System.__properties.__connections.immortal_orbit =
-        RunService.Heartbeat:Connect(function()
+        RunService.Heartbeat:Connect(function(dt)
             if not backgroundOrbitState.Enabled or not backgroundOrbitHRP then
                 return
             end
 
             if not backgroundOrbitHRP.Parent then
                 backgroundOrbitHRP = LocalPlayer.Character
-                    and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-
+                    and LocalPlayer.Character:FindFirstChild('HumanoidRootPart')
                 if not backgroundOrbitHRP then
                     return
                 end
+                backgroundOrbitAngle = 0
             end
 
             DesyncTypes[1] = backgroundOrbitHRP.CFrame
             DesyncTypes[2] = backgroundOrbitHRP.AssemblyLinearVelocity
 
-            local orbitRadius = backgroundOrbitRadius
-            local angleMultiplier = backgroundOrbitSpeed
-            local rotAngle = tick() * math.pi * 2 * angleMultiplier / 5
+            local orbitRadius = math.clamp(tonumber(backgroundOrbitRadius) or 20, 15, 50)
+            local requestedTurnsPerSecond = math.max(0, tonumber(backgroundOrbitSpeed) or 20) / 5
+            local turnsPerSecond = math.min(requestedTurnsPerSecond, 20)
+            local angularStep = math.min(dt * math.pi * 2 * turnsPerSecond, math.rad(120))
+            backgroundOrbitAngle = (backgroundOrbitAngle + angularStep) % (math.pi * 2)
 
             local pos = Vector3.new(
-                math.cos(rotAngle) * orbitRadius,
+                math.cos(backgroundOrbitAngle) * orbitRadius,
                 0,
-                math.sin(rotAngle) * orbitRadius
+                math.sin(backgroundOrbitAngle) * orbitRadius
             )
 
             backgroundOrbitHRP.CFrame = DesyncTypes[1] + pos
@@ -9491,24 +9480,13 @@ local function startBackgroundOrbit()
                 backgroundOrbitHRP.AssemblyLinearVelocity = DesyncTypes[2]
             end
         end)
-
-    System.__properties.__connections.immortal_offset =
-        RunService.Heartbeat:Connect(function()
-            if not backgroundOrbitState.Enabled then
-                return
-            end
-
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-
-            if hrp then
-                hrp.CFrame = hrp.CFrame + Vector3.new(0, 0.01, 0)
-            end
-        end)
 end
 
 local function stopBackgroundOrbit()
     backgroundOrbitState.Enabled = false
+    if backgroundOrbitHRP and backgroundOrbitHRP.Parent then
+        -- Do not fight the character controller while disabled; the next movement step owns the HRP.
+    end
 end
 
 getgenv().AutoVote = getgenv().AutoVote or false
