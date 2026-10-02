@@ -48,8 +48,6 @@ local Tabs = {
     Automation = Window:AddTab({ Name = "Automation", Icon = "zap", Description = "Automation" }),
     ESP = Window:AddTab({ Name = "ESP", Icon = "eye", Description = "Player ESP" }),
     Movement = Window:AddTab({ Name = "Movement", Icon = "move", Description = "Movement controls" }),
-    Cosmetic = Window:AddTab({ Name = "Cosmetic", Icon = "sparkles", Description = "Cosmetic controls" }),
-    Spoof = Window:AddTab({ Name = "Spoof", Icon = "user-round", Description = "Player and device spoof controls" }),
     Misc = Window:AddTab({ Name = "Misc", Icon = "package", Description = "Miscellaneous" }),
     Debug = Window:AddTab({ Name = "Debug", Icon = "bug", Description = "Runtime diagnostics" }),
     Settings = Window:AddTab({ Name = "UI Settings", Icon = "settings", Description = "Configure the menu" }),
@@ -1101,7 +1099,7 @@ return {
                 RageFireHitPart = nil,
                 RageFireStamp = 0,
                 RageClientAnchorCFrame = nil,
-                RageGumMode = 'off',
+                RageGumMode = 'Pure',
                 RageGumVoidFire = false,
                 RageGumVoidFires = 0,
                 RageKnifeStatus = 'idle',
@@ -1149,9 +1147,9 @@ return {
                 RageShieldBackstab = function() return true end,
                 RageAttackContinuity = function() return true end,
                 RageGumMode = function()
-                    local value = optValue('P8S4D3', 'off')
-                    if value == 'off' or value == 'lite' or value == 'on' then
-                        return value
+                    local value = optValue('P8S4D3', 'Pure')
+                    if value == 'Glue' or value == 'glue' or value == 'on' or value == 'lite' then
+                        return 'on'
                     end
                     return 'off'
                 end,
@@ -3820,7 +3818,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
             end
             function KiciaRagebot.rageGumMode()
                 local m = Setting.RageGumMode()
-                if m ~= 'off' and m ~= 'lite' and m ~= 'on' then
+                if m ~= 'off' and m ~= 'on' then
                     m = 'off'
                 end
                 return m
@@ -4322,7 +4320,7 @@ function KiciaRagebot.orbitVantageRuntime(target, aimPos, knife)
                     return ourRootPart.CFrame, nil
                 end
 
-                State.RageGumMode = currentGumMode
+                State.RageGumMode = (currentGumMode == 'on' and 'Glue' or 'Pure')
                 State.RageGumVoidFire = false
                 local void
                 local glued = false
@@ -5583,7 +5581,7 @@ function Controller:GetLastTargetWorld()
                 AutoEvasion.randomHoldUntil = 0
                 AutoEvasion.reloading = false
                 AutoEvasion.shotPending = false
-                State.RageGumMode = KiciaRagebot.rageGumMode()
+                State.RageGumMode = (KiciaRagebot.rageGumMode() == 'on' and 'Glue' or 'Pure')
                 State.RageGumVoidFire = false
                 if self._characterController then
                     self._characterController:RestoreNow()
@@ -14344,25 +14342,12 @@ ErrorReporter.set_game(GameName)
                 Started = false,
                 Scopes = { 'You', 'Oth' },
                 AttributeFields = {
-                    { key = 'Winstreak', attributes = { 'StatisticDuelsWinStreak', 'WinStreak', 'CurrentWinStreak' }, control = 'number',
+                    { key = 'Winstreak', attribute = 'StatisticDuelsWinStreak', control = 'number',
                         youDefault = '999', othDefault = '0' },
                     { key = 'Level', attribute = 'Level', control = 'number',
                         youDefault = '999', othDefault = '0' },
-                    { key = 'CasualWins', attributes = { 'CasualWins', 'StatisticDuelsWins' }, control = 'number',
-                        youDefault = '500', othDefault = '0' },
-                    { key = 'RankedWins', attribute = 'RankedWins', control = 'number',
-                        youDefault = '250', othDefault = '0' },
-                    { key = 'RankedElo', attributes = { 'DisplayELO', 'RankedCurrentELO' }, control = 'number',
-                        youDefault = '2400', othDefault = '0' },
-                    { key = 'WinPercent', attributes = {
-                        { name = 'CasualWinPercent', scale = 0.01 },
-                        { name = 'RankedWinPercent', scale = 0.01 },
-                        { name = 'StatisticDuelsWinRate', scale = 1 },
-                        { name = 'WinRate', scale = 1 },
-                    }, control = 'number',
-                        youDefault = '75', othDefault = '0' },
-                    { key = 'FavoriteMap', attribute = 'FavoriteMap', control = 'text',
-                        youDefault = 'Arena', othDefault = '' },
+                    { key = 'RankedElo', attribute = 'DisplayELO', control = 'number',
+                        youDefault = '3600', othDefault = '0' },
                     { key = 'NametagStatus', attribute = 'PlayerStatus', control = 'text',
                         youDefault = 'Prime', othDefault = 'Prime' },
                     { key = 'Influencer', attribute = 'IsInfluencer', control = 'const', constValue = true },
@@ -14462,26 +14447,16 @@ ErrorReporter.set_game(GameName)
                 local suffix = spoofer.ScopeSuffix(player)
                 for _, field in ipairs(spoofer.AttributeFields) do
                     local enabled = spoofer.ReadToggle('PSpoof' .. suffix .. field.key .. 'T')
-                    local raw = field.control == 'const' and field.constValue
-                        or spoofer.ReadOption('PSpoof' .. suffix .. field.key .. 'V')
-                    local value = raw
-                    if field.control == 'number' then
-                        value = tonumber(raw)
-                    elseif field.control == 'text' and type(raw) == 'string' and raw == '' then
-                        value = nil
-                    end
                     if field.control == 'const' then
                         spoofer.SetAttributeSpoof(player, field.attribute, enabled, field.constValue)
-                    elseif type(field.attributes) == 'table' then
-                        for _, spec in ipairs(field.attributes) do
-                            local attribute = type(spec) == 'table' and spec.name or spec
-                            local attributeValue = value
-                            if type(spec) == 'table' and type(spec.scale) == 'number' and type(value) == 'number' then
-                                attributeValue = value * spec.scale
-                            end
-                            spoofer.SetAttributeSpoof(player, attribute, enabled and attributeValue ~= nil, attributeValue)
-                        end
                     else
+                        local raw = spoofer.ReadOption('PSpoof' .. suffix .. field.key .. 'V')
+                        local value = raw
+                        if field.control == 'number' then
+                            value = tonumber(raw)
+                        elseif type(raw) == 'string' and raw == '' then
+                            value = nil
+                        end
                         spoofer.SetAttributeSpoof(player, field.attribute, enabled and value ~= nil, value)
                     end
                 end
@@ -14526,703 +14501,10 @@ ErrorReporter.set_game(GameName)
                 end
                 spoofer.LifecycleConnections = {}
                 spoofer.Started = false
-                local players = {}
                 for player in pairs(spoofer.Binders) do
-                    players[#players + 1] = player
-                end
-                for _, player in ipairs(players) do
-                    pcall(spoofer.Cleanup, player)
+                    spoofer.Cleanup(player)
                 end
             end
-            RivalsRuntimeBridge.FullSpoof = {
-                Started = false,
-                Connections = {},
-                TextRecords = setmetatable({}, { __mode = 'k' }),
-                DataOriginals = setmetatable({}, { __mode = 'k' }),
-                BoardBackups = {},
-                BadgeOriginals = {},
-                PlayerGui = nil,
-                PlayerDataController = nil,
-                BoardController = nil,
-                StatusLabel = nil,
-                LastRefreshAt = 0,
-                LastBoardAt = 0,
-                State = {
-                    Currency = {
-                        WeaponKeys = { enabled = false, amount = 0 },
-                        UnlockTokens = { enabled = false, amount = 0 },
-                        EventCurrency = { enabled = false, amount = 0 },
-                        Glory = { enabled = false, amount = 0 },
-                        SkinTickets = { enabled = false, amount = 0 },
-                    },
-                    History = {
-                        enabled = false, match_index = 1, mode = 'Ranked', result = 'Victory', map = 'Factory',
-                        team1score = 5, team2score = 0, dueler_index = 1, username = '', display_name = '',
-                        kills = 15, deaths = 2, assists = 6, damage = 5000, elo = 2000, elo_change = 35,
-                    },
-                    Boards = {},
-                    Badges = {},
-                },
-            }
-
-            local function FullSpoofDisconnectAll(list)
-                for index = #list, 1, -1 do
-                    local connection = list[index]
-                    list[index] = nil
-                    pcall(function()
-                        if connection and connection.Connected then connection:Disconnect() end
-                    end)
-                end
-            end
-
-            local function FullSpoofEscapePattern(value)
-                return tostring(value):gsub('([%^%$%(%)%%%.%[%]%*%+%-%?])', '%%%1')
-            end
-
-            local function FullSpoofDeepCopy(value, seen)
-                if type(value) ~= 'table' then return value end
-                seen = seen or {}
-                if seen[value] then return seen[value] end
-                local out = {}
-                seen[value] = out
-                for key, child in pairs(value) do
-                    out[FullSpoofDeepCopy(key, seen)] = FullSpoofDeepCopy(child, seen)
-                end
-                return out
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ReadToggle(id)
-                return Toggles and Toggles[id] and Toggles[id].Value == true
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ReadOption(id)
-                local option = Options and Options[id]
-                return option and option.Value
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ResolvePlayerDataController()
-                local state = RivalsRuntimeBridge.FullSpoof
-                if state.PlayerDataController then
-                    return state.PlayerDataController
-                end
-                local playerScripts = lp:FindFirstChild('PlayerScripts')
-                local controllers = playerScripts and playerScripts:FindFirstChild('Controllers')
-                local module = controllers and controllers:FindFirstChild('PlayerDataController')
-                if not module then
-                    return nil
-                end
-                local ok, controller = pcall(require, module)
-                if ok and type(controller) == 'table' then
-                    state.PlayerDataController = controller
-                    return controller
-                end
-                return nil
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.GetCurrentData()
-                local controller = RivalsRuntimeBridge.FullSpoof.ResolvePlayerDataController()
-                local current = controller and controller.CurrentData
-                local data = current and current.Data
-                if type(data) ~= 'table' then return nil, controller, current end
-                return data, controller, current
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.DeepEqual(a, b, seen)
-                if a == b then return true end
-                local ta, tb = type(a), type(b)
-                if ta ~= tb then return false end
-                if ta ~= 'table' then return false end
-                seen = seen or {}
-                local mapped = seen[a]
-                if mapped ~= nil then return mapped == b end
-                seen[a] = b
-                for key, value in pairs(a) do
-                    if not RivalsRuntimeBridge.FullSpoof.DeepEqual(value, b[key], seen) then return false end
-                end
-                for key in pairs(b) do
-                    if a[key] == nil then return false end
-                end
-                return true
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ApplyDataValue(data, key, value)
-                local state = RivalsRuntimeBridge.FullSpoof
-                if type(data) ~= 'table' then return false end
-                local byKey = state.DataOriginals[data]
-                if not byKey then
-                    byKey = {}
-                    state.DataOriginals[data] = byKey
-                end
-                local saved = byKey[key]
-                if not saved then
-                    saved = { original = data[key], applied = nil }
-                    byKey[key] = saved
-                elseif not state.DeepEqual(data[key], saved.applied) then
-                    saved.original = data[key]
-                end
-                local changed = not state.DeepEqual(data[key], value)
-                data[key] = value
-                if saved.applied ~= nil and not state.DeepEqual(saved.applied, value) then
-                    changed = true
-                elseif saved.applied == nil and value ~= nil then
-                    changed = true
-                end
-                saved.applied = value
-                return changed
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RestoreData()
-                local state = RivalsRuntimeBridge.FullSpoof
-                for data, fields in pairs(state.DataOriginals) do
-                    for key, saved in pairs(fields) do
-                        if data[key] == saved.applied then
-                            data[key] = saved.original
-                        end
-                    end
-                end
-                state.DataOriginals = setmetatable({}, { __mode = 'k' })
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.TransformHistory(key, data)
-                local history = RivalsRuntimeBridge.FullSpoof.State.History
-                if not history.enabled or type(data) ~= 'table' then return data end
-                local copy = FullSpoofDeepCopy(data)
-                local entry = copy[history.match_index]
-                if type(entry) ~= 'table' then return data end
-                if key == 'LoggedELOEvents' then
-                    entry.CurrentELO = history.elo
-                    entry.ELOIncrement = history.elo_change
-                else
-                    entry.QueueName = history.mode
-                    entry.Map = history.map
-                    entry.Scores = { history.team1score, history.team2score }
-                    entry.WinningTeamIndex = history.result == 'Victory' and 1 or 2
-                    local dueler = entry.Duelers and entry.Duelers[history.dueler_index]
-                    if type(dueler) == 'table' then
-                        if history.username ~= '' then dueler.Username = history.username end
-                        if history.display_name ~= '' then dueler.DisplayName = history.display_name end
-                        dueler.Eliminations = history.kills
-                        dueler.Deaths = history.deaths
-                        dueler.Assists = history.assists
-                        dueler.Damage = history.damage
-                        if history.mode == 'Ranked' then dueler.DisplayELO = history.elo end
-                    end
-                end
-                return copy
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.SyncStateFromUi()
-                local state = RivalsRuntimeBridge.FullSpoof
-                for key, cfg in pairs(state.State.Currency) do
-                    cfg.enabled = state.ReadToggle('P12FS' .. key .. 'T')
-                    cfg.amount = math.max(0, tonumber(state.ReadOption('P12FS' .. key .. 'V')) or 0)
-                end
-                local history = state.State.History
-                history.enabled = state.ReadToggle('P12FSHistoryT')
-                for _, spec in ipairs({
-                    { key = 'match_index', default = 1 }, { key = 'dueler_index', default = 1 },
-                    { key = 'team1score', default = 5 }, { key = 'team2score', default = 0 },
-                    { key = 'kills', default = 15 }, { key = 'deaths', default = 2 },
-                    { key = 'assists', default = 6 }, { key = 'damage', default = 5000 },
-                    { key = 'elo', default = 2000 }, { key = 'elo_change', default = 35 },
-                }) do
-                    local raw = state.ReadOption('P12FSHistory' .. spec.key)
-                    local value = tonumber(raw) or spec.default
-                    if spec.key == 'match_index' or spec.key == 'dueler_index' then value = math.max(1, math.floor(value)) end
-                    history[spec.key] = value
-                end
-                for _, spec in ipairs({
-                    { key = 'username', default = '' }, { key = 'display_name', default = '' }, { key = 'map', default = 'Factory' },
-                }) do
-                    local raw = state.ReadOption('P12FSHistory' .. spec.key)
-                    history[spec.key] = type(raw) == 'string' and raw or spec.default
-                end
-                history.mode = state.ReadOption('P12FSHistoryMode') or 'Ranked'
-                history.result = state.ReadOption('P12FSHistoryResult') or 'Victory'
-                for key, cfg in pairs(state.State.Boards) do
-                    cfg.enabled = state.ReadToggle('P12FSBoard' .. key .. 'T')
-                    cfg.value = tonumber(state.ReadOption('P12FSBoard' .. key .. 'V')) or cfg.value or 0
-                end
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ApplyData(replicate)
-                local state = RivalsRuntimeBridge.FullSpoof
-                local data, controller, current = state.GetCurrentData()
-                if not data then return false end
-                local wanted = {}
-                for key, cfg in pairs(state.State.Currency) do
-                    if cfg.enabled then wanted[key] = cfg.amount end
-                end
-                if state.ReadToggle('PSpoofYouFavoriteMapT') then
-                    local map = state.ReadOption('PSpoofYouFavoriteMapV')
-                    if type(map) == 'string' and map ~= '' then wanted.FavoriteMap = map end
-                end
-                local history = state.State.History
-                if history.enabled then
-                    wanted.DuelHistory = state.TransformHistory('DuelHistory', data.DuelHistory)
-                    wanted.LoggedELOEvents = state.TransformHistory('LoggedELOEvents', data.LoggedELOEvents)
-                end
-                local changedKeys = {}
-                for key, value in pairs(wanted) do
-                    if state.ApplyDataValue(data, key, value) then
-                        changedKeys[key] = true
-                    end
-                end
-                local objectsToRemove = {}
-                for object, fields in pairs(state.DataOriginals) do
-                    local keysToRemove = {}
-                    for key, saved in pairs(fields) do
-                        if wanted[key] == nil then
-                            if state.DeepEqual(object[key], saved.applied) then
-                                object[key] = saved.original
-                                changedKeys[key] = true
-                            end
-                            keysToRemove[#keysToRemove + 1] = key
-                        end
-                    end
-                    for _, key in ipairs(keysToRemove) do fields[key] = nil end
-                    if next(fields) == nil then objectsToRemove[#objectsToRemove + 1] = object end
-                end
-                for _, object in ipairs(objectsToRemove) do state.DataOriginals[object] = nil end
-                if replicate == true and current and type(current.Replicate) == 'function' then
-                    for key in pairs(changedKeys) do
-                        pcall(current.Replicate, current, key)
-                    end
-                end
-                return controller ~= nil
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.PlayerSpoofOwnsAttribute(attribute)
-                local ids = {
-                    Level = 'PSpoofYouLevelT',
-                    StatisticDuelsWinStreak = 'PSpoofYouWinstreakT',
-                    IsInfluencer = 'PSpoofYouInfluencerT',
-                    IsRobloxEmployee = 'PSpoofYouRobloxEmployeeT',
-                }
-                local id = ids[attribute]
-                return id ~= nil and RivalsRuntimeBridge.FullSpoof.ReadToggle(id)
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ApplyBadges()
-                local state = RivalsRuntimeBridge.FullSpoof
-                local badges = {
-                    Premium = { id = 'P12FSBadgePremium', attribute = 'IsPremium' },
-                    Verified = { id = 'P12FSBadgeVerified', attribute = 'HasVerifiedBadge' },
-                    Influencer = { id = 'P12FSBadgeInfluencer', attribute = 'IsInfluencer' },
-                    Admin = { id = 'P12FSBadgeAdmin', attribute = 'IsRobloxEmployee' },
-                }
-                for key, spec in pairs(badges) do
-                    local enabled = state.ReadToggle(spec.id) and not state.PlayerSpoofOwnsAttribute(spec.attribute)
-                    if enabled then
-                        if state.BadgeOriginals[spec.attribute] == nil then
-                            state.BadgeOriginals[spec.attribute] = { value = lp:GetAttribute(spec.attribute) }
-                        end
-                        if lp:GetAttribute(spec.attribute) ~= true then pcall(function() lp:SetAttribute(spec.attribute, true) end) end
-                    elseif state.BadgeOriginals[spec.attribute] ~= nil then
-                        local saved = state.BadgeOriginals[spec.attribute]
-                        local original
-                        if type(saved) == 'table' then
-                            original = saved.value
-                        else
-                            original = saved
-                        end
-                        if lp:GetAttribute(spec.attribute) ~= original then
-                            pcall(function() lp:SetAttribute(spec.attribute, original) end)
-                        end
-                        state.BadgeOriginals[spec.attribute] = nil
-                    end
-                end
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RestoreBadges()
-                local state = RivalsRuntimeBridge.FullSpoof
-                for attribute, saved in pairs(state.BadgeOriginals) do
-                    local value
-                    if type(saved) == 'table' then
-                        value = saved.value
-                    else
-                        value = saved
-                    end
-                    pcall(function() lp:SetAttribute(attribute, value) end)
-                end
-                state.BadgeOriginals = {}
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ResolveLeaderboardController()
-                local state = RivalsRuntimeBridge.FullSpoof
-                if state.BoardController then return state.BoardController end
-                local playerScripts = lp:FindFirstChild('PlayerScripts')
-                local controllers = playerScripts and playerScripts:FindFirstChild('Controllers')
-                local module = controllers and controllers:FindFirstChild('LeaderboardController')
-                if not module then return nil end
-                local ok, controller = pcall(require, module)
-                if ok and type(controller) == 'table' then state.BoardController = controller end
-                return state.BoardController
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.BoardConfig(key)
-                local state = RivalsRuntimeBridge.FullSpoof
-                local cfg = state.State.Boards[key]
-                if not cfg then return false, 0 end
-                return cfg.enabled == true, tonumber(cfg.value) or 0
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.BoardFingerprint(list)
-                local parts = {}
-                for index, row in ipairs(list or {}) do
-                    if type(row) == 'table' then
-                        parts[#parts + 1] = table.concat({
-                            tostring(row.key or row.UserId or row.UserID or row.PlayerId or ''),
-                            tostring(row.value or row.Value or ''),
-                        }, ':')
-                    else
-                        parts[#parts + 1] = tostring(row)
-                    end
-                end
-                return table.concat(parts, '|')
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RestoreBoard(key)
-                local state = RivalsRuntimeBridge.FullSpoof
-                local saved = state.BoardBackups[key]
-                if not saved or type(saved.list) ~= 'table' then
-                    state.BoardBackups[key] = nil
-                    return
-                end
-                for index = #saved.list, 1, -1 do
-                    if saved.list[index] == saved.row then
-                        table.remove(saved.list, index)
-                        break
-                    end
-                end
-                if saved.originalRow ~= nil then
-                    table.insert(saved.list, math.min(saved.index or (#saved.list + 1), #saved.list + 1), saved.originalRow)
-                end
-                state.BoardBackups[key] = nil
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.ApplyBoards()
-                local state = RivalsRuntimeBridge.FullSpoof
-                local controller = state.ResolveLeaderboardController()
-                if not controller or type(controller.LeaderboardSerials) ~= 'table' then return 0 end
-                local specs = {
-                    { key = 'ELO', display = 'Highest ELO', attr = 'DisplayELO' },
-                    { key = 'Level', display = 'Highest Level', attr = 'Level' },
-                    { key = 'Streak', display = 'Current Highest Win Streak', attr = 'StatisticDuelsWinStreak' },
-                    { key = 'Kills', display = 'Most Eliminations' },
-                    { key = 'Wins', display = 'Most Wins' },
-                }
-                local available = 0
-                for _, spec in ipairs(specs) do
-                    local enabled, wanted = state.BoardConfig(spec.key)
-                    local serial = controller.LeaderboardSerials[spec.display] or controller.LeaderboardSerials[spec.key]
-                    if serial and type(serial.Players) == 'table' then
-                        available = available + 1
-                        local list = serial.Players
-                        local saved = state.BoardBackups[spec.key]
-                        local fingerprint = state.BoardFingerprint(list)
-                        if saved and (not enabled or saved.list ~= list or saved.value ~= wanted or saved.fingerprint ~= fingerprint) then
-                            state.RestoreBoard(spec.key)
-                            saved = nil
-                        end
-                        if enabled and not saved then
-                            local originalRow, originalIndex
-                            for index = #list, 1, -1 do
-                                local row = list[index]
-                                local id = type(row) == 'table' and tonumber(row.key or row.UserId or row.UserID or row.PlayerId) or nil
-                                if id == lp.UserId then
-                                    originalRow = row
-                                    originalIndex = index
-                                    table.remove(list, index)
-                                    break
-                                end
-                            end
-                            local row = originalRow and FullSpoofDeepCopy(originalRow) or { key = tostring(lp.UserId), UserId = lp.UserId }
-                            row.value = wanted
-                            if row.Value ~= nil then row.Value = wanted end
-                            local rank = 1
-                            for index, item in ipairs(list) do
-                                local itemValue = type(item) == 'table' and tonumber(item.value or item.Value) or 0
-                                if itemValue >= wanted then rank = index + 1 else break end
-                            end
-                            table.insert(list, rank, row)
-                            state.BoardBackups[spec.key] = {
-                                list = list, row = row, originalRow = originalRow, index = originalIndex,
-                                value = wanted, fingerprint = state.BoardFingerprint(list),
-                            }
-                        elseif not enabled and saved then
-                            state.RestoreBoard(spec.key)
-                        end
-                        if type(controller.Refreshed) == 'table' and type(controller.Refreshed.Fire) == 'function' then
-                            pcall(controller.Refreshed.Fire, controller.Refreshed, spec.display)
-                        end
-                    end
-                end
-                for _, spec in ipairs({
-                    { key = 'Level', attr = 'Level' },
-                    { key = 'Streak', attr = 'StatisticDuelsWinStreak' },
-                }) do
-                    local enabled, value = state.BoardConfig(spec.key)
-                    if state.PlayerSpoofOwnsAttribute(spec.attr) then
-                        if state.BoardBackups['attr_' .. spec.attr] ~= nil then
-                            pcall(state.RestoreBoard, 'attr_' .. spec.attr)
-                        end
-                        enabled = false
-                    end
-                    if enabled then
-                        if state.BoardBackups['attr_' .. spec.attr] == nil then
-                            state.BoardBackups['attr_' .. spec.attr] = { value = lp:GetAttribute(spec.attr) }
-                        end
-                        if lp:GetAttribute(spec.attr) ~= value then lp:SetAttribute(spec.attr, value) end
-                    elseif state.BoardBackups['attr_' .. spec.attr] then
-                        pcall(function() lp:SetAttribute(spec.attr, state.BoardBackups['attr_' .. spec.attr].value) end)
-                        state.BoardBackups['attr_' .. spec.attr] = nil
-                    end
-                end
-                return available
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.TextDesired(obj)
-                local state = RivalsRuntimeBridge.FullSpoof
-                if not obj or not obj.Parent or not (obj:IsA('TextLabel') or obj:IsA('TextButton')) then return nil end
-                if Library and Library.ScreenGui and pcall(function() return obj:IsDescendantOf(Library.ScreenGui) end) then
-                    local ok, inside = pcall(function() return obj:IsDescendantOf(Library.ScreenGui) end)
-                    if ok and inside then return nil end
-                end
-                local text = tostring(obj.Text or '')
-                local lowerName = tostring(obj.Name):lower()
-                local lowerParent = tostring(obj.Parent and obj.Parent.Name or ''):lower()
-                local compact = lowerName:gsub('[^%w]', '')
-                local parentCompact = lowerParent:gsub('[^%w]', '')
-                local key = compact
-                if key == 'value' or key == 'amount' or key == 'count' or key == 'text' then key = parentCompact end
-                if state.ReadToggle('PSpoofYouNameT') then
-                    local fakeName = tostring(state.ReadOption('PSpoofYouNameV') or 'ProPlayer')
-                    local fakeDisplay = tostring(state.ReadOption('PSpoofYouDisplayNameV') or fakeName)
-                    if text:find(lp.Name, 1, true) then
-                        return text:gsub(FullSpoofEscapePattern(lp.Name), function() return fakeName end)
-                    end
-                    if lp.DisplayName and lp.DisplayName ~= lp.Name and text:find(lp.DisplayName, 1, true) then
-                        return text:gsub(FullSpoofEscapePattern(lp.DisplayName), function() return fakeDisplay end)
-                    end
-                elseif state.ReadToggle('PSpoofYouDisplayNameT') and lp.DisplayName and text:find(lp.DisplayName, 1, true) then
-                    local fakeDisplay = tostring(state.ReadOption('PSpoofYouDisplayNameV') or 'ProPlayer')
-                    return text:gsub(FullSpoofEscapePattern(lp.DisplayName), function() return fakeDisplay end)
-                end
-                local function numericText(value)
-                    return text:find('%d', 1, false) and tostring(value) or nil
-                end
-                local currencyKeys = {
-                    weaponkeys = 'WeaponKeys',
-                    unlocktokens = 'UnlockTokens',
-                    eventcurrency = 'EventCurrency',
-                    glory = 'Glory',
-                    skintickets = 'SkinTickets',
-                }
-                local currencyKey = currencyKeys[key]
-                local currencyState = currencyKey and state.State.Currency[currencyKey]
-                if currencyState and currencyState.enabled and text:find('%d', 1, false) then
-                    return tostring(math.floor(currencyState.amount or 0))
-                end
-                if (key == 'level' or parentCompact == 'level') and state.ReadToggle('PSpoofYouLevelT') then
-                    return numericText(state.ReadOption('PSpoofYouLevelV') or '999')
-                elseif (key == 'casualwins' or key == 'wins' or parentCompact == 'casualwins') and state.ReadToggle('PSpoofYouCasualWinsT') then
-                    return numericText(state.ReadOption('PSpoofYouCasualWinsV') or '500')
-                elseif (key == 'rankedwins' or parentCompact == 'rankedwins') and state.ReadToggle('PSpoofYouRankedWinsT') then
-                    return numericText(state.ReadOption('PSpoofYouRankedWinsV') or '250')
-                elseif (key == 'elo' or key == 'rankedelo' or parentCompact == 'elo' or parentCompact == 'rankedelo') and state.ReadToggle('PSpoofYouRankedEloT') then
-                    return numericText(state.ReadOption('PSpoofYouRankedEloV') or '2400')
-                elseif (key == 'winrate' or key == 'winpercent' or parentCompact == 'winrate' or parentCompact == 'winpercent') and state.ReadToggle('PSpoofYouWinPercentT') then
-                    return tostring(tonumber(state.ReadOption('PSpoofYouWinPercentV')) or 75) .. '%'
-                elseif (key == 'winstreak' or key == 'streak' or parentCompact == 'winstreak' or parentCompact == 'streak') and state.ReadToggle('PSpoofYouWinstreakT') then
-                    return numericText(state.ReadOption('PSpoofYouWinstreakV') or '999')
-                elseif (key == 'favoritemap' or key == 'favouriteMap' or parentCompact == 'favoritemap') and state.ReadToggle('PSpoofYouFavoriteMapT') then
-                    return tostring(state.ReadOption('PSpoofYouFavoriteMapV') or 'Arena')
-                end
-                return nil
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.UpdateTextObject(obj)
-                local state = RivalsRuntimeBridge.FullSpoof
-                local record = state.TextRecords[obj]
-                if not record or record.busy or not obj.Parent then return end
-                local desired = state.TextDesired(obj)
-                if desired ~= nil then
-                    if obj.Text ~= record.applied then record.original = obj.Text end
-                    record.busy = true
-                    pcall(function() obj.Text = desired end)
-                    record.busy = false
-                    record.applied = desired
-                elseif record.applied ~= nil then
-                    record.busy = true
-                    if obj.Text == record.applied then pcall(function() obj.Text = record.original end) end
-                    record.applied = nil
-                    record.busy = false
-                end
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RemoveTextObject(obj, restore)
-                local state = RivalsRuntimeBridge.FullSpoof
-                local record = state.TextRecords[obj]
-                if not record then return end
-                record.busy = true
-                if record.connection then pcall(function() record.connection:Disconnect() end) end
-                if restore and obj and obj.Parent and record.applied ~= nil and obj.Text == record.applied then
-                    pcall(function() obj.Text = record.original end)
-                end
-                state.TextRecords[obj] = nil
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RegisterTextObject(obj)
-                local state = RivalsRuntimeBridge.FullSpoof
-                if not obj or not (obj:IsA('TextLabel') or obj:IsA('TextButton')) then return end
-                if state.TextRecords[obj] then return end
-                local text = tostring(obj.Text or '')
-                local compactName = tostring(obj.Name):lower():gsub('[^%w]', '')
-                local interesting = text:find(lp.Name, 1, true) ~= nil
-                    or (lp.DisplayName and text:find(lp.DisplayName, 1, true) ~= nil)
-                    or compactName:find('level', 1, true) ~= nil
-                    or compactName:find('wins', 1, true) ~= nil
-                    or compactName:find('elo', 1, true) ~= nil
-                    or compactName:find('streak', 1, true) ~= nil
-                    or compactName:find('rate', 1, true) ~= nil
-                    or compactName:find('map', 1, true) ~= nil
-                    or compactName:find('weaponkeys', 1, true) ~= nil
-                    or compactName:find('unlocktokens', 1, true) ~= nil
-                    or compactName:find('eventcurrency', 1, true) ~= nil
-                    or compactName:find('glory', 1, true) ~= nil
-                    or compactName:find('skintickets', 1, true) ~= nil
-                if not interesting then return end
-                local record = { original = obj.Text, applied = nil, busy = false, connection = nil }
-                state.TextRecords[obj] = record
-                record.connection = obj:GetPropertyChangedSignal('Text'):Connect(function()
-                    if not record.busy then pcall(state.UpdateTextObject, obj) end
-                end)
-                state.UpdateTextObject(obj)
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RefreshTextDisplays()
-                local state = RivalsRuntimeBridge.FullSpoof
-                local count = 0
-                for obj, record in pairs(state.TextRecords) do
-                    if obj.Parent then
-                        state.UpdateTextObject(obj)
-                        if record.applied ~= nil then count = count + 1 end
-                    end
-                end
-                return count
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RestoreTextDisplays()
-                local state = RivalsRuntimeBridge.FullSpoof
-                for obj, record in pairs(state.TextRecords) do
-                    if record.connection then pcall(function() record.connection:Disconnect() end) end
-                    if obj.Parent and record.applied ~= nil and obj.Text == record.applied then
-                        pcall(function() obj.Text = record.original end)
-                    end
-                end
-                state.TextRecords = setmetatable({}, { __mode = 'k' })
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.HasActiveFeatures()
-                local state = RivalsRuntimeBridge.FullSpoof
-                local directIds = {
-                    'P12FSHistoryT', 'P12FSBadgePremium', 'P12FSBadgeVerified',
-                    'P12FSBadgeInfluencer', 'P12FSBadgeAdmin',
-                    'PSpoofYouNameT', 'PSpoofYouDisplayNameT', 'PSpoofYouLevelT',
-                    'PSpoofYouCasualWinsT', 'PSpoofYouRankedWinsT', 'PSpoofYouRankedEloT',
-                    'PSpoofYouWinPercentT', 'PSpoofYouWinstreakT', 'PSpoofYouFavoriteMapT',
-                }
-                for _, id in ipairs(directIds) do
-                    if state.ReadToggle(id) then return true end
-                end
-                for key in pairs(state.State.Currency) do
-                    if state.ReadToggle('P12FS' .. key .. 'T') then return true end
-                end
-                for key in pairs(state.State.Boards) do
-                    if state.ReadToggle('P12FSBoard' .. key .. 'T') then return true end
-                end
-                return false
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.Start()
-                local state = RivalsRuntimeBridge.FullSpoof
-                if state.Started then return true end
-                if not state.HasActiveFeatures() then return false end
-                state.Started = true
-                local playerGui = lp:FindFirstChildOfClass('PlayerGui')
-                state.PlayerGui = playerGui
-                if playerGui then
-                    for _, obj in ipairs(playerGui:GetDescendants()) do state.RegisterTextObject(obj) end
-                    state.Connections[#state.Connections + 1] = playerGui.DescendantAdded:Connect(function(obj)
-                        pcall(state.RegisterTextObject, obj)
-                    end)
-                    state.Connections[#state.Connections + 1] = playerGui.DescendantRemoving:Connect(function(obj)
-                        pcall(state.RemoveTextObject, obj, false)
-                    end)
-                end
-                state.Connections[#state.Connections + 1] = RunService.Heartbeat:Connect(function()
-                    local now = os.clock()
-                    if now - state.LastRefreshAt >= 2 then
-                        state.LastRefreshAt = now
-                        pcall(state.SyncStateFromUi)
-                        pcall(state.ApplyData, false)
-                        pcall(state.ApplyBadges)
-                        pcall(state.RefreshTextDisplays)
-                    end
-                    if now - state.LastBoardAt >= 5 then
-                        state.LastBoardAt = now
-                        pcall(state.ApplyBoards)
-                    end
-                end)
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                local state = RivalsRuntimeBridge.FullSpoof
-                state.SyncStateFromUi()
-                if not state.HasActiveFeatures() then
-                    if state.Started then state.Destroy() end
-                    return
-                end
-                state.Start()
-                state.ApplyData(true)
-                state.ApplyBadges()
-                state.RefreshTextDisplays()
-                state.ApplyBoards()
-            end
-
-            function RivalsRuntimeBridge.FullSpoof.Destroy()
-                local state = RivalsRuntimeBridge.FullSpoof
-                FullSpoofDisconnectAll(state.Connections)
-                state.RestoreTextDisplays()
-                state.RestoreData()
-                state.RestoreBadges()
-                local boardKeys, attrKeys = {}, {}
-                for key in pairs(state.BoardBackups) do
-                    if type(key) == 'string' and key:find('^attr_', 1, false) then
-                        attrKeys[#attrKeys + 1] = key
-                    elseif type(key) == 'string' then
-                        boardKeys[#boardKeys + 1] = key
-                    end
-                end
-                for _, key in ipairs(boardKeys) do
-                    pcall(state.RestoreBoard, key)
-                end
-                for _, key in ipairs(attrKeys) do
-                    local saved = state.BoardBackups[key]
-                    if saved then
-                        local attr = key:gsub('^attr_', '')
-                        pcall(function() lp:SetAttribute(attr, saved.value) end)
-                        state.BoardBackups[key] = nil
-                    end
-                end
-                state.BoardBackups = {}
-                state.BoardController = nil
-                state.PlayerDataController = nil
-                state.PlayerGui = nil
-                state.Started = false
-            end
-
             RivalsRuntimeBridge.AnimationPlayer = {
                 Character = nil,
                 Humanoid = nil,
@@ -20425,9 +19707,8 @@ ErrorReporter.set_game(GameName)
                 NativeCosmeticsControllerLastScan = 0,
                 NativeCosmeticsControllerResolutionGeneration = 0,
                 NativeCosmeticsSnapshotController = nil,
-                -- Full-runtime mode powers the Oxy-style local picker. When false,
-                -- cosmetic runtime is strictly unlock-only and the native loadout stays authoritative.
-                FullRuntimeMode = false,
+                -- Unlock-only mode: the game's own Custom Loadout remains the sole
+                -- source of equipped Skin/Wrap/Charm/Finisher/Emote choices.
                 UnlockOnlyMode = true,
                 NativeCosmeticsRuntimeWasEnabled = nil,
                 NativeCosmeticsRuntimeApplied = false,
@@ -23808,14 +23089,7 @@ ErrorReporter.set_game(GameName)
                 return Toggles.P5S1T2 and Toggles.P5S1T2.Value == true
             end
             function RivalsEmotes.IsEnabled()
-                if not RivalsCosmetics.IsEnabled() then
-                    return false
-                end
-                local emoteToggle = Toggles and Toggles.P5S1T3 or nil
-                if emoteToggle then
-                    return emoteToggle.Value == true
-                end
-                return true
+                return RivalsCosmetics.IsEnabled()
             end
             function RivalsCosmetics.CloneConfigObject(object)
                 if type(object) ~= 'table' then
@@ -24499,9 +23773,6 @@ ErrorReporter.set_game(GameName)
             function RivalsCosmetics.RefreshRankCharmApplication()
                 if type(RivalsCosmetics.RestoreInjectedWeaponData) == 'function' then pcall(RivalsCosmetics.RestoreInjectedWeaponData) end
                 pcall(RivalsCosmetics.UpdatePreviewViewport)
-                if RivalsCosmeticsState.FullRuntimeMode == true then
-                    return RivalsCosmetics.ApplyFullRuntimeSelection(RivalsCosmetics.ResolveSelectedEditorWeaponName())
-                end
                 return RivalsCosmetics.ApplyAll()
             end
             function RivalsCosmetics.UpdateSelectedRankCharmOverride(rankName, leaderboardValue)
@@ -25341,14 +24612,9 @@ ErrorReporter.set_game(GameName)
             function RivalsCosmetics.RefreshFavoriteApplication()
                 RivalsCosmetics.SyncActiveWeaponEditorFromState()
                 RivalsCosmetics.SyncFavoriteEditorFromState()
-                local weaponName = RivalsCosmetics.ResolveSelectedEditorWeaponName()
-                if RivalsCosmeticsState.FullRuntimeMode == true then
-                    RivalsCosmetics.ApplyFullRuntimeSelection(weaponName)
-                else
-                    RivalsCosmetics.RestoreAppliedCosmetics()
-                    RivalsCosmetics.ApplyAll()
-                end
+                RivalsCosmetics.RestoreAppliedCosmetics()
                 pcall(RivalsCosmetics.UpdatePreviewViewport)
+                RivalsCosmetics.ApplyAll()
                 if type(RivalsCosmetics.QueueCosmeticPresetAutoSave) == 'function' then
                     RivalsCosmetics.QueueCosmeticPresetAutoSave()
                 end
@@ -25385,32 +24651,6 @@ ErrorReporter.set_game(GameName)
                     return false
                 end
                 return RivalsCosmetics.RefreshFavoriteApplication()
-            end
-            function RivalsCosmetics.ApplyFullRuntimeSelection(weaponName)
-                if RivalsCosmeticsState.FullRuntimeMode ~= true then
-                    return RivalsCosmetics.ApplyAll()
-                end
-                if not RivalsCosmetics.IsEnabled() or not ReplicatedStateReady then
-                    return false
-                end
-                local applied = false
-                local nativeTarget = weaponName
-                if nativeTarget == RIVALS_COSMETIC_ALL_WEAPONS then
-                    nativeTarget = nil
-                end
-                local okNative, nativeResult = pcall(RivalsCosmetics.ApplyNativeSkinChanger, nativeTarget)
-                applied = okNative and nativeResult == true
-                pcall(RivalsCosmetics.EnsurePlayerDataHook)
-                pcall(RivalsCosmetics.EnsureClientViewModelHook)
-                pcall(RivalsCosmetics.EnsureFinisherHook)
-                if not applied then
-                    pcall(RivalsCosmetics.BindFirstPersonModels)
-                end
-                if RivalsEmotes.IsEnabled() then
-                    pcall(RivalsEmotes.ApplyConfiguredEmoteSlots)
-                end
-                pcall(RivalsCosmetics.ApplyActiveWeaponCosmetics)
-                return applied
             end
             function RivalsCosmetics.SetSelectedEditorWeapon(weaponName)
                 if RivalsCosmeticsState.UnlockOnlyMode == true then
@@ -25457,8 +24697,9 @@ ErrorReporter.set_game(GameName)
                 elseif not RivalsCosmetics.SetStoredSelection(previewWeaponName, kind, value) then
                     return false
                 end
-                RivalsCosmetics.ApplyFullRuntimeSelection(previewWeaponName)
+                RivalsCosmetics.RestoreAppliedCosmetics()
                 pcall(RivalsCosmetics.UpdatePreviewViewport)
+                RivalsCosmetics.ApplyAll()
                 if type(RivalsCosmetics.QueueCosmeticPresetAutoSave) == 'function' then
                     RivalsCosmetics.QueueCosmeticPresetAutoSave()
                 end
@@ -25466,13 +24707,9 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsCosmetics.RerollRandomSelections()
                 RivalsCosmeticsState.StableRandomSelectionByWeapon = {}
-                if RivalsCosmeticsState.FullRuntimeMode == true then
-                    RivalsCosmetics.ApplyFullRuntimeSelection(RivalsCosmetics.ResolveSelectedEditorWeaponName())
-                else
-                    RivalsCosmetics.RestoreAppliedCosmetics()
-                    RivalsCosmetics.ApplyAll()
-                end
+                RivalsCosmetics.RestoreAppliedCosmetics()
                 pcall(RivalsCosmetics.UpdatePreviewViewport)
+                RivalsCosmetics.ApplyAll()
                 return true
             end
             function RivalsCosmetics.BuildKiciaItemSelection(weaponName)
@@ -26654,142 +25891,11 @@ ErrorReporter.set_game(GameName)
                 return pcall(setter, controller, weaponName, choice)
             end
 
-            function RivalsCosmetics.ApplyNativeSkinChanger(targetWeaponName)
-                if RivalsCosmeticsState.UnlockOnlyMode == true or RivalsCosmeticsState.FullRuntimeMode ~= true then
-                    RivalsCosmeticsState.NativeSkinChangerApplied = false
-                    return true
-                end
-
-                local controller = RivalsCosmeticsState.NativeCosmeticsController
-                if not isNativeCosmeticsControllerShape(controller) then
-                    controller = RivalsCosmetics.ResolveNativeCosmeticsController(true)
-                end
-                if not isNativeCosmeticsControllerShape(controller) then
-                    RivalsCosmeticsState.NativeSkinChangerApplied = false
-                    return false
-                end
-
-                local setter = getMethodFromObject(controller, 'SetSkinChangerChoice')
-                if type(setter) ~= 'function' then
-                    RivalsCosmeticsState.NativeSkinChangerApplied = false
-                    return false
-                end
-
-                local setEnabled = getMethodFromObject(controller, 'SetSkinChangerEnabled')
-                if RivalsCosmeticsState.NativeSkinChangerWasEnabled == nil then
-                    local isEnabled = getMethodFromObject(controller, 'IsSkinChangerEnabled')
-                    if type(isEnabled) == 'function' then
-                        local ok, value = pcall(isEnabled, controller)
-                        if ok and type(value) == 'boolean' then
-                            RivalsCosmeticsState.NativeSkinChangerWasEnabled = value
-                        end
-                    end
-                    if RivalsCosmeticsState.NativeSkinChangerWasEnabled == nil then
-                        local rawEnabled = rawget(controller, '_skinChangerEnabled')
-                        RivalsCosmeticsState.NativeSkinChangerWasEnabled = type(rawEnabled) == 'boolean' and rawEnabled or false
-                    end
-                end
-
-                local weaponSet = {}
-                local function addWeapon(name)
-                    if type(name) ~= 'string' or name == '' or name == RIVALS_COSMETIC_ALL_WEAPONS then
-                        return
-                    end
-                    if RivalsCosmetics.IsKnownWeaponName(name) then
-                        weaponSet[name] = true
-                    end
-                end
-
-                if type(targetWeaponName) == 'string' and targetWeaponName ~= '' then
-                    addWeapon(targetWeaponName)
-                else
-                    for _, tableName in ipairs({
-                        'SelectedSkinByWeapon',
-                        'SelectedWrapByWeapon',
-                        'SelectedCharmByWeapon',
-                        'SelectedFinisherByWeapon',
-                        'SelectedWrapInvertedByWeapon',
-                    }) do
-                        local byWeapon = RivalsCosmeticsState[tableName]
-                        if type(byWeapon) == 'table' then
-                            for weaponName in pairs(byWeapon) do
-                                addWeapon(weaponName)
-                            end
-                        end
-                    end
-                    for _, kind in ipairs({'Skin', 'Wrap', 'Charm', 'Finisher'}) do
-                        local byWeapon = RivalsCosmeticsState.CosmeticMultiSelectionsByWeapon[kind]
-                        if type(byWeapon) == 'table' then
-                            for weaponName in pairs(byWeapon) do
-                                addWeapon(weaponName)
-                            end
-                        end
-                    end
-                    for weaponName in pairs(RivalsCosmeticsState.NativeSkinChangerTouchedWeapons) do
-                        addWeapon(weaponName)
-                    end
-                    addWeapon(RivalsCosmeticsState.SelectedEditorWeaponName)
-                    addWeapon(RivalsCosmeticsState.PreviewWeaponName)
-                    local fighter = ResolveLocalFighter()
-                    local item = fighter and fighter.EquippedItem or nil
-                    addWeapon(item and item.Name)
-                end
-
-                local weapons = {}
-                for weaponName in pairs(weaponSet) do
-                    weapons[#weapons + 1] = weaponName
-                end
-                table.sort(weapons)
-                if #weapons == 0 then
-                    RivalsCosmeticsState.NativeSkinChangerApplied = true
-                    if type(setEnabled) == 'function' then
-                        pcall(setEnabled, controller, true)
-                    end
-                    return true
-                end
-
-                local appliedAny = false
-                local allOk = true
-                local function applyKind(weaponName, kind)
-                    if not RivalsCosmeticsState.NativeSkinChangerOriginalSelections[weaponName] then
-                        if not RivalsCosmetics.CaptureNativeSkinChangerSelection(controller, weaponName) then
-                            return false
-                        end
-                    end
-                    local snapshot = RivalsCosmeticsState.NativeSkinChangerOriginalSelections[weaponName]
-                    local original = type(snapshot) == 'table' and snapshot.Value or nil
-                    local stored = RivalsCosmetics.ResolveStoredSelectionValue(weaponName, kind)
-                    local inverted = RivalsCosmetics.ResolveWrapInvertedValue(weaponName)
-                    if stored == nil or stored == RIVALS_COSMETIC_UNSELECTED then
-                        return restoreNativeSelectionKind(controller, weaponName, kind, original)
-                    end
-                    local effective = RivalsCosmetics.ResolveEffectiveSelectionValue(weaponName, kind, stored)
-                    if effective == nil or effective == RIVALS_COSMETIC_UNSELECTED then
-                        return restoreNativeSelectionKind(controller, weaponName, kind, original)
-                    end
-                    return setNativeCosmeticChoice(controller, weaponName, kind, effective, inverted)
-                end
-
-                for _, weaponName in ipairs(weapons) do
-                    for _, kind in ipairs({'Skin', 'Wrap', 'Charm', 'Finisher'}) do
-                        local ok = applyKind(weaponName, kind)
-                        if ok then
-                            appliedAny = true
-                        else
-                            allOk = false
-                        end
-                    end
-                end
-
-                if type(setEnabled) == 'function' then
-                    local enabledOk = pcall(setEnabled, controller, true)
-                    if not enabledOk then
-                        allOk = false
-                    end
-                end
-
-                RivalsCosmeticsState.NativeSkinChangerApplied = appliedAny and allOk
-                return RivalsCosmeticsState.NativeSkinChangerApplied == true
+            function RivalsCosmetics.ApplyNativeSkinChanger()
+                -- Compatibility stub. The native SkinChanger layer is the custom-picker
+                -- layer from kicia stuff.lua and must remain untouched.
+                RivalsCosmeticsState.NativeSkinChangerApplied = false
+                return true
             end
             function RivalsCosmetics.EnsureFinisherHook()
                 local clientEntity = RivalsCosmetics.ResolveClientEntityClass()
@@ -27249,20 +26355,19 @@ ErrorReporter.set_game(GameName)
                     return nil
                 end
 
-                -- Explicit slot controls are authoritative when present. This makes
-                -- preset-loaded emote slots work even when the optional multi-selector
-                -- has stale state from an older config.
-                local option = Options[RivalsEmotes.ResolveSlotOptionId(numericSlot)]
-                local emoteName = option and option.Value or nil
-                if RivalsEmotes.IsCatalogEmoteName(emoteName) then
-                    return emoteName
-                end
-
-                -- Compatibility fallback: use the current multi-selection order.
+                -- Primary source: the actual in-game equipped emote slots.
                 local order = RivalsCosmeticsState.CosmeticMultiEmoteOrder
                 local loadoutValue = type(order) == 'table' and order[numericSlot] or nil
                 if RivalsEmotes.IsCatalogEmoteName(loadoutValue) then
                     return loadoutValue
+                end
+
+                -- Legacy compatibility: respect an explicitly-created slot option when
+                -- an older saved config/UI is still present.
+                local option = Options[RivalsEmotes.ResolveSlotOptionId(numericSlot)]
+                local emoteName = option and option.Value or nil
+                if RivalsEmotes.IsCatalogEmoteName(emoteName) then
+                    return emoteName
                 end
                 return nil
             end
@@ -27581,11 +26686,6 @@ ErrorReporter.set_game(GameName)
                     RivalsCosmeticsState.NativeCosmeticsConfigSetterOwner = nil
                     RivalsCosmeticsState.NativeUnlockerApplied = false
                     RivalsCosmeticsState.NativeCosmeticsRuntimeApplied = false
-                    RivalsCosmeticsState.NativeSkinChangerWasEnabled = nil
-                    RivalsCosmeticsState.NativeSkinChangerOriginalSelections = {}
-                    RivalsCosmeticsState.NativeSkinChangerTouchedWeapons = {}
-                    RivalsCosmeticsState.NativeSkinChangerApplied = false
-                    RivalsCosmeticsState.NativeEmoteAppliedBySlot = {}
                 end
 
                 -- Idempotent fast path: once native runtime + unlocker + catalog gates
@@ -29833,7 +28933,6 @@ ErrorReporter.set_game(GameName)
             end
             function RivalsCosmetics.RestoreAppliedCosmetics()
                 RivalsCosmetics.StopCurrentLoadoutWatcher()
-                pcall(RivalsEmotes.RestoreEquippedEmotes)
                 pcall(RivalsCosmetics.RestoreNativeCosmeticsRuntime)
                 RivalsCosmeticsState.PendingApplyToken = RivalsCosmeticsState.PendingApplyToken + 1
                 RivalsCosmeticsState.BindingFirstPersonModels = false
@@ -29852,6 +28951,7 @@ ErrorReporter.set_game(GameName)
                     RivalsCosmetics.ApplyWrapToModel(model, nil)
                 end
                 RivalsCosmeticsState.OriginalWrapProperties = setmetatable({}, { __mode = 'k' })
+                RivalsEmotes.RestoreEquippedEmotes()
                 if type(RivalsCosmetics.RestoreWeaponViewModels) == 'function' then pcall(RivalsCosmetics.RestoreWeaponViewModels) end
                 RivalsCosmetics.RestoreInjectedWeaponData()
                 RivalsCosmeticsState.PendingSkinSelectionByWeapon = {}
@@ -29891,7 +28991,6 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration =
                     (RivalsCosmeticsState.NativeCosmeticsControllerResolutionGeneration or 0) + 1
                 RivalsCosmeticsState.NativeCosmeticsSnapshotController = nil
-                RivalsCosmeticsState.FullRuntimeMode = false
                 RivalsCosmeticsState.UnlockOnlyMode = true
                 RivalsCosmeticsState.NativeCosmeticsRuntimeWasEnabled = nil
                 RivalsCosmeticsState.NativeCosmeticsRuntimeApplied = false
@@ -29951,14 +29050,19 @@ ErrorReporter.set_game(GameName)
                     return false
                 end
 
-                local fullRuntime = RivalsCosmeticsState.FullRuntimeMode == true
-                RivalsCosmeticsState.UnlockOnlyMode = not fullRuntime
+                -- Unlock-only semantics: do not choose or override any equipped cosmetic.
+                RivalsCosmeticsState.UnlockOnlyMode = true
                 RivalsCosmeticsState.NativeUnlockedInventory = nil
+                if RivalsCosmeticsState.BoundFirstPersonModels and Connections then
+                    pcall(Connections.disconnect, Connections, {'Cosmetics_FirstPersonChildAdded'})
+                    RivalsCosmeticsState.BoundFirstPersonModels = false
+                end
 
-                -- Never rebuild on every model/weapon transition. The native runtime is
-                -- idempotent; only the selector/hook layer needs to refresh after a choice.
-                if not fullRuntime
-                    and RivalsCosmeticsState.NativeCosmeticsRuntimeApplied
+                -- ApplyAll is intentionally called from several lifecycle points. For the
+                -- unlock-only path it must become a cheap no-op after the first successful
+                -- native installation; rebuilding the catalog on every weapon switch is the
+                -- main source of the observed FPS drop.
+                if RivalsCosmeticsState.NativeCosmeticsRuntimeApplied
                     and RivalsCosmeticsState.NativeUnlockerApplied
                     and RivalsCosmeticsState.NativeCosmeticsConfigApplied
                     and RivalsCosmetics.NativeUnlockStateMatchesDesired() then
@@ -29992,6 +29096,7 @@ ErrorReporter.set_game(GameName)
                         return false
                     end
                 else
+                    -- Fallback only: grant catalog ownership without writing loadout choices.
                     results.EnsurePlayerDataHook = safeApply(
                         'EnsurePlayerDataHook',
                         RivalsCosmetics.EnsurePlayerDataHook
@@ -30012,57 +29117,11 @@ ErrorReporter.set_game(GameName)
                     end
                 end
 
-                if fullRuntime then
-                    -- Oxy-style full cosmetic mode: unlock the catalog once, then route
-                    -- selected Skin/Wrap/Charm/Finisher through the native SkinChanger.
-                    results.EnsurePlayerDataHook = safeApply(
-                        'EnsurePlayerDataHook',
-                        RivalsCosmetics.EnsurePlayerDataHook
-                    )
-                    results.ApplyNativeSkinChanger = safeApply(
-                        'ApplyNativeSkinChanger',
-                        RivalsCosmetics.ApplyNativeSkinChanger
-                    )
-                    results.EnsureClientViewModelHook = safeApply(
-                        'EnsureClientViewModelHook',
-                        RivalsCosmetics.EnsureClientViewModelHook
-                    )
-                    results.EnsureFinisherHook = safeApply(
-                        'EnsureFinisherHook',
-                        RivalsCosmetics.EnsureFinisherHook
-                    )
-
-                    -- Native emote assignment is only touched when the user explicitly
-                    -- enables the emote layer. This avoids rewriting emote slots on every
-                    -- weapon cosmetic change.
-                    if RivalsEmotes.IsEnabled() then
-                        results.ApplyConfiguredEmoteSlots = safeApply(
-                            'ApplyConfiguredEmoteSlots',
-                            RivalsEmotes.ApplyConfiguredEmoteSlots
-                        )
-                        results.EnsureEmoteControllerHook = safeApply(
-                            'EnsureEmoteControllerHook',
-                            RivalsEmotes.EnsureEmoteControllerHook
-                        )
-                    end
-
-                    -- Fallback scene refresh is cheap when a native controller is present;
-                    -- avoid starting the old 0.5s loadout watcher because it would fight the picker.
-                    if results.ApplyNativeSkinChanger ~= true then
-                        results.BindFirstPersonModels = safeApply(
-                            'BindFirstPersonModels',
-                            RivalsCosmetics.BindFirstPersonModels
-                        )
-                    end
-                    results.ApplyActiveWeaponCosmetics = safeApply(
-                        'ApplyActiveWeaponCosmetics',
-                        RivalsCosmetics.ApplyActiveWeaponCosmetics
-                    )
-                end
-
+                -- Deliberately omitted: selection sync, SkinChanger, Emote SetEmote,
+                -- Finisher hooks, ViewModel cosmetic writers, Wrap writers, loadout watcher,
+                -- and cosmetic-preset auto-apply. The game Custom Loadout stays authoritative.
                 RivalsCosmeticsState.LastApplyResults = results
-                return results.ApplyNativeCosmeticsRuntime == true
-                    or results.EnsureUnlockedOwnershipHooks == true
+                return true
             end
             function RivalsCosmetics.ApplyPendingSelection(previewWeaponName, skinName, wrapName, charmName, finisherName)
                 local previousSkinName = nil
@@ -30403,14 +29462,8 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmetics.RestoreAppliedCosmetics()
                 RivalsCosmetics.ApplyAll()
 
-                -- Emotes are slot-based rather than weapon-based; mirror the selected
-                -- multi-order into native slots so the picker has a real effect.
-                local emoteOrder = RivalsCosmeticsState.CosmeticMultiEmoteOrder
-                if type(emoteOrder) == 'table' and RivalsEmotes.IsEnabled() then
-                    for slotIndex, emoteName in ipairs(emoteOrder) do
-                        pcall(RivalsEmotes.SetEquippedEmote, slotIndex, emoteName)
-                    end
-                end
+                -- Emotes are slot-based rather than weapon-based; native SetEmote consumes
+                -- the multi-selection order on the same apply pass.
                 RivalsCosmetics.SetSelectedEditorWeapon(weaponName)
                 return true
             end
@@ -30450,11 +29503,7 @@ ErrorReporter.set_game(GameName)
                             end
                             if type(option.SetValue) == 'function' then
                                 local defaults = RivalsCosmetics.BuildMultiDefaultValue(spec.kind, weaponName)
-                                local desired = defaults
-                                if spec.kind ~= 'Emote' then
-                                    desired = defaults[1] or RivalsCosmetics.ResolveEditorSelectionValue(weaponName, spec.kind, values) or RIVALS_COSMETIC_UNSELECTED
-                                end
-                                pcall(function() option:SetValue(desired) end)
+                                pcall(function() option:SetValue(defaults) end)
                             end
                         end
                     end
@@ -30485,11 +29534,6 @@ ErrorReporter.set_game(GameName)
                 end
                 RivalsCosmeticsState.CosmeticMultiEmotes = {}
                 RivalsCosmeticsState.CosmeticMultiEmoteOrder = {}
-                if RivalsEmotes.IsEnabled() then
-                    for slotIndex = 1, RivalsEmotes.ResolveEmoteSlotCount() do
-                        pcall(RivalsEmotes.SetEquippedEmote, slotIndex, nil)
-                    end
-                end
                 local emoteOption = Options.P5COS_EMOTE
                 RivalsCosmeticsState.CosmeticUiRefreshing = RivalsCosmeticsState.CosmeticUiRefreshing + 1
                 if emoteOption and type(emoteOption.SetValue) == 'function' then
@@ -30497,12 +29541,8 @@ ErrorReporter.set_game(GameName)
                 end
                 RivalsCosmeticsState.CosmeticUiRefreshing = math.max(RivalsCosmeticsState.CosmeticUiRefreshing - 1, 0)
 
-                if RivalsCosmeticsState.FullRuntimeMode == true then
-                    RivalsCosmetics.ApplyFullRuntimeSelection(weaponName)
-                else
-                    RivalsCosmetics.RestoreAppliedCosmetics()
-                    RivalsCosmetics.ApplyAll()
-                end
+                RivalsCosmetics.RestoreAppliedCosmetics()
+                RivalsCosmetics.ApplyAll()
                 RivalsCosmetics.RefreshCosmeticMultiUi()
                 return true
             end
@@ -31897,6 +30937,19 @@ ErrorReporter.set_game(GameName)
                         Rounding = 0,
                         Compact = true,
                     })
+                    Rage:AddDropdown("P8S4D3", {
+                        Values = { "Glue", "Pure" },
+                        Default = "Pure",
+                        Multi = false,
+                        Text = "Method",
+                        Tooltip = "Glue = PartGlue positioning; Pure = direct TP/CFrame positioning.",
+                        Callback = GuardRivalsCallback('Ragebot_MethodChanged', function(value)
+                            if value ~= "Glue" and value ~= "Pure" then
+                                value = "Pure"
+                            end
+                            pcall(RivalsRuntimeBridge.ResetKiciaRagebot)
+                        end),
+                    })
                     Rage:AddToggle("P8S4T5", { Text = "Use Primary", Default = true })
                     Rage:AddToggle("P8S4T6", { Text = "Use Secondary", Default = true })
                     Rage:AddToggle("P8S4T7", { Text = "Use Melee", Default = true })
@@ -32174,20 +31227,6 @@ local P3 = Tabs.Automation
                 end))
 
                 local P3Ragebot = P3:AddLeftGroupbox('Ragebot Automation')
-                P3Ragebot:AddDropdown('P8S4D3', {
-                    Values = { 'off', 'lite', 'on' },
-                    Default = 'off',
-                    Multi = false,
-                    Text = 'Glue',
-                    Tooltip = 'off = pure TP/CFrame positioning; lite = light RepRoot glue; on = full PartGlue positioning.',
-                    Callback = GuardRivalsCallback('Ragebot_Glue_ModeChanged', function(value)
-                        if value ~= 'off' and value ~= 'lite' and value ~= 'on' then
-                            value = 'off'
-                        end
-                        pcall(RivalsRuntimeBridge.ResetKiciaRagebot)
-                    end),
-                })
-
                 local P3S8 = P3:AddLeftGroupbox('Subspace Tripmines')
                 P3S8:AddToggle('P8S8T1', {
                     Text = 'Auto Trigger',
@@ -32768,28 +31807,16 @@ local P1 = Tabs.ESP
                     RivalsRuntimeBridge.MovementRecorder.RefreshRecordingOptions()
                 end
                 do
-local P11 = Tabs.Cosmetic
-
--- Full Oxy-style cosmetic surface, backed by Kicia's existing runtime adapters.
-local runtimeBox = P11:AddLeftGroupbox('Cosmetic Runtime')
-local CosmeticsMasterToggle = runtimeBox:AddToggle('P5S1T2', {
-    Text = 'Enable cosmetics',
+local P10 = Tabs.Misc
+local P5S4 = Tabs.Misc:AddLeftGroupbox('Unlock All')
+local CosmeticsMasterToggle = P5S4:AddToggle('P5S1T2', {
+    Text = 'Cosmetics / Unlock All',
     Default = false,
-    Tooltip = 'Unlock the full cosmetic catalog and enable local Skin / Wrap / Charm / Finisher overrides.',
+    Tooltip = 'Unlocks the full native cosmetic catalog; the game Custom Loadout chooses what is equipped.',
     Callback = GuardRivalsCallback('Cosmetics_Enabled_Changed', function(enabled)
         if enabled then
-            RivalsCosmeticsState.FullRuntimeMode = true
-            RivalsCosmeticsState.UnlockOnlyMode = false
-            if ReplicatedStateReady then
-                pcall(RivalsCosmetics.SyncSelectionsFromCurrentGameLoadout)
-            end
             pcall(RivalsRuntimeBridge.ApplyRivalsCosmetics)
-            pcall(RivalsCosmetics.RefreshDropdownOptions)
-            pcall(RivalsCosmetics.RefreshCosmeticMultiUi)
-            pcall(RivalsCosmetics.UpdatePreviewViewport)
         else
-            RivalsCosmeticsState.FullRuntimeMode = false
-            RivalsCosmeticsState.UnlockOnlyMode = true
             pcall(RivalsRuntimeBridge.RestoreRivalsCosmetics)
         end
     end),
@@ -32802,636 +31829,11 @@ CosmeticsMasterToggle:AddKeyPicker('P5S1T2K', {
     SyncToggleState = true,
 })
 
-local emoteToggle = runtimeBox:AddToggle('P5S1T3', {
-    Text = 'Unlock / use emotes',
-    Default = false,
-    Tooltip = 'Enable local emote playback and custom emote slot assignments.',
-    Callback = GuardRivalsCallback('Cosmetics_Emotes_Changed', function(enabled)
-        if enabled and RivalsCosmetics.IsEnabled() then
-            pcall(RivalsEmotes.ApplyAll)
-        end
-    end),
-})
+P5S4:AddLabel("Unlock All only. The game's current Custom Loadout remains the source of truth for Skin, Wrap, Charm, Finisher, and Emote.")
+P5S4:AddLabel('No weapon/cosmetic picker is used by this script.')
 
-runtimeBox:AddButton({
-    Text = 'Reset cosmetic runtime',
-    Func = GuardRivalsCallback('Cosmetics_Reset_Runtime', function()
-        pcall(RivalsCosmetics.ResetState)
-        pcall(function()
-            if Toggles.P5S1T2 then Toggles.P5S1T2:SetValue(false) end
-            if Toggles.P5S1T3 then Toggles.P5S1T3:SetValue(false) end
-        end)
-    end),
-})
-runtimeBox:AddLabel('Native unlocks are installed once; selections are applied only when changed to avoid the weapon-switch FPS spike.')
-
-local editor = P11:AddLeftGroupbox('Manual Cosmetic Picker')
-editor:AddDropdown('P5COS_WEAPON', {
-    Values = RivalsCosmetics.ResolveEditorWeaponNames(),
-    Default = RivalsCosmetics.ResolveSelectedEditorWeaponName(),
-    Searchable = true,
-    AllowNull = false,
-    Text = 'Weapon',
-    Callback = GuardRivalsCallback('Cosmetics_Weapon_Changed', function(value)
-        if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then return end
-        pcall(RivalsCosmetics.SetSelectedEditorWeapon, value)
-        pcall(RivalsCosmetics.RefreshCosmeticMultiUi)
-        pcall(RivalsCosmetics.UpdatePreviewViewport)
-    end),
-})
-editor:AddDropdown('P5COS_SKIN', {
-    Values = RivalsCosmetics.ResolveSentinelValues(),
-    Default = RIVALS_COSMETIC_UNSELECTED,
-    Searchable = true,
-    AllowNull = false,
-    Text = 'Skin',
-    Callback = GuardRivalsCallback('Cosmetics_Skin_Changed', function(value)
-        if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.SetSelectionForSelectedEditorWeapon, 'Skin', value) end
-        pcall(RivalsCosmetics.UpdatePreviewViewport)
-    end),
-})
-editor:AddDropdown('P5COS_WRAP', {
-    Values = RivalsCosmetics.ResolveWrapValues(),
-    Default = RIVALS_COSMETIC_UNSELECTED,
-    Searchable = true,
-    AllowNull = false,
-    Text = 'Wrap',
-    Callback = GuardRivalsCallback('Cosmetics_Wrap_Changed', function(value)
-        if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.SetSelectionForSelectedEditorWeapon, 'Wrap', value) end
-        pcall(RivalsCosmetics.UpdatePreviewViewport)
-    end),
-})
-editor:AddToggle('P5COS_WRAPINV', {
-    Text = 'Invert wrap',
-    Default = false,
-    Callback = GuardRivalsCallback('Cosmetics_Wrap_Invert_Changed', function(value)
-        if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.SetSelectionForSelectedEditorWeapon, 'WrapInverted', value == true) end
-        pcall(RivalsCosmetics.UpdatePreviewViewport)
-    end),
-})
-editor:AddDropdown('P5COS_CHARM', {
-    Values = RivalsCosmetics.ResolveCharmValues(),
-    Default = RIVALS_COSMETIC_UNSELECTED,
-    Searchable = true,
-    AllowNull = false,
-    Text = 'Charm',
-    Callback = GuardRivalsCallback('Cosmetics_Charm_Changed', function(value)
-        if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.SetSelectionForSelectedEditorWeapon, 'Charm', value) end
-        pcall(RivalsCosmetics.UpdatePreviewViewport)
-    end),
-})
-editor:AddDropdown('P5COS_FINISHER', {
-    Values = RivalsCosmetics.ResolveFinisherValues(),
-    Default = RIVALS_COSMETIC_UNSELECTED,
-    Searchable = true,
-    AllowNull = false,
-    Text = 'Finisher',
-    Callback = GuardRivalsCallback('Cosmetics_Finisher_Changed', function(value)
-        if RivalsCosmeticsState.CosmeticUiRefreshing > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.SetSelectionForSelectedEditorWeapon, 'Finisher', value) end
-        pcall(RivalsCosmetics.UpdatePreviewViewport)
-    end),
-})
-editor:AddButton({
-    Text = 'Randomize current weapon',
-    Func = GuardRivalsCallback('Cosmetics_Randomize', function()
-        local weaponName = RivalsCosmetics.ResolveSelectedEditorWeaponName()
-        if weaponName and weaponName ~= RIVALS_COSMETIC_ALL_WEAPONS and RivalsCosmetics.IsEnabled() then
-            for _, kind in ipairs({'Skin', 'Wrap', 'Charm', 'Finisher'}) do
-                RivalsCosmetics.SetStoredSelection(weaponName, kind, RIVALS_COSMETIC_RANDOM)
-            end
-            RivalsCosmeticsState.StableRandomSelectionByWeapon[weaponName] = nil
-            RivalsCosmetics.ApplyFullRuntimeSelection(weaponName)
-            pcall(RivalsCosmetics.UpdatePreviewViewport)
-            pcall(RivalsCosmetics.QueueCosmeticPresetAutoSave)
-            pcall(RivalsCosmetics.SyncActiveWeaponEditorFromState)
-        end
-    end),
-})
-
-local favorites = P11:AddRightGroupbox('Favorites')
-favorites:AddDropdown('P5FAVORITE_TYPE', {
-    Values = RivalsCosmetics.FavoriteKinds,
-    Default = RivalsCosmetics.FavoriteKinds[1],
-    Text = 'Type',
-    Callback = GuardRivalsCallback('Cosmetics_Favorite_Type', function(value)
-        if RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-        pcall(RivalsCosmetics.SetSelectedFavoriteKind, value)
-    end),
-})
-favorites:AddToggle('P5FAVORITE_ONLY', {
-    Text = 'Random uses favorites only',
-    Default = false,
-    Callback = GuardRivalsCallback('Cosmetics_Favorite_Only', function(value)
-        if RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.SetSelectedOnlyUseFavorites, value == true) end
-    end),
-})
-favorites:AddButton({
-    Text = 'Toggle current selection as favorite',
-    Func = GuardRivalsCallback('Cosmetics_Favorite_Toggle', function()
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.ToggleSelectedFavorite) end
-    end),
-})
-
-local ranked = P11:AddRightGroupbox('Ranked Charm')
-local rankSeasonValues = RivalsCosmetics.ResolveRankCharmSeasonValues()
-ranked:AddDropdown('P5RANK_SEASON', {
-    Values = rankSeasonValues,
-    Default = rankSeasonValues[1],
-    AllowNull = true,
-    Searchable = true,
-    Text = 'Season',
-    Callback = GuardRivalsCallback('Cosmetics_Rank_Season', function(value)
-        if RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-        pcall(RivalsCosmetics.SetSelectedRankCharmSeason, value)
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.RefreshRankCharmApplication) end
-    end),
-})
-ranked:AddDropdown('P5RANK_RANK', {
-    Values = RivalsCosmetics.ResolveRankCharmRankValues(),
-    Default = RIVALS_RANK_CHARM_OFF,
-    Searchable = true,
-    Text = 'Rank look',
-    Callback = GuardRivalsCallback('Cosmetics_Rank_Name', function(value)
-        if RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.UpdateSelectedRankCharmOverride, value, Options.P5RANK_LEADERBOARD and Options.P5RANK_LEADERBOARD.Value or '') end
-    end),
-})
-ranked:AddInput('P5RANK_LEADERBOARD', {
-    Default = '',
-    Numeric = true,
-    Text = '#N leaderboard (optional)',
-    Placeholder = '0',
-    Finished = false,
-    Callback = GuardRivalsCallback('Cosmetics_Rank_Leaderboard', function(value)
-        if RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-        local rank = Options.P5RANK_RANK and Options.P5RANK_RANK.Value or RIVALS_RANK_CHARM_OFF
-        if RivalsCosmetics.IsEnabled() then pcall(RivalsCosmetics.UpdateSelectedRankCharmOverride, rank, value) end
-    end),
-})
-
-local emotes = P11:AddRightGroupbox('Emotes')
-local emoteSlotCount = math.max(1, math.floor(tonumber(RivalsEmotes.ResolveEmoteSlotCount()) or 1))
-for slotIndex = 1, emoteSlotCount do
-    local slotId = RivalsEmotes.ResolveSlotOptionId(slotIndex)
-    emotes:AddDropdown(slotId, {
-        Values = RivalsEmotes.ResolveEmoteValues(),
-        Default = DEFAULT_RIVALS_COSMETIC_VALUE,
-        Searchable = true,
-        Text = string.format('Emote slot %d', slotIndex),
-        Callback = GuardRivalsCallback('Cosmetics_Emote_Slot_' .. tostring(slotIndex), function(value)
-            if RivalsCosmeticsState.CosmeticUiRefreshing > 0 or RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-            if not RivalsCosmetics.IsEnabled() or not RivalsEmotes.IsEnabled() then return end
-            local nextValue = RivalsEmotes.IsCatalogEmoteName(value) and value or nil
-            pcall(RivalsEmotes.SetEquippedEmote, slotIndex, nextValue)
-        end),
-    })
-end
-
-local function RefreshCosmeticEmoteSlotUi()
-    local currentData = RivalsEmotes.ResolveCurrentData()
-    local equipped = RivalsEmotes.ResolveEquippedEmotes(currentData)
-    if type(equipped) ~= 'table' then return end
-    local previous = RivalsCosmeticsState.RefreshingDropdownValues
-    RivalsCosmeticsState.RefreshingDropdownValues = previous + 1
-    for slotIndex = 1, emoteSlotCount do
-        local option = Options[RivalsEmotes.ResolveSlotOptionId(slotIndex)]
-        if option and type(option.SetValue) == 'function' then
-            local entry = equipped[slotIndex] or equipped[tostring(slotIndex)]
-            local value = nil
-            if type(entry) == 'table' then value = entry.Name or entry.name or entry[1]
-            elseif type(entry) == 'string' then value = entry end
-            if not RivalsEmotes.IsCatalogEmoteName(value) then value = DEFAULT_RIVALS_COSMETIC_VALUE end
-            pcall(function() option:SetValue(value) end)
-        end
-    end
-    RivalsCosmeticsState.RefreshingDropdownValues = previous
-end
-
-emotes:AddDropdown('P5COS_PLAY_EMOTE', {
-    Values = RivalsEmotes.ResolveEmoteValues(),
-    Default = RIVALS_COSMETIC_UNSELECTED,
-    Searchable = true,
-    Text = 'Play emote',
-    Callback = GuardRivalsCallback('Cosmetics_Play_Emote', function(value)
-        if RivalsCosmetics.IsEnabled() and RivalsEmotes.IsEnabled() and RivalsEmotes.IsCatalogEmoteName(value) then
-            pcall(RivalsEmotes.PlayLocalEmoteByName, value)
-        end
-    end),
-})
-
-local presets = P11:AddRightGroupbox('Cosmetic Presets')
-local presetNames = RivalsCosmetics.ResolveCosmeticPresetNames()
-presets:AddDropdown('P5PRESET_SELECTED', {
-    Values = presetNames,
-    Default = presetNames[1],
-    AllowNull = true,
-    Searchable = true,
-    Text = 'Preset',
-    Callback = GuardRivalsCallback('Cosmetics_Preset_Selected', function(value)
-        if RivalsCosmeticsState.RefreshingDropdownValues > 0 then return end
-        pcall(RivalsCosmetics.SetSelectedCosmeticPreset, value)
-    end),
-})
-presets:AddInput('P5PRESET_NEW', {
-    Default = '',
-    Text = 'New preset name',
-    Placeholder = 'My Loadout',
-    Finished = true,
-})
-presets:AddButton({
-    Text = 'Create / Save preset',
-    Func = GuardRivalsCallback('Cosmetics_Preset_CreateSave', function()
-        local name = Options.P5PRESET_NEW and Options.P5PRESET_NEW.Value or ''
-        if type(name) == 'string' and name:gsub('%s+', '') ~= '' then
-            if RivalsCosmetics.CreateCosmeticPreset(name) then
-                RivalsCosmetics.SetSelectedCosmeticPreset(name)
-                RivalsCosmetics.SaveSelectedCosmeticPreset()
-                RivalsCosmetics.RefreshCosmeticPresetControls()
-            end
-        else
-            pcall(RivalsCosmetics.SaveSelectedCosmeticPreset)
-        end
-    end),
-})
-presets:AddButton({
-    Text = 'Load selected preset',
-    Func = GuardRivalsCallback('Cosmetics_Preset_Load', function() pcall(RivalsCosmetics.LoadSelectedCosmeticPreset) end),
-})
-presets:AddButton({
-    Text = 'Delete selected preset',
-    Func = GuardRivalsCallback('Cosmetics_Preset_Delete', function()
-        pcall(RivalsCosmetics.DeleteSelectedCosmeticPreset)
-        pcall(RivalsCosmetics.RefreshCosmeticPresetControls)
-    end),
-})
-presets:AddToggle('P5PRESET_AUTOLOAD', {
-    Text = 'Auto-load selected preset',
-    Default = false,
-    Callback = GuardRivalsCallback('Cosmetics_Preset_Autoload', function(value) pcall(RivalsCosmetics.SetCosmeticPresetSetting, 'autoLoad', value == true) end),
-})
-presets:AddToggle('P5PRESET_AUTOSAVE', {
-    Text = 'Auto-save selected preset',
-    Default = false,
-    Callback = GuardRivalsCallback('Cosmetics_Preset_Autosave', function(value) pcall(RivalsCosmetics.SetCosmeticPresetSetting, 'autoSave', value == true) end),
-})
-presets:AddDropdown('P5PRESET_AUTOLOAD_NAME', { Values = presetNames, Default = presetNames[1], AllowNull = true, Searchable = true, Text = 'Auto-load preset', Callback = function(value) pcall(RivalsCosmetics.SetCosmeticPresetSetting, 'autoLoadName', value) end })
-presets:AddDropdown('P5PRESET_AUTOSAVE_NAME', { Values = presetNames, Default = presetNames[1], AllowNull = true, Searchable = true, Text = 'Auto-save preset', Callback = function(value) pcall(RivalsCosmetics.SetCosmeticPresetSetting, 'autoSaveName', value) end })
-
-local previewBox = P11:AddLeftGroupbox('3D Preview')
-local previewModel = RivalsCosmetics.BuildPreviewViewportModel()
-local previewViewport = previewBox:AddViewport('P5S3V1', {
-    Object = previewModel,
-    Clone = false,
-    AutoFocus = false,
-    Interactive = false,
-    Height = 330,
-})
-if previewViewport then
-    pcall(function() previewViewport.Camera.FieldOfView = 20 end)
-end
-previewBox:AddButton({
-    Text = 'Refresh preview',
-    Func = GuardRivalsCallback('Cosmetics_Preview_Refresh', function() pcall(RivalsCosmetics.UpdatePreviewViewport) end),
-})
-previewBox:AddLabel('Preview follows the selected weapon and cosmetic state.')
-
-RivalsCosmeticsState.CosmeticsUiLoaded = true
-RivalsCosmeticsState.CosmeticUiBound = true
-RivalsCosmeticsState.CosmeticsUiLoading = false
-pcall(RivalsCosmetics.LoadCosmeticPresetStore)
-pcall(RivalsCosmetics.RefreshCosmeticPresetControls)
-pcall(RivalsCosmetics.RefreshDropdownOptions)
-pcall(RivalsCosmetics.RefreshCosmeticMultiUi)
-pcall(RefreshCosmeticEmoteSlotUi)
-
-task.spawn(GuardRivalsCallback('Cosmetics_UI_RefreshLoop', function()
-    local lastSignature = nil
-    while RivalsCosmeticsState.CosmeticsUiLoaded == true do
-        task.wait(2)
-        local ok, signature = pcall(function()
-            local weaponValues = RivalsCosmetics.ResolveEditorWeaponNames()
-            local rankSeasons = RivalsCosmetics.ResolveRankCharmSeasonValues()
-            local rankNames = RivalsCosmetics.ResolveRankCharmRankValues()
-            local emoteValues = RivalsEmotes.ResolveEmoteValues()
-            local presetValues = RivalsCosmetics.ResolveCosmeticPresetNames()
-            local weapon = RivalsCosmetics.ResolveCurrentCosmeticUiWeapon() or ''
-            local skinValues = RivalsCosmetics.ResolveSelectionValues(weapon, 'Skin') or {}
-            local wrapValues = RivalsCosmetics.ResolveSelectionValues(weapon, 'Wrap') or {}
-            local charmValues = RivalsCosmetics.ResolveSelectionValues(weapon, 'Charm') or {}
-            local finisherValues = RivalsCosmetics.ResolveSelectionValues(weapon, 'Finisher') or {}
-            return table.concat({
-                tostring(#weaponValues), tostring(#skinValues), tostring(#wrapValues),
-                tostring(#charmValues), tostring(#finisherValues), tostring(#rankSeasons),
-                tostring(#rankNames), tostring(#emoteValues), tostring(#presetValues), weapon,
-            }, '/')
-        end)
-        if ok and signature ~= lastSignature then
-            lastSignature = signature
-            pcall(function() Options.P5COS_WEAPON:SetValues(RivalsCosmetics.ResolveEditorWeaponNames()) end)
-            pcall(function() Options.P5COS_SKIN:SetValues(RivalsCosmetics.ResolveSelectionValues(RivalsCosmetics.ResolveCurrentCosmeticUiWeapon(), 'Skin')) end)
-            pcall(function() Options.P5COS_WRAP:SetValues(RivalsCosmetics.ResolveSelectionValues(RivalsCosmetics.ResolveCurrentCosmeticUiWeapon(), 'Wrap')) end)
-            pcall(function() Options.P5COS_CHARM:SetValues(RivalsCosmetics.ResolveSelectionValues(RivalsCosmetics.ResolveCurrentCosmeticUiWeapon(), 'Charm')) end)
-            pcall(function() Options.P5COS_FINISHER:SetValues(RivalsCosmetics.ResolveSelectionValues(RivalsCosmetics.ResolveCurrentCosmeticUiWeapon(), 'Finisher')) end)
-            pcall(function() Options.P5COS_PLAY_EMOTE:SetValues(RivalsEmotes.ResolveEmoteValues()) end)
-            pcall(function() Options.P5RANK_SEASON:SetValues(RivalsCosmetics.ResolveRankCharmSeasonValues()) end)
-            pcall(function() Options.P5RANK_RANK:SetValues(RivalsCosmetics.ResolveRankCharmRankValues()) end)
-            pcall(function() Options.P5PRESET_SELECTED:SetValues(RivalsCosmetics.ResolveCosmeticPresetNames()) end)
-            pcall(function() Options.P5PRESET_AUTOLOAD_NAME:SetValues(RivalsCosmetics.ResolveCosmeticPresetNames()) end)
-            pcall(function() Options.P5PRESET_AUTOSAVE_NAME:SetValues(RivalsCosmetics.ResolveCosmeticPresetNames()) end)
-            if RivalsCosmetics.IsEnabled() then
-                pcall(RivalsCosmetics.RefreshDropdownOptions)
-                pcall(RivalsCosmetics.RefreshCosmeticMultiUi)
-                pcall(RefreshCosmeticEmoteSlotUi)
-            end
-        end
-    end
-    return true
-end))
-
-local P12 = Tabs.Spoof
-
-                local playerSpooferLabels = {
-                    Winstreak = 'Win Streak',
-                    Level = 'Level',
-                    CasualWins = 'Casual Wins',
-                    RankedWins = 'Ranked Wins',
-                    RankedElo = 'Ranked ELO',
-                    WinPercent = 'Win Percent',
-                    FavoriteMap = 'Favorite Map',
-                    NametagStatus = 'Nametag Status',
-                    Influencer = 'Influencer',
-                    RobloxEmployee = 'Roblox Employee',
-                    NosniyTeam = "Nosniy's Team",
-                }
-                local playerSpooferScopes = {
-                    { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
-                    { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
-                }
-                for _, scope in ipairs(playerSpooferScopes) do
-                    local spooferGroup = scope.side == 'Left'
-                        and P12:AddLeftGroupbox(scope.title)
-                        or P12:AddRightGroupbox(scope.title)
-                    for _, field in ipairs(RivalsRuntimeBridge.PlayerSpoofer.AttributeFields) do
-                        local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
-                        local toggle = spooferGroup:AddToggle(toggleId, {
-                            Text = playerSpooferLabels[field.key],
-                            Default = false,
-                        })
-                        toggle:OnChanged(GuardRivalsCallback(
-                            'PlayerSpoofer_Toggle', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
-                        if field.control ~= 'const' then
-                            local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
-                            local default = scope.suffix == 'You' and field.youDefault or field.othDefault
-                            local valueBox = spooferGroup:AddDependencyBox()
-                            valueBox:AddInput(valueId, {
-                                Text = 'Value',
-                                Default = default,
-                                AllowEmpty = true,
-                                EmptyReset = '',
-                            })
-                            Options[valueId]:OnChanged(GuardRivalsCallback(
-                                'PlayerSpoofer_Value', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
-                            valueBox:SetupDependencies({{ Toggles[toggleId], true }})
-                        end
-                    end
-                end
-
-                local P12S2 = P12:AddRightGroupbox('Device Spoof')
-                P12S2:AddToggle('P10S7T1', {
-                    Text = 'Device Spoof',
-                    Default = false,
-                    Tooltip = 'Reports your input device to the server as the chosen platform.',
-                })
-                P12S2:AddDropdown('P10S7D1', {
-                    Values = { 'Desktop', 'Mobile', 'Console', 'VR' },
-                    Default = 'VR',
-                    Text = 'Spoof Type',
-                    Tooltip = 'Which device type you appear to be playing on.',
-                })
-                Toggles.P10S7T1:OnChanged(GuardRivalsCallback(
-                    'DeviceSpoof_Toggle', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
-                Options.P10S7D1:OnChanged(GuardRivalsCallback(
-                    'DeviceSpoof_SpoofType', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
-
-
-                local profileDisplay = P12:AddLeftGroupbox('Local Profile Display')
-                profileDisplay:AddLabel('Client-side display spoof. Real account properties remain unchanged.', true)
-                profileDisplay:AddToggle('PSpoofYouNameT', {
-                    Text = 'Spoof username',
-                    Default = false,
-                })
-                profileDisplay:AddInput('PSpoofYouNameV', {
-                    Text = 'Username',
-                    Default = 'ProPlayer',
-                    AllowEmpty = false,
-                    Finished = false,
-                })
-                profileDisplay:AddToggle('PSpoofYouDisplayNameT', {
-                    Text = 'Spoof display name',
-                    Default = false,
-                })
-                profileDisplay:AddInput('PSpoofYouDisplayNameV', {
-                    Text = 'Display name',
-                    Default = 'ProPlayer',
-                    AllowEmpty = false,
-                    Finished = false,
-                })
-                Toggles.PSpoofYouNameT:OnChanged(GuardRivalsCallback('FullSpoof_NameToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-                Toggles.PSpoofYouDisplayNameT:OnChanged(GuardRivalsCallback('FullSpoof_DisplayToggle', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-                Options.PSpoofYouNameV:OnChanged(GuardRivalsCallback('FullSpoof_NameValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-                Options.PSpoofYouDisplayNameV:OnChanged(GuardRivalsCallback('FullSpoof_DisplayValue', RivalsRuntimeBridge.FullSpoof.RefreshAll))
-
-                local displayData = P12:AddLeftGroupbox('Local Display Data')
-                displayData:AddLabel('Local profile/economy values only; not spendable and not server-authoritative.', true)
-                local currencySpecs = {
-                    { key = 'WeaponKeys', label = 'Weapon Keys' },
-                    { key = 'UnlockTokens', label = 'Unlock Tokens' },
-                    { key = 'EventCurrency', label = 'Event Currency' },
-                    { key = 'Glory', label = 'Glory' },
-                    { key = 'SkinTickets', label = 'Skin Tickets' },
-                }
-                for _, spec in ipairs(currencySpecs) do
-                    local toggleId = 'P12FS' .. spec.key .. 'T'
-                    local valueId = 'P12FS' .. spec.key .. 'V'
-                    local toggle = displayData:AddToggle(toggleId, {
-                        Text = 'Override ' .. spec.label,
-                        Default = false,
-                    })
-                    local dep = displayData:AddDependencyBox()
-                    dep:AddInput(valueId, {
-                        Text = spec.label,
-                        Default = '0',
-                        Numeric = true,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { toggle, true } })
-                    Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].enabled = value == true
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                    Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Currency[spec.key].amount = math.max(0, tonumber(value) or 0)
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                displayData:AddButton({
-                    Text = 'Refresh display data',
-                    Func = GuardRivalsCallback('FullSpoof_DataRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
-                })
-
-                local historyBox = P12:AddRightGroupbox('Duel History Display')
-                historyBox:AddLabel('Local-only override for the displayed match/history data.', true)
-                local historyToggle = historyBox:AddToggle('P12FSHistoryT', {
-                    Text = 'Override displayed match',
-                    Default = false,
-                })
-                local historyNumeric = {
-                    { key = 'match_index', label = 'Match index', default = 1 },
-                    { key = 'dueler_index', label = 'Dueler index', default = 1 },
-                    { key = 'team1score', label = 'Team 1 score', default = 5 },
-                    { key = 'team2score', label = 'Team 2 score', default = 0 },
-                    { key = 'kills', label = 'Kills', default = 15 },
-                    { key = 'deaths', label = 'Deaths', default = 2 },
-                    { key = 'assists', label = 'Assists', default = 6 },
-                    { key = 'damage', label = 'Damage', default = 5000 },
-                    { key = 'elo', label = 'ELO', default = 2000 },
-                    { key = 'elo_change', label = 'ELO change', default = 35 },
-                }
-                for _, spec in ipairs(historyNumeric) do
-                    local id = 'P12FSHistory' .. spec.key
-                    local dep = historyBox:AddDependencyBox()
-                    dep:AddInput(id, {
-                        Text = spec.label,
-                        Default = tostring(spec.default),
-                        Numeric = true,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { historyToggle, true } })
-                    Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
-                        local n = tonumber(value) or spec.default
-                        if spec.key == 'match_index' or spec.key == 'dueler_index' then n = math.max(1, math.floor(n)) end
-                        RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = n
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                for _, spec in ipairs({
-                    { key = 'username', label = 'Username', default = '' },
-                    { key = 'display_name', label = 'Display name', default = '' },
-                    { key = 'map', label = 'Map', default = 'Factory' },
-                }) do
-                    local id = 'P12FSHistory' .. spec.key
-                    local dep = historyBox:AddDependencyBox()
-                    dep:AddInput(id, {
-                        Text = spec.label,
-                        Default = spec.default,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { historyToggle, true } })
-                    Options[id]:OnChanged(GuardRivalsCallback('FullSpoof_' .. id, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.History[spec.key] = tostring(value or '')
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                historyBox:AddDropdown('P12FSHistoryMode', {
-                    Text = 'Mode',
-                    Values = { 'Ranked', 'Casual' },
-                    Default = 'Ranked',
-                })
-                historyBox:AddDropdown('P12FSHistoryResult', {
-                    Text = 'Result',
-                    Values = { 'Victory', 'Defeat' },
-                    Default = 'Victory',
-                })
-                Options.P12FSHistoryMode:OnChanged(GuardRivalsCallback('FullSpoof_HistoryMode', function(value)
-                    RivalsRuntimeBridge.FullSpoof.State.History.mode = value
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end))
-                Options.P12FSHistoryResult:OnChanged(GuardRivalsCallback('FullSpoof_HistoryResult', function(value)
-                    RivalsRuntimeBridge.FullSpoof.State.History.result = value
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end))
-                Toggles.P12FSHistoryT:OnChanged(GuardRivalsCallback('FullSpoof_HistoryToggle', function(value)
-                    RivalsRuntimeBridge.FullSpoof.State.History.enabled = value == true
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end))
-                historyBox:AddButton({
-                    Text = 'Refresh history',
-                    Func = GuardRivalsCallback('FullSpoof_HistoryRefresh', RivalsRuntimeBridge.FullSpoof.RefreshAll),
-                })
-
-                local badgeBox = P12:AddRightGroupbox('Local Badge Attributes')
-                badgeBox:AddLabel('Client display attributes only; no account permissions are granted.', true)
-                for _, spec in ipairs({
-                    { key = 'Premium', label = 'Premium' },
-                    { key = 'Verified', label = 'Verified' },
-                    { key = 'Influencer', label = 'Influencer' },
-                    { key = 'Admin', label = 'Admin' },
-                }) do
-                    badgeBox:AddToggle('P12FSBadge' .. spec.key, {
-                        Text = spec.label,
-                        Default = false,
-                        Callback = GuardRivalsCallback('FullSpoof_Badge_' .. spec.key, RivalsRuntimeBridge.FullSpoof.RefreshAll),
-                    })
-                end
-                badgeBox:AddButton({
-                    Text = 'Restore badge attributes',
-                    Func = GuardRivalsCallback('FullSpoof_BadgeRestore', function()
-                        RivalsRuntimeBridge.FullSpoof.RestoreBadges()
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end),
-                })
-
-                local boardBox = P12:AddRightGroupbox('Leaderboard Display')
-                boardBox:AddLabel('Local leaderboard ordering/value spoof; reverts cleanly on unload.', true)
-                local boardSpecs = {
-                    { key = 'ELO', label = 'Highest ELO', default = 2400 },
-                    { key = 'Level', label = 'Highest Level', default = 999 },
-                    { key = 'Streak', label = 'Current Highest Win Streak', default = 999 },
-                    { key = 'Kills', label = 'Most Eliminations', default = 9999 },
-                    { key = 'Wins', label = 'Most Wins', default = 9999 },
-                }
-                for _, spec in ipairs(boardSpecs) do
-                    local toggleId = 'P12FSBoard' .. spec.key .. 'T'
-                    local valueId = 'P12FSBoard' .. spec.key .. 'V'
-                    local toggle = boardBox:AddToggle(toggleId, {
-                        Text = 'Override ' .. spec.label,
-                        Default = false,
-                    })
-                    local dep = boardBox:AddDependencyBox()
-                    dep:AddInput(valueId, {
-                        Text = spec.label,
-                        Default = tostring(spec.default),
-                        Numeric = true,
-                        Finished = false,
-                    })
-                    dep:SetupDependencies({ { toggle, true } })
-                    RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key] = { enabled = false, value = spec.default }
-                    Toggles[toggleId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. toggleId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].enabled = value == true
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                    Options[valueId]:OnChanged(GuardRivalsCallback('FullSpoof_' .. valueId, function(value)
-                        RivalsRuntimeBridge.FullSpoof.State.Boards[spec.key].value = tonumber(value) or spec.default
-                        RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                    end))
-                end
-                local boardStatus = boardBox:AddLabel('Boards: waiting', true)
-                boardBox:AddButton({
-                    Text = 'Refresh leaderboards',
-                    Func = GuardRivalsCallback('FullSpoof_BoardRefresh', function()
-                        local available = RivalsRuntimeBridge.FullSpoof.ApplyBoards()
-                        boardStatus:SetText('Boards available: ' .. tostring(available))
-                    end),
-                })
-
-
-local P10 = Tabs.Misc
+RivalsCosmeticsState.CosmeticsUiLoaded = false
+RivalsCosmeticsState.CosmeticUiBound = false
                 local RIVALS_REWARD_CLAIM_DELAY = 0.2
                 local RIVALS_REWARD_SETTLE_DELAY = 0.6
                 local RIVALS_REWARD_EMPTY_CONFIRMATIONS = 3
@@ -33583,12 +31985,71 @@ local P10 = Tabs.Misc
                     Library:Notify({ Title = 'RIVALS', Description = desc, Time = 4 })
                 end
 
+                local playerSpooferLabels = {
+                    Winstreak = 'Win Streak',
+                    Level = 'Level',
+                    RankedElo = 'Ranked ELO',
+                    NametagStatus = 'Nametag Status',
+                    Influencer = 'Influencer',
+                    RobloxEmployee = 'Roblox Employee',
+                    NosniyTeam = "Nosniy's Team",
+                }
+                local playerSpooferScopes = {
+                    { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
+                    { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
+                }
+                for _, scope in ipairs(playerSpooferScopes) do
+                    local spooferGroup = scope.side == 'Left'
+                        and P10:AddLeftGroupbox(scope.title)
+                        or P10:AddRightGroupbox(scope.title)
+                    for _, field in ipairs(RivalsRuntimeBridge.PlayerSpoofer.AttributeFields) do
+                        local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
+                        local toggle = spooferGroup:AddToggle(toggleId, {
+                            Text = playerSpooferLabels[field.key],
+                            Default = false,
+                        })
+                        toggle:OnChanged(GuardRivalsCallback(
+                            'PlayerSpoofer_Toggle', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
+                        if field.control ~= 'const' then
+                            local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
+                            local default = scope.suffix == 'You' and field.youDefault or field.othDefault
+                            local valueBox = spooferGroup:AddDependencyBox()
+                            valueBox:AddInput(valueId, {
+                                Text = 'Value',
+                                Default = default,
+                                AllowEmpty = true,
+                                EmptyReset = '',
+                            })
+                            Options[valueId]:OnChanged(GuardRivalsCallback(
+                                'PlayerSpoofer_Value', RivalsRuntimeBridge.PlayerSpoofer.RefreshAll))
+                            valueBox:SetupDependencies({{ Toggles[toggleId], true }})
+                        end
+                    end
+                end
+
                 local P10S1 = P10:AddLeftGroupbox('Rewards')
                 P10S1:AddButton({
                     Text = 'Claim All',
                     Func = GuardRivalsCallback('Rewards_ClaimAll', ClaimAllRivalsBundle),
                     Tooltip = 'Opens all capsules (charms etc) and claims daily + pass rewards.',
                 })
+
+                local P10S7 = P10:AddRightGroupbox('Device Spoof')
+                P10S7:AddToggle('P10S7T1', {
+                    Text = 'Device Spoof',
+                    Default = false,
+                    Tooltip = 'Reports your input device to the server as the chosen platform.',
+                })
+                P10S7:AddDropdown('P10S7D1', {
+                    Values = { 'Desktop', 'Mobile', 'Console', 'VR' },
+                    Default = 'VR',
+                    Text = 'Spoof Type',
+                    Tooltip = 'Which device type you appear to be playing on.',
+                })
+                Toggles.P10S7T1:OnChanged(GuardRivalsCallback(
+                    'DeviceSpoof_Toggle', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
+                Options.P10S7D1:OnChanged(GuardRivalsCallback(
+                    'DeviceSpoof_SpoofType', RivalsRuntimeBridge.DeviceSpoof.RefreshAll))
 
                 local P10S2 = P10:AddRightGroupbox('Staff Detector')
                 P10S2:AddToggle('P10S2T1', {
@@ -34203,9 +32664,6 @@ local RivalsRuntime = {}
                 RivalsRuntimeBridge.Movement.Destroy()
                 RivalsRuntimeBridge.DeviceSpoof.Destroy()
                 RivalsRuntimeBridge.PlayerSpoofer.Destroy()
-                if RivalsRuntimeBridge.FullSpoof and type(RivalsRuntimeBridge.FullSpoof.Destroy) == 'function' then
-                    RivalsRuntimeBridge.FullSpoof.Destroy()
-                end
                 RivalsRuntimeBridge.AnimationPlayer.Destroy()
                 RivalsRuntimeBridge.MovementRecorder.Destroy()
                 if RivalsRuntimeBridge.DestroyKiciaRagebot then
@@ -34598,9 +33056,6 @@ local RivalsRuntime = {}
                 RivalsRuntimeBridge.Movement.RefreshAll()
                 RivalsRuntimeBridge.DeviceSpoof.RefreshAll()
                 RivalsRuntimeBridge.PlayerSpoofer.RefreshAll()
-                if RivalsRuntimeBridge.FullSpoof and type(RivalsRuntimeBridge.FullSpoof.RefreshAll) == 'function' then
-                    RivalsRuntimeBridge.FullSpoof.RefreshAll()
-                end
                 RivalsRuntimeBridge.AnimationPlayer.RefreshAll()
                 Library:OnUnload(GuardRivalsCallback('Runtime_Unload', function()
                     Connections:disconnect_all()
