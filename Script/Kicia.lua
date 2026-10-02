@@ -5942,18 +5942,20 @@ end
 local TitleTemplate = ScriptPaths.format_title(GameName)
 local AutoShowConfig = ScriptPaths.ensure_auto_show_file()
 ErrorReporter.set_game(GameName)
+    -- Register-budget guard: the RIVALS runtime is compiled inside one xpcall closure.
+    -- Keep its section-scope state out of local registers; Luau hard-limits locals per function.
     if GameId == Games['RIVALS'].ID and Games['RIVALS'].State then
-            local ConnectionRegistry = RequireSharedModule('connection_registry')
-            local Players = game:GetService('Players')
-            local ReplicatedStorage = game:GetService('ReplicatedStorage')
-            local RunService = game:GetService('RunService')
-            local UserInputService = game:GetService('UserInputService')
-            local Workspace = game:GetService('Workspace')
-            local Lighting = game:GetService('Lighting')
-            local LP = Players.LocalPlayer
-            local CurrentRivalsPlace = game['Place' .. 'Id']
-            local RIVALS_SHARED_MATCH_PLACE = 129604661913557
-            local AimbotInputState = {
+            ConnectionRegistry = RequireSharedModule('connection_registry')
+            Players = game:GetService('Players')
+            ReplicatedStorage = game:GetService('ReplicatedStorage')
+            RunService = game:GetService('RunService')
+            UserInputService = game:GetService('UserInputService')
+            Workspace = game:GetService('Workspace')
+            Lighting = game:GetService('Lighting')
+            LP = Players.LocalPlayer
+            CurrentRivalsPlace = game['Place' .. 'Id']
+            RIVALS_SHARED_MATCH_PLACE = 129604661913557
+            AimbotInputState = {
                 LeftMouse = false,
                 RightMouse = false,
                 TouchCount = 0,
@@ -5964,30 +5966,30 @@ ErrorReporter.set_game(GameName)
                 if UserInputService:GetFocusedTextBox() ~= nil then return true end
                 return false
             end
-            local AimbotTriggerbotLastShotAt = 0
-            local MeleeFastFire = { Enabled = true, IntervalSec = 0, LastShotAt = 0, RagebotStuds = 10, AttackMaxStuds = 15 }
-            local AimbotVisibilityCache = setmetatable({}, { __mode = 'k' })
-            local AIMBOT_VISIBLE_CACHE_WINDOW = 1 / 30
-            local ESP_HIDDEN_CACHE_WINDOW = 1 / 30
-            local AIMBOT_HIDDEN_CACHE_WINDOW = 1 / 60
-            local TRIGGERBOT_HIDDEN_CACHE_WINDOW = 0
-            local AIMBOT_OFFSCREEN_SELECTION_PENALTY = 1e6
-            local ESP_VISIBILITY_CACHE_PROFILE = {
+            AimbotTriggerbotLastShotAt = 0
+            MeleeFastFire = { Enabled = true, IntervalSec = 0, LastShotAt = 0, RagebotStuds = 10, AttackMaxStuds = 15 }
+            AimbotVisibilityCache = setmetatable({}, { __mode = 'k' })
+            AIMBOT_VISIBLE_CACHE_WINDOW = 1 / 30
+            ESP_HIDDEN_CACHE_WINDOW = 1 / 30
+            AIMBOT_HIDDEN_CACHE_WINDOW = 1 / 60
+            TRIGGERBOT_HIDDEN_CACHE_WINDOW = 0
+            AIMBOT_OFFSCREEN_SELECTION_PENALTY = 1e6
+            ESP_VISIBILITY_CACHE_PROFILE = {
                 Id = 'ESP',
                 HiddenWindow = ESP_HIDDEN_CACHE_WINDOW,
                 VisibleWindow = AIMBOT_VISIBLE_CACHE_WINDOW,
             }
-            local AIMBOT_VISIBILITY_CACHE_PROFILE = {
+            AIMBOT_VISIBILITY_CACHE_PROFILE = {
                 Id = 'AIMBOT',
                 HiddenWindow = AIMBOT_HIDDEN_CACHE_WINDOW,
                 VisibleWindow = 0,
             }
-            local TRIGGERBOT_VISIBILITY_CACHE_PROFILE = {
+            TRIGGERBOT_VISIBILITY_CACHE_PROFILE = {
                 Id = 'TRIGGERBOT',
                 HiddenWindow = TRIGGERBOT_HIDDEN_CACHE_WINDOW,
                 VisibleWindow = 0,
             }
-            local AimbotSilentState = {
+            AimbotSilentState = {
                 Item = nil,
                 LastShot = nil,
                 LastShotChangedAt = 0,
@@ -5997,7 +5999,7 @@ ErrorReporter.set_game(GameName)
                 HookTargetCapturedAt = 0,
                 ShotPrimeDepth = 0,
             }
-            local AimbotSilentConnections = {
+            AimbotSilentConnections = {
                 Shot = nil,
                 ProjectileShot = nil,
                 HookedItem = nil,
@@ -6011,16 +6013,16 @@ ErrorReporter.set_game(GameName)
                 CameraAimRandomTarget = nil,
                 CameraAimRandomPart = nil,
             }
-            local AimbotStatusNotification = nil
-            local AimbotStatusKey = nil
-            local AimbotStatusDescription = nil
-            local RuntimeIssueNotification = nil
-            local RuntimeIssueDescription = nil
-            local RuntimeIssueReportedAt = {}
-            local RuntimeIssueNotificationUnavailable = false
-            local RIVALS_RUNTIME_ERROR_DEDUPE_WINDOW = 2
-            local UpdateRivalsPickupFeatures
-            local function DestroyRuntimeIssueNotification()
+            AimbotStatusNotification = nil
+            AimbotStatusKey = nil
+            AimbotStatusDescription = nil
+            RuntimeIssueNotification = nil
+            RuntimeIssueDescription = nil
+            RuntimeIssueReportedAt = {}
+            RuntimeIssueNotificationUnavailable = false
+            RIVALS_RUNTIME_ERROR_DEDUPE_WINDOW = 2
+            UpdateRivalsPickupFeatures = nil
+            function DestroyRuntimeIssueNotification()
                 if RuntimeIssueNotification and type(RuntimeIssueNotification.Destroy) == 'function' then
                     pcall(function()
                         RuntimeIssueNotification:Destroy()
@@ -6034,7 +6036,7 @@ ErrorReporter.set_game(GameName)
                 RuntimeIssueDescription = nil
                 RuntimeIssueNotificationUnavailable = false
             end
-            local function TryShowRivalsRuntimeIssueNotification(description)
+            function TryShowRivalsRuntimeIssueNotification(description)
                 if RuntimeIssueNotificationUnavailable or not Library or type(Library.Notify) ~= 'function' then
                     return
                 end
@@ -6064,7 +6066,7 @@ ErrorReporter.set_game(GameName)
                     RuntimeIssueNotificationUnavailable = true
                 end
             end
-            local function ReportRivalsRuntimeIssue(feature, tracebackMessage)
+            function ReportRivalsRuntimeIssue(feature, tracebackMessage)
                 local tracebackText = tostring(tracebackMessage or 'Unknown error')
                 local errorMessage = tracebackText:match('([^\n]+)') or tracebackText
                 local description = string.format('%s: %s', tostring(feature or 'runtime'), errorMessage)
@@ -6082,7 +6084,7 @@ ErrorReporter.set_game(GameName)
                     end)
                 end
             end
-            local function GuardRivalsCallback(feature, callback)
+            function GuardRivalsCallback(feature, callback)
                 if type(callback) ~= 'function' then
                     return function() return nil end
                 end
@@ -6100,8 +6102,8 @@ ErrorReporter.set_game(GameName)
                     return result
                 end
             end
-            local Char, Humanoid, HumanoidRootPart
-            local function InitCharacter()
+            Char, Humanoid, HumanoidRootPart = nil, nil, nil
+            function InitCharacter()
                 Char = LP.Character
                 if not Char then
                     Humanoid = nil
@@ -6112,7 +6114,7 @@ ErrorReporter.set_game(GameName)
                 HumanoidRootPart = Char:FindFirstChild('HumanoidRootPart')
                 return Humanoid ~= nil and HumanoidRootPart ~= nil
             end
-            local function IsAimbotCameraBoundToLocalCharacter(camera)
+            function IsAimbotCameraBoundToLocalCharacter(camera)
                 if not camera or not Char or LP.Character ~= Char then
                     return false
                 end
@@ -6122,7 +6124,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return subject == Char or subject:IsDescendantOf(Char)
             end
-            local function IsAimbotCameraReady()
+            function IsAimbotCameraReady()
                 local camera = Workspace.CurrentCamera
                 if not camera then
                     return false
@@ -6141,18 +6143,18 @@ ErrorReporter.set_game(GameName)
                 end
                 return true
             end
-            local PlayerDataController = nil
-            local EnumLibrary = nil
-            local FighterController = nil
-            local EnemyController = nil
-            local ReplicatedStateReady = false
-            local ReplicatedStateBootStarted = false
-            local WeaponInfoCache = {}
-            local WeaponInfoConnections = {}
-            local WeaponInfoTrackingConnected = false
-            local WeaponInfoTrackingRetryPending = false
-            local TrackedFightersByPlayer = {}
-            local FighterDataCache = {
+            PlayerDataController = nil
+            EnumLibrary = nil
+            FighterController = nil
+            EnemyController = nil
+            ReplicatedStateReady = false
+            ReplicatedStateBootStarted = false
+            WeaponInfoCache = {}
+            WeaponInfoConnections = {}
+            WeaponInfoTrackingConnected = false
+            WeaponInfoTrackingRetryPending = false
+            TrackedFightersByPlayer = {}
+            FighterDataCache = {
                 Cache = {},
                 Connections = {},
                 LocalDuel = {
@@ -6169,16 +6171,16 @@ ErrorReporter.set_game(GameName)
                     Seeded = false,
                 },
             }
-            local TrackedRangeTargets = {}
-            local TrackedPracticeDummies = {}
-            local TrackedEnemies = setmetatable({}, { __mode = 'k' })
-            local AimbotPlayerTrackingConnected = false
-            local AimbotEnemyTrackingConnected = false
-            local LocalFighterController = nil
-            local Connections = nil
-            local DEFAULT_ESP_MAX_DISTANCE = 1000
-            local DEFAULT_ESP_TEXT_SIZE = 16
-            local PLAYER_CARD_THEME = {
+            TrackedRangeTargets = {}
+            TrackedPracticeDummies = {}
+            TrackedEnemies = setmetatable({}, { __mode = 'k' })
+            AimbotPlayerTrackingConnected = false
+            AimbotEnemyTrackingConnected = false
+            LocalFighterController = nil
+            Connections = nil
+            DEFAULT_ESP_MAX_DISTANCE = 1000
+            DEFAULT_ESP_TEXT_SIZE = 16
+            PLAYER_CARD_THEME = {
                 HorizontalBarWidth = 48,
                 HorizontalBarOffsetY = 0,
                 HorizontalBarTextPadding = 0,
@@ -6222,20 +6224,20 @@ ErrorReporter.set_game(GameName)
                 SmoothSpeed = 24,
                 ReactiveLowColor = Color3.new(1, 1, 1),
             }
-            local AimbotFovCircle = Drawing.new('Circle')
+            AimbotFovCircle = Drawing.new('Circle')
             AimbotFovCircle.Filled = false
             AimbotFovCircle.NumSides = 48
             AimbotFovCircle.Thickness = 1.5
             AimbotFovCircle.Transparency = 0.72
             AimbotFovCircle.Color = Color3.fromRGB(255, 70, 70)
             AimbotFovCircle.Visible = false
-            local MODEL_BOUNDS_SIGNS = {-1, 1}
-            local RivalsRuntimeBridge = {}
+            MODEL_BOUNDS_SIGNS = {-1, 1}
+            RivalsRuntimeBridge = {}
             RivalsRuntimeBridge.PlayerStatusInfoCache = {}
             RivalsRuntimeBridge.EspRankProfileCache = nil
             RivalsRuntimeBridge.ESPClassic = {}
             RivalsRuntimeBridge.EspPreviewState = nil
-            local RivalsModsState = {
+            RivalsModsState = {
                 GunModule = nil,
                 MeleeModule = nil,
                 KnifeModule = nil,
@@ -6278,14 +6280,14 @@ ErrorReporter.set_game(GameName)
                 OriginalGunGetAimSpeed = nil,
                 OriginalGunEquip = nil,
             }
-            local function BlendColor(color, target, alpha)
+            function BlendColor(color, target, alpha)
                 return Color3.new(
                     color.R + ((target.R - color.R) * alpha),
                     color.G + ((target.G - color.G) * alpha),
                     color.B + ((target.B - color.B) * alpha)
                 )
             end
-            local function CreateRoundedRect()
+            function CreateRoundedRect()
                 local rect = {
                     horizontal = Drawing.new('Square'),
                     vertical = Drawing.new('Square'),
@@ -6306,7 +6308,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return rect
             end
-            local function HideRoundedRect(rect)
+            function HideRoundedRect(rect)
                 rect.horizontal.Visible = false
                 rect.vertical.Visible = false
                 rect.tl.Visible = false
@@ -6314,7 +6316,7 @@ ErrorReporter.set_game(GameName)
                 rect.bl.Visible = false
                 rect.br.Visible = false
             end
-            local function RemoveRoundedRect(rect)
+            function RemoveRoundedRect(rect)
                 pcall(function() rect.horizontal:Remove() end)
                 pcall(function() rect.vertical:Remove() end)
                 pcall(function() rect.tl:Remove() end)
@@ -6322,7 +6324,7 @@ ErrorReporter.set_game(GameName)
                 pcall(function() rect.bl:Remove() end)
                 pcall(function() rect.br:Remove() end)
             end
-            local function CreateArrowIndicator()
+            function CreateArrowIndicator()
                 local arrow = {
                     left = Drawing.new('Line'),
                     right = Drawing.new('Line'),
@@ -6336,17 +6338,17 @@ ErrorReporter.set_game(GameName)
                 end
                 return arrow
             end
-            local function HideArrowIndicator(arrow)
+            function HideArrowIndicator(arrow)
                 arrow.left.Visible = false
                 arrow.right.Visible = false
                 arrow.base.Visible = false
             end
-            local function RemoveArrowIndicator(arrow)
+            function RemoveArrowIndicator(arrow)
                 pcall(function() arrow.left:Remove() end)
                 pcall(function() arrow.right:Remove() end)
                 pcall(function() arrow.base:Remove() end)
             end
-            local function DrawArrowIndicator(arrow, center, direction, color, scale)
+            function DrawArrowIndicator(arrow, center, direction, color, scale)
                 local magnitude = direction.Magnitude
                 if magnitude <= 0 then
                     HideArrowIndicator(arrow)
@@ -6375,12 +6377,12 @@ ErrorReporter.set_game(GameName)
                     segment.Visible = true
                 end
             end
-            local function SetDrawingVisible(drawable, visible)
+            function SetDrawingVisible(drawable, visible)
                 if drawable.Visible ~= visible then
                     drawable.Visible = visible
                 end
             end
-            local function SetDrawingTextState(drawable, visible, textValue, textSize, centered, color, font)
+            function SetDrawingTextState(drawable, visible, textValue, textSize, centered, color, font)
                 SetDrawingVisible(drawable, visible)
                 if not visible then
                     return
@@ -6402,7 +6404,7 @@ ErrorReporter.set_game(GameName)
                     drawable.Font = font
                 end
             end
-            local function SetRoundedRect(rect, x, y, width, height, radius, color, transparency)
+            function SetRoundedRect(rect, x, y, width, height, radius, color, transparency)
                 if width <= 0 or height <= 0 then
                     HideRoundedRect(rect)
                     return
@@ -6454,7 +6456,7 @@ ErrorReporter.set_game(GameName)
                     rect.br.Position = Vector2.new(x + width - r, y + height - r)
                 end
             end
-            local function ResolvePlayerDataController()
+            function ResolvePlayerDataController()
                 if PlayerDataController then
                     return PlayerDataController
                 end
@@ -6468,11 +6470,11 @@ ErrorReporter.set_game(GameName)
                 PlayerDataController = controller
                 return PlayerDataController
             end
-            local function IsPlayerDataControllerReady()
+            function IsPlayerDataControllerReady()
                 local playerDataController = ResolvePlayerDataController()
                 return playerDataController ~= nil and playerDataController.CurrentData ~= nil
             end
-            local function ResolveEnumLibrary()
+            function ResolveEnumLibrary()
                 if EnumLibrary then
                     return EnumLibrary
                 end
@@ -6486,7 +6488,7 @@ ErrorReporter.set_game(GameName)
                 EnumLibrary = library
                 return EnumLibrary
             end
-            local function BeginReplicatedStateBoot()
+            function BeginReplicatedStateBoot()
                 if ReplicatedStateBootStarted then
                     return
                 end
@@ -6518,11 +6520,11 @@ ErrorReporter.set_game(GameName)
                     end
                 end))
             end
-            local function IsReplicatedStateReady()
+            function IsReplicatedStateReady()
                 BeginReplicatedStateBoot()
                 return ReplicatedStateReady
             end
-            local function ResolveFighterController()
+            function ResolveFighterController()
                 if FighterController then
                     return FighterController
                 end
@@ -6543,7 +6545,7 @@ ErrorReporter.set_game(GameName)
                 FighterController = controller
                 return FighterController
             end
-            local function ResolveEnemyController()
+            function ResolveEnemyController()
                 if EnemyController then
                     return EnemyController
                 end
@@ -6564,7 +6566,7 @@ ErrorReporter.set_game(GameName)
                 EnemyController = controller
                 return EnemyController
             end
-            local function ReadItemValue(item, key)
+            function ReadItemValue(item, key)
                 if not item or type(item.Get) ~= 'function' then
                     return nil
                 end
@@ -6574,7 +6576,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return value
             end
-            local function ResolveLocalFighter()
+            function ResolveLocalFighter()
                 local fighterController = ResolveFighterController()
                 if not fighterController then
                     return nil
@@ -6597,7 +6599,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function ReadFighterValue(fighter, key)
+            function ReadFighterValue(fighter, key)
                 if not fighter or type(fighter.Get) ~= 'function' then
                     return nil
                 end
@@ -6607,12 +6609,12 @@ ErrorReporter.set_game(GameName)
                 end
                 return value
             end
-            local AIMBOT_RIOT_SHIELD_ITEM_NAMES = {
+            AIMBOT_RIOT_SHIELD_ITEM_NAMES = {
                 ['Riot Shield'] = true,
             }
-            local AIMBOT_RIOT_SHIELD_FRONT_DOT_THRESHOLD = 0.0
-            local AIMBOT_RIOT_SHIELD_BACK_DOT_THRESHOLD = 0.0
-            local function ResolveRivalsInventoryItemName(item)
+            AIMBOT_RIOT_SHIELD_FRONT_DOT_THRESHOLD = 0.0
+            AIMBOT_RIOT_SHIELD_BACK_DOT_THRESHOLD = 0.0
+            function ResolveRivalsInventoryItemName(item)
                 local itemType = typeof(item)
                 if itemType == 'string' then
                     return item ~= '' and item or nil
@@ -6638,13 +6640,13 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function ReadRivalsFighterInventory(fighter)
+            function ReadRivalsFighterInventory(fighter)
                 if not fighter then
                     return nil
                 end
                 return fighter.Loadout or fighter.Slots or fighter.Items or fighter.EquippedItems
             end
-            local function ResolveRivalsFighterLoadoutNames(fighter)
+            function ResolveRivalsFighterLoadoutNames(fighter)
                 local loadoutNames = {}
                 local function addName(name)
                     if type(name) == 'string' and name ~= '' then
@@ -6665,7 +6667,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return loadoutNames
             end
-            local function ResolveRivalsFighterEquippedItemName(fighter)
+            function ResolveRivalsFighterEquippedItemName(fighter)
                 local equippedName = ResolveRivalsInventoryItemName(fighter and fighter.EquippedItem)
                 if equippedName then
                     return equippedName
@@ -6691,7 +6693,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function EvaluateRivalsRiotShieldChecker(player, character, observerPosition)
+            function EvaluateRivalsRiotShieldChecker(player, character, observerPosition)
                 observerPosition = typeof(observerPosition) == 'Vector3' and observerPosition or (HumanoidRootPart and HumanoidRootPart.Position)
                 if not player or typeof(observerPosition) ~= 'Vector3' then
                     return nil
@@ -6749,10 +6751,10 @@ ErrorReporter.set_game(GameName)
                     IgnoreTarget = blocksFromFront or blocksFromBack,
                 }
             end
-            local UNDERGROUND_WEAPON_HINTS = {
+            UNDERGROUND_WEAPON_HINTS = {
                 'chainsaw', 'fists', 'trowel',
             }
-            local function ResolveRivalsEnemyFighter(player)
+            function ResolveRivalsEnemyFighter(player)
                 if not player then return nil end
                 local tracked = TrackedFightersByPlayer and TrackedFightersByPlayer[player] or nil
                 if tracked then return tracked end
@@ -6766,7 +6768,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function ResolveRivalsEnemyEquippedItem(fighter)
+            function ResolveRivalsEnemyEquippedItem(fighter)
                 if not fighter then return nil end
                 local item = nil
                 pcall(function() item = fighter.EquippedItem end)
@@ -6778,7 +6780,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return item
             end
-            local function ResolveRivalsEnemyEquippedCategory(fighter)
+            function ResolveRivalsEnemyEquippedCategory(fighter)
                 local item = ResolveRivalsEnemyEquippedItem(fighter)
                 if item == nil then return nil end
                 local items = fighter.Items
@@ -6810,7 +6812,7 @@ ErrorReporter.set_game(GameName)
                 if itemTypeValue == 'Gun' then return 'Primary' end
                 return nil
             end
-            local function IsRivalsPlayerUndergroundArmed(player, maxDistance)
+            function IsRivalsPlayerUndergroundArmed(player, maxDistance)
                 local fighter = ResolveRivalsEnemyFighter(player)
                 if not fighter then return false, nil end
                 local category = ResolveRivalsEnemyEquippedCategory(fighter)
@@ -6872,7 +6874,7 @@ ErrorReporter.set_game(GameName)
                 return (math.floor(tick() * 12) % 2 == 0) and 5 or -5
             end
 
-            local function ShouldIgnoreRivalsRiotShieldTarget(player, character, localItem, observerPosition)
+            function ShouldIgnoreRivalsRiotShieldTarget(player, character, localItem, observerPosition)
                 if not player or not (Toggles.P2S1T9 and Toggles.P2S1T9.Value == true) then
                     return false
                 end
@@ -7008,7 +7010,7 @@ ErrorReporter.set_game(GameName)
                 end
                 state.Seeded = true
             end
-            local function RegisterAimbotFighter(fighter)
+            function RegisterAimbotFighter(fighter)
                 local player = fighter and fighter.Player
                 if not player or player == LP then
                     return
@@ -7016,7 +7018,7 @@ ErrorReporter.set_game(GameName)
                 TrackedFightersByPlayer[player] = fighter
                 FighterDataCache.Track(fighter)
             end
-            local function UnregisterAimbotFighter(fighter)
+            function UnregisterAimbotFighter(fighter)
                 local player = fighter and fighter.Player
                 if not player then
                     return
@@ -7026,7 +7028,7 @@ ErrorReporter.set_game(GameName)
                     TrackedFightersByPlayer[player] = nil
                 end
             end
-            local function ResolveAimbotEnemyTargetType(enemy)
+            function ResolveAimbotEnemyTargetType(enemy)
                 local model = enemy and enemy.Model
                 if not model then
                     return nil, nil
@@ -7039,7 +7041,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil, nil
             end
-            local function RegisterAimbotEnemy(enemy)
+            function RegisterAimbotEnemy(enemy)
                 local model, targetType = ResolveAimbotEnemyTargetType(enemy)
                 if not model or not targetType then
                     return
@@ -7056,7 +7058,7 @@ ErrorReporter.set_game(GameName)
                     TrackedRangeTargets[model] = nil
                 end
             end
-            local function UnregisterAimbotEnemy(enemy)
+            function UnregisterAimbotEnemy(enemy)
                 local tracked = TrackedEnemies[enemy]
                 if tracked then
                     if tracked.targetType == 'Range Targets' then
@@ -7077,7 +7079,7 @@ ErrorReporter.set_game(GameName)
                     TrackedPracticeDummies[model] = nil
                 end
             end
-            local function EnsureAimbotTargetTracking()
+            function EnsureAimbotTargetTracking()
                 if not Connections then
                     return
                 end
@@ -7113,7 +7115,7 @@ ErrorReporter.set_game(GameName)
                     end
                 end
             end
-            local function IsAimbotGameReady()
+            function IsAimbotGameReady()
                 local fighter = ResolveLocalFighter()
                 if not fighter then
                     return false
@@ -7135,7 +7137,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return true
             end
-            local function FormatAmmoValue(value)
+            function FormatAmmoValue(value)
                 if type(value) ~= 'number' then
                     return nil
                 end
@@ -7144,7 +7146,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return tostring(math.max(0, math.floor(value + 0.5)))
             end
-            local function BuildWeaponInfoText(weaponInfo)
+            function BuildWeaponInfoText(weaponInfo)
                 if not weaponInfo then
                     return nil
                 end
@@ -7160,7 +7162,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return table.concat(segments, ' | ')
             end
-            local function ReadWeaponInfo(player)
+            function ReadWeaponInfo(player)
                 local observer = WeaponInfoConnections[player]
                 local item = observer and observer.Item
                 if not item then
@@ -7201,10 +7203,10 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function InvalidateWeaponInfo(player)
+            function InvalidateWeaponInfo(player)
                 WeaponInfoCache[player] = nil
             end
-            local function DisconnectWeaponInfoConnection(observer, key)
+            function DisconnectWeaponInfoConnection(observer, key)
                 if not observer then
                     return
                 end
@@ -7216,7 +7218,7 @@ ErrorReporter.set_game(GameName)
                     observer[key] = nil
                 end
             end
-            local function DisconnectWeaponInfoConnections(player)
+            function DisconnectWeaponInfoConnections(player)
                 local observer = WeaponInfoConnections[player]
                 if not observer then
                     return
@@ -7227,7 +7229,7 @@ ErrorReporter.set_game(GameName)
                 DisconnectWeaponInfoConnection(observer, 'AmmoReserveChanged')
                 WeaponInfoConnections[player] = nil
             end
-            local function ConnectWeaponInfoSignal(signal, observer, key, callback)
+            function ConnectWeaponInfoSignal(signal, observer, key, callback)
                 DisconnectWeaponInfoConnection(observer, key)
                 if not signal or type(signal.Connect) ~= 'function' then
                     return
@@ -7238,7 +7240,7 @@ ErrorReporter.set_game(GameName)
                     observer[key] = connection
                 end
             end
-            local function AttachWeaponInfoItemObservers(player, observer, item)
+            function AttachWeaponInfoItemObservers(player, observer, item)
                 DisconnectWeaponInfoConnection(observer, 'EquippedChanged')
                 DisconnectWeaponInfoConnection(observer, 'AmmoChanged')
                 DisconnectWeaponInfoConnection(observer, 'AmmoReserveChanged')
@@ -7271,7 +7273,7 @@ ErrorReporter.set_game(GameName)
                     InvalidateWeaponInfo(player)
                 end)
             end
-            local function AttachWeaponInfoObservers(player, fighter)
+            function AttachWeaponInfoObservers(player, fighter)
                 if not player then
                     return
                 end
@@ -7314,14 +7316,14 @@ ErrorReporter.set_game(GameName)
                 ConnectWeaponInfoSignal(fighter.EquippedItemChanged, observer, 'EquippedItemChanged', refreshItemObservers)
                 refreshItemObservers()
             end
-            local function RegisterWeaponInfoFighter(fighter)
+            function RegisterWeaponInfoFighter(fighter)
                 local player = fighter and fighter.Player
                 if not player or player == LP then
                     return
                 end
                 AttachWeaponInfoObservers(player, fighter)
             end
-            local function UnregisterWeaponInfoFighter(fighter)
+            function UnregisterWeaponInfoFighter(fighter)
                 local player = fighter and fighter.Player
                 if not player or player == LP then
                     return
@@ -7333,7 +7335,7 @@ ErrorReporter.set_game(GameName)
                 DisconnectWeaponInfoConnections(player)
                 InvalidateWeaponInfo(player)
             end
-            local function EnsureWeaponInfoTracking()
+            function EnsureWeaponInfoTracking()
                 if not Connections or WeaponInfoTrackingConnected then
                     return
                 end
@@ -7367,7 +7369,7 @@ ErrorReporter.set_game(GameName)
                 end
                 WeaponInfoTrackingConnected = true
             end
-            local function GetCachedWeaponInfo(player)
+            function GetCachedWeaponInfo(player)
                 local observer = WeaponInfoConnections[player]
                 local item = observer and observer.Item or nil
                 local reloadCooldown = item and rawget(item, '_reload_cooldown') or nil
@@ -7391,32 +7393,32 @@ ErrorReporter.set_game(GameName)
                 }
                 return weaponInfo
             end
-            local function BuildPlayerWeaponText(weaponInfoText, showWeapon)
+            function BuildPlayerWeaponText(weaponInfoText, showWeapon)
                 if showWeapon and weaponInfoText and weaponInfoText ~= '' then
                     return weaponInfoText
                 end
                 return ''
             end
-            local function BuildPlayerDistanceText(dist, showDistance)
+            function BuildPlayerDistanceText(dist, showDistance)
                 if showDistance then
                     return string.format('%dm', math.floor(dist))
                 end
                 return ''
             end
-            local function BuildHealthText(humanoid, showHealthNum)
+            function BuildHealthText(humanoid, showHealthNum)
                 if showHealthNum and humanoid then
                     return tostring(math.floor(humanoid.Health + 0.5))
                 end
                 return ''
             end
-            local function BuildVerticalHealthText(humanoid)
+            function BuildVerticalHealthText(humanoid)
                 if not humanoid then
                     return ''
                 end
                 local currentHealth = math.max(0, math.floor(humanoid.Health + 0.5))
                 return tostring(currentHealth)
             end
-            local function GetHealthBarColor(healthRatio)
+            function GetHealthBarColor(healthRatio)
                 local ratio = math.clamp(healthRatio or 0, 0, 1)
                 if ratio <= 0.5 then
                     return BlendColor(PLAYER_CARD_THEME.BarLowColor, PLAYER_CARD_THEME.BarMidColor, ratio / 0.5)
@@ -7424,16 +7426,16 @@ ErrorReporter.set_game(GameName)
                 return BlendColor(PLAYER_CARD_THEME.BarMidColor, PLAYER_CARD_THEME.BarHighColor, (ratio - 0.5) / 0.5)
             end
             do
-            local EspClassic = RivalsRuntimeBridge.ESPClassic
-            local PlayerStatusInfoCache = RivalsRuntimeBridge.PlayerStatusInfoCache
-            local function GetReactiveBarColor(ratio)
+            EspClassic = RivalsRuntimeBridge.ESPClassic
+            PlayerStatusInfoCache = RivalsRuntimeBridge.PlayerStatusInfoCache
+            function GetReactiveBarColor(ratio)
                 return BlendColor(
                     PLAYER_CARD_THEME.Classic.ReactiveLowColor,
                     PLAYER_CARD_THEME.BarHighColor,
                     math.clamp(ratio or 0, 0, 1)
                 )
             end
-            local function ResolveEspRankProfile()
+            function ResolveEspRankProfile()
                 if RivalsRuntimeBridge.EspRankProfileCache then
                     return RivalsRuntimeBridge.EspRankProfileCache
                 end
@@ -7464,7 +7466,7 @@ ErrorReporter.set_game(GameName)
                 }
                 return RivalsRuntimeBridge.EspRankProfileCache
             end
-            local function ResolveEspRankName(displayElo)
+            function ResolveEspRankName(displayElo)
                 local elo = tonumber(displayElo)
                 if elo == nil then
                     return 'Unranked'
@@ -7494,10 +7496,10 @@ ErrorReporter.set_game(GameName)
                 end
                 return 'Unranked'
             end
-            local function InvalidatePlayerStatusInfo(player)
+            function InvalidatePlayerStatusInfo(player)
                 RivalsRuntimeBridge.PlayerStatusInfoCache[player] = nil
             end
-            local function GetCachedPlayerStatusInfo(player)
+            function GetCachedPlayerStatusInfo(player)
                 local cached = PlayerStatusInfoCache[player]
                 if cached then
                     return cached
@@ -7510,7 +7512,7 @@ ErrorReporter.set_game(GameName)
                 PlayerStatusInfoCache[player] = cached
                 return cached
             end
-            local function DisconnectEspStatusObservers(entry)
+            function DisconnectEspStatusObservers(entry)
                 for _, connection in pairs(entry.statusConnections or {}) do
                     pcall(function()
                         connection:Disconnect()
@@ -7518,7 +7520,7 @@ ErrorReporter.set_game(GameName)
                 end
                 entry.statusConnections = nil
             end
-            local function AttachEspStatusObservers(player, entry)
+            function AttachEspStatusObservers(player, entry)
                 DisconnectEspStatusObservers(entry)
                 entry.statusConnections = {
                     displayElo = player:GetAttributeChangedSignal('DisplayELO'):Connect(GuardRivalsCallback('ESP_DisplayELOChanged', function()
@@ -7530,7 +7532,7 @@ ErrorReporter.set_game(GameName)
                 }
                 InvalidatePlayerStatusInfo(player)
             end
-            local function BuildEspStatusText(player, settings, entry)
+            function BuildEspStatusText(player, settings, entry)
                 local deflectCheck = RivalsRuntimeBridge.IsRivalsKatanaDeflectActiveItem
                 local isDeflecting = false
                 if settings.ShowDeflecting and deflectCheck then
@@ -7573,7 +7575,7 @@ ErrorReporter.set_game(GameName)
                 entry.statusCacheValue = value
                 return value
             end
-            local function SmoothEspRatio(currentRatio, targetRatio, deltaTime)
+            function SmoothEspRatio(currentRatio, targetRatio, deltaTime)
                 targetRatio = math.clamp(targetRatio or 0, 0, 1)
                 if type(currentRatio) ~= 'number' then
                     return targetRatio
@@ -7591,7 +7593,7 @@ ErrorReporter.set_game(GameName)
             EspClassic.BuildStatusText = BuildEspStatusText
             EspClassic.SmoothRatio = SmoothEspRatio
             end
-            local function GetPartScreenBounds(part, camera, boundsCache)
+            function GetPartScreenBounds(part, camera, boundsCache)
                 if not part or not part:IsA('BasePart') or not camera then
                     return nil
                 end
@@ -7646,7 +7648,7 @@ ErrorReporter.set_game(GameName)
                     CenterY = minY + ((maxY - minY) * 0.5),
                 }
             end
-            local function ReadCharacterEspParts(character, cache)
+            function ReadCharacterEspParts(character, cache)
                 if not character then
                     return nil
                 end
@@ -7677,7 +7679,7 @@ ErrorReporter.set_game(GameName)
                 cache.HitboxHeadBoundsCache = cache.HitboxHeadBoundsCache or {}
                 return cache
             end
-            local function GetHitboxScreenBounds(characterParts, character, camera)
+            function GetHitboxScreenBounds(characterParts, character, camera)
                 if not characterParts or not character or not camera then
                     return nil
                 end
@@ -7712,23 +7714,23 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local EspRenderSettings = {}
-            local EspRenderSettingWatchersConnected = false
-            local function ReadEspToggleValue(toggleId, fallback)
+            EspRenderSettings = {}
+            EspRenderSettingWatchersConnected = false
+            function ReadEspToggleValue(toggleId, fallback)
                 local toggle = Toggles[toggleId]
                 if toggle ~= nil then
                     return toggle.Value == true
                 end
                 return fallback
             end
-            local function ReadEspOptionValue(optionId, fallback)
+            function ReadEspOptionValue(optionId, fallback)
                 local option = Options[optionId]
                 if option ~= nil and option.Value ~= nil then
                     return option.Value
                 end
                 return fallback
             end
-            local function RefreshEspRenderSettings()
+            function RefreshEspRenderSettings()
                 EspRenderSettings = {
                     Enabled = ReadEspToggleValue('P1S1T1', true),
                     ShowHighlight = ReadEspToggleValue('P1S1T2', true),
@@ -7757,12 +7759,12 @@ ErrorReporter.set_game(GameName)
                 end
                 return EspRenderSettings
             end
-            local function RegisterEspRenderSettingWatcher(setting)
+            function RegisterEspRenderSettingWatcher(setting)
                 if setting and type(setting.OnChanged) == 'function' then
                     setting:OnChanged(RefreshEspRenderSettings)
                 end
             end
-            local function EnsureEspRenderSettingsTracking()
+            function EnsureEspRenderSettingsTracking()
                 if EspRenderSettingWatchersConnected then
                     return
                 end
@@ -7799,14 +7801,14 @@ ErrorReporter.set_game(GameName)
                 RefreshEspRenderSettings()
             end
             RefreshEspRenderSettings()
-            local HighlightContainer = Workspace
-            local HazardAdornmentContainer = Workspace
-            local ESPObjects = {}
-            local DedicatedAimbotHitboxPartNames = {
+            HighlightContainer = Workspace
+            HazardAdornmentContainer = Workspace
+            ESPObjects = {}
+            DedicatedAimbotHitboxPartNames = {
                 HitboxHead = true,
                 HitboxBody = true,
             }
-            local ResolveAimbotVisibilityRaycastParams
+            ResolveAimbotVisibilityRaycastParams = nil
             do
                 local AimbotVisibilityRaycastState = {
                     Filter = {},
@@ -7823,7 +7825,7 @@ ErrorReporter.set_game(GameName)
                     return AimbotVisibilityRaycastState.Params
                 end
             end
-            local function IsPointVisible(character, worldPoint)
+            function IsPointVisible(character, worldPoint)
                 local cam = Workspace.CurrentCamera
                 if not cam or typeof(worldPoint) ~= 'Vector3' or not Char then return false end
                 local origin = cam.CFrame.Position
@@ -7833,7 +7835,7 @@ ErrorReporter.set_game(GameName)
                 local result = Workspace:Raycast(origin, direction, rayParams)
                 return result == nil
             end
-            local function IsVisible(character, targetPart, targetPoint)
+            function IsVisible(character, targetPart, targetPoint)
                 if not targetPart then
                     return false
                 end
@@ -7841,13 +7843,13 @@ ErrorReporter.set_game(GameName)
                 return IsPointVisible(character, point)
             end
             do
-            local EspClassic = RivalsRuntimeBridge.ESPClassic
-            local function CreateEspLine()
+            EspClassic = RivalsRuntimeBridge.ESPClassic
+            function CreateEspLine()
                 local line = Drawing.new('Line')
                 line.Visible = false
                 return line
             end
-            local function EnsureEspCornerBox(entry)
+            function EnsureEspCornerBox(entry)
                 if entry.cornerBox then
                     return entry.cornerBox
                 end
@@ -7861,20 +7863,20 @@ ErrorReporter.set_game(GameName)
                 entry.cornerBox = cornerBox
                 return cornerBox
             end
-            local function HideEspBox(entry)
+            function HideEspBox(entry)
                 for _, segment in ipairs(entry.cornerBox or {}) do
                     SetDrawingVisible(segment.outline, false)
                     SetDrawingVisible(segment.color, false)
                 end
             end
-            local function RemoveEspBox(entry)
+            function RemoveEspBox(entry)
                 for _, segment in ipairs(entry.cornerBox or {}) do
                     pcall(function() segment.outline:Remove() end)
                     pcall(function() segment.color:Remove() end)
                 end
                 entry.cornerBox = nil
             end
-            local function SetEspCornerSegment(segment, fromPoint, toPoint, color, scale)
+            function SetEspCornerSegment(segment, fromPoint, toPoint, color, scale)
                 local outline = segment.outline
                 outline.From = fromPoint
                 outline.To = toPoint
@@ -7890,7 +7892,7 @@ ErrorReporter.set_game(GameName)
                 colorLine.Thickness = math.max(PLAYER_CARD_THEME.Classic.BoxThickness * scale, 1)
                 SetDrawingVisible(colorLine, true)
             end
-            local function DrawEspBox(entry, bounds, color, scale)
+            function DrawEspBox(entry, bounds, color, scale)
                 local minX, minY = bounds.MinX, bounds.MinY
                 local maxX, maxY = bounds.MaxX, bounds.MaxY
                 local width = math.max(maxX - minX, 1)
@@ -7907,7 +7909,7 @@ ErrorReporter.set_game(GameName)
                 SetEspCornerSegment(cornerBox[7], Vector2.new(maxX, minY), Vector2.new(maxX, minY + segmentLength), color, scale)
                 SetEspCornerSegment(cornerBox[8], Vector2.new(maxX, maxY - segmentLength), Vector2.new(maxX, maxY), color, scale)
             end
-            local function EnsureEspStatusText(entry)
+            function EnsureEspStatusText(entry)
                 if entry.statusText then
                     return entry.statusText
                 end
@@ -7925,7 +7927,7 @@ ErrorReporter.set_game(GameName)
             EspClassic.DrawBox = DrawEspBox
             EspClassic.EnsureStatusText = EnsureEspStatusText
             end
-            local function CreateESP(player)
+            function CreateESP(player)
                 if ESPObjects[player] then return end
                 local highlight = Instance.new('Highlight')
                 highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -7993,7 +7995,7 @@ ErrorReporter.set_game(GameName)
                 AttachWeaponInfoObservers(player)
                 RivalsRuntimeBridge.ESPClassic.AttachStatusObservers(player, ESPObjects[player])
             end
-            local function DestroyESP(player)
+            function DestroyESP(player)
                 local entry = ESPObjects[player]
                 if not entry then return end
                 pcall(function() entry.highlight:Destroy() end)
@@ -8017,12 +8019,12 @@ ErrorReporter.set_game(GameName)
                 RivalsRuntimeBridge.PlayerStatusInfoCache[player] = nil
                 ESPObjects[player] = nil
             end
-            local function DestroyAllESP()
+            function DestroyAllESP()
                 for player in pairs(ESPObjects) do
                     DestroyESP(player)
                 end
             end
-            local function HideESP(entry)
+            function HideESP(entry)
                 entry.highlight.Enabled = false
                 SetDrawingVisible(entry.nameText, false)
                 HideRoundedRect(entry.healthBarBg)
@@ -8039,7 +8041,7 @@ ErrorReporter.set_game(GameName)
                 end
                 RivalsRuntimeBridge.ESPClassic.HideBox(entry)
             end
-            local function ShouldShow(player, showTeammates)
+            function ShouldShow(player, showTeammates)
                 if player == LP then return false end
                 if showTeammates then return true end
                 local myTeam = LP:GetAttribute('TeamID')
@@ -8050,7 +8052,7 @@ ErrorReporter.set_game(GameName)
                 if player.Team == nil or LP.Team == nil then return true end
                 return player.Team ~= LP.Team
             end
-            local function IsPlayerInLocalEnvironment(player)
+            function IsPlayerInLocalEnvironment(player)
                 if not player or player == LP or player.Parent ~= Players then
                     return false
                 end
@@ -8067,7 +8069,7 @@ ErrorReporter.set_game(GameName)
                     and character.Parent ~= nil
                     and character:GetAttribute('EnvironmentID') == localEnvironmentId
             end
-            local function ReconcileESPPlayers()
+            function ReconcileESPPlayers()
                 local showTeammates = EspRenderSettings.ShowTeammates
                 for player in pairs(ESPObjects) do
                     if not IsPlayerInLocalEnvironment(player)
@@ -8082,14 +8084,14 @@ ErrorReporter.set_game(GameName)
                     end
                 end
             end
-            local function IsRivalsPickupPlace()
+            function IsRivalsPickupPlace()
                 return type(CurrentRivalsPlace) == 'number' and (
                     CurrentRivalsPlace == RIVALS_SHARED_MATCH_PLACE
                     or CurrentRivalsPlace == 71874690745115
                     or CurrentRivalsPlace == 133215910299950
                 )
             end
-            local function ResolveRivalsDataRemote(remoteName, expectedClass)
+            function ResolveRivalsDataRemote(remoteName, expectedClass)
                 expectedClass = expectedClass or 'RemoteEvent'
                 local remotesFolder = ReplicatedStorage:FindFirstChild('Remotes')
                 local dataFolder = remotesFolder and remotesFolder:FindFirstChild('Data')
@@ -8099,7 +8101,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function GetRivalsPickupTouchPart()
+            function GetRivalsPickupTouchPart()
                 if not InitCharacter() or not Char or not HumanoidRootPart then
                     return nil
                 end
@@ -8107,7 +8109,7 @@ ErrorReporter.set_game(GameName)
                     or HumanoidRootPart
                     or Char:FindFirstChildWhichIsA('BasePart')
             end
-            local function GetRivalsPickupKind(drop)
+            function GetRivalsPickupKind(drop)
                 if not drop or not drop:IsA('BasePart') or drop.Name ~= '_drop' then
                     return nil
                 end
@@ -8119,7 +8121,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function IsRivalsSpawnShieldActive(character)
+            function IsRivalsSpawnShieldActive(character)
                 if not character or not character.Parent then
                     return false
                 end
@@ -8139,7 +8141,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return FighterDataCache.ReadEntity(fighter.Entity)
             end
-            local function TouchRivalsPickupDrop(drop, touchPart)
+            function TouchRivalsPickupDrop(drop, touchPart)
                 if not drop or not drop.Parent or not touchPart or not touchPart.Parent then
                     return false
                 end
@@ -8151,7 +8153,7 @@ ErrorReporter.set_game(GameName)
                 end)
                 return true
             end
-            local LocalPickupObserver = {
+            LocalPickupObserver = {
                 RetryActive = false,
                 RetryDelay = 0.05,
                 RetryNonce = 0,
@@ -8332,7 +8334,7 @@ ErrorReporter.set_game(GameName)
                 LocalPickupObserver.SyncRetry(shouldRetry)
                 return shouldRetry
             end
-            local function RefreshLocalPickupHealthObserver()
+            function RefreshLocalPickupHealthObserver()
                 if not IsRivalsPickupPlace() or not InitCharacter() or not Humanoid then
                     DisconnectWeaponInfoConnection(LocalPickupObserver, 'HealthChanged')
                     return
@@ -8345,11 +8347,11 @@ ErrorReporter.set_game(GameName)
                 end)
             end
             do
-            local function IsRivalsModToggleEnabled(toggleId)
+            function IsRivalsModToggleEnabled(toggleId)
                 local toggle = Toggles[toggleId]
                 return toggle ~= nil and toggle.Value == true
             end
-            local function ReadRivalsModNumber(optionId, fallback)
+            function ReadRivalsModNumber(optionId, fallback)
                 local option = Options[optionId]
                 if option ~= nil and type(option.Value) == 'number' then
                     return option.Value
@@ -9301,7 +9303,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return fallback
             end
-            local function ResolveRivalsModsStartShootingItem(item)
+            function ResolveRivalsModsStartShootingItem(item)
                 if type(item) == 'table' and type(item.Name) == 'string' and item.Name ~= '' then
                     return item
                 end
@@ -9319,7 +9321,7 @@ ErrorReporter.set_game(GameName)
                 local weaponSpeedBoost = math.clamp(ReadRivalsModNumber('P4S1S4', 85), 0, 85)
                 return 1 / (1 + (weaponSpeedBoost / 100))
             end
-            local function ResolveRivalsReloadKey(item, reloadEnum)
+            function ResolveRivalsReloadKey(item, reloadEnum)
                 local info = item and item.Info or nil
                 if not info then
                     return nil
@@ -9338,7 +9340,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return 'Reload'
             end
-            local function WithScaledRivalsReloadTimings(info, reloadKey, reloadDurationScale, callback)
+            function WithScaledRivalsReloadTimings(info, reloadKey, reloadDurationScale, callback)
                 if type(callback) ~= 'function' then
                     return nil
                 end
@@ -9381,7 +9383,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return table.unpack(results, 2, results.n)
             end
-            local function StopRivalsEquipAnimations(item)
+            function StopRivalsEquipAnimations(item)
                 local viewModel = item and item.ViewModel
                 if not viewModel then
                     return
@@ -9746,8 +9748,8 @@ ErrorReporter.set_game(GameName)
                 state.OriginalGunEquip = nil
             end
             end
-            local RefreshAimbotEnabledToggleKeypickerState = nil
-            local AimbotBridge = {}
+            RefreshAimbotEnabledToggleKeypickerState = nil
+            AimbotBridge = {}
             do
             do
                 local function IsTouchAimbotDevice()
@@ -10071,17 +10073,17 @@ ErrorReporter.set_game(GameName)
             end
             end
             do
-            local function ResolveAimbotSilentDebugEnabled()
+            function ResolveAimbotSilentDebugEnabled()
                 return Toggles.P9S2T1 and Toggles.P9S2T1.Value == true
             end
-            local function ReadAimbotSilentToggle(toggleId, fallback)
+            function ReadAimbotSilentToggle(toggleId, fallback)
                 local toggle = Toggles[toggleId]
                 if toggle ~= nil then
                     return toggle.Value == true
                 end
                 return fallback == true
             end
-            local function ReleaseTriggerbotMouseHold()
+            function ReleaseTriggerbotMouseHold()
                 if not AimbotSilentConnections.TriggerbotHoldingMouse then
                     return
                 end
@@ -10101,7 +10103,7 @@ ErrorReporter.set_game(GameName)
                 AimbotSilentConnections.CameraAimRandomTarget = nil
                 AimbotSilentConnections.CameraAimRandomPart = nil
             end
-            local function DisconnectAimbotSilentConnections()
+            function DisconnectAimbotSilentConnections()
                 ReleaseTriggerbotMouseHold()
                 for _, connectionName in ipairs({ 'Shot', 'ProjectileShot' }) do
                     local connection = AimbotSilentConnections[connectionName]
@@ -10122,14 +10124,14 @@ ErrorReporter.set_game(GameName)
                 AimbotSilentConnections.OriginalStartShooting = nil
                 AimbotSilentConnections.WrappedStartShooting = nil
             end
-            local function ResetAimbotRuntimeState()
+            function ResetAimbotRuntimeState()
                 DisconnectAimbotSilentConnections()
                 AimbotSilentState.Item = nil
                 AimbotSilentState.HookTarget = nil
                 AimbotSilentState.HookTargetCapturedAt = 0
                 AimbotSilentState.ShotPrimeDepth = 0
             end
-            local function EnsureAimbotSilentConnections(item)
+            function EnsureAimbotSilentConnections(item)
                 local state = AimbotSilentState
                 if state.Item ~= item then
                     DisconnectAimbotSilentConnections()
@@ -10155,7 +10157,7 @@ ErrorReporter.set_game(GameName)
                     end))
                 end
             end
-            local function ResolveAimbotSilentHoldWindow(item)
+            function ResolveAimbotSilentHoldWindow(item)
                 local holdWindow = 0
                 local info = item and item.Info or nil
                 if ReadAimbotSilentToggle('P9S2T8', true) and type(info and info.ShootCooldown) == 'number' then
@@ -10172,7 +10174,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return holdWindow
             end
-            local function ResolveAimbotSilentHookTargetCacheWindow(item)
+            function ResolveAimbotSilentHookTargetCacheWindow(item)
                 local info = item and item.Info or nil
                 local cacheWindow = math.huge
                 local function consider(window)
@@ -14293,7 +14295,7 @@ ErrorReporter.set_game(GameName)
                 },
             }
 
-            local function FullSpoofDisconnectAll(list)
+            function FullSpoofDisconnectAll(list)
                 for index = #list, 1, -1 do
                     local connection = list[index]
                     list[index] = nil
@@ -14303,11 +14305,11 @@ ErrorReporter.set_game(GameName)
                 end
             end
 
-            local function FullSpoofEscapePattern(value)
+            function FullSpoofEscapePattern(value)
                 return tostring(value):gsub('([%^%$%(%)%%%.%[%]%*%+%-%?])', '%%%1')
             end
 
-            local function FullSpoofDeepCopy(value, seen)
+            function FullSpoofDeepCopy(value, seen)
                 if type(value) ~= 'table' then return value end
                 seen = seen or {}
                 if seen[value] then return seen[value] end
@@ -17721,7 +17723,7 @@ ErrorReporter.set_game(GameName)
                 end)
             end
             do
-            local ResolveAimbotSilentHookTarget = function(item)
+            ResolveAimbotSilentHookTarget = function(item)
                 local state = AimbotSilentState
                 local now = tick()
                 local cacheWindow = AimbotBridge.ResolveAimbotSilentHookTargetCacheWindow(item)
@@ -17741,7 +17743,7 @@ ErrorReporter.set_game(GameName)
                 state.HookTargetCapturedAt = targetInfo and now or 0
                 return targetInfo
             end
-            local ShouldBypassAimbotSilentReloadBlock = function(item, state, holdWindow, now, queuePending, inputSpammingFlag)
+            ShouldBypassAimbotSilentReloadBlock = function(item, state, holdWindow, now, queuePending, inputSpammingFlag)
                 if AimbotBridge.ReadAimbotSilentToggle('P9S2T6', true) and queuePending and not (AimbotBridge.ReadAimbotSilentToggle('P9S2T7', true) and inputSpammingFlag) then
                     return true
                 end
@@ -17759,7 +17761,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return false
             end
-            local EvaluateAimbotSilentRuntime = function(item, shootInputHeld)
+            EvaluateAimbotSilentRuntime = function(item, shootInputHeld)
                 AimbotBridge.EnsureAimbotSilentConnections(item)
                 local state = AimbotSilentState
                 local lastShot = AimbotBridge.ReadAimbotLastShot(item)
@@ -17850,7 +17852,7 @@ ErrorReporter.set_game(GameName)
                     toggleAimEnabled = item and item.ToggleAimEnabled or nil,
                 }
             end
-            local EnsureAimbotStatusNotification = function(description)
+            EnsureAimbotStatusNotification = function(description)
                 if AimbotStatusNotification then
                     return true
                 end
@@ -17865,13 +17867,13 @@ ErrorReporter.set_game(GameName)
                 end
                 return false
             end
-            local FormatAimbotStatusNumber = function(value)
+            FormatAimbotStatusNumber = function(value)
                 if type(value) ~= 'number' then
                     return '--'
                 end
                 return string.format('%.3f', value)
             end
-            local DestroyAimbotStatusNotification = function()
+            DestroyAimbotStatusNotification = function()
                 if AimbotStatusNotification then
                     pcall(function()
                         AimbotStatusNotification:Destroy()
@@ -17881,7 +17883,7 @@ ErrorReporter.set_game(GameName)
                 AimbotStatusKey = nil
                 AimbotStatusDescription = nil
             end
-            local NotifyAimbotStatus = function(statusKey, description, force)
+            NotifyAimbotStatus = function(statusKey, description, force)
                 local statusNotifications = Toggles.P2S1T6 and Toggles.P2S1T6.Value
                 if not force and not statusNotifications then
                     DestroyAimbotStatusNotification()
@@ -17902,7 +17904,7 @@ ErrorReporter.set_game(GameName)
                 AimbotStatusKey = statusKey
                 AimbotStatusDescription = description
             end
-            local BuildAimbotSilentStatus = function(targetInfo, evaluation)
+            BuildAimbotSilentStatus = function(targetInfo, evaluation)
                 local targetName = targetInfo and targetInfo.displayName or 'No target'
                 if not AimbotBridge.ResolveAimbotSilentDebugEnabled() then
                     if evaluation.blockedReason then
@@ -17937,13 +17939,13 @@ ErrorReporter.set_game(GameName)
                 end
                 return table.concat(lines, '\n')
             end
-            local AppendAimbotTargetPartCandidate = function(candidates, seen, candidate)
+            AppendAimbotTargetPartCandidate = function(candidates, seen, candidate)
                 if candidate and candidate:IsA('BasePart') and not seen[candidate] then
                     seen[candidate] = true
                     candidates[#candidates + 1] = candidate
                 end
             end
-            local GetAimbotTargetPartCandidates = function(subject, aimPart)
+            GetAimbotTargetPartCandidates = function(subject, aimPart)
                 if not subject then
                     return {}
                 end
@@ -17977,7 +17979,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return candidates
             end
-            local GetAimbotTargetPartSamplePoints = function(part, targetType)
+            GetAimbotTargetPartSamplePoints = function(part, targetType)
                 if not part or not part:IsA('BasePart') then
                     return {}
                 end
@@ -18014,7 +18016,7 @@ ErrorReporter.set_game(GameName)
                 addLocalPoint(0, 0, -insetZ)
                 return samples
             end
-            local ResolveVisiblePointOnAimbotPart = function(subject, candidate, targetType)
+            ResolveVisiblePointOnAimbotPart = function(subject, candidate, targetType)
                 for _, samplePoint in ipairs(GetAimbotTargetPartSamplePoints(candidate, targetType)) do
                     if IsVisible(subject, candidate, samplePoint) then
                         return samplePoint
@@ -18022,14 +18024,14 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local IsHeadAimbotTargetPart = function(candidate)
+            IsHeadAimbotTargetPart = function(candidate)
                 if not candidate then
                     return false
                 end
                 local name = candidate.Name
                 return name == 'HitboxHead'
             end
-            local ResolveRandomVisibleAimbotTargetPart = function(subject, candidates, fallback, targetType)
+            ResolveRandomVisibleAimbotTargetPart = function(subject, candidates, fallback, targetType)
                 local headCandidates = {}
                 local bodyCandidates = {}
                 for _, candidate in ipairs(candidates) do
@@ -18062,8 +18064,8 @@ ErrorReporter.set_game(GameName)
                 end
                 return fallback, fallback and fallback.Position or nil, false
             end
-            local ResolveVisibleAimbotTargetPart
-            local ResolvePrefilteredAimbotTargetPart
+            ResolveVisibleAimbotTargetPart = nil
+            ResolvePrefilteredAimbotTargetPart = nil
             do
                 local ResolveVisibilityCacheProfileId = function(cacheProfile)
                     local profileId = cacheProfile and cacheProfile.Id
@@ -18285,11 +18287,11 @@ ErrorReporter.set_game(GameName)
                     return fallbackPart, fallbackPoint, false
                 end
             end
-            local IsAimbotPlayerTargetAlive = function(subject)
+            IsAimbotPlayerTargetAlive = function(subject)
                 local humanoid = subject:FindFirstChild('Humanoid')
                 return humanoid ~= nil and humanoid.Health > 0
             end
-            local BuildAimbotTargetInfo = function(subject, targetType, aimPart, mousePosition, player, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, allowHiddenTargets, requireVisible)
+            BuildAimbotTargetInfo = function(subject, targetType, aimPart, mousePosition, player, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, allowHiddenTargets, requireVisible)
                 if not subject or not subject.Parent then
                     RivalsRuntimeBridge.RecordTargetValidityRejection('subject_invalid', subject, player, targetType)
                     return nil
@@ -18387,7 +18389,7 @@ ErrorReporter.set_game(GameName)
                     isVisible = isVisible,
                 }
             end
-            local ConsiderBestAimbotTarget = function(bestTarget, subject, targetType, aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, player, camera, cacheProfile, requireVisible)
+            ConsiderBestAimbotTarget = function(bestTarget, subject, targetType, aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, player, camera, cacheProfile, requireVisible)
                 local targetInfo = BuildAimbotTargetInfo(subject, targetType, aimPart, mousePosition, player, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, nil, requireVisible)
                 if targetInfo and (not requireVisible or targetInfo.isVisible)
                     and (not bestTarget or targetInfo.selectionDistance < bestTarget.selectionDistance) then
@@ -18395,7 +18397,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return bestTarget
             end
-            local RefreshAimbotTargetInfo = function(targetInfo, aimPart, mousePosition, maxDistance, cacheProfile)
+            RefreshAimbotTargetInfo = function(targetInfo, aimPart, mousePosition, maxDistance, cacheProfile)
                 if not targetInfo then
                     return nil
                 end
@@ -18447,12 +18449,12 @@ ErrorReporter.set_game(GameName)
             RivalsRuntimeBridge.ResolveAimbotSilentHookTarget = ResolveAimbotSilentHookTarget
             end
             do
-            local CursorTriggerbotRaycastFilter = {}
-            local CursorTriggerbotRaycastParams = RaycastParams.new()
+            CursorTriggerbotRaycastFilter = {}
+            CursorTriggerbotRaycastParams = RaycastParams.new()
             CursorTriggerbotRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
             CursorTriggerbotRaycastParams.FilterDescendantsInstances = CursorTriggerbotRaycastFilter
-            local CursorTriggerbotRaycastFilterCharacter = nil
-            local function ResolveCursorTriggerbotRaycastParams()
+            CursorTriggerbotRaycastFilterCharacter = nil
+            function ResolveCursorTriggerbotRaycastParams()
                 local character = LP.Character
                 if character ~= CursorTriggerbotRaycastFilterCharacter then
                     CursorTriggerbotRaycastFilterCharacter = character
@@ -18462,7 +18464,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return CursorTriggerbotRaycastParams
             end
-            local function ResolveCursorTriggerbotTarget()
+            function ResolveCursorTriggerbotTarget()
                 EnsureAimbotTargetTracking()
                 local camera = Workspace.CurrentCamera
                 if not camera then
@@ -18496,15 +18498,15 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local SharedTryTriggerbotShot
-            local SharedGetBestTriggerbotTarget
-            local GetBestTriggerbotTarget
+            SharedTryTriggerbotShot = nil
+            SharedGetBestTriggerbotTarget = nil
+            GetBestTriggerbotTarget = nil
             do
-            local function IsMeleeFastFireItem(item)
+            function IsMeleeFastFireItem(item)
                 local info = item and item.Info or nil
                 return info and (info.Class == 'Melee' or info.Type == 'Melee') and true or false
             end
-            local function ResolveTriggerbotShotInterval(item)
+            function ResolveTriggerbotShotInterval(item)
                 if MeleeFastFire.Enabled and IsMeleeFastFireItem(item) then
                     return MeleeFastFire.IntervalSec
                 end
@@ -18541,10 +18543,10 @@ ErrorReporter.set_game(GameName)
                 if AimbotBridge.ReadAimbotIsCharging(item) then return false end
                 return true
             end
-            local function IsTriggerbotHoldItem(item)
+            function IsTriggerbotHoldItem(item)
                 return item and item.Name == 'Flamethrower'
             end
-            local function FireTriggerbotShot()
+            function FireTriggerbotShot()
                 if not RivalsRuntimeBridge.IsReadyToFight() then
                     RivalsRuntimeBridge.LogDiagnosticEvent('Triggerbot', 'Refused FireTriggerbotShot: gate closed')
                     return false
@@ -18579,7 +18581,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return true
             end
-            local function TryTriggerbotShot(targetInfo, item, shouldPrime)
+            function TryTriggerbotShot(targetInfo, item, shouldPrime)
                 if not targetInfo or not item or AimbotInputState.LeftMouse then
                     AimbotBridge.ReleaseTriggerbotMouseHold()
                     AimbotBridge.ResetTriggerbotReactionState()
@@ -18635,7 +18637,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return FireTriggerbotShot()
             end
-            local CollectBestAimbotTarget = function(requireVisible, ignoreFovOverride)
+            CollectBestAimbotTarget = function(requireVisible, ignoreFovOverride)
                 EnsureAimbotTargetTracking()
                 local aimPart = Options.P2S1D2 and Options.P2S1D2.Value or 'Auto'
                 local fovRadius = Options.P2S1S2 and Options.P2S1S2.Value or 170
@@ -18684,7 +18686,7 @@ ErrorReporter.set_game(GameName)
                 RivalsRuntimeBridge.LastAimbotSweepAt = os.clock()
                 return bestTarget
             end
-            local GetBestAimbotTarget = CollectBestAimbotTarget
+            GetBestAimbotTarget = CollectBestAimbotTarget
             RivalsRuntimeBridge.GetBestAimbotTarget = GetBestAimbotTarget
             function RivalsRuntimeBridge.FlickbotNormal(rng, mean, standardDeviation)
                 local first = math.max(rng:NextNumber(), 1e-15)
@@ -19148,7 +19150,7 @@ ErrorReporter.set_game(GameName)
                     currentRotation.Y + ((yaw - currentRotation.Y + math.pi) % (2 * math.pi) - math.pi) * blendAlpha
                 ))
             end
-            local GetBestTriggerbotTarget = function()
+            GetBestTriggerbotTarget = function()
                 EnsureAimbotTargetTracking()
                 local aimPart = Options.P2S1D2 and Options.P2S1D2.Value or 'Auto'
                 local fovRadius = Options.P2S1S2 and Options.P2S1S2.Value or 170
@@ -19197,7 +19199,7 @@ ErrorReporter.set_game(GameName)
             SharedTryTriggerbotShot = TryTriggerbotShot
             SharedGetBestTriggerbotTarget = GetBestTriggerbotTarget
             end
-            local function ResolveTriggerbotTarget(aimbotEnabled, currentTargetInfo)
+            function ResolveTriggerbotTarget(aimbotEnabled, currentTargetInfo)
                 local aimPart = Options.P2S1D2 and Options.P2S1D2.Value or 'Auto'
                 local maxDistance = DEFAULT_ESP_MAX_DISTANCE
                 local mousePosition = AimbotBridge.GetAimbotPointerPosition()
@@ -19211,7 +19213,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return GetBestTriggerbotTarget()
             end
-            local TryTriggerbotShot = SharedTryTriggerbotShot
+            TryTriggerbotShot = SharedTryTriggerbotShot
             GetBestTriggerbotTarget = SharedGetBestTriggerbotTarget
             RivalsRuntimeBridge.BeginAimbotSilentShot = function(item)
                 if (AimbotSilentState.ShotPrimeDepth or 0) > 0 then
@@ -19255,7 +19257,7 @@ ErrorReporter.set_game(GameName)
             end
             RivalsModsState.BeginAimbotSilentShot = RivalsRuntimeBridge.BeginAimbotSilentShot
             RivalsModsState.FinishAimbotSilentShot = RivalsRuntimeBridge.FinishAimbotSilentShot
-            local function EnsureAimbotSilentStartShootingHook(item)
+            function EnsureAimbotSilentStartShootingHook(item)
                 if AimbotSilentConnections.HookedItem == item then
                     return
                 end
@@ -19280,7 +19282,7 @@ ErrorReporter.set_game(GameName)
                 AimbotSilentConnections.WrappedStartShooting = wrappedStartShooting
                 item.StartShooting = wrappedStartShooting
             end
-            local function UpdateAimbot()
+            function UpdateAimbot()
                 local silentToggleEnabled = Toggles.P2S1T1 and Toggles.P2S1T1.Value == true
                 local triggerToggleEnabled = Toggles.P2S1T7 and Toggles.P2S1T7.Value == true
                 if not silentToggleEnabled and not triggerToggleEnabled then
@@ -19384,7 +19386,7 @@ ErrorReporter.set_game(GameName)
             RivalsRuntimeBridge.UpdateAimbot = UpdateAimbot
             end
             do
-            local function UpdateESP(deltaTime)
+            function UpdateESP(deltaTime)
                 local settings = EspRenderSettings
                 local espEnabled = settings.Enabled
                 if not espEnabled then
@@ -19972,11 +19974,11 @@ ErrorReporter.set_game(GameName)
             end
             -- Shared cosmetic registries/state must outlive the inner implementation
             -- block because the UI is declared later in the same initializer scope.
-            local RivalsCosmetics
-            local RivalsEmotes
-            local RivalsCosmeticsState
+            RivalsCosmetics = nil
+            RivalsEmotes = nil
+            RivalsCosmeticsState = nil
             do
-            local RivalsRagebot = {
+            RivalsRagebot = {
                 RespawnRequestInterval = 1,
                 RespawnBurstCount       = 5,
                 RespawnBurstDelay       = 0.1,
@@ -20014,7 +20016,7 @@ ErrorReporter.set_game(GameName)
             RivalsRagebot.LosRaycastParams.FilterType         = Enum.RaycastFilterType.Exclude
             RivalsRagebot.LosRaycastParams.IgnoreWater        = true
             RivalsRagebot.LosRaycastParams.RespectCanCollide  = false
-            local RivalsRagebotState = {
+            RivalsRagebotState = {
                 Target = nil,
                 HoldCFrame = nil,
                 LastHoldUpdateAt = 0,
@@ -20052,7 +20054,7 @@ ErrorReporter.set_game(GameName)
                 LastHostileTrackerSampleAt = 0,
                 RespawnBinding = nil,
             }
-            local RivalsAutoLoadoutState = {
+            RivalsAutoLoadoutState = {
                 HasRunThisOpen = false,
                 OpenNonce = 0,
                 BoundPageControllers = {},
@@ -20200,8 +20202,8 @@ ErrorReporter.set_game(GameName)
                 CosmeticUiBound = false,
             }
             do
-            local TWO_PI = math.pi * 2
-            local function isRivalsFlightActive()
+            TWO_PI = math.pi * 2
+            function isRivalsFlightActive()
                 local movement = RivalsRuntimeBridge.Movement
                 local flight = type(movement) == 'table' and movement.Flight or nil
                 return type(flight) == 'table' and flight.RootPart ~= nil and flight.RootPart.Parent ~= nil
@@ -20284,7 +20286,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return true
             end
-            local function IsPointInOOBVolume(pos)
+            function IsPointInOOBVolume(pos)
                 local CollectionService = game:GetService('CollectionService')
                 for _, safe in ipairs(CollectionService:GetTagged('OutOfBoundsSafePart')) do
                     if safe:IsA('BasePart') then
@@ -20306,7 +20308,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return false
             end
-            local function GetOOBPartAt(pos)
+            function GetOOBPartAt(pos)
                 local CollectionService = game:GetService('CollectionService')
                 for _, safe in ipairs(CollectionService:GetTagged('OutOfBoundsSafePart')) do
                     if safe:IsA('BasePart') then
@@ -20328,7 +20330,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local KILL_SEAT_SAMPLE_DIRECTIONS = (function()
+            KILL_SEAT_SAMPLE_DIRECTIONS = (function()
                 local d = {}
                 local axes = {
                     Vector3.new( 1,  0,  0), Vector3.new(-1,  0,  0),
@@ -20348,7 +20350,7 @@ ErrorReporter.set_game(GameName)
                 for _, v in ipairs(axes) do d[#d + 1] = v.Unit end
                 return d
             end)()
-            local KILL_SEAT_AXIS_OFFSETS = {
+            KILL_SEAT_AXIS_OFFSETS = {
                 Vector3.new( 1,  0,  0), Vector3.new(-1,  0,  0),
                 Vector3.new( 0,  1,  0), Vector3.new( 0, -1,  0),
                 Vector3.new( 0,  0,  1), Vector3.new( 0,  0, -1),
@@ -20363,7 +20365,7 @@ ErrorReporter.set_game(GameName)
                 Vector3.new(-1,  1,  1), Vector3.new(-1,  1, -1),
                 Vector3.new(-1, -1,  1), Vector3.new(-1, -1, -1),
             }
-            local KILL_SEAT_REFINE_LATTICE = (function()
+            KILL_SEAT_REFINE_LATTICE = (function()
                 local lattice = {}
                 for x = -1, 1 do
                     for y = -1, 1 do
@@ -20532,7 +20534,7 @@ ErrorReporter.set_game(GameName)
             function RivalsRagebot.IsBaitModeEnabled()
                 return Toggles.P8S4T3 and Toggles.P8S4T3.Value == true
             end
-            local function SafeIsCombatTarget(player)
+            function SafeIsCombatTarget(player)
                 if player == nil or player == LP or player.Parent ~= Players then
                     return false
                 end
@@ -20746,9 +20748,9 @@ ErrorReporter.set_game(GameName)
                 end
                 return false, nil
             end
-            local UNDERGROUND_RELOAD_RETRY = 0.20
-            local UNDERGROUND_RELOAD_GRACE = 1.25
-            local function UndergroundDefenseShotInterval(item)
+            UNDERGROUND_RELOAD_RETRY = 0.20
+            UNDERGROUND_RELOAD_GRACE = 1.25
+            function UndergroundDefenseShotInterval(item)
                 local info = itemInfo(item)
                 local interval = 0.05
                 if type(info and rawget(info, 'ShootCooldown')) == 'number' then
@@ -20772,7 +20774,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return math.max(0.05, interval * speedScale)
             end
-            local function UndergroundDefenseHandleWeapon(fighter, now)
+            function UndergroundDefenseHandleWeapon(fighter, now)
                 if fighter == nil then
                     return false
                 end
@@ -20839,7 +20841,7 @@ ErrorReporter.set_game(GameName)
                 RivalsRagebotState.UndergroundDefenseReloadUntil = 0
                 return false
             end
-            local INCOMING_ATTACKER_OBJECT_NAMES = {
+            INCOMING_ATTACKER_OBJECT_NAMES = {
                 'creator',
                 'creatorplayer',
                 'attacker',
@@ -20847,17 +20849,17 @@ ErrorReporter.set_game(GameName)
                 'lastdamager',
                 'damager',
             }
-            local INCOMING_ATTACKER_USERID_NAMES = {
+            INCOMING_ATTACKER_USERID_NAMES = {
                 'creatoruserid',
                 'attackeruserid',
                 'lastattackeruserid',
                 'lastdamageruserid',
                 'damageruserid',
             }
-            local function normalizeAttributeKey(value)
+            function normalizeAttributeKey(value)
                 return tostring(value or ''):lower():gsub('[%s_%-]', '')
             end
-            local function resolveIncomingAttackerValue(value)
+            function resolveIncomingAttackerValue(value)
                 if value == nil then return nil end
                 if typeof(value) == 'Instance' then
                     if value:IsA('Player') then return value end
@@ -20892,7 +20894,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function resolveIncomingDamageAttacker(character, humanoid)
+            function resolveIncomingDamageAttacker(character, humanoid)
                 local containers = { humanoid, character }
                 for _, container in ipairs(containers) do
                     if typeof(container) == 'Instance' then
@@ -20930,7 +20932,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function verifyUndergroundThreatDamage(character, humanoid, threatPlayer)
+            function verifyUndergroundThreatDamage(character, humanoid, threatPlayer)
                 if not threatPlayer or threatPlayer.Parent ~= Players then
                     return false, nil
                 end
@@ -21228,7 +21230,7 @@ ErrorReporter.set_game(GameName)
                 binding:SetEnabled(RivalsRagebot.IsRespawnEnabled())
                 RivalsRuntimeBridge.ReplicateHook.RevertIfIdle()
             end
-            local SHIELD_CLAMP_RAD = math.rad(45)
+            SHIELD_CLAMP_RAD = math.rad(45)
             function RivalsRagebot.ResolveTarget(rawPhase)
                 EnsureAimbotTargetTracking()
                 local camera = Workspace.CurrentCamera
@@ -21490,7 +21492,7 @@ ErrorReporter.set_game(GameName)
                 Genv = __kicia_hook_genv,
             })
             do
-            local RivalsAutoLoadout = {
+            RivalsAutoLoadout = {
                 PageNames = {'PickWeapons', 'PickWeaponsList'},
                 SlotOrder = {
                     { Name = 'Primary', OptionId = 'P8S5D1', SlotIndex = 1 },
@@ -22291,7 +22293,7 @@ ErrorReporter.set_game(GameName)
             RivalsRuntimeBridge.ResetAutoLoadoutState = RivalsAutoLoadout.ResetState
             end
             do
-            local RivalsAutoBan = {
+            RivalsAutoBan = {
                 State = {
                     Controller = nil,
                     BoundDuel = nil,
@@ -22568,7 +22570,7 @@ ErrorReporter.set_game(GameName)
             RivalsRuntimeBridge.ResetAutoBanState = RivalsAutoBan.Reset
             end
             do
-            local RivalsTripmineAutomation = {
+            RivalsTripmineAutomation = {
                 Entries = setmetatable({}, { __mode = 'k' }),
                 DestroyingConnections = setmetatable({}, { __mode = 'k' }),
             }
@@ -22680,7 +22682,7 @@ ErrorReporter.set_game(GameName)
             RivalsRuntimeBridge.ResetTripmineAutomation = RivalsTripmineAutomation.Reset
             end
             do
-            local AUTO_QUEUE_FALLBACK_MODES = {
+            AUTO_QUEUE_FALLBACK_MODES = {
                 '1v1',
                 '2v2',
                 '3v3',
@@ -22690,9 +22692,9 @@ ErrorReporter.set_game(GameName)
                 'ranked_2v2',
                 'ranked_3v3',
             }
-            local AUTO_QUEUE_FIRE_DEBOUNCE = 0.08
-            local AUTO_QUEUE_RETRY_DELAY = 0.5
-            local RivalsAutoQueue = {
+            AUTO_QUEUE_FIRE_DEBOUNCE = 0.08
+            AUTO_QUEUE_RETRY_DELAY = 0.5
+            RivalsAutoQueue = {
                 State = {
                     Believed = 'idle',
                     LastFireAt = 0,
@@ -22713,7 +22715,7 @@ ErrorReporter.set_game(GameName)
                     LastArcadeTeleportAt = 0,
                 },
             }
-            local function CollectActiveQueueKeys()
+            function CollectActiveQueueKeys()
                 local seen = {}
                 local order = {}
                 local function add(key)
@@ -22745,7 +22747,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return order
             end
-            local function BuildModeListFromKeys(keys, queueInfoTable)
+            function BuildModeListFromKeys(keys, queueInfoTable)
                 local pairs_list = {}
                 for _, key in ipairs(keys) do
                     local info = queueInfoTable and queueInfoTable[key]
@@ -22873,7 +22875,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return values
             end
-            local function ResolveQueueRemote(folderName, remoteName, remoteClass)
+            function ResolveQueueRemote(folderName, remoteName, remoteClass)
                 local remotes = ReplicatedStorage:FindFirstChild('Remotes')
                 local folder = remotes and remotes:FindFirstChild(folderName)
                 local remote = folder and folder:FindFirstChild(remoteName)
@@ -22882,7 +22884,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function ReadAutoQueueDisplay()
+            function ReadAutoQueueDisplay()
                 if Options and Options.P8S6D1 then
                     local v = Options.P8S6D1.Value
                     if type(v) == 'string' and v ~= '' then
@@ -22891,7 +22893,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function ReadAutoQueueToggle()
+            function ReadAutoQueueToggle()
                 if Toggles and Toggles.P8S6T1 then
                     return Toggles.P8S6T1.Value == true
                 end
@@ -23453,16 +23455,16 @@ ErrorReporter.set_game(GameName)
             -- Cosmetic registry assignments live in this implementation block; the
             -- declarations themselves are in the enclosing initializer scope above.
             do
-            local DEFAULT_RIVALS_COSMETIC_VALUE = 'Default'
-            local RIVALS_COSMETIC_UNSELECTED = 'Unselected'
-            local RIVALS_COSMETIC_NONE = 'None'
-            local RIVALS_COSMETIC_RANDOM = 'Random'
-            local RIVALS_COSMETIC_ALL_WEAPONS = 'All'
-            local RIVALS_GET_WEAPON_DATA_SENTINEL = 'GetWeaponData\0ohaio'
-            local RIVALS_COSMETIC_SLOT_FRAME_SENTINEL = 'Frame\0rahh'
-            local RIVALS_RANK_CHARM_OFF = 'Off'
-            local RIVALS_RANK_CHARM_STATE_OPTION_ID = 'P5RANK_STATE'
-            local RIVALS_FAVORITES_STATE_OPTION_ID = 'P5FAVORITES_STATE'
+            DEFAULT_RIVALS_COSMETIC_VALUE = 'Default'
+            RIVALS_COSMETIC_UNSELECTED = 'Unselected'
+            RIVALS_COSMETIC_NONE = 'None'
+            RIVALS_COSMETIC_RANDOM = 'Random'
+            RIVALS_COSMETIC_ALL_WEAPONS = 'All'
+            RIVALS_GET_WEAPON_DATA_SENTINEL = 'GetWeaponData\0ohaio'
+            RIVALS_COSMETIC_SLOT_FRAME_SENTINEL = 'Frame\0rahh'
+            RIVALS_RANK_CHARM_OFF = 'Off'
+            RIVALS_RANK_CHARM_STATE_OPTION_ID = 'P5RANK_STATE'
+            RIVALS_FAVORITES_STATE_OPTION_ID = 'P5FAVORITES_STATE'
             RivalsCosmetics = {
                 Catalog = {},
                 SkinOptionIdsByWeapon = {},
@@ -24421,7 +24423,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return true
             end
-            local function isCatalogCosmeticOfType(cosmeticName, expectedType, expectedWeaponName)
+            function isCatalogCosmeticOfType(cosmeticName, expectedType, expectedWeaponName)
                 if not RivalsCosmetics.IsCosmeticValueSelected(cosmeticName) then
                     return false
                 end
@@ -24438,7 +24440,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            local function resolveLoadoutCosmeticName(value)
+            function resolveLoadoutCosmeticName(value)
                 if type(value) == 'string' then
                     return value
                 end
@@ -25589,7 +25591,7 @@ ErrorReporter.set_game(GameName)
                 }
                 return true
             end
-            local function resolveDirectMethodOwner(controller, methodName)
+            function resolveDirectMethodOwner(controller, methodName)
                 if type(controller) ~= 'table' then return nil, nil end
                 local direct = rawget(controller, methodName)
                 if type(direct) == 'function' then
@@ -26049,7 +26051,7 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.ClientViewModelHooked = false
                 return true
             end
-            local function getMethodFromObject(object, methodName)
+            function getMethodFromObject(object, methodName)
                 if type(object) ~= 'table' then
                     return nil
                 end
@@ -26068,7 +26070,7 @@ ErrorReporter.set_game(GameName)
                 return nil
             end
 
-            local NATIVE_COSMETICS_CONTROLLER_METHODS = {
+            NATIVE_COSMETICS_CONTROLLER_METHODS = {
                 'SetRuntimeEnabled',
                 'SetUnlockerEnabled',
                 'SetUnlockedTypes',
@@ -26078,7 +26080,7 @@ ErrorReporter.set_game(GameName)
                 'SetEmote',
             }
 
-            local function isNativeCosmeticsControllerShape(object)
+            function isNativeCosmeticsControllerShape(object)
                 if type(object) ~= 'table'
                     or type(rawget(object, '_catalog')) ~= 'table'
                     or type(rawget(object, '_items')) ~= 'table'
@@ -26094,7 +26096,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            local function isNativeCosmeticsConfigShape(object, controller)
+            function isNativeCosmeticsConfigShape(object, controller)
                 if type(object) ~= 'table' then
                     return false
                 end
@@ -26112,7 +26114,7 @@ ErrorReporter.set_game(GameName)
                 return isNativeCosmeticsControllerShape(linkedController)
             end
 
-            local function nativeCosmeticsPairLooksValid(controller, config)
+            function nativeCosmeticsPairLooksValid(controller, config)
                 if not isNativeCosmeticsControllerShape(controller) then
                     return false
                 end
@@ -26122,7 +26124,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            local function getNativeCosmeticsMonotonicTime()
+            function getNativeCosmeticsMonotonicTime()
                 if type(time) == 'function' then
                     local ok, value = pcall(time)
                     if ok and type(value) == 'number' then
@@ -26243,7 +26245,7 @@ ErrorReporter.set_game(GameName)
                 return nil
             end
 
-            local function normalizeNativeCosmeticValue(value)
+            function normalizeNativeCosmeticValue(value)
                 if value == nil or value == RIVALS_COSMETIC_UNSELECTED then
                     return nil
                 end
@@ -26256,7 +26258,7 @@ ErrorReporter.set_game(GameName)
                 return value
             end
 
-            local function cloneNativeSelection(value)
+            function cloneNativeSelection(value)
                 if type(value) ~= 'table' then
                     return value
                 end
@@ -26298,7 +26300,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            local function restoreNativeSelectionKind(controller, weaponName, kind, original)
+            function restoreNativeSelectionKind(controller, weaponName, kind, original)
                 local setter = getMethodFromObject(controller, 'SetSkinChangerChoice')
                 if type(setter) ~= 'function' then
                     return false
@@ -26356,7 +26358,7 @@ ErrorReporter.set_game(GameName)
                 return true
             end
 
-            local function setNativeCosmeticChoice(controller, weaponName, kind, value, inverted)
+            function setNativeCosmeticChoice(controller, weaponName, kind, value, inverted)
                 local setter = getMethodFromObject(controller, 'SetSkinChangerChoice')
                 if type(setter) ~= 'function' then
                     return false
@@ -26994,7 +26996,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return nil
             end
-            local function cloneCosmeticSet(value)
+            function cloneCosmeticSet(value)
                 if type(value) ~= 'table' then
                     return nil
                 end
@@ -27226,7 +27228,7 @@ ErrorReporter.set_game(GameName)
                 RivalsCosmeticsState.NativeCosmeticsConfigDesiredRarities = nil
                 return restoredTypes and restoredRarities
             end
-            local function nativeCosmeticSetMatches(actual, desired)
+            function nativeCosmeticSetMatches(actual, desired)
                 if type(actual) ~= 'table' or type(desired) ~= 'table' then
                     return false
                 end
@@ -30289,7 +30291,7 @@ ErrorReporter.set_game(GameName)
             RivalsRuntimeBridge.RefreshNativeRivalsCosmetics = RivalsCosmetics.RefreshNativeCosmeticsScene
             RivalsRuntimeBridge.ResetRivalsCosmetics = RivalsCosmetics.ResetState
             end
-            local WorldESPState = {}
+            WorldESPState = {}
             do
                 local WORLD_ITEM_NAMES = {
                     ['Throwable - Grenade'] = {Color = Color3.fromRGB(255, 80, 80), Label = 'GRENADE'},
@@ -30813,8 +30815,8 @@ ErrorReporter.set_game(GameName)
                 end
             end
             do
-            local EspClassic = RivalsRuntimeBridge.ESPClassic
-            local function CreateEspPreviewPart(model, name, size, position, color)
+            EspClassic = RivalsRuntimeBridge.ESPClassic
+            function CreateEspPreviewPart(model, name, size, position, color)
                 local part = Instance.new('Part')
                 part.Name = name
                 part.Size = size
@@ -30829,7 +30831,7 @@ ErrorReporter.set_game(GameName)
                 part.Parent = model
                 return part
             end
-            local function BuildEspPreviewModel()
+            function BuildEspPreviewModel()
                 local model = Instance.new('Model')
                 model.Name = 'KiciaHookEspPreview'
                 local bodyColor = Color3.fromRGB(116, 124, 137)
@@ -30848,7 +30850,7 @@ ErrorReporter.set_game(GameName)
                 highlight.Parent = model
                 return model, highlight
             end
-            local function CreateEspPreviewPane(parent, anchorPoint, position, size, horizontalAlignment, verticalAlignment)
+            function CreateEspPreviewPane(parent, anchorPoint, position, size, horizontalAlignment, verticalAlignment)
                 local pane = Instance.new('Frame')
                 pane.AnchorPoint = anchorPoint
                 pane.Position = position
@@ -30865,7 +30867,7 @@ ErrorReporter.set_game(GameName)
                 layout.Parent = pane
                 return pane
             end
-            local function CreateEspPreviewLabel(parent, layoutOrder, textXAlignment)
+            function CreateEspPreviewLabel(parent, layoutOrder, textXAlignment)
                 local label = Instance.new('TextLabel')
                 label.LayoutOrder = layoutOrder
                 label.Size = UDim2.new(1, 0, 0, 14)
@@ -30880,7 +30882,7 @@ ErrorReporter.set_game(GameName)
                 label.Parent = parent
                 return label
             end
-            local function CreateEspPreviewSegment(parent)
+            function CreateEspPreviewSegment(parent)
                 local segment = Instance.new('Frame')
                 segment.BackgroundColor3 = Color3.new(1, 1, 1)
                 segment.BorderColor3 = PLAYER_CARD_THEME.Classic.BoxOutlineColor
@@ -30890,7 +30892,7 @@ ErrorReporter.set_game(GameName)
                 segment.Parent = parent
                 return segment
             end
-            local function SetEspPreviewSegment(segment, visible, position, size, color)
+            function SetEspPreviewSegment(segment, visible, position, size, color)
                 segment.Visible = visible
                 if not visible then
                     return
@@ -30899,7 +30901,7 @@ ErrorReporter.set_game(GameName)
                 segment.Size = size
                 segment.BackgroundColor3 = color
             end
-            local function UpdateEspPreviewBox(state, visible, color)
+            function UpdateEspPreviewBox(state, visible, color)
                 local segments = state.BoxSegments
                 if not visible then
                     for _, segment in ipairs(segments) do
