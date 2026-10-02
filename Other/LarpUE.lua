@@ -1893,7 +1893,7 @@ function mainapi:CreateGUI()
     mainapi.MainScreenGui.Parent = guiParent
     lionCreateBaseGui()
 
-    local repo = "https://raw.githubusercontent.com/jmk-arch/RivalsUI/main/"
+    local repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
     local ok, library, themeManager, saveManager = pcall(function()
         return lionLoadRemoteModule(repo .. "test-branch.lua"),
             lionLoadRemoteModule(repo .. "addons/ThemeManager.lua"),
