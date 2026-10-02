@@ -10001,6 +10001,7 @@ end)()
         return rv
     end
     local function displace(hrp, cf)
+        if gumMode() == "off" then return false end
         if _preParkCF == nil then _preParkCF = hrp.CFrame end
         return rawSetCFrame(hrp, cf)
     end
