@@ -111,6 +111,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local startUnderground, stopUnderground
+local undergroundYieldToRagebot = false
 
 local UndergroundRootDesync = {}
 UndergroundRootDesync.__index = UndergroundRootDesync
@@ -125,9 +126,13 @@ function UndergroundRootDesync.new(rootPart)
     RunService:BindToRenderStep(self._boundId, Enum.RenderPriority.First.Value, function()
         local root = self._rootPart
         local old = self._oldCFrame
+        -- Restore the client CFrame each render step so the server CFrame applied in
+        -- HeartbeatUpdate is only visible to the server, not the local camera.
+        -- Do NOT nil _oldCFrame afterwards; keep it so GetClientCFrame always returns
+        -- a valid client-side position between heartbeat ticks.
         if root and root.Parent and old ~= nil then
             root.CFrame = old
-            self._oldCFrame = nil
+            -- _oldCFrame intentionally kept; overwritten by next HeartbeatUpdate
         end
     end)
     return self
@@ -953,14 +958,18 @@ function module.load_ui_settings(overrides)
 end
 function module.save_ui_settings(settings, overrides)
     local data = sanitize_ui_settings(settings, module.default_ui_settings(overrides))
-    writefile(UiSettingsPath, HttpService:JSONEncode(data))
-    writefile(module.auto_show_path(), data.auto_show and 'true' or 'false')
+    if type(writefile) == 'function' then
+        pcall(writefile, UiSettingsPath, HttpService:JSONEncode(data))
+        pcall(writefile, module.auto_show_path(), data.auto_show and 'true' or 'false')
+    end
     return data
 end
 function module.ensure_auto_show_file()
     local path = module.auto_show_path()
     local ui_settings = module.load_ui_settings()
-    writefile(path, ui_settings.auto_show and 'true' or 'false')
+    if type(writefile) == 'function' then
+        pcall(writefile, path, ui_settings.auto_show and 'true' or 'false')
+    end
     return path
 end
 function module.queue_on_teleport_script()
@@ -1052,7 +1061,7 @@ return {
             local LPRB = PlayersRB.LocalPlayer
             local rbRandom = Random.new()
             local rbSetHidden = sethiddenproperty
-            local rbSetFFlag = (type(setfflag) == 'function') and setfflag or sfflag
+            local rbSetFFlag = (type(setfflag) == 'function') and setfflag or (type(sfflag) == 'function' and sfflag or nil)
             local rbSetThreadIdentity = setthreadidentity
             local rbGetThreadIdentity = getthreadidentity
             local rbCleanFireEvent = nil
