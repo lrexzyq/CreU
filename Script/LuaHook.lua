@@ -21,6 +21,9 @@ do
         if not ok then getgenv().__LH_SetmtBP = nil end
     end
 end
+-- Shared bridge/state locals must be declared before the UI bootstrap uses them.
+local RefreshAimbotEnabledToggleKeypickerState = nil
+local AimbotBridge = {}
 local cloneref = clonereference or cloneref or function(x) return x end
 local _CR = (getgenv and getgenv().__LH_CloneRef == true)
 local function cr(x) if _CR and x then return cloneref(x) else return x end end
@@ -20078,8 +20081,7 @@ ErrorReporter.set_game(GameName)
                 state.OriginalGunEquip = nil
             end
             end
-            local RefreshAimbotEnabledToggleKeypickerState = nil
-            local AimbotBridge = {}
+            -- Shared AimbotBridge/refresh locals are declared at script scope above.
             do
             do
                 local function IsTouchAimbotDevice()
