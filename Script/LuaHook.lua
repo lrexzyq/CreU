@@ -24,6 +24,32 @@ end
 -- Shared bridge/state locals must be declared before the UI bootstrap uses them.
 local RefreshAimbotEnabledToggleKeypickerState = nil
 local AimbotBridge = {}
+
+-- Runtime callback guard must exist before the UI bootstrap uses it.
+-- The full diagnostic reporter is assigned later; this closure keeps the
+-- callback wrapper usable during early initialization as well.
+local ReportRivalsRuntimeIssue
+local GuardRivalsCallback
+GuardRivalsCallback = function(feature, callback)
+    if type(callback) ~= 'function' then
+        return function() return nil end
+    end
+    return function(...)
+        local args = table.pack(...)
+        local ok, result = xpcall(function()
+            return callback(table.unpack(args, 1, args.n))
+        end, function(err)
+            return debug.traceback(string.format('[%s] %s', tostring(feature), tostring(err)), 2)
+        end)
+        if not ok then
+            if type(ReportRivalsRuntimeIssue) == 'function' then
+                ReportRivalsRuntimeIssue(feature, result)
+            end
+            return nil
+        end
+        return result
+    end
+end
 local cloneref = clonereference or cloneref or function(x) return x end
 local _CR = (getgenv and getgenv().__LH_CloneRef == true)
 local function cr(x) if _CR and x then return cloneref(x) else return x end end
@@ -1478,7 +1504,16 @@ end
             return
         end
         local orig = shared._LH_KatanaDeflOrig
-        if not orig then orig = clonefunction(katana._StartDeflecting) end
+        if not orig then
+            orig = katana._StartDeflecting
+            local cloner = clonefunction
+            if type(cloner) == 'function' then
+                local okClone, cloned = pcall(cloner, katana._StartDeflecting)
+                if okClone and type(cloned) == 'function' then
+                    orig = cloned
+                end
+            end
+        end
         shared._LH_KatanaMod     = katana
         shared._LH_KatanaDeflOrig = orig
         if setreadonly then pcall(setreadonly, katana, false) end
@@ -14290,7 +14325,7 @@ do
                         Default = false,
                         Tooltip = "Flicks to the selected target.",
                         Callback = function(value)
-                            if not value then
+                            if not value and type(RivalsRuntimeBridge.ResetFlickbot) == 'function' then
                                 RivalsRuntimeBridge.ResetFlickbot()
                             end
                         end,
@@ -16414,7 +16449,7 @@ ErrorReporter.set_game(GameName)
                     RuntimeIssueNotificationUnavailable = true
                 end
             end
-            local function ReportRivalsRuntimeIssue(feature, tracebackMessage)
+            ReportRivalsRuntimeIssue = function(feature, tracebackMessage)
                 local tracebackText = tostring(tracebackMessage or 'Unknown error')
                 local errorMessage = tracebackText:match('([^\n]+)') or tracebackText
                 local description = string.format('%s: %s', tostring(feature or 'runtime'), errorMessage)
@@ -16430,24 +16465,6 @@ ErrorReporter.set_game(GameName)
                     pcall(function()
                         ErrorReporter.report(errorMessage, tracebackText, string.format('rivals_%s', tostring(feature or 'runtime')))
                     end)
-                end
-            end
-            local function GuardRivalsCallback(feature, callback)
-                if type(callback) ~= 'function' then
-                    return function() return nil end
-                end
-                return function(...)
-                    local args = table.pack(...)
-                    local ok, result = xpcall(function()
-                        return callback(table.unpack(args, 1, args.n))
-                    end, function(err)
-                        return debug.traceback(string.format('[%s] %s', tostring(feature), tostring(err)), 2)
-                    end)
-                    if not ok then
-                        ReportRivalsRuntimeIssue(feature, result)
-                        return nil
-                    end
-                    return result
                 end
             end
             local Char, Humanoid, HumanoidRootPart
