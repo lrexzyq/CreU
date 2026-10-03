@@ -14216,7 +14216,21 @@ do
                         NoUI = false,
                     })
                     pcall(function() Config.Aimbot = Toggles.P2S1T1 and Toggles.P2S1T1.Value == true end)
-                    RefreshAimbotEnabledToggleKeypickerState = AimbotBridge.SyncAimbotToggleKeypickerToUi(aimbotToggle, aimbotKeypicker)
+                    local aimbotToggleKeypickerSyncState = nil
+                    RefreshAimbotEnabledToggleKeypickerState = function()
+                        local sync = AimbotBridge.SyncAimbotToggleKeypickerToUi
+                        if type(sync) ~= 'function' then
+                            return
+                        end
+                        if type(aimbotToggleKeypickerSyncState) ~= 'function' then
+                            aimbotToggleKeypickerSyncState = sync(aimbotToggle, aimbotKeypicker)
+                        end
+                        if type(aimbotToggleKeypickerSyncState) == 'function' then
+                            aimbotToggleKeypickerSyncState()
+                        end
+                    end
+                    -- The bridge is initialized later in the script; initialize lazily when available.
+                    RefreshAimbotEnabledToggleKeypickerState()
                     Combat:AddDropdown("P2S1D1", {
                         Values = { "Silent", "Camera" },
                         Default = "Silent",
