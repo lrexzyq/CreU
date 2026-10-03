@@ -40663,7 +40663,7 @@ local P1 = Tabs.ESP
                     Options.P10S4D1:OnChanged(GuardRivalsCallback("MovementRecorder_Map", RivalsRuntimeBridge.MovementRecorder.RefreshRecordingOptions))
                     RivalsRuntimeBridge.MovementRecorder.RefreshRecordingOptions()
                 end
-                do
+                end
 
 RivalsRuntime.Initialize(Window)
 __LHFeatureRuntimeReady = true
