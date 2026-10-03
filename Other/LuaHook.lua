@@ -9821,6 +9821,7 @@ end)()
     local _glueAnchored  = nil
     local _gluePrev   = nil
     local _gluePrevOk = false
+    local _gluePhysical = false
     local function gumMode()
         local m = Config.RageGumMode
         if m ~= "off" and m ~= "lite" and m ~= "on" then
@@ -9949,37 +9950,53 @@ end)()
     end
     local function glueRelease()
         State.RageTranslocating = false
-        if _glueHit == nil then return end
+        if _glueHit == nil then
+            _gluePhysical = false
+            return
+        end
         glueTeardown()
         _glueHit    = nil
         _glueDriven = false
         State.RageGlueBound = false
         local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-        if not hrp or not hrp.Parent then return end
-        local back = hrp
-        if _gluePrevOk then
-            back = _gluePrev
+        if not hrp or not hrp.Parent then
+            _gluePhysical = false
+            return
         end
-        setRepRoot(hrp, back)
+        if _gluePhysical then
+            local back = hrp
+            if _gluePrevOk then back = _gluePrev end
+            setRepRoot(hrp, back)
+        end
+        _gluePhysical = false
         State.RageGlueVerified = "released"
     end
-    local function glueAcquire(hit)
-        if gumMode() ~= "on" then return nil end
+    local function glueAcquire(hit, virtualOnly)
+        if gumMode() ~= "on" and not virtualOnly then return nil end
         if type(sethiddenproperty) ~= "function" then return nil end
         if not identEnsure() then return nil end
         if hit == nil or hit.Parent == nil then return nil end
         local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
         if not hrp or not hrp.Parent then return nil end
-        if not _gluePrevOk and type(gethiddenproperty) == "function" then
-            local okP, v = pcall(gethiddenproperty, hrp, "PhysicsRepRootPart")
-            if okP then
-                _gluePrev   = v
-                _gluePrevOk = true
+        local wantPhysical = not virtualOnly
+        if wantPhysical then
+            if not _gluePrevOk and type(gethiddenproperty) == "function" then
+                local okP, v = pcall(gethiddenproperty, hrp, "PhysicsRepRootPart")
+                if okP then
+                    _gluePrev   = v
+                    _gluePrevOk = true
+                end
             end
-        end
-        if not setRepRoot(hrp, hit) then
-            glueRelease()
-            return nil
+            if not setRepRoot(hrp, hit) then
+                glueRelease()
+                return nil
+            end
+            _gluePhysical = true
+        elseif _gluePhysical then
+            local back = hrp
+            if _gluePrevOk then back = _gluePrev end
+            setRepRoot(hrp, back)
+            _gluePhysical = false
         end
         if _glueHit ~= hit then
             glueTeardown()
@@ -9996,7 +10013,7 @@ end)()
             return nil
         end
         _glueDriven = true
-        State.RageGlueBound = true
+        State.RageGlueBound = wantPhysical
         return rv
     end
     local function displace(hrp, cf)
@@ -10791,7 +10808,15 @@ end)()
             end
         end
         local aimPos = hpos
-        if rv == nil and not predicting and not melee then rv = glueAcquire(hh) end
+        if rv == nil and not predicting and not melee then
+            if gumMode() == "off" then
+                -- Virtual Gum: preserve the original Glue firing path without
+                -- binding PhysicsRepRootPart on the local character.
+                rv = glueAcquire(hh, true)
+            else
+                rv = glueAcquire(hh)
+            end
+        end
         if rv == nil then liteAcquire(hh, predicting, melee) end
         if rv ~= nil then
             park   = rv + GLUE_PARK_OFF
@@ -10801,7 +10826,7 @@ end)()
         end
         local firePark = nil
         if _prevPark ~= nil and _prevParkTgt == tgt then firePark = _prevPark end
-        if restoreMode() ~= "kicia" or firePark == nil then firePark = park end
+        if restoreMode() ~= "kicia" then firePark = park end
         local translocateReady = gumMode() ~= "off"
             and Config.RageAttackTranslocate ~= false
             and restoreMode() == "kicia"
@@ -10835,10 +10860,8 @@ end)()
         if gumMode() ~= "off" then
             parked = displace(hrp, desiredCFrame)
         else
-            -- Virtual park for attack calculations; never move the local HRP.
+            -- Logical park only; never physically move the local HRP in OFF.
             parked = true
-            _prevPark, _prevParkTgt = nil, nil
-            _lastPark = nil
         end
         if parked and translocateCF == nil and poisonCF == nil and gumMode() ~= "off" then
             _prevPark, _prevParkTgt = park, tgt
@@ -10916,13 +10939,15 @@ end)()
             local sent = polarFire(firePark + Vector3.new(0, EYE_UP_SANE, 0), aimPos, hh, tapsPerFrame())
             if sent > 0 then
                 _attackReadyTgt = tgt
-                _translocateFireFrames = _translocateFireFrames + 1
-                _poisonFireFrames = _poisonFireFrames + 1
+                if gumMode() ~= "off" then
+                    _translocateFireFrames = _translocateFireFrames + 1
+                    _poisonFireFrames = _poisonFireFrames + 1
+                end
             end
             if voidFire and sent > 0 then
                 State.RageVoidFires = (State.RageVoidFires or 0) + 1
             end
-            _translocateNext = sent > 0 and parked and not melee
+            _translocateNext = gumMode() ~= "off" and sent > 0 and parked and not melee
                 and _translocateFireFrames >= TRANSLOCATE_ARM_FRAMES
                 and _translocateBurstPulses < TRANSLOCATE_PULSES_PER_BURST
                 and Config.RageAttackTranslocate ~= false
@@ -11005,6 +11030,7 @@ end)()
             pcall(glueTeardown)
             _glueHit = nil
             _gluePrevOk = false
+            _gluePhysical = false
             _glueDriven = false
             _liteHit = nil
             _liteDriven = false
@@ -11048,9 +11074,6 @@ end)()
             local ch  = lp.Character
             local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
             if not hrp or not hrp.Parent then return end
-            if State.RageGumMode == "off" and _preParkCF ~= nil then
-                restoreHome(false)
-            end
             if _preParkCF == nil and isSanePos(hrp.Position) then
                 _realCF   = hrp.CFrame
                 _realChar = ch
