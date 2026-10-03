@@ -9821,20 +9821,25 @@ end)()
     local _glueAnchored  = nil
     local _gluePrev   = nil
     local _gluePrevOk = false
+    local _glueHitRel = nil
     local function gumMode()
+        -- RageGumMode is the authoritative setting.  The legacy
+        -- RageGlueMode/RagePartGlue values are only used when the new
+        -- setting is missing or invalid, so an explicit "off" really is off.
         local m = Config.RageGumMode
-        if m ~= "off" and m ~= "lite" and m ~= "on" then
-            local g = Config.RageGlueMode
-            if g == "lite" or g == "off" then
-                m = g
-            elseif g == "full" then
-                m = "on"
-            else
-                m = "off"
-            end
+        if m == "off" or m == "lite" or m == "on" then
+            return m
         end
-        if m == "off" and Config.RagePartGlue == true then return "on" end
-        return m
+
+        local g = Config.RageGlueMode
+        if g == "lite" or g == "off" then
+            return g
+        elseif g == "full" then
+            return "on"
+        elseif Config.RagePartGlue == true then
+            return "on"
+        end
+        return "off"
     end
     local _liteHit    = nil
     local _liteDriven = false
@@ -9951,18 +9956,36 @@ end)()
     local function glueRelease()
         State.RageTranslocating = false
         if _glueHit == nil then return end
+
+        local hit = _glueHit
+        local hitRel = _glueHitRel
+        local prevRoot = _gluePrevOk and _gluePrev or nil
+
         glueTeardown()
         _glueHit    = nil
+        _glueHitRel = nil
         _glueDriven = false
         State.RageGlueBound = false
+
+        -- Detach our HRP from the target immediately.
         local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-        if not hrp or not hrp.Parent then return end
-        local back = hrp
-        if _gluePrevOk then
-            back = _gluePrev
+        if hrp and hrp.Parent then
+            setRepRoot(hrp, prevRoot)
+            State.RageGlueVerified = "released"
         end
-        setRepRoot(hrp, back)
-        State.RageGlueVerified = "released"
+
+        -- Full Gum temporarily moves the target hit part to the rendezvous
+        -- position. Put it back relative to its own HRP so disabling Gum does
+        -- not leave the target (or its rig) stranded in the void.
+        if hit and hit.Parent and hitRel then
+            pcall(function()
+                local model = hit:FindFirstAncestorOfClass("Model")
+                local root = model and model:FindFirstChild("HumanoidRootPart")
+                if root and root.Parent then
+                    hit.CFrame = root.CFrame * hitRel
+                end
+            end)
+        end
     end
     local function glueAcquire(hit)
         if gumMode() ~= "on" then return nil end
@@ -9985,6 +10008,18 @@ end)()
         if _glueHit ~= hit then
             glueTeardown()
             _glueHit = hit
+
+            -- Remember where the target hit part belongs relative to its
+            -- character root before sending it to the rendezvous point.
+            _glueHitRel = nil
+            pcall(function()
+                local model = hit:FindFirstAncestorOfClass("Model")
+                local root = model and model:FindFirstChild("HumanoidRootPart")
+                if root and root.Parent then
+                    _glueHitRel = root.CFrame:ToObjectSpace(hit.CFrame)
+                end
+            end)
+
             glueSetup(hit)
         end
         if _rvCF == nil then
@@ -10000,8 +10035,8 @@ end)()
         State.RageGlueBound = true
         return rv
     end
+
     local function displace(hrp, cf)
-        if gumMode() == "off" then return false end
         if _preParkCF == nil then _preParkCF = hrp.CFrame end
         return rawSetCFrame(hrp, cf)
     end
@@ -10012,6 +10047,56 @@ end)()
     local HIDE_JITTER_MAX = 0.25
     local _hiding     = false
     local _primeUntil = 0
+
+    -- Tear down all Gum-specific state in one place. This is called on an
+    -- explicit mode transition, not just opportunistically on the next frame.
+    local function releaseGumTransport()
+        local ch = lp.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        local restoreCF = _preParkCF
+
+        if restoreCF == nil and _realChar == ch then
+            restoreCF = _realCF
+        end
+
+        pcall(liteRelease)
+        pcall(glueRelease)
+
+        if hrp and hrp.Parent then
+            if restoreCF then
+                pcall(function() rawSetCFrame(hrp, restoreCF) end)
+            end
+            pcall(function()
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end)
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            if hum then
+                pcall(function()
+                    if hum:GetState() == Enum.HumanoidStateType.Physics
+                       or hum:GetState() == Enum.HumanoidStateType.Freefall then
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    end
+                end)
+            end
+        end
+
+        _preParkCF = nil
+        _prevPark, _prevParkTgt = nil, nil
+        _lastPark = nil
+        _hiding = true
+        _primeUntil = 0
+        _translocateNext = false
+        _translocateBurstPulses = 0
+        _translocateFireFrames = 0
+        _poisonFireFrames = 0
+        _poisonBlips = 0
+        _translocatePart = nil
+
+        State.RageTranslocating = false
+        State.RageFiring = false
+    end
+
     local HACK_SPEED = 120
     local HACK_ACCUM = 0.15
     local _hackTag   = {}
@@ -10655,7 +10740,8 @@ end)()
         _poisonBlips = 0
         liteRelease()
         glueRelease()
-        if VOID_HIDE then
+        -- With Gum explicitly OFF there must be no character transport at all.
+        if VOID_HIDE and gumMode() ~= "off" then
             displace(hrp, voidCFrame())
         end
         return true
@@ -10679,7 +10765,9 @@ end)()
         _poisonBlips = 0
         liteRelease()
         glueRelease()
-        if VOID_HIDE then
+        -- Gum OFF is a hard no-transport mode: never move the local character
+        -- into the void or onto the target just because Rage is active.
+        if VOID_HIDE and gumMode() ~= "off" then
             displace(hrp, voidCFrame())
         end
     end
@@ -10802,8 +10890,14 @@ end)()
             glueRelease()
         end
         local firePark = nil
-        if _prevPark ~= nil and _prevParkTgt == tgt then firePark = _prevPark end
-        if restoreMode() ~= "kicia" then firePark = park end
+        if gumMode() == "off" then
+            -- No Gum transport: fire/melee from the real local position instead
+            -- of manufacturing an attack origin at the target.
+            firePark = hrp.Position
+        else
+            if _prevPark ~= nil and _prevParkTgt == tgt then firePark = _prevPark end
+            if restoreMode() ~= "kicia" then firePark = park end
+        end
         local translocateReady = Config.RageAttackTranslocate ~= false
             and restoreMode() == "kicia"
             and not predicting and not holdFire and not melee and firePark ~= nil
@@ -10831,7 +10925,17 @@ end)()
         elseif poisonCF ~= nil then
             desiredCFrame = poisonCF
         end
-        local parked = displace(hrp, desiredCFrame)
+
+        -- Gum OFF means zero character displacement. The combat calculations
+        -- can still use the selected target, but the local rig stays where it is.
+        local parked = false
+        if gumMode() == "off" then
+            parked = true
+            _prevPark, _prevParkTgt = nil, nil
+            _lastPark = nil
+        else
+            parked = displace(hrp, desiredCFrame)
+        end
         if parked and translocateCF == nil and poisonCF == nil then
             _prevPark, _prevParkTgt = park, tgt
             _lastPark = CFrame.new(park)
@@ -10982,10 +11086,12 @@ end)()
             pcall(cameraAnchor)
         end)
         RunService:BindToRenderStep(RENDER_NAME, Enum.RenderPriority.First.Value - 1000, function()
+            if gumMode() == "off" then return end
             if _firing and restoreMode() == "none" then return end
             restoreHome(false)
         end)
         _stepConn = RunService.Stepped:Connect(function()
+            if gumMode() == "off" then return end
             if _firing then
                 local pol = restoreMode()
                 if pol == "render" then return reparkAfterRender() end
@@ -10997,6 +11103,7 @@ end)()
             pcall(glueTeardown)
             _glueHit = nil
             _gluePrevOk = false
+            _glueHitRel = nil
             _glueDriven = false
             _liteHit = nil
             _liteDriven = false
@@ -11022,6 +11129,16 @@ end)()
         end)
         _conn = RunService.Heartbeat:Connect(function(dt)
             State.RageTranslocating = false
+
+            local gum = gumMode()
+            local previousGum = State.RageGumMode
+            if gum ~= previousGum then
+                if gum == "off" or previousGum == "on" or previousGum == "lite" then
+                    releaseGumTransport()
+                end
+                State.RageGumMode = gum
+            end
+
             tickHackers(dt or 0)
             tickPredict()
             if _glueHit ~= nil and not _glueDriven then
@@ -11032,7 +11149,7 @@ end)()
                 pcall(liteRelease)
             end
             _liteDriven = false
-            State.RageGumMode = gumMode()
+            State.RageGumMode = gum
             if not Config.Rage or (Config.RageMode or "Polar") ~= "Polar" then
                 PolarCore.stop()
                 return
@@ -11136,6 +11253,7 @@ end)()
     PolarCore.voidSteps = function() return _voidSteps end
     Rage._polarCoreStart = PolarCore.start
     Rage._polarCoreStop  = PolarCore.stop
+    Rage._releaseGumTransport = releaseGumTransport
     Rage._setPhysicsFlags = setPhysicsFlags
     function Rage._physDiag()
         local set, get, setName = fflagApi()
@@ -16239,7 +16357,13 @@ do (function()
     CORE:AddDivider('Engine')
     CORE:AddDropdown('RageGumMode', { Values={'off','lite','on'},
         Default=Config.RageGumMode, Text='Gum',
-        Callback=function(v) Config.RageGumMode = v end })
+        Callback=function(v)
+            local previous = gumMode()
+            Config.RageGumMode = v
+            if v ~= previous and Rage._releaseGumTransport then
+                pcall(Rage._releaseGumTransport)
+            end
+        end })
     CORE:AddDropdown('RageVoidDepth', { Values={'shallow','deep'},
         Default=Config.RageVoidDepth, Text='Hide depth',
         Callback=function(v) Config.RageVoidDepth = v end })
