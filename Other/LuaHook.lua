@@ -605,7 +605,7 @@ local Config = {
     RageMode = "Polar",
     RageDirectFire        = true,
     RageRateLimit         = false,
-    RageManipulation      = false,
+    RageManipulation      = true,
     RageTaps              = 6,
     RageCombatOrbitRadius = 60,
     RageOrbitDwell        = 0.30,
@@ -9719,6 +9719,7 @@ local Rage = {}
                 State.RageTarget = tgt
             end
             State.RagePostPark = true
+            Config.RageManipulation = true
             Rage._rageTick(ch, hrp, tgt)
             local anchor    = State.RageRealCF
             local displaced = false
@@ -9729,6 +9730,8 @@ local Rage = {}
     end
     function Rage.enable()
         Config.Rage = true
+        Config.RageManipulation = true
+        State.RageManipulated = false
         if Rage._startTargetLoop then Rage._startTargetLoop() end
         local mode = Config.RageMode or "Polar"
         if mode == "Orbit" or mode == "Translocate" then
@@ -13615,7 +13618,10 @@ local ok, err = pcall(function()
     ThemeManager = loadstring(files[2])()
     SaveManager  = loadstring(files[3])()
 end)
-if not ok or not Library then warn("[Engine] Linoria load failed:", err); return end
+if not ok or type(Library) ~= 'table' or type(ThemeManager) ~= 'table' or type(SaveManager) ~= 'table' then
+    warn("[Engine] Linoria dependency load failed: library/theme/config manager incomplete", err)
+    return
+end
 Library.IsMobile = isMobile
 Library.ShowCustomCursor = false
 Library.ShowToggleFrameInKeybinds = isMobile
@@ -18335,7 +18341,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return fallback
             end
-            local LUAHOOK_MAX_ATTACK_SPEED_BOOST = 1000
+            local LUAHOOK_MAX_ATTACK_SPEED_BOOST = 10000
             local function ResolveRivalsModsStartShootingItem(item)
                 if type(item) == 'table' and type(item.Name) == 'string' and item.Name ~= '' then
                     return item
@@ -18351,8 +18357,8 @@ ErrorReporter.set_game(GameName)
                 if not IsRivalsModToggleEnabled('LH_P4S1T1') then
                     return 1
                 end
-                local displayedSpeed = math.clamp(ReadRivalsModNumber('LH_P4S1S4', 1), 1, 100)
-                local weaponSpeedBoost = math.clamp(displayedSpeed * 10, 10, LUAHOOK_MAX_ATTACK_SPEED_BOOST)
+                local displayedSpeed = math.clamp(ReadRivalsModNumber('LH_P4S1S4', 1), 1, LUAHOOK_MAX_ATTACK_SPEED_BOOST)
+                local weaponSpeedBoost = displayedSpeed
                 return 1 / (1 + (weaponSpeedBoost / 100))
             end
             local function ResolveRivalsReloadKey(item, reloadEnum)
@@ -18674,6 +18680,11 @@ ErrorReporter.set_game(GameName)
             end
             function LuaHookWeaponState.EnsureHooks()
                 local state = LuaHookWeaponState
+                if LuaHookRiotKnifeBypassToggleEnabled('LH_P4S1T8') then
+                    LuaHookRiotKnifeBypass.Start()
+                else
+                    LuaHookRiotKnifeBypass.Stop()
+                end
                 LuaHookWeaponState.RefreshPersistentItemModifiers()
                 LuaHookWeaponState.UpdateCameraModifiers()
                 if state.NoSpreadController then
@@ -18703,6 +18714,7 @@ ErrorReporter.set_game(GameName)
                     or IsRivalsModToggleEnabled('LH_P4S2T8')
                     or IsRivalsModToggleEnabled('LH_P4S2T9')
                     or IsRivalsModToggleEnabled('LH_P4S2T10')
+                    or IsRivalsModToggleEnabled('LH_P4S1T8')
                 ) then
                     state.PendingEnsureHooks = false
                     return false
@@ -18732,6 +18744,7 @@ ErrorReporter.set_game(GameName)
             end
             function LuaHookWeaponState.RestoreHooks()
                 local state = LuaHookWeaponState
+                pcall(LuaHookRiotKnifeBypass.Stop)
                 LuaHookWeaponState.RestoreClientModifiers()
                 LuaHookWeaponState.RestoreLuaHookInputHook()
                 local gunModule = state.GunModule
@@ -27056,6 +27069,12 @@ ErrorReporter.set_game(GameName)
                 return FireTriggerbotShot()
             end
             local CollectBestAimbotTarget = function(requireVisible, ignoreFovOverride, aimMode)
+                if type(Options) ~= 'table' or type(Toggles) ~= 'table' then
+                    return nil
+                end
+                if type(LuaHookRuntime) ~= 'table' or type(LuaHookAimRuntime) ~= 'table' then
+                    return nil
+                end
                 EnsureAimbotTargetTracking()
                 aimMode = ResolveAimbotTargetMode(aimMode or (Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'))
                 local wallCheck = IsAimbotWallCheckEnabled(aimMode)
@@ -27685,13 +27704,29 @@ ErrorReporter.set_game(GameName)
                 if info and (info.Class == 'Melee' or info.Type == 'Melee') then
                     return false
                 end
+                if type(Rage) ~= 'table' or type(Rage._buildShotFields) ~= 'function' then
+                    return false
+                end
+                if type(ReplicatedStorage) ~= 'userdata' and type(ReplicatedStorage) ~= 'table' then
+                    return false
+                end
                 local useItem, shootEnum, objectId
                 local ok = pcall(function()
-                    useItem = ReplicatedStorage.Remotes.Replication.Fighter.UseItem
-                    shootEnum = Rivals.Enums:ToEnum('StartShooting')
-                    objectId = item:Get('ObjectID')
+                    local remotes = ReplicatedStorage.Remotes
+                    local replication = remotes and remotes.Replication
+                    local fighterRemote = replication and replication.Fighter
+                    useItem = fighterRemote and fighterRemote.UseItem
+                    if Rivals and Rivals.Enums and type(Rivals.Enums.ToEnum) == 'function' then
+                        shootEnum = Rivals.Enums:ToEnum('StartShooting')
+                    end
+                    if item and type(item.Get) == 'function' then
+                        objectId = item:Get('ObjectID')
+                    end
                 end)
                 if not ok or useItem == nil or shootEnum == nil or objectId == nil then
+                    return false
+                end
+                if type(useItem.FireServer) ~= 'function' then
                     return false
                 end
                 local camera = Workspace.CurrentCamera
@@ -27789,10 +27824,26 @@ ErrorReporter.set_game(GameName)
                 local wrappedStartShooting
                 wrappedStartShooting = function(self, ...)
                     local didPrime, camera, originalCFrame = LuaHookRuntime.BeginAimbotSilentShot(self)
+                    local baseStartShooting = LuaHookWeaponState.ResolveGunStartShootingBase(originalStartShooting)
                     if didPrime == 'MANIPULATED' then
+                        -- Direct manipulation has already sent the forged server shot.
+                        -- Some weapon modules still require their local StartShooting pipeline
+                        -- to advance cooldown/animation state. Give that pipeline a guarded
+                        -- fallback only if the direct shot did not advance _last_shot.
+                        local previousLastShot = rawget(self, '_last_shot')
+                        local startArgs = table.pack(...)
+                        task.delay(0.03, GuardLuaHookCallback('Aimbot_Manipulation_LocalFallback', function()
+                            if Library and Library.Unloaded then return end
+                            if not self then return end
+                            if type(baseStartShooting) ~= 'function' then return end
+                            local currentLastShot = rawget(self, '_last_shot')
+                            if currentLastShot == previousLastShot then
+                                pcall(baseStartShooting, self, table.unpack(startArgs, 1, startArgs.n))
+                            end
+                        end))
+                        LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
                         return true
                     end
-                    local baseStartShooting = LuaHookWeaponState.ResolveGunStartShootingBase(originalStartShooting)
                     local results = table.pack(pcall(baseStartShooting, self, ...))
                     LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
                     if not results[1] then
@@ -27807,6 +27858,9 @@ ErrorReporter.set_game(GameName)
                 item.StartShooting = wrappedStartShooting
             end
             local function UpdateAimbot()
+                if type(LuaHookAimRuntime) ~= 'table' or type(LuaHookRuntime) ~= 'table' then
+                    return
+                end
                 local selectedMode = LuaHookAimRuntime.ResolveAimbotMode()
                 if selectedMode == 'Camera' then
                     local cameraActive = LuaHookAimRuntime.IsCameraAimEnabled()
@@ -37623,6 +37677,308 @@ ErrorReporter.set_game(GameName)
                 return dialog
             end
 
+-- LuaHook-native Riot/Knife Bypass port.
+-- Ported from the Kicia behavior, but uses only LuaHook runtime state/helpers.
+local LuaHookRiotKnifeBypass = {}
+LuaHookRiotKnifeBypass._connection = nil
+LuaHookRiotKnifeBypass._active = false
+LuaHookRiotKnifeBypass._lastEncoded = utf8.char(255) .. utf8.char(255)
+LuaHookRiotKnifeBypass._lastTarget = nil
+LuaHookRiotKnifeBypass._lastMode = nil
+LuaHookRiotKnifeBypass._loopFn = nil
+LuaHookRiotKnifeBypass._utilityIndex = nil
+LuaHookRiotKnifeBypass._utilityOriginal = nil
+LuaHookRiotKnifeBypass._utilityReplacement = nil
+LuaHookRiotKnifeBypass._hookInstalled = false
+LuaHookRiotKnifeBypass._nextHookScanAt = 0
+
+local LUAHOOK_RIOT_BYPASS_TRIGGER_DIST = 500
+local LUAHOOK_KNIFE_BYPASS_TRIGGER_DIST = 35
+
+local function LuaHookRiotKnifeBypassToggleEnabled(id)
+    local toggle = Toggles and Toggles[id]
+    return toggle ~= nil and toggle.Value == true
+end
+
+local function LuaHookRiotKnifeBypassGetCameraRemote()
+    local remote = nil
+    pcall(function()
+        local remotes = ReplicatedStorage:FindFirstChild('Remotes')
+        local replication = remotes and remotes:FindFirstChild('Replication')
+        local fighter = replication and replication:FindFirstChild('Fighter')
+        remote = fighter and fighter:FindFirstChild('UpdateCameraRotation')
+    end)
+    return remote
+end
+
+local function LuaHookRiotKnifeBypassIsAlive(player)
+    if not player or player == lp then return false end
+    local character = player.Character
+    if not character or not character.Parent then return false end
+    local humanoid = character:FindFirstChildOfClass('Humanoid')
+    if humanoid and humanoid.Health <= 0 then return false end
+    local root = character:FindFirstChild('HumanoidRootPart')
+    local head = character:FindFirstChild('Head') or character:FindFirstChild('HitboxHead')
+    return root ~= nil and root:IsA('BasePart') and head ~= nil and head:IsA('BasePart')
+end
+
+local function LuaHookRiotKnifeBypassEnemy(player)
+    if not LuaHookRiotKnifeBypassIsAlive(player) then return false end
+    local localEnv = lp:GetAttribute('EnvironmentID')
+    local targetEnv = player:GetAttribute('EnvironmentID')
+    if localEnv ~= nil and targetEnv ~= nil and localEnv ~= targetEnv then
+        return false
+    end
+    local myTeam = lp:GetAttribute('TeamID')
+    local theirTeam = player:GetAttribute('TeamID')
+    if myTeam ~= nil and theirTeam ~= nil and myTeam == theirTeam then
+        return false
+    end
+    if lp.Team ~= nil and player.Team ~= nil and lp.Team == player.Team then
+        return false
+    end
+    return true
+end
+
+local function LuaHookRiotKnifeBypassFindTarget(maxDistance)
+    local character = lp.Character
+    local myRoot = character and character:FindFirstChild('HumanoidRootPart')
+    if not myRoot or not myRoot:IsA('BasePart') then return nil end
+    local origin = myRoot.Position
+    local best, bestDistance = nil, math.huge
+    for _, player in ipairs(Players:GetPlayers()) do
+        if LuaHookRiotKnifeBypassEnemy(player) then
+            local targetCharacter = player.Character
+            local root = targetCharacter and targetCharacter:FindFirstChild('HumanoidRootPart')
+            local head = targetCharacter and (targetCharacter:FindFirstChild('Head') or targetCharacter:FindFirstChild('HitboxHead'))
+            if root and head and root:IsA('BasePart') and head:IsA('BasePart') then
+                local distance = (root.Position - origin).Magnitude
+                if distance <= maxDistance and distance < bestDistance then
+                    bestDistance = distance
+                    best = { player = player, root = root, head = head }
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function LuaHookRiotKnifeBypassEncode(pitch, yaw)
+    if type(pitch) ~= 'number' or pitch ~= pitch then return nil end
+    if type(yaw) ~= 'number' or yaw ~= yaw then return nil end
+    local function encode(value)
+        local v = math.floor((value % (2 * math.pi)) / math.pi / 2 * 256 + 0.5)
+        return utf8.char(math.clamp(v, 0, 255))
+    end
+    local ok, result = pcall(function()
+        return encode(pitch) .. encode(yaw)
+    end)
+    return ok and result or nil
+end
+
+local function LuaHookRiotKnifeBypassResolveAngles(target)
+    if not target or not target.head or not target.head.Parent then return nil, nil end
+    local pitch, yaw = target.head.CFrame:ToOrientation()
+    local myCharacter = lp.Character
+    local myRoot = myCharacter and myCharacter:FindFirstChild('HumanoidRootPart')
+    local absPitch = math.abs(pitch)
+    if myRoot and absPitch > math.rad(45) then
+        local eyePosition = myRoot.Position + Vector3.new(0, 1.5, 0)
+        local computedPitch = select(1, CFrame.lookAt(eyePosition, target.head.Position):ToOrientation())
+        if absPitch >= math.rad(65) then
+            pitch = computedPitch
+        else
+            local t = (absPitch - math.rad(45)) / (math.rad(65) - math.rad(45))
+            pitch = pitch + (computedPitch - pitch) * t
+        end
+    end
+    return pitch, yaw
+end
+
+local function LuaHookRiotKnifeBypassHookStillInstalled()
+    if not LuaHookRiotKnifeBypass._hookInstalled
+        or LuaHookRiotKnifeBypass._loopFn == nil
+        or LuaHookRiotKnifeBypass._utilityIndex == nil
+        or LuaHookRiotKnifeBypass._utilityReplacement == nil
+        or type(debug) ~= 'table'
+        or type(debug.getupvalue) ~= 'function' then
+        return false
+    end
+    local ok, _, current = pcall(debug.getupvalue,
+        LuaHookRiotKnifeBypass._loopFn, LuaHookRiotKnifeBypass._utilityIndex)
+    return ok and current == LuaHookRiotKnifeBypass._utilityReplacement
+end
+
+local function LuaHookRiotKnifeBypassRestoreReplicationHook()
+    if LuaHookRiotKnifeBypass._loopFn ~= nil
+        and LuaHookRiotKnifeBypass._utilityIndex ~= nil
+        and LuaHookRiotKnifeBypass._utilityOriginal ~= nil
+        and type(debug) == 'table'
+        and type(debug.setupvalue) == 'function' then
+        pcall(debug.setupvalue,
+            LuaHookRiotKnifeBypass._loopFn,
+            LuaHookRiotKnifeBypass._utilityIndex,
+            LuaHookRiotKnifeBypass._utilityOriginal)
+    end
+    LuaHookRiotKnifeBypass._loopFn = nil
+    LuaHookRiotKnifeBypass._utilityIndex = nil
+    LuaHookRiotKnifeBypass._utilityOriginal = nil
+    LuaHookRiotKnifeBypass._utilityReplacement = nil
+    LuaHookRiotKnifeBypass._hookInstalled = false
+    LuaHookRiotKnifeBypass._nextHookScanAt = 0
+end
+
+local function LuaHookRiotKnifeBypassInstallReplicationHook()
+    if LuaHookRiotKnifeBypass._hookInstalled then return true end
+    if type(debug) ~= 'table'
+        or type(debug.getupvalues) ~= 'function'
+        or type(debug.setupvalue) ~= 'function' then
+        return false
+    end
+    local fighterController = Rivals and Rivals.Fighter or nil
+    if fighterController == nil then return false end
+    local loop = rawget(fighterController, '_CameraReplicationLoop')
+    if type(loop) ~= 'function' then
+        local mt = getmetatable(fighterController)
+        local proto = mt and rawget(mt, '__index')
+        if type(proto) == 'table' then
+            loop = rawget(proto, '_CameraReplicationLoop')
+        end
+    end
+    if type(loop) ~= 'function' then return false end
+
+    local ok, upvalues = pcall(debug.getupvalues, loop)
+    if not ok or type(upvalues) ~= 'table' then return false end
+    for index, value in pairs(upvalues) do
+        if type(value) == 'table' then
+            local mt = getmetatable(value)
+            local idx = mt and rawget(mt, '__index') or nil
+            local original = idx and rawget(idx, 'EncodeCameraRotation') or rawget(value, 'EncodeCameraRotation')
+            if type(original) == 'function' then
+                local owner = value
+                local replacement = {}
+                replacement.EncodeCameraRotation = function(_, raw)
+                    if LuaHookRiotKnifeBypass._active
+                        and type(LuaHookRiotKnifeBypass._lastEncoded) == 'string'
+                        and #LuaHookRiotKnifeBypass._lastEncoded == 2 then
+                        return LuaHookRiotKnifeBypass._lastEncoded
+                    end
+                    return original(owner, raw)
+                end
+                setmetatable(replacement, { __index = owner })
+                local okSet = pcall(debug.setupvalue, loop, index, replacement)
+                if okSet then
+                    LuaHookRiotKnifeBypass._loopFn = loop
+                    LuaHookRiotKnifeBypass._utilityIndex = index
+                    LuaHookRiotKnifeBypass._utilityOriginal = owner
+                    LuaHookRiotKnifeBypass._utilityReplacement = replacement
+                    LuaHookRiotKnifeBypass._hookInstalled = true
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function LuaHookRiotKnifeBypass.Stop()
+    if LuaHookRiotKnifeBypass._connection then
+        pcall(function() LuaHookRiotKnifeBypass._connection:Disconnect() end)
+        LuaHookRiotKnifeBypass._connection = nil
+    end
+    LuaHookRiotKnifeBypass._active = false
+    LuaHookRiotKnifeBypass._lastTarget = nil
+    LuaHookRiotKnifeBypass._lastMode = nil
+    LuaHookRiotKnifeBypass._lastEncoded = utf8.char(255) .. utf8.char(255)
+    LuaHookRiotKnifeBypassRestoreReplicationHook()
+end
+
+function LuaHookRiotKnifeBypass.Update()
+    if not LuaHookRiotKnifeBypassToggleEnabled('LH_P4S1T8') then
+        LuaHookRiotKnifeBypass._active = false
+        return false
+    end
+
+    local mode = 'Riot'
+    pcall(function()
+        local option = Options and Options.LH_P4S1D2
+        if option and option.Value ~= nil then
+            mode = tostring(option.Value)
+        end
+    end)
+    if mode ~= 'Knife' and mode ~= 'Riot' then
+        mode = 'Riot'
+    end
+
+    if mode == 'Knife' and not isLocalKnife() then
+        LuaHookRiotKnifeBypass._active = false
+        LuaHookRiotKnifeBypass._lastTarget = nil
+        LuaHookRiotKnifeBypass._lastMode = mode
+        return false
+    end
+
+    local triggerDistance = mode == 'Knife' and LUAHOOK_KNIFE_BYPASS_TRIGGER_DIST or LUAHOOK_RIOT_BYPASS_TRIGGER_DIST
+    local target = LuaHookRiotKnifeBypassFindTarget(triggerDistance)
+    if target == nil then
+        LuaHookRiotKnifeBypass._active = false
+        LuaHookRiotKnifeBypass._lastTarget = nil
+        LuaHookRiotKnifeBypass._lastMode = mode
+        LuaHookRiotKnifeBypass._lastEncoded = utf8.char(255) .. utf8.char(255)
+        return false
+    end
+
+    if LuaHookRiotKnifeBypass._hookInstalled and not LuaHookRiotKnifeBypassHookStillInstalled() then
+        LuaHookRiotKnifeBypassRestoreReplicationHook()
+    end
+    if not LuaHookRiotKnifeBypass._hookInstalled then
+        local now = os.clock()
+        if now < LuaHookRiotKnifeBypass._nextHookScanAt then
+            return false
+        end
+        LuaHookRiotKnifeBypass._nextHookScanAt = now + 1
+        local installed = false
+        pcall(function() installed = LuaHookRiotKnifeBypassInstallReplicationHook() end)
+        if not installed then return false end
+    end
+
+    local pitch, yaw = LuaHookRiotKnifeBypassResolveAngles(target)
+    local encoded = pitch and yaw and LuaHookRiotKnifeBypassEncode(pitch, yaw) or nil
+    if encoded == nil then
+        LuaHookRiotKnifeBypass._active = false
+        return false
+    end
+
+    LuaHookRiotKnifeBypass._active = true
+    LuaHookRiotKnifeBypass._lastEncoded = encoded
+    LuaHookRiotKnifeBypass._lastTarget = target.player
+    LuaHookRiotKnifeBypass._lastMode = mode
+
+    local remote = LuaHookRiotKnifeBypassGetCameraRemote()
+    if remote then
+        pcall(function()
+            remote:FireServer(encoded, nil)
+        end)
+    end
+    return true
+end
+
+function LuaHookRiotKnifeBypass.Start()
+    if LuaHookRiotKnifeBypass._connection ~= nil then
+        return true
+    end
+    local ok, conn = pcall(function()
+        return RunService.Heartbeat:Connect(function()
+            pcall(LuaHookRiotKnifeBypass.Update)
+        end)
+    end)
+    if not ok or conn == nil then
+        return false
+    end
+    LuaHookRiotKnifeBypass._connection = conn
+    pcall(LuaHookRiotKnifeBypass.Update)
+    return true
+end
+
 local EnsureLuaHookWeaponHooksCallback = GuardLuaHookCallback('WeaponMods_EnsureHooks', function()
     if type(LuaHookWeaponState) ~= 'table' or type(LuaHookWeaponState.EnsureHooks) ~= 'function' then
         return false
@@ -37635,6 +37991,7 @@ local Tabs = {
     Rage       = Window:AddTab('Rage'),
     Movement   = Window:AddTab('Movement'),
     ESP        = Window:AddTab('ESP'),
+    Visuals    = Window:AddTab('Visuals'),
     HUD        = Window:AddTab('HUD'),
     Automation = Window:AddTab('Automation'),
     Misc       = Window:AddTab('Misc'),
@@ -37677,6 +38034,15 @@ do
                         Compact = true,
                     })
                     local CameraAimSettings = Combat:AddDependencyBox()
+                    CameraAimSettings:AddSlider("LH_P2S2S1", {
+                        Text = "Smoothing",
+                        Default = 35,
+                        Min = 0,
+                        Max = 100,
+                        Rounding = 2,
+                        Compact = true,
+                        Tooltip = "Camera aim smoothing. Lower values turn faster; 0 snaps instantly.",
+                    })
                     CameraAimSettings:AddToggle("LH_P2S2T1", {
                         Text = "Wall Check",
                         Default = false,
@@ -37686,14 +38052,6 @@ do
                         Text = "Team Check",
                         Default = false,
                         Tooltip = "Reject teammates while Camera mode is active.",
-                    })
-                    CameraAimSettings:AddSlider("LH_P2S2S1", {
-                        Text = "Smoothing",
-                        Default = 35,
-                        Min = 0,
-                        Max = 100,
-                        Rounding = 2,
-                        Compact = true,
                     })
                     CameraAimSettings:SetupDependencies({ { Options.LH_P2S1D1, "Camera" } })
                     local SilentAimSettings = Combat:AddDependencyBox()
@@ -37873,15 +38231,6 @@ do (function()
     CORE:AddToggle('RagePredictPrefire', { Text='Prefire resurface', Default=Config.RagePredictPrefire,
         Callback=function(v) Config.RagePredictPrefire = v end })
     CORE:AddDivider('Engagement')
-    CORE:AddToggle('RageManipulation', {
-        Text='Manipulation',
-        Default=false,
-        Tooltip='Direct-fire from the current position. No teleport to the target. Works in Polar and Orbit.',
-        Callback=GuardLuaHookCallback('Rage_Manipulation', function(v)
-            Config.RageManipulation = v == true
-            State.RageManipulated = false
-        end),
-    })
     CORE:AddToggle('RageSkipImmune', { Text='Ignore Protected', Default=Config.RageSkipImmune,
         Callback=function(v) Config.RageSkipImmune = v end })
     CORE:AddToggle('RagePrioritizeHackers', { Text='Prioritize Hackers', Default=Config.RagePrioritizeHackers,
@@ -37987,10 +38336,10 @@ end)() end
                         Text = "Speed Boost",
                         Default = 1,
                         Min = 1,
-                        Max = 100,
+                        Max = 10000,
                         Rounding = 0,
                         Suffix = "%",
-                        Tooltip = "UI range 1-100%; runtime boost maps to 10-1000%.",
+                        Tooltip = "Attack speed boost, from 1% to 10000%.",
                         Compact = true,
                     })
                     Speed:SetupDependencies({ { Toggles.LH_P4S1T1, true } })
@@ -38463,7 +38812,273 @@ local P1 = Tabs.ESP
             local P1S4 = P1:AddRightGroupbox('Live Preview')
             LuaHookRuntime.BuildEspPreview(P1S4)
                 end
-                do
+                
+-- Restored legacy Visuals tab (Cosmetics retained; player spoof UI removed).
+do (function()
+    if type(Visuals) ~= 'table' then Visuals = {} end
+    if type(Weather) ~= 'table' then Weather = {} end
+    if type(GameVisuals) ~= 'table' then GameVisuals = {} end
+    local LTB = Tabs.Visuals:AddLeftTabbox('World')
+    local WL = LTB:AddTab('Lighting')
+    local WX = LTB:AddTab('Weather')
+    WL:AddToggle('Visuals', { Text='Enable', Default=(Config.Visuals == true),
+        Callback=function(v) if v then Visuals.enable() else Visuals.disable() end end })
+        :AddKeyPicker('VisualsToggleKey', { Default='None', Mode='Toggle', SyncToggleState=true, Text='Visuals' })
+    local litDep = WL:AddDependencyBox()
+    litDep:AddDropdown('VisualsPreset', { Values=Visuals.PresetOrder or {'Neutral','Day','Night','Cyber','Sunset','Winter','Vaporwave'},
+        Default=(Config.VisualsPreset or 'Neutral'), Text='Preset',
+        Callback=function(v) Visuals.setPreset(v) end })
+    litDep:AddDropdown('VisualsGrade', { Values={'None','Crisp','Cold','Warm','Comp'},
+        Default=(Config.VisualsGrade or 'Crisp'), Text='Color grade',
+        Callback=function(v) if Visuals.setGrade then Visuals.setGrade(v) else Config.VisualsGrade = v end end })
+    litDep:AddSlider('VisualsGradeStrength', { Text='Grade strength', Default=(Config.VisualsGradeStrength or 0.6),
+        Min=0, Max=1, Rounding=2, Suffix='x',
+        Callback=function(v) if Visuals.setGradeStrength then Visuals.setGradeStrength(v) else Config.VisualsGradeStrength = v end end })
+    litDep:AddToggle('VisualsBloom', { Text='Bloom', Default=(Config.VisualsBloom == true),
+        Callback=function(v) Visuals.setBloom(v) end })
+    local blmDep = litDep:AddDependencyBox()
+    blmDep:AddSlider('VisualsBloomIntensity', { Text='Bloom intensity', Default=(Config.VisualsBloomIntensity or 1.0),
+        Min=0, Max=3, Rounding=2, Suffix='x',
+        Callback=function(v) if Visuals.setBloomIntensity then Visuals.setBloomIntensity(v) else Config.VisualsBloomIntensity = v end end })
+    blmDep:SetupDependencies({ { Toggles.VisualsBloom, true } })
+    litDep:AddDivider('World')
+    litDep:AddToggle('VisualsFullbright', { Text='Fullbright', Default=(Config.VisualsFullbright == true),
+        Callback=function(v) Visuals.toggleFullbright(v) end })
+    litDep:AddToggle('VisualsNoFog', { Text='No fog', Default=(Config.VisualsNoFog == true),
+        Callback=function(v) Visuals.toggleNoFog(v) end })
+    litDep:AddToggle('VisualsRainbowMap', { Text='Rainbow world', Default=(Config.VisualsRainbowMap == true),
+        Callback=function(v) if Visuals.toggleRainbow then Visuals.toggleRainbow(v) else Config.VisualsRainbowMap = v end end })
+    litDep:AddToggle('VisualsPerformanceMode', { Text='Performance mode', Default=(Config.VisualsPerformanceMode == true),
+        Callback=function(v) Visuals.togglePerf(v) end })
+    litDep:SetupDependencies({ { Toggles.Visuals, true } })
+    WX:AddToggle('Weather', { Text='Enable', Default=(Config.Weather == true),
+        Callback=function(v) if v then Weather.enableWeather() else Weather.disableWeather() end end })
+    local wxDep = WX:AddDependencyBox()
+    wxDep:AddDropdown('WeatherType', { Values={'Rain','Snow','Petals','Autumn','Mist','Ash','Sandstorm','Embers','Fireflies'},
+        Default=(Config.WeatherType or 'Rain'), Text='Precipitation',
+        Callback=function(v) Weather.setType(v) end })
+    wxDep:AddSlider('WeatherIntensity', { Text='Intensity', Default=(Config.WeatherIntensity or 1.0),
+        Min=0.15, Max=2, Rounding=2, Suffix='x',
+        Callback=function(v) Weather.setIntensity(v) end })
+    wxDep:AddSlider('WeatherSoundVolume', { Text='Volume', Default=(Config.WeatherSoundVolume or 0.35),
+        Min=0, Max=1, Rounding=2,
+        Callback=function(v) Weather.setVolume(v) end })
+    wxDep:AddToggle('WeatherMood', { Text='Mood tint', Default=(Config.WeatherMood == true),
+        Callback=function(v) Weather.toggleMood(v) end })
+    wxDep:AddDivider('Atmosphere')
+    wxDep:AddToggle('WeatherStorm', { Text='Storm & lightning', Default=(Config.WeatherStorm == true),
+        Callback=function(v) Weather.toggleStorm(v) end })
+    local stormDep = wxDep:AddDependencyBox()
+    stormDep:AddToggle('WeatherStormFlash', { Text='Sky flash', Default=(Config.WeatherStormFlash == true),
+        Callback=function(v) Weather.toggleSkyFlash(v) end })
+    stormDep:SetupDependencies({ { Toggles.WeatherStorm, true } })
+    wxDep:AddToggle('WeatherMeteors', { Text='Meteors', Default=(Config.WeatherMeteors == true),
+        Callback=function(v) Weather.toggleMeteors(v) end })
+    local metDep = wxDep:AddDependencyBox()
+    metDep:AddSlider('WeatherMeteorRate', { Text='Rate', Default=(Config.WeatherMeteorRate or 1.0),
+        Min=0.25, Max=3, Rounding=2, Suffix='x', Compact=true,
+        Callback=function(v) Weather.setMeteorsRate(v) end })
+    metDep:SetupDependencies({ { Toggles.WeatherMeteors, true } })
+    wxDep:AddToggle('WeatherShootingStars', { Text='Shooting stars', Default=(Config.WeatherShootingStars == true),
+        Callback=function(v) Weather.toggleShootingStars(v) end })
+    local starDep = wxDep:AddDependencyBox()
+    starDep:AddSlider('WeatherStarRate', { Text='Rate', Default=(Config.WeatherStarRate or 1.0),
+        Min=0.25, Max=3, Rounding=2, Suffix='x', Compact=true,
+        Callback=function(v) Weather.setStarsRate(v) end })
+    starDep:SetupDependencies({ { Toggles.WeatherShootingStars, true } })
+    wxDep:AddDropdown('SkyboxPreset', { Values=Weather.SkyboxOrder or {'Off','Space','Sunset','Clouds','Storm','Winter','Vaporwave'},
+        Default=(Config.SkyboxPreset or 'Off'), Text='Skybox',
+        Callback=function(v) Weather.setSkybox(v) end })
+    wxDep:AddToggle('SkyboxHideCelestial', { Text='Hide celestial', Default=(Config.SkyboxHideCelestial == true),
+        Callback=function(v) Weather.toggleCelestial(v) end })
+    wxDep:AddToggle('WeatherGodRays', { Text='God rays', Default=(Config.WeatherGodRays == true),
+        Callback=function(v) Weather.toggleGodRays(v) end })
+    wxDep:AddToggle('WeatherRainbow', { Text='Rainbow', Default=(Config.WeatherRainbow == true),
+        Callback=function(v) Weather.toggleRainbow(v) end })
+    wxDep:AddToggle('WeatherPuddles', { Text='Puddles', Default=(Config.WeatherPuddles == true),
+        Callback=function(v) Weather.togglePuddles(v) end })
+    wxDep:AddToggle('WeatherClockDial', { Text='Clock dial', Default=(Config.WeatherClockDial == true),
+        Callback=function(v) Weather.toggleClock(v) end })
+    wxDep:SetupDependencies({ { Toggles.Weather, true } })
+    local VM = Tabs.Visuals:AddLeftGroupbox('Viewmodel & Chams')
+    VM:AddToggle('VMOffsetEnabled', { Text='6-DOF transform', Default=(Config.VMOffsetEnabled == true),
+        Callback=function(v) Config.VMOffsetEnabled = v; pcall(Visuals.refreshViewModel) end })
+    local vmDep = VM:AddDependencyBox()
+    vmDep:AddDivider('Position')
+    vmDep:AddSlider('VMOffsetX', { Text='X', Default=(Config.VMOffsetX or 0), Min=-5, Max=5, Rounding=2, Compact=true,
+        Callback=function(v) Config.VMOffsetX = v end })
+    vmDep:AddSlider('VMOffsetY', { Text='Y', Default=(Config.VMOffsetY or 0), Min=-5, Max=5, Rounding=2, Compact=true,
+        Callback=function(v) Config.VMOffsetY = v end })
+    vmDep:AddSlider('VMOffsetZ', { Text='Z', Default=(Config.VMOffsetZ or 0), Min=-5, Max=5, Rounding=2, Compact=true,
+        Callback=function(v) Config.VMOffsetZ = v end })
+    vmDep:AddDivider('Rotation')
+    vmDep:AddSlider('VMOffsetPitch', { Text='Pitch', Default=(Config.VMOffsetPitch or 0), Min=-180, Max=180, Rounding=0, Compact=true, Suffix='°',
+        Callback=function(v) Config.VMOffsetPitch = math.floor(v) end })
+    vmDep:AddSlider('VMOffsetYaw', { Text='Yaw', Default=(Config.VMOffsetYaw or 0), Min=-180, Max=180, Rounding=0, Compact=true, Suffix='°',
+        Callback=function(v) Config.VMOffsetYaw = math.floor(v) end })
+    vmDep:AddSlider('VMOffsetRoll', { Text='Roll', Default=(Config.VMOffsetRoll or 0), Min=-180, Max=180, Rounding=0, Compact=true, Suffix='°',
+        Callback=function(v) Config.VMOffsetRoll = math.floor(v) end })
+    vmDep:SetupDependencies({ { Toggles.VMOffsetEnabled, true } })
+    VM:AddDivider('Chams & Textures')
+    VM:AddToggle('VMChamsEnabled', { Text='Material chams', Default=(Config.VMChamsEnabled == true),
+        Callback=function(v) Config.VMChamsEnabled = v; pcall(Visuals.refreshViewModel) end })
+        :AddColorPicker('VMChamsColor', { Default=(Config.VMChamsColor or Color3.fromRGB(53, 215, 199)), Title='Cham Color',
+            Callback=function(v) Config.VMChamsColor = v end })
+    local vmcDep = VM:AddDependencyBox()
+    vmcDep:AddDropdown('VMChamsMaterial', { Values={'ForceField','Neon','Glass','SmoothPlastic'},
+        Default=(Config.VMChamsMaterial or 'ForceField'), Text='Material', Callback=function(v) Config.VMChamsMaterial = v end })
+    vmcDep:AddSlider('VMChamsTransparency', { Text='Transparency', Default=(Config.VMChamsTransparency or 0.5),
+        Min=0, Max=1, Rounding=2, Callback=function(v) Config.VMChamsTransparency = v end })
+    vmcDep:SetupDependencies({ { Toggles.VMChamsEnabled, true } })
+    VM:AddToggle('VMDisableTextures', { Text='Disable gun textures', Default=(Config.VMDisableTextures == true),
+        Callback=function(v) Config.VMDisableTextures = v; pcall(Visuals.refreshViewModel) end })
+    local RTB1 = Tabs.Visuals:AddRightTabbox('Effects & Camera')
+    local HL = RTB1:AddTab('Holograms')
+    local CM = RTB1:AddTab('Camera')
+    HL:AddToggle('VisualsHolograms', { Text='On-hit holograms', Default=(Config.VisualsHolograms == true),
+        Callback=function(v) Config.VisualsHolograms = v end })
+        :AddColorPicker('VisualsHologramColor', { Default=(Config.VisualsHologramColor or Color3.fromRGB(0, 220, 255)), Title='Core Color',
+            Callback=function(v) Config.VisualsHologramColor = v end })
+        :AddColorPicker('VisualsHologramAccent', { Default=(Config.VisualsHologramAccent or Color3.fromRGB(255, 60, 200)), Title='Halo Accent',
+            Callback=function(v) Config.VisualsHologramAccent = v end })
+    local holoDep = HL:AddDependencyBox()
+    holoDep:AddDropdown('VisualsHologramStyle', { Values={'Orb','Skeleton','Wraith'}, Default=(Config.VisualsHologramStyle or 'Orb'),
+        Text='Style', Callback=function(v) Config.VisualsHologramStyle = v end })
+    holoDep:AddSlider('VisualsHologramDuration', { Text='Duration', Default=(Config.VisualsHologramDuration or 3.5),
+        Min=0.5, Max=5, Rounding=1, Suffix='s', Callback=function(v) Config.VisualsHologramDuration = v end })
+    holoDep:AddSlider('VisualsHologramRange', { Text='Max range', Default=(Config.VisualsHologramRange or 300),
+        Min=20, Max=300, Rounding=0, Suffix=' studs', Callback=function(v) Config.VisualsHologramRange = math.floor(v) end })
+    holoDep:AddSlider('VisualsHologramVisibility', { Text='Visibility', Default=(Config.VisualsHologramVisibility or 1.4),
+        Min=0.2, Max=2, Rounding=1, Suffix='x', Callback=function(v) Config.VisualsHologramVisibility = v end })
+    holoDep:AddToggle('VisualsHologramLethal', { Text='Gold kill aura', Default=(Config.VisualsHologramLethal == true),
+        Callback=function(v) Config.VisualsHologramLethal = v end })
+    holoDep:SetupDependencies({ { Toggles.VisualsHolograms, true } })
+    CM:AddToggle('CameraFovOverride', { Text='FOV override', Default=(Config.CameraFovOverride == true),
+        Callback=function(v) Config.CameraFovOverride = v end })
+    local fovDep = CM:AddDependencyBox()
+    fovDep:AddSlider('CameraFovAmount', { Text='Field of view', Default=(Config.CameraFovAmount or 90),
+        Min=40, Max=130, Rounding=0, Suffix='°', Callback=function(v) Config.CameraFovAmount = math.floor(v) end })
+    fovDep:SetupDependencies({ { Toggles.CameraFovOverride, true } })
+    CM:AddToggle('CameraAspectRatioEnabled', { Text='Aspect ratio stretch', Default=(Config.CameraAspectRatioEnabled == true),
+        Callback=function(v) Config.CameraAspectRatioEnabled = v end })
+    local arDep = CM:AddDependencyBox()
+    arDep:AddSlider('CameraAspectRatioX', { Text='Width', Default=(Config.CameraAspectRatioX or 4),
+        Min=1, Max=21, Rounding=0, Compact=true, Callback=function(v) Config.CameraAspectRatioX = math.floor(v) end })
+    arDep:AddSlider('CameraAspectRatioY', { Text='Height', Default=(Config.CameraAspectRatioY or 3),
+        Min=1, Max=21, Rounding=0, Compact=true, Callback=function(v) Config.CameraAspectRatioY = math.floor(v) end })
+    arDep:SetupDependencies({ { Toggles.CameraAspectRatioEnabled, true } })
+    CM:AddToggle('ThirdPersonEnabled', { Text='Third person', Default=(Config.ThirdPersonEnabled == true),
+        Callback=function(v) Config.ThirdPersonEnabled = v end })
+    local tpDep = CM:AddDependencyBox()
+    tpDep:AddSlider('ThirdPersonDistance', { Text='Distance', Default=(Config.ThirdPersonDistance or 12),
+        Min=4, Max=30, Rounding=0, Suffix=' studs', Callback=function(v) Config.ThirdPersonDistance = math.floor(v) end })
+    tpDep:SetupDependencies({ { Toggles.ThirdPersonEnabled, true } })
+    local RTB2 = Tabs.Visuals:AddRightTabbox('Game & Profile')
+    local GL = RTB2:AddTab('Cosmetics')
+
+    GL:AddToggle('GameVisuals', { Text='Enable', Default=(Config.GameVisuals == true),
+        Callback=function(v) if v then GameVisuals.enable() else GameVisuals.disable() end end })
+    local gvDep = GL:AddDependencyBox()
+    gvDep:AddToggle('GVUnlockAll', { Text='Unlock all', Default=(Config.GVUnlockAll == true),
+        Callback=function(v) pcall(GameVisuals.setUnlockAll, v) end })
+    gvDep:AddToggle('GVRemember', { Text='Remember picks', Default=(Config.GVRemember == true),
+        Callback=function(v) Config.GVRemember = v ; if v then pcall(GameVisuals.saveConfig) end end })
+    gvDep:AddToggle('GVEmotes', { Text='Unlock emotes', Default=(Config.GVEmotes == true),
+        Callback=function(v) pcall(GameVisuals.syncEmotes, v) end })
+    gvDep:AddDropdown('GVEmote', { Values = { 'None' }, Default = 'None', Text = 'Play emote',
+        Callback = function(v) pcall(GameVisuals.playEmote, v) end })
+    gvDep:AddButton({ Text='Reset all', Func=function() pcall(GameVisuals.restore) end })
+    gvDep:AddDivider('Ranked charm')
+    gvDep:AddToggle('GVRankCharmOn', { Text='Spoof ranked charm rank', Default=(Config.GVRankCharmOn == true),
+        Callback=function(v) Config.GVRankCharmOn = v ; if v then pcall(GameVisuals.refreshRankCharmMeta) end end })
+    gvDep:SetupDependencies({ { Toggles.GameVisuals, true } })
+    local rcDep = GL:AddDependencyBox()
+    rcDep:AddDropdown('GVRankWep', { Values = { 'Held weapon' }, Default = 'Held weapon',
+        Text = 'Ranked charm on', Callback = function(v) end })
+    rcDep:AddDropdown('GVRankLook', { Values = {}, Default = 'None', AllowNull = true,
+        Text = 'make it look like',
+        Callback = function(v)
+            if v == nil or v == 'None' then return end
+            local wv = 'Held weapon'
+            pcall(function() wv = Options.GVRankWep.Value or wv end)
+            pcall(GameVisuals.applyRankedCharm, v, wv)
+        end })
+    rcDep:AddInput('GVRankCharmLb', { Default = tostring(Config.GVRankCharmLb or 0), Numeric = true,
+        Text = '#N (optional, auto for Archnemesis)', Placeholder = '0', Finished = false,
+        Callback = function(v) Config.GVRankCharmLb = tonumber(v) or 0 ; pcall(GameVisuals.refreshRankCharmMeta) end })
+    rcDep:SetupDependencies({ { Toggles.GVRankCharmOn, true }, { Toggles.GameVisuals, true } })
+    GL:AddDivider('Manual picker')
+    local pickDep = GL:AddDependencyBox()
+    pickDep:AddDropdown('GVWeapon', { Values = { 'None' }, Default = 'None', Text = 'Weapon',
+        Callback = function(v) pcall(GameVisuals.setWeapon, v) end })
+    pickDep:AddDropdown('GVSkin', { Values = { 'None' }, Default = 'None', Text = 'Skin',
+        Callback = function(v) pcall(GameVisuals.setSkin, v) end })
+    pickDep:AddDropdown('GVCharm', { Values = { 'None' }, Default = 'None', Text = 'Charm',
+        Callback = function(v) pcall(GameVisuals.setCharm, v) end })
+    pickDep:AddDropdown('GVWrap', { Values = { 'None' }, Default = 'None', Text = 'Wrap',
+        Callback = function(v) pcall(GameVisuals.setWrap, v) end })
+    pickDep:AddDropdown('GVFinisher', { Values = { 'None' }, Default = 'None', Text = 'Finisher',
+        Callback = function(v) pcall(GameVisuals.setFinisher, v) end })
+    pickDep:AddToggle('GVWrapInverted', { Text='Invert wrap', Default=(Config.GVWrapInverted == true),
+        Callback=function(v) pcall(GameVisuals.setWrapInverted, v) end })
+    pickDep:SetupDependencies({ { Toggles.GameVisuals, true } })
+    task.spawn(function()
+        local sig = nil
+        while true do
+            task.wait(3)
+            local ok, lists = pcall(function()
+                return { GameVisuals.weaponList(), GameVisuals.skinList(), GameVisuals.charmList(),
+                         GameVisuals.wrapList(), GameVisuals.finisherList(), GameVisuals.rankNames(),
+                         GameVisuals.emoteList(), GameVisuals.rankedCharmsFor() }
+            end)
+            if ok and type(lists) == 'table' then
+                local lens = {}
+                for i = 1, 8 do lens[i] = lists[i] and #lists[i] or 0 end
+                local now = table.concat(lens, '/')
+                if now ~= sig then
+                    sig = now
+                    pcall(function() Options.GVWeapon:SetValues(lists[1]) end)
+                    pcall(function() Options.GVSkin:SetValues(lists[2]) end)
+                    pcall(function() Options.GVCharm:SetValues(lists[3]) end)
+                    pcall(function() Options.GVWrap:SetValues(lists[4]) end)
+                    pcall(function() Options.GVFinisher:SetValues(lists[5]) end)
+                    pcall(function() Options.GVRankLook:SetValues(lists[6]) end)
+                    pcall(function() Options.GVEmote:SetValues(lists[7]) end)
+                    pcall(function() Options.GVRankWep:SetValues(lists[8]) end)
+                end
+            end
+        end
+    end)
+    GL:AddDivider('Live Loaded')
+    local LOADED_LINES = 6
+    local loaded = {}
+    for i = 1, LOADED_LINES do loaded[i] = GL:AddLabel(' ', true) end
+    if type(loaded[1]) == 'table' and type(loaded[1].SetText) == 'function' then
+        task.spawn(function()
+            local shown = nil
+            while GameVisuals.uiAlive do
+                task.wait(0.35)
+                local lines = GameVisuals.summary()
+                if #lines == 0 then
+                    if Config.GameVisuals == true and GameVisuals.ready() ~= true then
+                        lines = { 'not active yet' }
+                    else
+                        lines = {}
+                    end
+                end
+                local joined = table.concat(lines, '\n')
+                if joined ~= shown then
+                    shown = joined
+                    for i = 1, LOADED_LINES do
+                        pcall(function() loaded[i]:SetText(lines[i] or ' ') end)
+                    end
+                end
+            end
+        end)
+    end
+
+end)() end
+do
                     local Movement = Tabs.Movement:AddLeftGroupbox("Movement", "move")
                     local WalkSpeedToggle = Movement:AddToggle("LH_P10S3T1", {
                         Text = "WalkSpeed",
@@ -38809,30 +39424,6 @@ do
         Callback=function(v) Config.FXKillBanner = v end })
 end
 do
-local P5S4 = Tabs.Misc:AddLeftGroupbox('Unlock All')
-local CosmeticsMasterToggle = P5S4:AddToggle('LH_P5S1T2', {
-    Text = 'Cosmetics / Unlock All',
-    Default = false,
-    Tooltip = 'Unlocks the full native cosmetic catalog; the game Custom Loadout chooses what is equipped.',
-    Callback = GuardLuaHookCallback('Cosmetics_Enabled_Changed', function(enabled)
-        if enabled then
-            pcall(LuaHookRuntime.ApplyLuaHookCosmetics)
-        else
-            pcall(LuaHookRuntime.RestoreLuaHookCosmetics)
-        end
-    end),
-})
-CosmeticsMasterToggle:AddKeyPicker('LH_P5S1T2K', {
-    Default = 'Unknown',
-    Mode = 'Toggle',
-    Text = 'Cosmetics',
-    NoUI = false,
-    SyncToggleState = true,
-})
-
-P5S4:AddLabel("Unlock All only. The game's current Custom Loadout remains the source of truth for Skin, Wrap, Charm, Finisher, and Emote.")
-P5S4:AddLabel('No weapon/cosmetic picker is used by this script.')
-
 LuaHookCosmeticsState.CosmeticsUiLoaded = false
 LuaHookCosmeticsState.CosmeticUiBound = false
                 local P10 = Tabs.Misc
@@ -38985,48 +39576,6 @@ LuaHookCosmeticsState.CosmeticUiBound = false
                     end
 
                     Library:Notify({ Title = 'RIVALS', Description = desc, Time = 4 })
-                end
-
-                local playerSpooferLabels = {
-                    Winstreak = 'Win Streak',
-                    Level = 'Level',
-                    RankedElo = 'Ranked ELO',
-                    NametagStatus = 'Nametag Status',
-                    Influencer = 'Influencer',
-                    RobloxEmployee = 'Roblox Employee',
-                    NosniyTeam = "Nosniy's Team",
-                }
-                local playerSpooferScopes = {
-                    { suffix = 'You', title = 'Player Spoofer (You)', side = 'Left' },
-                    { suffix = 'Oth', title = 'Player Spoofer (Others)', side = 'Right' },
-                }
-                for _, scope in ipairs(playerSpooferScopes) do
-                    local spooferGroup = scope.side == 'Left'
-                        and P10:AddLeftGroupbox(scope.title)
-                        or P10:AddRightGroupbox(scope.title)
-                    for _, field in ipairs(LuaHookRuntime.PlayerSpoofer.AttributeFields) do
-                        local toggleId = 'PSpoof' .. scope.suffix .. field.key .. 'T'
-                        local toggle = spooferGroup:AddToggle(toggleId, {
-                            Text = playerSpooferLabels[field.key],
-                            Default = false,
-                        })
-                        toggle:OnChanged(GuardLuaHookCallback(
-                            'PlayerSpoofer_Toggle', LuaHookRuntime.PlayerSpoofer.RefreshAll))
-                        if field.control ~= 'const' then
-                            local valueId = 'PSpoof' .. scope.suffix .. field.key .. 'V'
-                            local default = scope.suffix == 'You' and field.youDefault or field.othDefault
-                            local valueBox = spooferGroup:AddDependencyBox()
-                            valueBox:AddInput(valueId, {
-                                Text = 'Value',
-                                Default = default,
-                                AllowEmpty = true,
-                                EmptyReset = '',
-                            })
-                            Options[valueId]:OnChanged(GuardLuaHookCallback(
-                                'PlayerSpoofer_Value', LuaHookRuntime.PlayerSpoofer.RefreshAll))
-                            valueBox:SetupDependencies({{ Toggles[toggleId], true }})
-                        end
-                    end
                 end
 
                 local P10S1 = P10:AddLeftGroupbox('Rewards')
@@ -39679,6 +40228,8 @@ end
 end
 
 
+Config.RageManipulation = true
+
 local LuaHookRuntimeLifecycle = {}
             function LuaHookRuntimeLifecycle.ResetState()
                 pcall(Rage.disable)
@@ -40077,51 +40628,166 @@ local LuaHookRuntimeLifecycle = {}
             Library:Notify({ Title = 'LuaHook', Description = 'Fatal error: ' .. tostring(__game_err), Time = 8 })
         end
     end
-task.spawn(function()
-    pcall(function()
+do
+    -- Deterministic Settings manager setup. This is intentionally built synchronously
+    -- so a partially-initialized manager cannot silently remove the right-side config UI.
+    local managerOk, managerErr = pcall(function()
+        assert(type(ThemeManager) == 'table', 'ThemeManager failed to load')
+        assert(type(SaveManager) == 'table', 'SaveManager failed to load')
+        assert(type(ThemeManager.SetLibrary) == 'function', 'ThemeManager.SetLibrary unavailable')
+        assert(type(ThemeManager.SetFolder) == 'function', 'ThemeManager.SetFolder unavailable')
+        assert(type(ThemeManager.ApplyToTab) == 'function', 'ThemeManager.ApplyToTab unavailable')
+        assert(type(SaveManager.SetLibrary) == 'function', 'SaveManager.SetLibrary unavailable')
+        assert(type(SaveManager.SetFolder) == 'function', 'SaveManager.SetFolder unavailable')
+        assert(type(SaveManager.Save) == 'function', 'SaveManager.Save unavailable')
+        assert(type(SaveManager.Load) == 'function', 'SaveManager.Load unavailable')
+        assert(type(SaveManager.RefreshConfigList) == 'function', 'SaveManager.RefreshConfigList unavailable')
+        assert(type(SaveManager.LoadAutoloadConfig) == 'function', 'SaveManager.LoadAutoloadConfig unavailable')
+
         ThemeManager:SetLibrary(Library)
         SaveManager:SetLibrary(Library)
-        SaveManager:IgnoreThemeSettings()
-        -- Keep all gameplay/feature controls saveable. Only menu-internal and cosmetic
-        -- preview helper indexes are excluded. SaveManager itself ignores its config selectors.
+        if type(SaveManager.IgnoreThemeSettings) == 'function' then
+            SaveManager:IgnoreThemeSettings()
+        end
         local LuaHook_IgnoreIndexes = {
             'MenuKeybind',
             'LH_ConfigName',
             'GVWeapon', 'GVSkin', 'GVCharm', 'GVWrap', 'GVFinisher', 'GVEmote', 'GVRankWep', 'GVRankLook',
+            'SaveManager_ConfigName', 'SaveManager_ConfigList',
         }
-        SaveManager:SetIgnoreIndexes(LuaHook_IgnoreIndexes)
+        if type(SaveManager.SetIgnoreIndexes) == 'function' then
+            SaveManager:SetIgnoreIndexes(LuaHook_IgnoreIndexes)
+        end
         ThemeManager:SetFolder('LuaHook')
         SaveManager:SetFolder('LuaHook/configs')
 
-        -- Build exactly one native Linoria configuration section after all Settings UI exists.
-        -- BuildConfigSection already provides Create/Load/Overwrite/Refresh/Autoload and uses
-        -- AllowNull on its config dropdown, so no missing-default warning is produced here.
-        if type(SaveManager.BuildConfigSection) == 'function' then
-            SaveManager:BuildConfigSection(Tabs.Settings)
-        end
+        -- Native ThemeManager remains the left-side settings panel.
         ThemeManager:ApplyToTab(Tabs.Settings)
 
-        local origNotify = Library.Notify
-        Library.Notify = function() end
-        local LuaHook_FeatureConfigVersion = 3
-        local LuaHook_FeatureConfigVersionPath = nil
-        local LuaHook_StaleAddedFeatureConfig = false
+        -- Build the right side explicitly so it cannot disappear due to BuildConfigSection
+        -- being missing/changed in a Library fork.
+        local ConfigBox = Tabs.Settings:AddRightGroupbox('Configuration')
+        ConfigBox:AddInput('SaveManager_ConfigName', {
+            Text = 'Config name',
+            Default = '',
+            AllowEmpty = true,
+            EmptyReset = '',
+        })
+        ConfigBox:AddDropdown('SaveManager_ConfigList', {
+            Text = 'Config list',
+            Values = SaveManager:RefreshConfigList(),
+            AllowNull = true,
+            Multi = false,
+        })
+        ConfigBox:AddDivider()
+        ConfigBox:AddButton('Create config', function()
+            local name = Options.SaveManager_ConfigName and Options.SaveManager_ConfigName.Value or ''
+            name = tostring(name or '')
+            if name:gsub('%s', '') == '' then
+                return Library:Notify('Invalid config name (empty)', 2)
+            end
+            local okSave, saveErr = SaveManager:Save(name)
+            if not okSave then
+                return Library:Notify('Failed to save config: ' .. tostring(saveErr), 3)
+            end
+            Library:Notify(string.format('Created config %q', name), 2)
+            local list = SaveManager:RefreshConfigList()
+            if Options.SaveManager_ConfigList then
+                Options.SaveManager_ConfigList:SetValues(list)
+                Options.SaveManager_ConfigList:SetValue(nil)
+            end
+        end):AddButton('Load config', function()
+            local name = Options.SaveManager_ConfigList and Options.SaveManager_ConfigList.Value
+            local okLoad, loadErr = SaveManager:Load(name)
+            if not okLoad then
+                return Library:Notify('Failed to load config: ' .. tostring(loadErr), 3)
+            end
+            Library:Notify(string.format('Loaded config %q', tostring(name)), 2)
+        end)
+        ConfigBox:AddButton('Overwrite config', function()
+            local name = Options.SaveManager_ConfigList and Options.SaveManager_ConfigList.Value
+            local okSave, saveErr = SaveManager:Save(name)
+            if not okSave then
+                return Library:Notify('Failed to overwrite config: ' .. tostring(saveErr), 3)
+            end
+            Library:Notify(string.format('Overwrote config %q', tostring(name)), 2)
+        end):AddButton('Refresh list', function()
+            local list = SaveManager:RefreshConfigList()
+            if Options.SaveManager_ConfigList then
+                Options.SaveManager_ConfigList:SetValues(list)
+                Options.SaveManager_ConfigList:SetValue(nil)
+            end
+        end)
+        ConfigBox:AddButton('Set as autoload', function()
+            local name = Options.SaveManager_ConfigList and Options.SaveManager_ConfigList.Value
+            if name == nil or tostring(name) == '' then
+                return Library:Notify('Select a config first.', 2)
+            end
+            local folder = SaveManager.Folder or 'LuaHook/configs'
+            local okWrite, writeErr = pcall(function()
+                writefile(folder .. '/settings/autoload.txt', tostring(name))
+            end)
+            if not okWrite then
+                return Library:Notify('Failed to set autoload: ' .. tostring(writeErr), 3)
+            end
+            if SaveManager.AutoloadLabel and type(SaveManager.AutoloadLabel.SetText) == 'function' then
+                SaveManager.AutoloadLabel:SetText('Current autoload config: ' .. tostring(name))
+            end
+            Library:Notify(string.format('Set %q to autoload', tostring(name)), 2)
+        end)
+        SaveManager.AutoloadLabel = ConfigBox:AddLabel('Current autoload config: none', true)
         pcall(function()
             local folder = SaveManager.Folder or 'LuaHook/configs'
-            LuaHook_FeatureConfigVersionPath = folder .. '/settings/feature_state_version.txt'
-            if isfile(LuaHook_FeatureConfigVersionPath) then
-                LuaHook_StaleAddedFeatureConfig = tonumber(readfile(LuaHook_FeatureConfigVersionPath)) ~= LuaHook_FeatureConfigVersion
-            else
-                LuaHook_StaleAddedFeatureConfig = true
+            local autoloadPath = folder .. '/settings/autoload.txt'
+            if isfile(autoloadPath) then
+                local name = tostring(readfile(autoloadPath) or '')
+                if name ~= '' then
+                    SaveManager.AutoloadLabel:SetText('Current autoload config: ' .. name)
+                end
             end
-            SaveManager:LoadAutoloadConfig()
         end)
+
+        -- Validate the two Settings columns immediately.
+        assert(Options.SaveManager_ConfigName ~= nil, 'Settings configuration input missing')
+        assert(Options.SaveManager_ConfigList ~= nil, 'Settings configuration dropdown missing')
+
+        local configVersion = 4
+        local versionPath = nil
+        local staleAddedFeatureConfig = false
+        pcall(function()
+            local folder = SaveManager.Folder or 'LuaHook/configs'
+            versionPath = folder .. '/settings/feature_state_version.txt'
+            if isfile(versionPath) then
+                staleAddedFeatureConfig = tonumber(readfile(versionPath)) ~= configVersion
+            else
+                staleAddedFeatureConfig = true
+            end
+        end)
+
+        -- Keep the UI dark and deterministic after ThemeManager has registered its objects.
+        Library.MainColor       = Color3.fromRGB(20, 21, 25)
+        Library.BackgroundColor = Color3.fromRGB(11, 12, 15)
+        Library.AccentColor     = Color3.fromRGB(96, 165, 250)
+        Library.OutlineColor    = Color3.fromRGB(36, 38, 45)
+        Library.FontColor       = Color3.fromRGB(239, 241, 245)
+        pcall(function()
+            Library.AccentColorDark = Library:GetDarkerColor(Library.AccentColor)
+        end)
+        pcall(function()
+            if type(Library.UpdateColorsUsingRegistry) == 'function' then
+                Library:UpdateColorsUsingRegistry()
+            end
+        end)
+
+        -- Current autoload config is loaded only after the complete Settings UI exists.
+        local origNotify = Library.Notify
+        Library.Notify = function() end
+        pcall(function() SaveManager:LoadAutoloadConfig() end)
         Library.Notify = origNotify
 
-        -- One-time migration: older LuaHook builds could have serialized newly added
-        -- gameplay toggles as true. Clear those once so the new feature defaults stay off.
-        -- From the next run onward, current configs are allowed to restore user choices.
-        if LuaHook_StaleAddedFeatureConfig then
+        -- Migration only clears toggles which were added by the merge and are required to
+        -- start disabled. Rage Manipulation is no longer a toggle and is always enabled by Rage.
+        if staleAddedFeatureConfig then
             local LuaHook_AddedFeatureToggles = {
                 'AimbotKatanaDeflectCheck','AimbotRiotShieldCheck','AutoRespawn',
                 'LH_P10S2T1','LH_P10S3T1','LH_P10S3T2','LH_P10S3T3','LH_P10S3T4','LH_P10S3T5','LH_P10S3T6','LH_P10S3T7',
@@ -40129,7 +40795,7 @@ task.spawn(function()
                 'LH_P1S1T1','LH_P1S1T10','LH_P1S1T11','LH_P1S1T2','LH_P1S1T3','LH_P1S1T4','LH_P1S1T5','LH_P1S1T6','LH_P1S1T7','LH_P1S1T8','LH_P1S1T9',
                 'LH_P1S2T1','LH_P1S2T2','LH_P1S2T4','LH_P1S2T5','LH_P1S2T6',
                 'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5','LH_P2S2T1','LH_P2S2T2','LH_P2S3T1','LH_P2S3T2','LH_P2S3T3',
-                'RageManipulation','HUDManipulated','HUDManipulatedOutline',
+                'HUDManipulated','HUDManipulatedOutline',
                 'LH_P4S1T1','LH_P4S1T2','LH_P4S1T3','LH_P4S1T4','LH_P4S1T5','LH_P4S1T6','LH_P4S1T7','LH_P4S1T8',
                 'LH_P4S2T2','LH_P4S2T3','LH_P4S2T4','LH_P4S2T5',
                 'LH_P5S1T2',
@@ -40143,24 +40809,16 @@ task.spawn(function()
                 end
             end
             pcall(function()
-                if LuaHook_FeatureConfigVersionPath and type(writefile) == 'function' then
-                    writefile(LuaHook_FeatureConfigVersionPath, tostring(LuaHook_FeatureConfigVersion))
+                if versionPath and type(writefile) == 'function' then
+                    writefile(versionPath, tostring(configVersion))
                 end
             end)
         end
-
-        pcall(function()
-            if Library.Toggled ~= true then Library:Toggle() end
-        end)
-        pcall(function()
-            local wmToggle = Toggles.ShowWatermark
-            if wmToggle == nil then return end
-            if Library.SetWatermarkVisibility ~= nil then
-                Library:SetWatermarkVisibility(wmToggle.Value == true)
-            end
-        end)
     end)
-end)
+    if not managerOk then
+        warn('[LuaHook] Settings managers failed: ' .. tostring(managerErr))
+    end
+end
 if not Library.SetWatermarkVisibility then
     Library.SetWatermarkVisibility = function(self, bool)
         if self.Watermark then self.Watermark.Visible = bool end
