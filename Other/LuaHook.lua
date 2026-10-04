@@ -553,6 +553,7 @@ local Config = {
     AimbotNoiseDeg = 0,
     AimbotOvershoot = 0,
     AimbotDirectCamera = false,
+    AimbotManipulation = false,
     Trigger = false,
     TriggerKey = "Always",
     TriggerDelayMs = 0,
@@ -604,6 +605,7 @@ local Config = {
     RageMode = "Polar",
     RageDirectFire        = true,
     RageRateLimit         = false,
+    RageManipulation      = false,
     RageTaps              = 6,
     RageCombatOrbitRadius = 60,
     RageOrbitDwell        = 0.30,
@@ -788,6 +790,14 @@ local Config = {
     FXCrosshairHitPop    = true,
     HUDWatermark      = true,
     HUDWatermarkStats = true,
+    HUDManipulated = false,
+    HUDManipulatedText = "Manipulated",
+    HUDManipulatedOffsetX = 0,
+    HUDManipulatedOffsetY = 24,
+    HUDManipulatedSize = 16,
+    HUDManipulatedDuration = 0.35,
+    HUDManipulatedColor = Color3.fromRGB(255, 220, 90),
+    HUDManipulatedOutline = false,
     FXTargetInfo       = false,
     FXTargetInfoOffset = 110,
     HUDBindList     = false,
@@ -928,6 +938,9 @@ local State = {
     RageAutoTransport = "luahook", RageTransportSwitches = 0, RageLastLossAt = 0,
     AutoWeaponFails = 0,
     AimbotFlickActive = false, AimbotSpringOffset = Vector2.zero,
+    AimbotManipulatedUntil = 0,
+    AimbotManipulatedTarget = nil,
+    RageManipulated = false,
     RageRealCF   = nil,
     RageRealChar = nil,
     RageTarget   = nil,
@@ -2731,6 +2744,7 @@ local Visuals = {}
         local _chLines, _chLinesBlk, _chDot, _chDotBlk = nil, nil, nil, nil
         local _chTri, _chTriBlk = nil, nil
         local _ch2 = { shots = 0, shotT = -10, rot = 0, rotTgt = 0 }
+        local _manipText = nil
         local _wmBg, _wmAccent, _wmText = nil, nil, nil
         local _wm = { fps = 60, ping = 0, pingT = 0, str = "", strT = 0, bw = nil, pw = 60 }
         local _sessKills, _sessT0 = 0, tick()
@@ -2829,6 +2843,7 @@ local Visuals = {}
             for i = 1, 3 do _chTriBlk[i] = mkDraw("Circle", { Filled = true, Color = C_BLACK }) end
             _chTri = {}
             for i = 1, 3 do _chTri[i] = mkDraw("Circle", { Filled = true }) end
+            _manipText = mkDraw("Text", { Center = true, Outline = false, Font = 3, Size = 16, Text = "Manipulated", Color = C_GOLD })
             _wmBg     = mkDraw("Square", { Filled = true, Color = C_FILL })
             _wmAccent = mkDraw("Line",   { Color = C_GOLD, Thickness = 2 })
             _wmText   = mkDraw("Text",   { Center = false, Outline = true, Font = 2, Size = 13, Text = "LuaHook", Color = _WHITE })
@@ -3209,6 +3224,30 @@ local Visuals = {}
                             local db = _chTriBlk and _chTriBlk[i]; if db and db.Visible then db.Visible = false end
                         end
                     end
+                end
+            end
+            if _manipText then
+                local aimMode = Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'
+                local showManip = Config.HUDManipulated == true
+                    and Config.AimbotManipulation == true
+                    and aimMode == 'Silent'
+                    and type(State.AimbotManipulatedUntil) == 'number'
+                    and now < State.AimbotManipulatedUntil
+                if showManip then
+                    local text = tostring(Config.HUDManipulatedText or 'Manipulated')
+                    if text == '' then text = 'Manipulated' end
+                    _manipText.Text = text
+                    _manipText.Size = math.clamp(tonumber(Config.HUDManipulatedSize) or 16, 8, 32)
+                    _manipText.Color = Config.HUDManipulatedColor or C_GOLD
+                    _manipText.Outline = Config.HUDManipulatedOutline == true
+                    _manipText.Position = Vector2.new(
+                        cx + (tonumber(Config.HUDManipulatedOffsetX) or 0),
+                        cy + (tonumber(Config.HUDManipulatedOffsetY) or 24)
+                    )
+                    _manipText.Transparency = 1
+                    _manipText.Visible = true
+                else
+                    _manipText.Visible = false
                 end
             end
             if _dnActive[1] then
@@ -3672,6 +3711,7 @@ local Visuals = {}
             if _chDotBlk then _chDotBlk.Visible = false end
             if _chTri then for i = 1, 3 do if _chTri[i] then _chTri[i].Visible = false end end end
             if _chTriBlk then for i = 1, 3 do if _chTriBlk[i] then _chTriBlk[i].Visible = false end end end
+            if _manipText then _manipText.Visible = false end
             if _wmBg then _wmBg.Visible = false end
             if _wmAccent then _wmAccent.Visible = false end
             if _wmText then _wmText.Visible = false end
@@ -3750,6 +3790,7 @@ local Visuals = {}
             rm(_chDot); rm(_chDotBlk); _chDot, _chDotBlk = nil, nil
             if _chTri then for _, d in ipairs(_chTri) do rm(d) end _chTri = nil end
             if _chTriBlk then for _, d in ipairs(_chTriBlk) do rm(d) end _chTriBlk = nil end
+            rm(_manipText); _manipText = nil
             rm(_wmBg); rm(_wmAccent); rm(_wmText); _wmBg, _wmAccent, _wmText = nil, nil, nil
             rm(_wm.stats); _wm.stats = nil
             rm(_tiBg); rm(_tiAccent); rm(_tiName); rm(_tiHpBg); rm(_tiHpFill); rm(_tiInfo)
@@ -9194,6 +9235,20 @@ local Rage = {}
             if setthreadidentity then setthreadidentity(8) elseif setidentity then setidentity(8) end
         end)
     end
+    local function rageOrbitManipulationFire(hrp, aimPos, hh)
+        if Config.RageManipulation ~= true then return 0 end
+        if not hrp or not hrp.Parent or not hh or not hh.Parent or typeof(aimPos) ~= 'Vector3' then return 0 end
+        local item = getEquippedItem()
+        if not item or meleeProfile(item) ~= nil or not isSanePos(aimPos) or posIsOOB(aimPos) then return 0 end
+        local sent = 0
+        local ok = pcall(function()
+            local before = State.Shots or 0
+            polarFire(hrp.Position + Vector3.new(0, Config.RagePBEyeUp or 3, 0), aimPos, hh)
+            sent = math.max(0, (State.Shots or 0) - before)
+        end)
+        State.RageManipulated = ok and sent > 0
+        return ok and sent or 0
+    end
     local function clearFireSolution()
         State.RageFireFromPos = nil
         State.RageFireAimPos  = nil
@@ -9272,6 +9327,22 @@ local Rage = {}
             if posIsOOB(aimPos) or aimPos.Y < kf + 1 then
                 return orbitVoid(hrp, "Hiding")
             end
+            local holdFire = false
+            if Config.RageSkipImmune ~= false then holdFire = isSpawnProtected(tgt) end
+            if Config.RageManipulation == true and not holdFire and meleeProfile(getEquippedItem()) == nil then
+                local sent = rageOrbitManipulationFire(hrp, aimPos, hh)
+                if sent > 0 then
+                    State.RageFiring = true
+                    State.RageVoidActive = false
+                    State.RageStatus = 'Orbit • Manipulated'
+                    _orbHiding = false
+                    _orbPrimeUntil = 0
+                    pcall(Visuals.notifyTarget, tgt)
+                    return
+                end
+            else
+                State.RageManipulated = false
+            end
             local ignore = { tc, lp.Character }
             local vantage, status = nil, nil
             local flank = flankPoint(tgt, hh)
@@ -9332,8 +9403,6 @@ local Rage = {}
                 _orbPrimeUntil = tick() + ORBIT_PRIME_S + extra
             end
             Rage._displace(hrp, CFrame.new(vantage))
-            local holdFire = false
-            if Config.RageSkipImmune ~= false then holdFire = isSpawnProtected(tgt) end
             if not holdFire then
                 _orbImmuneSince, _orbImmuneTgt = 0, nil
             else
@@ -10658,6 +10727,28 @@ end)()
         State.Shots = State.Shots + sent
         return sent
     end
+    local function rageManipulationFire(hrp, aimPos, hh, taps)
+        if Config.RageManipulation ~= true then
+            return 0
+        end
+        if not hrp or not hrp.Parent or not hh or not hh.Parent or typeof(aimPos) ~= 'Vector3' then
+            return 0
+        end
+        local item = getEquippedItem()
+        if not item or meleeProfile(item) ~= nil then
+            return 0
+        end
+        if not isSanePos(aimPos) or posIsOOB(aimPos) then
+            return 0
+        end
+        local eye = hrp.Position + Vector3.new(0, Config.RagePBEyeUp or 3, 0)
+        local sent = 0
+        local ok = pcall(function()
+            sent = polarFire(eye, aimPos, hh, taps or 1)
+        end)
+        State.RageManipulated = ok and sent > 0
+        return ok and sent or 0
+    end
     local function tapsPerFrame()
         local n = Config.RageTapsPerFrame
         if type(n) ~= "number" then return 1 end
@@ -10835,6 +10926,20 @@ end)()
             end
         end
         local aimPos = hpos
+        if Config.RageManipulation == true and not holdFire and not predicting and meleeProfile(it) == nil then
+            local sent = rageManipulationFire(hrp, aimPos, hh, tapsPerFrame())
+            if sent > 0 then
+                _attackReadyTgt = tgt
+                _firing = true
+                State.RageFiring = true
+                State.RageVoidActive = false
+                State.RageStatus = 'Manipulated'
+                pcall(Visuals.notifyTarget, tgt)
+                return nil
+            end
+        else
+            State.RageManipulated = false
+        end
         if rv == nil and not predicting and not melee then
             if gumMode() == "off" then
                 -- Virtual Gum: preserve the original Glue firing path without
@@ -26984,20 +27089,7 @@ ErrorReporter.set_game(GameName)
                         end
                     end
                 end
-                for model in pairs(TrackedRangeTargets) do
-                    if not model.Parent then
-                        TrackedRangeTargets[model] = nil
-                    else
-                        bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(bestTarget, model, 'Range Targets', aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, nil, camera, AIMBOT_VISIBILITY_CACHE_PROFILE, requireVisible, wallCheck)
-                    end
-                end
-                for model in pairs(TrackedPracticeDummies) do
-                    if not model.Parent then
-                        TrackedPracticeDummies[model] = nil
-                    else
-                        bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(bestTarget, model, 'Practice Dummies', aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, nil, camera, AIMBOT_VISIBILITY_CACHE_PROFILE, requireVisible, wallCheck)
-                    end
-                end
+                -- Main Aimbot is Player-only. Triggerbot keeps its own range/dummy pools.
                 LuaHookRuntime.LastAimbotSweepTarget = bestTarget
                 LuaHookRuntime.LastAimbotSweepAt = os.clock()
                 return bestTarget
@@ -27453,7 +27545,7 @@ ErrorReporter.set_game(GameName)
                 end
                 local camera = Workspace.CurrentCamera
                 local ignoreFov = LuaHookAimRuntime.IsAimbotIgnoreFovEnabled()
-                local targetInfo = GetBestAimbotTarget(true, ignoreFov)
+                local targetInfo = GetBestAimbotTarget(IsAimbotWallCheckEnabled('Camera'), ignoreFov, false, 'Camera')
                 local configuredAimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 if configuredAimPart == 'Random' and targetInfo then
                     local targetIdentity = targetInfo.player or targetInfo.instance
@@ -27574,6 +27666,70 @@ ErrorReporter.set_game(GameName)
             end
             local TryTriggerbotShot = SharedTryTriggerbotShot
             GetBestTriggerbotTarget = SharedGetBestTriggerbotTarget
+            local function TryAimbotSilentManipulationShot(item, targetInfo)
+                local aimMode = Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'
+                if aimMode ~= 'Silent' or Config.AimbotManipulation ~= true then
+                    return false
+                end
+                if not targetInfo
+                    or targetInfo.targetType ~= 'Players'
+                    or not targetInfo.player
+                    or targetInfo.player == LP
+                    or targetInfo.player.Parent ~= Players then
+                    return false
+                end
+                if not targetInfo.part or not targetInfo.part.Parent or typeof(targetInfo.worldPosition) ~= 'Vector3' then
+                    return false
+                end
+                local info = item and item.Info or nil
+                if info and (info.Class == 'Melee' or info.Type == 'Melee') then
+                    return false
+                end
+                local useItem, shootEnum, objectId
+                local ok = pcall(function()
+                    useItem = ReplicatedStorage.Remotes.Replication.Fighter.UseItem
+                    shootEnum = Rivals.Enums:ToEnum('StartShooting')
+                    objectId = item:Get('ObjectID')
+                end)
+                if not ok or useItem == nil or shootEnum == nil or objectId == nil then
+                    return false
+                end
+                local camera = Workspace.CurrentCamera
+                local character = LP.Character
+                local root = character and character:FindFirstChild('HumanoidRootPart')
+                if not camera or not root or not root.Parent then
+                    return false
+                end
+                local eyePos = camera.CFrame.Position
+                if typeof(eyePos) ~= 'Vector3' then
+                    return false
+                end
+                local dir = targetInfo.worldPosition - eyePos
+                if dir.Magnitude < 1e-4 then
+                    return false
+                end
+                local eyeCF = CFrame.lookAt(eyePos, targetInfo.worldPosition)
+                local muzzleCF = eyeCF - Vector3.new(0, Config.RageEyeMuzzleSep or 0.07, 0)
+                local inner = {}
+                local built = pcall(function()
+                    Rage._buildShotFields(inner, eyeCF, muzzleCF, targetInfo.part, targetInfo.worldPosition, true, 0.30, 1.0)
+                end)
+                if not built then
+                    return false
+                end
+                local fired = pcall(function()
+                    useItem:FireServer(objectId, shootEnum, { [utf8.char(1)] = inner }, nil)
+                end)
+                if not fired then
+                    return false
+                end
+                local now = tick()
+                State.AimbotManipulatedUntil = now + math.clamp(tonumber(Config.HUDManipulatedDuration) or 0.35, 0.05, 3)
+                State.AimbotManipulatedTarget = targetInfo.player
+                State.Shots = (State.Shots or 0) + 1
+                return true
+            end
+
             LuaHookRuntime.BeginAimbotSilentShot = function(item)
                 if (AimbotSilentState.ShotPrimeDepth or 0) > 0 then
                     return false, nil, nil
@@ -27591,8 +27747,14 @@ ErrorReporter.set_game(GameName)
                 if not targetInfo then
                     return false, nil, nil
                 end
+                if targetInfo.targetType ~= 'Players' or not targetInfo.player or targetInfo.player.Parent ~= Players then
+                    return false, nil, nil
+                end
                 if targetInfo.player and IsRivalsSpawnShieldActive(targetInfo.player.Character) then
                     return false, nil, nil
+                end
+                if TryAimbotSilentManipulationShot(item, targetInfo) then
+                    return 'MANIPULATED', nil, nil
                 end
                 local camera = Workspace.CurrentCamera
                 local originalCFrame = camera and camera.CFrame or nil
@@ -27627,6 +27789,9 @@ ErrorReporter.set_game(GameName)
                 local wrappedStartShooting
                 wrappedStartShooting = function(self, ...)
                     local didPrime, camera, originalCFrame = LuaHookRuntime.BeginAimbotSilentShot(self)
+                    if didPrime == 'MANIPULATED' then
+                        return true
+                    end
                     local baseStartShooting = LuaHookWeaponState.ResolveGunStartShootingBase(originalStartShooting)
                     local results = table.pack(pcall(baseStartShooting, self, ...))
                     LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
@@ -37503,15 +37668,15 @@ do
                             end
                         end),
                     })
-                    local CameraAimSettings = Combat:AddDependencyBox()
-                    CameraAimSettings:AddSlider("LH_P2S2S1", {
-                        Text = "Smoothing",
-                        Default = 35,
-                        Min = 0,
-                        Max = 100,
-                        Rounding = 2,
+                    Combat:AddSlider("LH_P2S1S2", {
+                        Text = "FOV",
+                        Default = 282,
+                        Min = 25,
+                        Max = 500,
+                        Rounding = 0,
                         Compact = true,
                     })
+                    local CameraAimSettings = Combat:AddDependencyBox()
                     CameraAimSettings:AddToggle("LH_P2S2T1", {
                         Text = "Wall Check",
                         Default = false,
@@ -37521,6 +37686,14 @@ do
                         Text = "Team Check",
                         Default = false,
                         Tooltip = "Reject teammates while Camera mode is active.",
+                    })
+                    CameraAimSettings:AddSlider("LH_P2S2S1", {
+                        Text = "Smoothing",
+                        Default = 35,
+                        Min = 0,
+                        Max = 100,
+                        Rounding = 2,
+                        Compact = true,
                     })
                     CameraAimSettings:SetupDependencies({ { Options.LH_P2S1D1, "Camera" } })
                     local SilentAimSettings = Combat:AddDependencyBox()
@@ -37534,22 +37707,24 @@ do
                         Default = false,
                         Tooltip = "Reject teammates while Silent mode is active.",
                     })
+                    SilentAimSettings:AddToggle("LH_P2S3T3", {
+                        Text = "Manipulation",
+                        Default = false,
+                        Tooltip = "Forges the shot directly without moving the camera/character to the target.",
+                        Callback = GuardLuaHookCallback('Aimbot_SilentManipulation', function(v)
+                            Config.AimbotManipulation = v == true
+                            if not Config.AimbotManipulation then
+                                State.AimbotManipulatedUntil = 0
+                                State.AimbotManipulatedTarget = nil
+                            end
+                        end),
+                    })
                     SilentAimSettings:SetupDependencies({ { Options.LH_P2S1D1, "Silent" } })
                     Combat:AddToggle("LH_P2S1T3", {
                         Text = "Ignore FOV",
                         Default = false,
                         Tooltip = "Allows targets anywhere around you, even when they are off-screen.",
                     })
-                    local DepFovRadius = Combat:AddDependencyBox()
-                    DepFovRadius:AddSlider("LH_P2S1S2", {
-                        Text = "FOV Radius",
-                        Default = 282,
-                        Min = 25,
-                        Max = 500,
-                        Rounding = 0,
-                        Compact = true,
-                    })
-                    DepFovRadius:SetupDependencies({ { Toggles.LH_P2S1T3, false } })
                     Combat:AddToggle("LH_P2S1T5", {
                         Text = "Show FOV",
                         Default = false,
@@ -37698,6 +37873,15 @@ do (function()
     CORE:AddToggle('RagePredictPrefire', { Text='Prefire resurface', Default=Config.RagePredictPrefire,
         Callback=function(v) Config.RagePredictPrefire = v end })
     CORE:AddDivider('Engagement')
+    CORE:AddToggle('RageManipulation', {
+        Text='Manipulation',
+        Default=false,
+        Tooltip='Direct-fire from the current position. No teleport to the target. Works in Polar and Orbit.',
+        Callback=GuardLuaHookCallback('Rage_Manipulation', function(v)
+            Config.RageManipulation = v == true
+            State.RageManipulated = false
+        end),
+    })
     CORE:AddToggle('RageSkipImmune', { Text='Ignore Protected', Default=Config.RageSkipImmune,
         Callback=function(v) Config.RageSkipImmune = v end })
     CORE:AddToggle('RagePrioritizeHackers', { Text='Prioritize Hackers', Default=Config.RagePrioritizeHackers,
@@ -38550,6 +38734,28 @@ do
     wmDep:AddToggle('HUDWatermarkStats', { Text='Show fps/ping/kills', Default=Config.HUDWatermarkStats,
         Callback=function(v) Config.HUDWatermarkStats = v end })
     wmDep:SetupDependencies({ { Toggles.HUDWatermark, true } })
+    local MI = Tabs.HUD:AddRightGroupbox('Silent Aim Indicator')
+    MI:AddToggle('HUDManipulated', { Text='Show "Manipulated"', Default=false,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_Toggle', function(v)
+            Config.HUDManipulated = v == true
+            if not Config.HUDManipulated then State.AimbotManipulatedUntil = 0 end
+        end) })
+    local miDep = MI:AddDependencyBox()
+    miDep:AddInput('HUDManipulatedText', { Text='Text', Default=Config.HUDManipulatedText, AllowEmpty=false,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_Text', function(v) Config.HUDManipulatedText = tostring(v or 'Manipulated') end) })
+    miDep:AddSlider('HUDManipulatedOffsetX', { Text='Offset X', Default=Config.HUDManipulatedOffsetX, Min=-200, Max=200, Rounding=0,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_OffsetX', function(v) Config.HUDManipulatedOffsetX = math.floor(v) end) })
+    miDep:AddSlider('HUDManipulatedOffsetY', { Text='Offset Y', Default=Config.HUDManipulatedOffsetY, Min=-100, Max=200, Rounding=0,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_OffsetY', function(v) Config.HUDManipulatedOffsetY = math.floor(v) end) })
+    miDep:AddSlider('HUDManipulatedSize', { Text='Size', Default=Config.HUDManipulatedSize, Min=8, Max=32, Rounding=0,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_Size', function(v) Config.HUDManipulatedSize = math.floor(v) end) })
+    miDep:AddSlider('HUDManipulatedDuration', { Text='Duration', Default=Config.HUDManipulatedDuration, Min=0.05, Max=3, Rounding=2,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_Duration', function(v) Config.HUDManipulatedDuration = math.clamp(v, 0.05, 3) end) })
+    miDep:AddLabel('Color'):AddColorPicker('HUDManipulatedColor', { Default=Config.HUDManipulatedColor,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_Color', function(v) Config.HUDManipulatedColor = v end) })
+    miDep:AddToggle('HUDManipulatedOutline', { Text='Outline', Default=false,
+        Callback=GuardLuaHookCallback('HUD_Manipulated_Outline', function(v) Config.HUDManipulatedOutline = v == true end) })
+    miDep:SetupDependencies({ { Toggles.HUDManipulated, true } })
     local XH = Tabs.HUD:AddLeftGroupbox('Crosshair')
     XH:AddToggle('FXCrosshair', { Text='Custom crosshair', Default=Config.FXCrosshair,
         Callback=function(v) Config.FXCrosshair = v end })
@@ -39897,7 +40103,7 @@ task.spawn(function()
 
         local origNotify = Library.Notify
         Library.Notify = function() end
-        local LuaHook_FeatureConfigVersion = 2
+        local LuaHook_FeatureConfigVersion = 3
         local LuaHook_FeatureConfigVersionPath = nil
         local LuaHook_StaleAddedFeatureConfig = false
         pcall(function()
@@ -39922,7 +40128,8 @@ task.spawn(function()
                 'LH_P10S4T1','LH_P10S4T2','LH_P10S4T3','LH_P10S4T4','LH_P10S4T5','LH_P10S6T1','LH_P10S7T1',
                 'LH_P1S1T1','LH_P1S1T10','LH_P1S1T11','LH_P1S1T2','LH_P1S1T3','LH_P1S1T4','LH_P1S1T5','LH_P1S1T6','LH_P1S1T7','LH_P1S1T8','LH_P1S1T9',
                 'LH_P1S2T1','LH_P1S2T2','LH_P1S2T4','LH_P1S2T5','LH_P1S2T6',
-                'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5','LH_P2S2T1','LH_P2S2T2','LH_P2S3T1','LH_P2S3T2',
+                'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5','LH_P2S2T1','LH_P2S2T2','LH_P2S3T1','LH_P2S3T2','LH_P2S3T3',
+                'RageManipulation','HUDManipulated','HUDManipulatedOutline',
                 'LH_P4S1T1','LH_P4S1T2','LH_P4S1T3','LH_P4S1T4','LH_P4S1T5','LH_P4S1T6','LH_P4S1T7','LH_P4S1T8',
                 'LH_P4S2T2','LH_P4S2T3','LH_P4S2T4','LH_P4S2T5',
                 'LH_P5S1T2',
