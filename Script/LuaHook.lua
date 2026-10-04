@@ -11298,6 +11298,7 @@ do
         Trigger.disable()
     end
 end
+local Lab = {}
 do
     local _gui, _label, _conn, _hpConn, _caConn
     local s = {
@@ -11492,6 +11493,142 @@ do
     end
     function Lab.init() end
 end
+ViewAngle = {}
+;(function()
+    local _remote     = nil
+    local _forged     = nil
+    local _loopFn, _utilIdx, _utilOrig = nil, nil, nil
+    local _suppressed = false
+    local _joints, _jointsOrig = nil, nil
+    local function remote()
+        if _remote == nil then
+            pcall(function()
+                _remote = ReplicatedStorage.Remotes.Replication.Fighter.UpdateCameraRotation
+            end)
+        end
+        return _remote
+    end
+    local function resolveLoop()
+        if _loopFn ~= nil then return true end
+        if type(debug) ~= "table" or type(debug.getupvalues) ~= "function"
+           or type(debug.setupvalue) ~= "function" then
+            return false
+        end
+        pcall(function()
+            local F = Rivals.Fighter
+            if F == nil then return end
+            local fn = rawget(F, "_CameraReplicationLoop")
+            if type(fn) ~= "function" then
+                local mt = getmetatable(F)
+                local proto = mt and rawget(mt, "__index")
+                if type(proto) == "table" then fn = rawget(proto, "_CameraReplicationLoop") end
+            end
+            if type(fn) ~= "function" then return end
+            for i, v in debug.getupvalues(fn) do
+                if type(v) == "table" then
+                    local vmt = getmetatable(v)
+                    local vidx = vmt and rawget(vmt, "__index")
+                    if type(vidx) == "table" and rawget(vidx, "EncodeCameraRotation") ~= nil then
+                        _loopFn, _utilIdx, _utilOrig = fn, i, v
+                        return
+                    end
+                end
+            end
+        end)
+        return _loopFn ~= nil
+    end
+    local function makeShim()
+        local shim = {}
+        shim.EncodeCameraRotation = function(_, rot)
+            local last = nil
+            pcall(function()
+                local F = Rivals.Fighter
+                if F ~= nil then
+                    F._replication_stopped = false
+                    last = F._last_encoded_camera_rotation
+                end
+            end)
+            if last ~= nil then return last end
+            return _utilOrig:EncodeCameraRotation(rot)
+        end
+        return setmetatable(shim, { __index = _utilOrig })
+    end
+    local function suppress(on)
+        if on == _suppressed then return end
+        if on then
+            if not resolveLoop() then return end
+            if pcall(debug.setupvalue, _loopFn, _utilIdx, makeShim()) then
+                _suppressed = true
+                State.ViewAngleForged = true
+            end
+            return
+        end
+        if _loopFn ~= nil and _utilOrig ~= nil then
+            pcall(debug.setupvalue, _loopFn, _utilIdx, _utilOrig)
+        end
+        _suppressed = false
+        State.ViewAngleForged = false
+    end
+    local function patchJoints(on)
+        if on then
+            if _jointsOrig ~= nil then return end
+            pcall(function()
+                _joints = loadGameModule(lp.PlayerScripts,
+                    {"Modules", "ClientReplicatedClasses", "ClientFighter", "ClientFighterCharacter", "Joints"})
+                if type(_joints) ~= "table" then
+                    _joints = nil
+                    return
+                end
+                local orig = rawget(_joints, "Update")
+                if type(orig) ~= "function" then
+                    _joints = nil
+                    return
+                end
+                _jointsOrig = orig
+                if setreadonly then pcall(setreadonly, _joints, false) end
+                _joints.Update = function(selfJoints, dt, data)
+                    if _forged ~= nil and type(data) == "table" then
+                        pcall(function()
+                            local cfc = selfJoints.ClientFighterCharacter
+                            local cf = cfc and cfc.ClientFighter
+                            if cf and cf.IsLocalPlayer == true then
+                                data.CameraRotationRaw = _forged
+                            end
+                        end)
+                    end
+                    return orig(selfJoints, dt, data)
+                end
+            end)
+            return
+        end
+        if _joints ~= nil and _jointsOrig ~= nil then
+            pcall(function()
+                if setreadonly then pcall(setreadonly, _joints, false) end
+                _joints.Update = _jointsOrig
+            end)
+        end
+        _jointsOrig = nil
+    end
+    function ViewAngle.forge(pitch, yaw)
+        local r = remote()
+        if r == nil or not Rivals.Util then return false end
+        local ok = pcall(function()
+            local enc = Rivals.Util:EncodeCameraRotation(Vector2.new(pitch, yaw))
+            _forged = Rivals.Util:DecodeCameraRotation(enc)
+            r:FireServer(enc, nil)
+        end)
+        if not ok then return false end
+        suppress(true)
+        patchJoints(true)
+        return true
+    end
+    function ViewAngle.restore()
+        _forged = nil
+        suppress(false)
+        patchJoints(false)
+    end
+    ViewAngle.isForging = function() return _forged ~= nil end
+end)()
 local GameVisuals = {}
 GameVisuals.uiAlive = true
 ;(function()
@@ -28094,6 +28231,153 @@ ErrorReporter.set_game(GameName)
             local LuaHookCosmetics
             local RivalsEmotes
             local LuaHookCosmeticsState
+            local LuaHookAutoLoadoutState = {
+                HasRunThisOpen = false,
+                OpenNonce = 0,
+                BoundPageControllers = {},
+                BoundPageFrames = {},
+                Profiles = {},
+                ConfigName = nil,
+                RefreshingDropdownValues = 0,
+            }
+
+            LuaHookCosmeticsState = {
+                PlayerDataHooked = false,
+                ItemDataHooked = false,
+                RefreshingDropdownValues = 0,
+                PreviewWeaponName = nil,
+                SelectedEditorWeaponName = nil,
+                SelectedSkinByWeapon = {},
+                SelectedWrapByWeapon = {},
+                SelectedCharmByWeapon = {},
+                SelectedFinisherByWeapon = {},
+                SelectedWrapInvertedByWeapon = {},
+                StableRandomSelectionByWeapon = {},
+                FavoritedCosmeticsByWeapon = {},
+                OnlyUseFavoritesByWeapon = {},
+                RankCharmOverridesBySeason = {},
+                SelectedRankCharmSeason = nil,
+                PendingWrapSelectionByWeapon = {},
+                PendingSkinSelectionByWeapon = {},
+                PendingCharmSelectionByWeapon = {},
+                PendingFinisherSelectionByWeapon = {},
+                PendingApplyToken = 0,
+                RuntimeApplyRetryPending = false,
+                PreviewViewportModel = nil,
+                CosmeticsUiLoaded = false,
+                CosmeticsUiLoading = false,
+                CosmeticsConfigName = nil,
+                BoundFirstPersonModels = false,
+                BindingFirstPersonModels = false,
+                PlayerDataController = nil,
+                PlayerDataRestore = nil,
+                PlayerDataAddedConnection = nil,
+                PlayerDataUtility = nil,
+                PlayerDataUtilityGetWeaponData = nil,
+                PlayerDataUtilityGetWeaponDataWrapper = nil,
+                PlayerDataGetWeaponDataFunction = nil,
+                PlayerDataGetWeaponDataConstantIndex = nil,
+                PlayerDataGetWeaponDataConstantValue = nil,
+                DirectDataGetOriginal = nil,
+                DirectDataGetWrapper = nil,
+                DirectDataGetOwner = nil,
+                DirectGetWeaponDataOriginal = nil,
+                DirectGetWeaponDataWrapper = nil,
+                DirectGetWeaponDataOwner = nil,
+                DirectDataHooksInstalled = false,
+                OriginalWrapProperties = setmetatable({}, { __mode = 'k' }),
+                OriginalInjectedItemCosmetics = setmetatable({}, { __mode = 'k' }),
+                WorldTripmineEntries = setmetatable({}, { __mode = 'k' }),
+                WorldTripmineApplyTokens = setmetatable({}, { __mode = 'k' }),
+                SpawnedWorldCosmeticEntries = setmetatable({}, { __mode = 'k' }),
+                SpawnedWorldCosmeticApplyTokens = setmetatable({}, { __mode = 'k' }),
+                SpawnedWorldCosmeticRetagging = setmetatable({}, { __mode = 'k' }),
+                SavedConfigCosmeticObjects = nil,
+                CosmeticPresetsLoaded = false,
+                CosmeticPresets = {},
+                CosmeticPresetSettings = {},
+                CosmeticPresetAutoLoadApplied = false,
+                CosmeticPresetSaveToken = 0,
+                ApplyingCosmeticPreset = false,
+                CurrentLoadoutWatcherRunning = false,
+                CurrentLoadoutWatcherToken = 0,
+                LastApplyResults = {},
+                ClientViewModelHooked = false,
+                ClientItemConstructor = nil,
+                ClientItemPrototype = nil,
+                ClientItemPrototypeIndex = nil,
+                ClientItemHookProxy = nil,
+                ClientItemRestoreData = {},
+                ViewModelSelectionSignatureByItem = setmetatable({}, { __mode = 'k' }),
+                ClientEntityFinisherHooked = false,
+                HookedClientEntityClass = nil,
+                OriginalClientEntityPlayFinisher = nil,
+                ClientEntityPlayFinisherWrapper = nil,
+                FinisherReplicateFromServerFunction = nil,
+                FinisherReplicateFromServerConstantIndex = nil,
+                FinisherReplicateFromServerOriginalConstant = nil,
+                FinisherHookSentinel = nil,
+                OriginalEquippedEmotes = nil,
+                NativeEmoteAppliedBySlot = {},
+                EmoteControllerHooked = false,
+                HookedEmoteController = nil,
+                OriginalEmoteControllerEquipEmote = nil,
+                OriginalEmoteControllerUseEmoteByName = nil,
+                EmoteControllerEquipWrapper = nil,
+                EmoteControllerUseWrapper = nil,
+                UnlockedOwnershipHooks = {},
+                NativeUnlockedInventory = nil,
+                NativeFavoritesSeeded = false,
+                NativeCosmeticsController = nil,
+                NativeCosmeticsControllerSource = nil,
+                NativeCosmeticsControllerLastScan = 0,
+                NativeCosmeticsControllerResolutionGeneration = 0,
+                NativeCosmeticsSnapshotController = nil,
+                -- Unlock-only mode: the game's own Custom Loadout remains the sole
+                -- source of equipped Skin/Wrap/Charm/Finisher/Emote choices.
+                UnlockOnlyMode = true,
+                NativeCosmeticsRuntimeWasEnabled = nil,
+                NativeCosmeticsRuntimeApplied = false,
+                NativeUnlockerWasEnabled = nil,
+                NativeUnlockerApplied = false,
+                NativeCosmeticsConfig = nil,
+                NativeCosmeticsConfigSetterOwner = nil,
+                NativeCosmeticsConfigOriginalTypes = nil,
+                NativeCosmeticsConfigOriginalRarities = nil,
+                NativeCosmeticsConfigDesiredTypes = nil,
+                NativeCosmeticsConfigDesiredRarities = nil,
+                NativeCosmeticsConfigApplied = false,
+                NativeSkinChangerWasEnabled = nil,
+                NativeSkinChangerOriginalSelections = {},
+                NativeSkinChangerTouchedWeapons = {},
+                NativeSkinChangerApplied = false,
+                NativeUiBound = false,
+                NativeCosmeticSlotConstructor = nil,
+                NativeCosmeticSlotPrototype = nil,
+                NativeCosmeticSlotProxy = nil,
+                NativeCosmeticSlotConnections = setmetatable({}, { __mode = 'k' }),
+                NativeEquipmentStateRestore = nil,
+                NativeInvertedValue = false,
+                NativeFavoriteConnection = nil,
+                NativeOnlyUseFavoritesConnection = nil,
+                NativeSaveToken = 0,
+                CosmeticMultiSelectionsByWeapon = {
+                    Skin = {},
+                    Wrap = {},
+                    Charm = {},
+                    Finisher = {},
+                },
+                CosmeticMultiSelectionOrderByWeapon = {
+                    Skin = {},
+                    Wrap = {},
+                    Charm = {},
+                    Finisher = {},
+                },
+                CosmeticMultiEmotes = {},
+                CosmeticMultiEmoteOrder = {},
+                CosmeticUiRefreshing = 0,
+                CosmeticUiBound = false,
+            }
             do
             local LuaHookAutoLoadout = {
                 PageNames = {'PickWeapons', 'PickWeaponsList'},
