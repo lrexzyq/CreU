@@ -18230,7 +18230,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return fallback
             end
-            local LUAHOOK_MAX_ATTACK_SPEED_BOOST = 150
+            local LUAHOOK_MAX_ATTACK_SPEED_BOOST = 500
             local function ResolveRivalsModsStartShootingItem(item)
                 if type(item) == 'table' and type(item.Name) == 'string' and item.Name ~= '' then
                     return item
@@ -18246,7 +18246,7 @@ ErrorReporter.set_game(GameName)
                 if not IsRivalsModToggleEnabled('LH_P4S1T1') then
                     return 1
                 end
-                local weaponSpeedBoost = math.clamp(ReadRivalsModNumber('LH_P4S1S4', LUAHOOK_MAX_ATTACK_SPEED_BOOST), 0, LUAHOOK_MAX_ATTACK_SPEED_BOOST)
+                local weaponSpeedBoost = math.clamp(ReadRivalsModNumber('LH_P4S1S4', 0), 0, LUAHOOK_MAX_ATTACK_SPEED_BOOST)
                 return 1 / (1 + (weaponSpeedBoost / 100))
             end
             local function ResolveRivalsReloadKey(item, reloadEnum)
@@ -37398,11 +37398,13 @@ do
                         Text = "Flickbot",
                         Default = false,
                         Tooltip = "Flicks to the selected target.",
-                        Callback = function(value)
+                        Callback = GuardLuaHookCallback('Flickbot_Enabled', function(value)
                             if not value then
-                                LuaHookRuntime.ResetFlickbot()
+                                if LuaHookRuntime and type(LuaHookRuntime.ResetFlickbot) == 'function' then
+                                    LuaHookRuntime.ResetFlickbot()
+                                end
                             end
-                        end,
+                        end),
                     })
                     Flickbot:AddKeyPicker("LH_P2S1T12K", {
                         Default = "Unknown",
@@ -37489,9 +37491,9 @@ end
 do
     local AF = Tabs.Main:AddLeftGroupbox('Aimbot safety')
     AF:AddToggle('AimbotKatanaDeflectCheck', { Text='Check Katana Deflect', Default = false,
-        Callback=function(v) end })
+        Callback=GuardLuaHookCallback('AimbotKatanaDeflect_Toggle', function() end) })
     AF:AddToggle('AimbotRiotShieldCheck', { Text='Check Riot Shield', Default = false,
-        Callback=function(v) end })
+        Callback=GuardLuaHookCallback('AimbotRiotShield_Toggle', function() end) })
     AF:AddDropdown('AimbotIgnoreWeapons', {
         Values={'Flare Gun','Freeze Ray','Grenade Launcher','RPG'},
         Default={'Flare Gun','Freeze Ray','Grenade Launcher','RPG'},
@@ -37559,15 +37561,17 @@ do (function()
     DEF:AddDivider('Underground')
     DEF:AddToggle('Underground', { Text='Underground', Default=false,
         Tooltip='Enable the added Underground feature without replacing the LuaHook Ragebot.',
-        Callback=function(v)
-            pcall(function()
-                if v then
+        Callback=GuardLuaHookCallback('Underground_Toggle', function(v)
+            if v then
+                if type(startUnderground) == 'function' then
                     startUnderground()
-                else
+                end
+            else
+                if type(stopUnderground) == 'function' then
                     stopUnderground()
                 end
-            end)
-        end })
+            end
+        end) })
     DEF:AddDivider('Park transport')
     DEF:AddDropdown('RageRestoreMode', { Values={'auto','none','render','luahook'},
         Default=Config.RageRestoreMode, Text='Park transport',
@@ -37630,7 +37634,7 @@ end)() end
                         Text = "Speed Boost",
                         Default = 0,
                         Min = 0,
-                        Max = 150,
+                        Max = 500,
                         Rounding = 0,
                         Suffix = "%",
                         Compact = true,
@@ -38316,12 +38320,14 @@ local P1 = Tabs.ESP
                     Recordings:AddDropdown("LH_P10S4D1", {
                         Values = LuaHookRuntime.MovementRecorder.GetMapNames(),
                         Default = nil,
+                        AllowNull = true,
                         Multi = false,
                         Text = "Map",
                     })
                     Recordings:AddDropdown("LH_P10S4D2", {
                         Values = {},
                         Default = nil,
+                        AllowNull = true,
                         Multi = false,
                         Text = "Config",
                     })
@@ -38453,6 +38459,7 @@ P5S4:AddLabel('No weapon/cosmetic picker is used by this script.')
 
 LuaHookCosmeticsState.CosmeticsUiLoaded = false
 LuaHookCosmeticsState.CosmeticUiBound = false
+                local P10 = Tabs.Misc
                 local RIVALS_REWARD_CLAIM_DELAY = 0.2
                 local RIVALS_REWARD_SETTLE_DELAY = 0.6
                 local RIVALS_REWARD_EMPTY_CONFIRMATIONS = 3
@@ -39698,8 +39705,25 @@ task.spawn(function()
         ThemeManager:SetLibrary(Library)
         SaveManager:SetLibrary(Library)
         SaveManager:IgnoreThemeSettings()
-        SaveManager:SetIgnoreIndexes({ 'MenuKeybind', 'LH_ConfigName',
-            'GVWeapon', 'GVSkin', 'GVCharm', 'GVWrap', 'GVFinisher', 'GVEmote', 'GVRankWep', 'GVRankLook' })
+        local LuaHook_AddedFeatureIgnoreIndexes = {
+            'AimbotKatanaDeflectCheck','AimbotRiotShieldCheck','AutoRespawn',
+            'LH_P10S2T1','LH_P10S3T1','LH_P10S3T2','LH_P10S3T3','LH_P10S3T4','LH_P10S3T5','LH_P10S3T6','LH_P10S3T7',
+            'LH_P10S4T1','LH_P10S4T2','LH_P10S4T3','LH_P10S4T4','LH_P10S4T5','LH_P10S6T1','LH_P10S7T1',
+            'LH_P1S1T1','LH_P1S1T10','LH_P1S1T11','LH_P1S1T2','LH_P1S1T3','LH_P1S1T4','LH_P1S1T5','LH_P1S1T6','LH_P1S1T7','LH_P1S1T8','LH_P1S1T9',
+            'LH_P1S2T1','LH_P1S2T2','LH_P1S2T4','LH_P1S2T5','LH_P1S2T6',
+            'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5',
+            'LH_P4S1T1','LH_P4S1T2','LH_P4S1T3','LH_P4S1T4','LH_P4S1T5','LH_P4S1T6','LH_P4S1T7','LH_P4S1T8',
+            'LH_P4S2T2','LH_P4S2T3','LH_P4S2T4','LH_P4S2T5',
+            'LH_P5S1T2',
+            'LH_P8S1T1','LH_P8S1T2','LH_P8S5T1','LH_P8S5T2','LH_P8S5T3','LH_P8S5T4','LH_P8S5T5','LH_P8S8T1','LH_P8S8T2',
+            'Underground',
+        }
+        local LuaHook_IgnoreIndexes = { 'MenuKeybind', 'LH_ConfigName',
+            'GVWeapon', 'GVSkin', 'GVCharm', 'GVWrap', 'GVFinisher', 'GVEmote', 'GVRankWep', 'GVRankLook' }
+        for _, id in ipairs(LuaHook_AddedFeatureIgnoreIndexes) do
+            LuaHook_IgnoreIndexes[#LuaHook_IgnoreIndexes + 1] = id
+        end
+        SaveManager:SetIgnoreIndexes(LuaHook_IgnoreIndexes)
         ThemeManager:SetFolder('LuaHook')
         SaveManager:SetFolder('LuaHook/configs')
         SaveManager:BuildConfigSection(Tabs.Settings)
