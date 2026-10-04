@@ -18230,6 +18230,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return fallback
             end
+            local LUAHOOK_MAX_ATTACK_SPEED_BOOST = 150
             local function ResolveRivalsModsStartShootingItem(item)
                 if type(item) == 'table' and type(item.Name) == 'string' and item.Name ~= '' then
                     return item
@@ -18245,7 +18246,7 @@ ErrorReporter.set_game(GameName)
                 if not IsRivalsModToggleEnabled('LH_P4S1T1') then
                     return 1
                 end
-                local weaponSpeedBoost = math.clamp(ReadRivalsModNumber('LH_P4S1S4', 85), 0, 85)
+                local weaponSpeedBoost = math.clamp(ReadRivalsModNumber('LH_P4S1S4', LUAHOOK_MAX_ATTACK_SPEED_BOOST), 0, LUAHOOK_MAX_ATTACK_SPEED_BOOST)
                 return 1 / (1 + (weaponSpeedBoost / 100))
             end
             local function ResolveRivalsReloadKey(item, reloadEnum)
@@ -36977,7 +36978,10 @@ ErrorReporter.set_game(GameName)
                 backgroundFrame.Parent = viewportFrame.Parent
                 local backgroundGradient = Instance.new('UIGradient')
                 backgroundGradient.Rotation = 90
-                backgroundGradient.Color = ColorSequence.new(Library.Scheme.MainColor, Library.Scheme.BackgroundColor)
+                backgroundGradient.Color = ColorSequence.new(
+                    Library.MainColor or Color3.fromRGB(26, 27, 31),
+                    Library.BackgroundColor or Color3.fromRGB(17, 18, 21)
+                )
                 backgroundGradient.Parent = backgroundFrame
                 local backgroundCorner = Instance.new('UICorner')
                 backgroundCorner.CornerRadius = UDim.new(0, 6)
@@ -37315,6 +37319,13 @@ ErrorReporter.set_game(GameName)
                 return dialog
             end
 
+local EnsureLuaHookWeaponHooksCallback = GuardLuaHookCallback('WeaponMods_EnsureHooks', function()
+    if type(LuaHookWeaponState) ~= 'table' or type(LuaHookWeaponState.EnsureHooks) ~= 'function' then
+        return false
+    end
+    return LuaHookWeaponState.EnsureHooks()
+end)
+
 local Tabs = {
     Main       = Window:AddTab('Main'),
     Rage       = Window:AddTab('Rage'),
@@ -37331,7 +37342,7 @@ do
                     local Combat = Tabs.Main:AddLeftGroupbox("Aimbot + Silent Aim", "crosshair")
                     local aimbotToggle = Combat:AddToggle("LH_P2S1T1", {
                         Text = "Aimbot",
-                        Default = true,
+                        Default = false,
                         Tooltip = "Enables the selected Silent or Camera aiming mode.",
                     })
                     local aimbotKeypicker = aimbotToggle:AddKeyPicker("LH_P2S1T1K", {
@@ -37360,7 +37371,7 @@ do
                     CameraAimSettings:SetupDependencies({ { Options.LH_P2S1D1, "Camera" } })
                     Combat:AddToggle("LH_P2S1T3", {
                         Text = "Ignore FOV",
-                        Default = true,
+                        Default = false,
                         Tooltip = "Allows targets anywhere around you, even when they are off-screen.",
                     })
                     local DepFovRadius = Combat:AddDependencyBox()
@@ -37375,7 +37386,7 @@ do
                     DepFovRadius:SetupDependencies({ { Toggles.LH_P2S1T3, false } })
                     Combat:AddToggle("LH_P2S1T5", {
                         Text = "Show FOV",
-                        Default = true,
+                        Default = false,
                     })
                     Combat:AddDropdown("LH_P2S1D2", {
                         Values = { "Auto", "Head", "Random" },
@@ -37477,9 +37488,9 @@ end
 
 do
     local AF = Tabs.Main:AddLeftGroupbox('Aimbot safety')
-    AF:AddToggle('AimbotKatanaDeflectCheck', { Text='Check Katana Deflect', Default=true,
+    AF:AddToggle('AimbotKatanaDeflectCheck', { Text='Check Katana Deflect', Default = false,
         Callback=function(v) end })
-    AF:AddToggle('AimbotRiotShieldCheck', { Text='Check Riot Shield', Default=true,
+    AF:AddToggle('AimbotRiotShieldCheck', { Text='Check Riot Shield', Default = false,
         Callback=function(v) end })
     AF:AddDropdown('AimbotIgnoreWeapons', {
         Values={'Flare Gun','Freeze Ray','Grenade Launcher','RPG'},
@@ -37611,15 +37622,15 @@ end)() end
                     local Mods = Tabs.Misc:AddLeftGroupbox("Weapon Mods", "swords")
                     Mods:AddToggle("LH_P4S1T1", {
                         Text = "Weapon Attack Speed",
-                        Default = true,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Default = false,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Speed = Mods:AddDependencyBox()
                     Speed:AddSlider("LH_P4S1S4", {
                         Text = "Speed Boost",
-                        Default = 85,
+                        Default = 0,
                         Min = 0,
-                        Max = 85,
+                        Max = 150,
                         Rounding = 0,
                         Suffix = "%",
                         Compact = true,
@@ -37627,8 +37638,8 @@ end)() end
                     Speed:SetupDependencies({ { Toggles.LH_P4S1T1, true } })
                     Mods:AddToggle("LH_P4S1T2", {
                         Text = "Faster Reload",
-                        Default = true,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Default = false,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Reload = Mods:AddDependencyBox()
                     Reload:AddSlider("LH_P4S1S3", {
@@ -37644,12 +37655,12 @@ end)() end
                     Mods:AddToggle("LH_P4S1T3", {
                         Text = "No Spread",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     Mods:AddToggle("LH_P4S1T4", {
                         Text = "No Recoil",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Recoil = Mods:AddDependencyBox()
                     Recoil:AddSlider("LH_P4S1S2", {
@@ -37664,8 +37675,8 @@ end)() end
                     Recoil:SetupDependencies({ { Toggles.LH_P4S1T4, true } })
                     Mods:AddToggle("LH_P4S2T2", {
                         Text = "Faster ADS",
-                        Default = true,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Default = false,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Ads = Mods:AddDependencyBox()
                     Ads:AddSlider("LH_P4S2S2", {
@@ -37680,8 +37691,8 @@ end)() end
                     Ads:SetupDependencies({ { Toggles.LH_P4S2T2, true } })
                     Mods:AddToggle("LH_P4S2T3", {
                         Text = "Faster Equip",
-                        Default = true,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Default = false,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Equip = Mods:AddDependencyBox()
                     Equip:AddSlider("LH_P4S2S3", {
@@ -37697,7 +37708,7 @@ end)() end
                     Mods:AddToggle("LH_P4S1T5", {
                         Text = "Scythe Dash Cooldown",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Dash = Mods:AddDependencyBox()
                     Dash:AddSlider("LH_P4S1S5", {
@@ -37713,12 +37724,12 @@ end)() end
                     Mods:AddToggle("LH_P4S2T4", {
                         Text = "Automatic Weapon",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     Mods:AddToggle("LH_P4S1T6", {
                         Text = "Grenade Fuse",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local Fuse = Mods:AddDependencyBox()
                     Fuse:AddDropdown("LH_P4S1D1", {
@@ -37730,13 +37741,13 @@ end)() end
                     Fuse:AddToggle("LH_P4S1T7", {
                         Text = "Remove Fuse",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     Fuse:SetupDependencies({ { Toggles.LH_P4S1T6, true } })
                     Mods:AddToggle("LH_P4S1T8", {
                         Text = "Riot/Knife Bypass",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local RiotKnifeMode = Mods:AddDependencyBox()
                     RiotKnifeMode:AddDropdown("LH_P4S1D2", {
@@ -37752,12 +37763,12 @@ local P3 = Tabs.Automation
                 local P3S1 = P3:AddLeftGroupbox('Game Modes')
                 P3S1:AddToggle('LH_P8S1T1', {
                     Text = 'Auto Heal',
-                    Default = true,
+                    Default = false,
                     Tooltip = 'Automatically grabs health packs when you are low.',
                 })
                 P3S1:AddToggle('LH_P8S1T2', {
                     Text = 'Auto Ammo Pickup',
-                    Default = true,
+                    Default = false,
                     Tooltip = 'Automatically grabs ammo packs when your magazine is empty.',
                 })
                 P3S1:AddToggle('AutoRespawn', {
@@ -37962,31 +37973,31 @@ local P1 = Tabs.ESP
 
             P1S1:AddToggle('LH_P1S1T1', {
                 Text = 'ESP Enabled',
-                Default = true,
+                Default = false,
                 Tooltip = 'Turns player ESP on.',
             })
 
             P1S1:AddToggle('LH_P1S1T2', {
                 Text = 'Highlight',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows the player highlight.',
             })
 
             P1S1:AddToggle('LH_P1S2T1', {
                 Text = 'Box',
-                Default = true,
+                Default = false,
                 Tooltip = 'Draws a visibility-colored box around the player.',
             })
 
             P1S1:AddToggle('LH_P1S1T3', {
                 Text = 'Names',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows player names.',
             })
 
             P1S1:AddToggle('LH_P1S1T4', {
                 Text = 'Health Info',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows the health bar and HP value.',
             })
 
@@ -37998,31 +38009,31 @@ local P1 = Tabs.ESP
 
             P1S1:AddToggle('LH_P1S1T9', {
                 Text = 'Weapon Info',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows the equipped weapon and reloading state.',
             })
 
             P1S1:AddToggle('LH_P1S2T2', {
                 Text = 'Ammo Text',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows current/max ammo below the box using the same style as Weapon Info.',
             })
 
             P1S1:AddToggle('LH_P1S1T6', {
                 Text = 'Distance',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows distance in studs.',
             })
 
             P1S1:AddToggle('LH_P1S1T8', {
                 Text = 'Look Direction',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows where players are aiming.',
             })
 
             P1S1:AddToggle('LH_P1S1T5', {
                 Text = 'Arrows',
-                Default = true,
+                Default = false,
                 Tooltip = 'Screen-edge arrows that point toward off-screen players.',
             })
 
@@ -38034,7 +38045,7 @@ local P1 = Tabs.ESP
 
             P1S1:AddToggle('LH_P1S1T11', {
                 Text = 'Throwable ESP',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows throwables such as Molotov, Grenade, Flashbang, etc.',
             })
 
@@ -38075,19 +38086,19 @@ local P1 = Tabs.ESP
 
             P1S1:AddToggle('LH_P1S2T6', {
                 Text = 'Deflecting',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows DEFLECTING while the player has an active Katana deflect.',
             })
 
             P1S1:AddToggle('LH_P1S2T4', {
                 Text = 'Rank',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows the player\'s competitive rank.',
             })
 
             P1S1:AddToggle('LH_P1S2T5', {
                 Text = 'Win Streak',
-                Default = true,
+                Default = false,
                 Tooltip = 'Shows the current duel win streak. WS means Win Streak.',
             })
 
@@ -38204,7 +38215,7 @@ local P1 = Tabs.ESP
                     Movement:AddToggle("LH_P4S2T5", {
                         Text = "Infinite Double Jumps",
                         Default = false,
-                        Callback = LuaHookWeaponState.EnsureHooks,
+                        Callback = EnsureLuaHookWeaponHooksCallback,
                     })
                     local LongJumpToggle = Movement:AddToggle("LH_P10S3T7", {
                         Text = "Long Jump",
@@ -39695,7 +39706,27 @@ task.spawn(function()
         ThemeManager:ApplyToTab(Tabs.Settings)
         local origNotify = Library.Notify
         Library.Notify = function() end
-        SaveManager:LoadAutoloadConfig()
+        pcall(function() SaveManager:LoadAutoloadConfig() end)
+        -- Added features are intentionally opt-in on every startup. This also overrides stale autoload configs.
+        local LuaHook_ForceAddedFeatureTogglesOff = {
+            'AimbotKatanaDeflectCheck','AimbotRiotShieldCheck','AutoRespawn',
+            'LH_P10S2T1','LH_P10S3T1','LH_P10S3T2','LH_P10S3T3','LH_P10S3T4','LH_P10S3T5','LH_P10S3T6','LH_P10S3T7',
+            'LH_P10S4T1','LH_P10S4T2','LH_P10S4T3','LH_P10S4T4','LH_P10S4T5','LH_P10S6T1','LH_P10S7T1',
+            'LH_P1S1T1','LH_P1S1T10','LH_P1S1T11','LH_P1S1T2','LH_P1S1T3','LH_P1S1T4','LH_P1S1T5','LH_P1S1T6','LH_P1S1T7','LH_P1S1T8','LH_P1S1T9',
+            'LH_P1S2T1','LH_P1S2T2','LH_P1S2T4','LH_P1S2T5','LH_P1S2T6',
+            'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5',
+            'LH_P4S1T1','LH_P4S1T2','LH_P4S1T3','LH_P4S1T4','LH_P4S1T5','LH_P4S1T6','LH_P4S1T7','LH_P4S1T8',
+            'LH_P4S2T2','LH_P4S2T3','LH_P4S2T4','LH_P4S2T5',
+            'LH_P5S1T2',
+            'LH_P8S1T1','LH_P8S1T2','LH_P8S5T1','LH_P8S5T2','LH_P8S5T3','LH_P8S5T4','LH_P8S5T5','LH_P8S8T1','LH_P8S8T2',
+            'Underground',
+        }
+        for _, toggleId in ipairs(LuaHook_ForceAddedFeatureTogglesOff) do
+            local toggle = Toggles and Toggles[toggleId]
+            if toggle and type(toggle.SetValue) == 'function' and toggle.Value == true then
+                pcall(function() toggle:SetValue(false) end)
+            end
+        end
         Library.Notify = origNotify
         pcall(function()
             if Library.Toggled ~= true then Library:Toggle() end
