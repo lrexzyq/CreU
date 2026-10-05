@@ -613,7 +613,8 @@ local Config = {
     RageOnEmpty          = "Swap",
     RagePreferredSlot    = "Primary",
     RageUsePrimary = true, RageUseSecondary = true, RageUseMelee = true,
-    RageIgnoreProtected = true, RageEvasionMode = 'Random', RageMethod = 'Pure', RageOOBBait = false,
+    RageIgnoreProtected = true, RageEvasionMode = 'Random', RageMethod = 'Pure',
+    RageAttackTranslocate = false,
     RageRandomBaseRadius = 100, RageRandomRadiusFactor = 0.5, RageTranslocateOffset = -0.001,
     TriggerScopeCheck    = false,
     SilentAimHitChance   = 85,
@@ -9788,6 +9789,13 @@ end)()
     local _immuneTgt   = nil
     local EYE_MUZZLE_SEP  = 0.07
     local RAGE_CLAMP_FRAC = 0.30
+    -- LuaHook legacy Bait Pulse / attack-translocate state.
+    local TRANSLOCATE_PULSES_PER_BURST = 2
+    local TRANSLOCATE_ARM_FRAMES = 12
+    local _translocateFireFrames = 0
+    local _translocateNext = false
+    local _translocateBurstPulses = 0
+    local _translocatePart = nil
     local function parity()
         return Config.RagePolarParity ~= false
     end
@@ -10501,6 +10509,38 @@ end)()
         _voidSteps = _voidSteps + 1
         return cf
     end
+    local TRANSLOCATE_OFFSET = -5
+    local TRANSLOCATE_FALLBACK_MIN = 10000
+    local TRANSLOCATE_FALLBACK_MAX = 90000
+    local function attackTranslocateCFrame(origin)
+        local ok, result = pcall(function()
+            local part = _translocatePart
+            if part == nil or part.Parent == nil
+                or not CollectionService:HasTag(part, 'OutOfBoundsPart')
+                or part:GetAttribute('KillDelay') ~= 0 then
+                part = nil
+                for _, candidate in CollectionService:GetTagged('OutOfBoundsPart') do
+                    if candidate:GetAttribute('KillDelay') == 0 then
+                        part = candidate
+                        break
+                    end
+                end
+                _translocatePart = part
+            end
+            if part ~= nil then
+                return part.CFrame * CFrame.new(0, -part.Size.Y / 2 + TRANSLOCATE_OFFSET, 0)
+            end
+            local ang = math.random() * math.pi * 2
+            local dist = TRANSLOCATE_FALLBACK_MIN
+                + math.random() * (TRANSLOCATE_FALLBACK_MAX - TRANSLOCATE_FALLBACK_MIN)
+            return CFrame.new(origin.X + math.cos(ang) * dist, origin.Y, origin.Z + math.sin(ang) * dist)
+        end)
+        if not ok then
+            _translocatePart = nil
+            return nil
+        end
+        return result
+    end
     local PARK_UP_STUDS = 12
     local _parkRP = nil
     local function parkHasLOS(from, to, ourChar, tgtChar)
@@ -10920,8 +10960,25 @@ end)()
         local firePark = nil
         if _prevPark ~= nil and _prevParkTgt == tgt then firePark = _prevPark end
         if restoreMode() ~= "luahook" then firePark = park end
+
+        -- LuaHook legacy Bait Pulse. Gum OFF does not disable this; it is part of
+        -- the park/fire transport path rather than the PhysicsRepRootPart path.
+        local translocateReady = Config.RageAttackTranslocate ~= false
+            and restoreMode() == "luahook"
+            and not predicting and not holdFire and not melee and firePark ~= nil
+            and not voidFire
+            and (parity() or tick() >= _primeUntil)
+        local startingTranslocate = translocateReady
+            and _translocateNext
+            and _translocateBurstPulses < TRANSLOCATE_PULSES_PER_BURST
+        local translocateCF = nil
+        if startingTranslocate then
+            translocateCF = attackTranslocateCFrame(hrp.Position)
+        end
+
         local poisonCF = nil
-        if gumMode() ~= "off"
+        if translocateCF == nil
+           and gumMode() ~= "off"
            and Config.RageGatePoison ~= false
            and voidDeep()
            and not predicting and not holdFire and not melee and firePark ~= nil
@@ -10930,21 +10987,34 @@ end)()
             poisonCF = rollVoidDeep()
         end
         local desiredCFrame = CFrame.new(park)
-        if poisonCF ~= nil then
+        if translocateCF ~= nil then
+            desiredCFrame = translocateCF
+        elseif poisonCF ~= nil then
             desiredCFrame = poisonCF
         end
-        -- Legacy Ragebot behavior: Gum OFF still uses the normal park/displace
-        -- pipeline. Gum controls the Glue/PhysicsRepRootPart path, not whether
-        -- the Ragebot can acquire a firing position.
+        -- Gum controls the glue path; the normal park/displace path remains active when Gum=off.
         local parked = displace(hrp, desiredCFrame)
-        if parked and poisonCF == nil then
+        if parked and translocateCF == nil and poisonCF == nil then
             _prevPark, _prevParkTgt = park, tgt
             _lastPark = CFrame.new(park)
         elseif not parked then
             _prevPark, _prevParkTgt = nil, nil
             _lastPark = nil
         end
+        if translocateCF ~= nil then
+            _translocateNext = false
+            if startingTranslocate then
+                _translocateBurstPulses = _translocateBurstPulses + 1
+                State.RageTranslocateBaits = (State.RageTranslocateBaits or 0) + 1
+                _translocateFireFrames = 0
+            end
+            State.RageFiring = false
+            State.RageTranslocating = parked == true
+            State.RageStatus = parked and "Translocating" or "Translocate failed"
+            return
+        end
         if poisonCF ~= nil then
+            _translocateNext = false
             State.RageFiring = false
             if parked then
                 _poisonBlips = _poisonBlips + 1
@@ -10955,6 +11025,7 @@ end)()
                 State.RageStatus = "Poison failed"
             end
         elseif predicting then
+            _translocateNext = false
             local lead = nil
             if Config.RagePredictPrefire ~= false and firePark ~= nil then
                 lead = resurfaceIn(tgt)
@@ -10972,16 +11043,20 @@ end)()
                 State.RageStatus = "Predicting resurface"
             end
         elseif holdFire then
+            _translocateNext = false
             State.RageStatus = "Protected — parked, holding fire"
         elseif firePark == nil then
+            _translocateNext = false
             State.RageFiring = false
             State.RageStatus = "Priming"
             _meleeDwellStart = nil
         elseif (not parity()) and (tick() < _primeUntil) then
+            _translocateNext = false
             State.RageFiring = false
             State.RageStatus = "Priming"
             _meleeDwellStart = nil
         elseif melee and Config.RageKnifeBot ~= false then
+            _translocateNext = false
             if meleeStrike(firePark, aimPos, hh, tgt) then
                 _attackReadyTgt = tgt
                 State.RageStatus = "Melee"
@@ -10994,7 +11069,12 @@ end)()
             if sent > 0 then
                 _attackReadyTgt = tgt
                 _poisonFireFrames = _poisonFireFrames + 1
+                _translocateFireFrames = _translocateFireFrames + 1
             end
+            _translocateNext = sent > 0 and parked and not melee
+                and _translocateFireFrames >= TRANSLOCATE_ARM_FRAMES
+                and _translocateBurstPulses < TRANSLOCATE_PULSES_PER_BURST
+                and Config.RageAttackTranslocate ~= false
             if voidFire and sent > 0 then
                 State.RageVoidFires = (State.RageVoidFires or 0) + 1
             end
@@ -11095,6 +11175,10 @@ end)()
             _liteDriven = false
                         _poisonFireFrames = 0
             _poisonBlips = 0
+            _translocateFireFrames = 0
+            _translocateNext = false
+            _translocateBurstPulses = 0
+            _translocatePart = nil
             State.RageGlueBound = false
             State.RageTranslocating = false
             _realCF = nil
@@ -11211,6 +11295,10 @@ end)()
         _realCF = nil; _realChar = nil; _target = nil; _voidCF = nil; _notified = nil
         _poisonFireFrames = 0
         _poisonBlips = 0
+        _translocateFireFrames = 0
+        _translocateNext = false
+        _translocateBurstPulses = 0
+        _translocatePart = nil
         State.RageFiring = false
         State.RageVoidActive = false
         State.RageTranslocating = false
@@ -27283,13 +27371,8 @@ ErrorReporter.set_game(GameName)
                 Target = nil,
                 Key = nil,
             }
-            local AIMBOT_TARGET_REFRESH_INTERVAL = 0.10
-            local AimbotTargetSweepCache = {
-                At = 0,
-                Target = nil,
-                Key = nil,
-            }
-            local GetBestAimbotTarget = function(requireVisible, ignoreFovOverride, forceRefresh)
+            local GetBestAimbotTarget = function(requireVisible, ignoreFovOverride, forceRefresh, aimModeOverride)
+                local aimMode = ResolveAimbotTargetMode(aimModeOverride or (Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'))
                 local ignoreFov = ignoreFovOverride
                 if ignoreFov == nil then
                     ignoreFov = LuaHookAimRuntime.IsAimbotIgnoreFovEnabled()
@@ -27297,6 +27380,7 @@ ErrorReporter.set_game(GameName)
                 local aimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 local fov = Options.LH_P2S1S2 and Options.LH_P2S1S2.Value or 170
                 local key = table.concat({
+                    aimMode,
                     tostring(requireVisible == true),
                     tostring(ignoreFov == true),
                     tostring(aimPart),
@@ -27720,34 +27804,18 @@ ErrorReporter.set_game(GameName)
                 end
             end
             LuaHookRuntime.UpdateCameraAim = function(deltaTime)
-                local movementRecorder = LuaHookRuntime.MovementRecorder
-                local cameraAimEnabled = LuaHookAimRuntime.IsCameraAimEnabled
-                local flickbotClaimed = LuaHookRuntime.IsFlickbotCameraClaimed
-                local readyToFight = LuaHookRuntime.IsReadyToFight
-                if not movementRecorder or type(movementRecorder.IsCameraClaimed) ~= 'function'
-                    or type(cameraAimEnabled) ~= 'function'
-                    or type(flickbotClaimed) ~= 'function'
-                    or type(readyToFight) ~= 'function' then
-                    LuaHookAimRuntime.ResetCameraAimRandomState()
-                    return
-                end
-                if movementRecorder.IsCameraClaimed()
-                    or flickbotClaimed()
-                    or not cameraAimEnabled()
+                if LuaHookRuntime.MovementRecorder.IsCameraClaimed()
+                    or LuaHookRuntime.IsFlickbotCameraClaimed()
+                    or not LuaHookAimRuntime.IsCameraAimEnabled()
                     or not IsAimbotGameReady()
                     or not IsAimbotCameraReady()
-                    or not readyToFight() then
+                    or not LuaHookRuntime.IsReadyToFight() then
                     LuaHookAimRuntime.ResetCameraAimRandomState()
                     return
                 end
                 local camera = Workspace.CurrentCamera
                 local ignoreFov = LuaHookAimRuntime.IsAimbotIgnoreFovEnabled()
-                local getBestTarget = LuaHookRuntime.GetBestAimbotTarget
-                if type(getBestTarget) ~= 'function' then
-                    LuaHookAimRuntime.ResetCameraAimRandomState()
-                    return
-                end
-                local targetInfo = getBestTarget(true, ignoreFov, false)
+                local targetInfo = GetBestAimbotTarget(false, ignoreFov, false, 'Camera')
                 local configuredAimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 if configuredAimPart == 'Random' and targetInfo then
                     local targetIdentity = targetInfo.player or targetInfo.instance
@@ -27802,189 +27870,6 @@ ErrorReporter.set_game(GameName)
                     currentRotation.X + (pitch - currentRotation.X) * blendAlpha,
                     currentRotation.Y + ((yaw - currentRotation.Y + math.pi) % (2 * math.pi) - math.pi) * blendAlpha
                 ))
-            end
-            local GetBestTriggerbotTarget = function()
-                EnsureAimbotTargetTracking()
-                local aimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
-                local fovRadius = Options.LH_P2S1S2 and Options.LH_P2S1S2.Value or 170
-                local maxDistance = DEFAULT_ESP_MAX_DISTANCE
-                local ignoreFov = LuaHookAimRuntime.IsAimbotIgnoreFovEnabled()
-                local mousePosition = LuaHookAimRuntime.GetAimbotPointerPosition()
-                local camera = Workspace.CurrentCamera
-                if not camera then
-                    return nil
-                end
-                local bestTarget = nil
-                for _, fighter in ipairs(LocalFighterController and LocalFighterController.Objects or {}) do
-                    local player = fighter and fighter.Player
-                    if player and player ~= LP and player.Parent == Players then
-                        local entity = fighter.Entity
-                        local subject = entity and entity.Model
-                        if not ShouldShow(player, false) then
-                            LuaHookRuntime.RecordTargetValidityRejection('team_or_self', subject, player, 'Players')
-                        elseif FighterDataCache.ReadEntity(entity) then
-                            LuaHookRuntime.RecordTargetValidityRejection('invincible', subject, player, 'Players')
-                        elseif ShouldIgnoreRivalsRiotShieldTarget(player, subject or player.Character, LuaHookAimRuntime.ResolveAimbotEquippedItem()) then
-                            LuaHookRuntime.RecordTargetValidityRejection('riot_shield', subject, player, 'Players')
-                        else
-                            bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(bestTarget, subject, 'Players', aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, player, camera, TRIGGERBOT_VISIBILITY_CACHE_PROFILE)
-                        end
-                    end
-                end
-                for model in pairs(TrackedRangeTargets) do
-                    if not model.Parent then
-                        TrackedRangeTargets[model] = nil
-                    else
-                        bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(bestTarget, model, 'Range Targets', aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, nil, camera, TRIGGERBOT_VISIBILITY_CACHE_PROFILE)
-                    end
-                end
-                for model in pairs(TrackedPracticeDummies) do
-                    if not model.Parent then
-                        TrackedPracticeDummies[model] = nil
-                    else
-                        bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(bestTarget, model, 'Practice Dummies', aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, nil, camera, TRIGGERBOT_VISIBILITY_CACHE_PROFILE)
-                    end
-                end
-                LuaHookRuntime.LastAimbotSweepTarget = bestTarget
-                LuaHookRuntime.LastAimbotSweepAt = os.clock()
-                return bestTarget
-            end
-            SharedTryTriggerbotShot = TryTriggerbotShot
-            SharedGetBestTriggerbotTarget = GetBestTriggerbotTarget
-            end
-            local function ResolveTriggerbotTarget(aimbotEnabled, currentTargetInfo)
-                local aimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
-                local maxDistance = DEFAULT_ESP_MAX_DISTANCE
-                local mousePosition = LuaHookAimRuntime.GetAimbotPointerPosition()
-                local refreshedTarget = currentTargetInfo and LuaHookRuntime.RefreshAimbotTargetInfo(currentTargetInfo, aimPart, mousePosition, maxDistance, TRIGGERBOT_VISIBILITY_CACHE_PROFILE)
-                if refreshedTarget then
-                    return refreshedTarget
-                end
-                local cursorTargetInfo = ResolveCursorTriggerbotTarget()
-                if cursorTargetInfo then
-                    return cursorTargetInfo
-                end
-                return GetBestTriggerbotTarget()
-            end
-            local TryTriggerbotShot = SharedTryTriggerbotShot
-            GetBestTriggerbotTarget = SharedGetBestTriggerbotTarget
-            LuaHookRuntime.BeginAimbotSilentShot = function(item)
-                if (AimbotSilentState.ShotPrimeDepth or 0) > 0 then
-                    return false, nil, nil
-                end
-                local isSelected = LuaHookAimRuntime.IsAimbotSelected
-                local isEnabled = LuaHookAimRuntime.IsAimbotEnabled
-                local isShootHeld = LuaHookAimRuntime.IsAimbotShootInputHeld
-                local isReady = LuaHookRuntime.IsReadyToFight
-                local resolveTarget = LuaHookRuntime.ResolveAimbotSilentHookTarget
-                if type(isSelected) ~= 'function'
-                    or type(isEnabled) ~= 'function'
-                    or type(isShootHeld) ~= 'function'
-                    or type(isReady) ~= 'function'
-                    or type(resolveTarget) ~= 'function' then
-                    return false, nil, nil
-                end
-                local okSelected, enabled = pcall(isSelected)
-                local okEnabled, keybindActive = pcall(isEnabled)
-                local okShootHeld, shootInputHeld = pcall(isShootHeld)
-                local okReady, readyToFight = pcall(isReady)
-                enabled = okSelected and enabled == true
-                keybindActive = okEnabled and keybindActive == true
-                shootInputHeld = okShootHeld and shootInputHeld == true
-                readyToFight = okReady and readyToFight == true
-                local aimAssistActive = keybindActive or shootInputHeld
-                if type(LuaHookRuntime.RecordCharacterLoadingCheckpoint) == 'function' then
-                    pcall(LuaHookRuntime.RecordCharacterLoadingCheckpoint, 'Silent Aim', readyToFight, enabled and aimAssistActive)
-                end
-                if not (enabled and aimAssistActive and readyToFight) then
-                    return false, nil, nil
-                end
-                local okTarget, targetInfo = pcall(resolveTarget, item)
-                if not okTarget or not targetInfo then
-                    return false, nil, nil
-                end
-                if targetInfo.targetType ~= 'Players' or not targetInfo.player or targetInfo.player.Parent ~= Players then
-                    return false, nil, nil
-                end
-                if targetInfo.player and IsRivalsSpawnShieldActive(targetInfo.player.Character) then
-                    return false, nil, nil
-                end
-                local camera = Workspace.CurrentCamera
-                local originalCFrame = camera and camera.CFrame or nil
-                local primeAim = LuaHookRuntime.PrimeAimbotAim
-                if type(primeAim) ~= 'function' then
-                    return false, nil, nil
-                end
-                local okPrime, didPrime = pcall(primeAim, targetInfo, item)
-                if not camera or not originalCFrame or not okPrime or didPrime ~= true then
-                    return false, nil, nil
-                end
-                AimbotSilentState.ShotPrimeDepth = (AimbotSilentState.ShotPrimeDepth or 0) + 1
-                local resolveDebug = LuaHookAimRuntime.ResolveAimbotSilentDebugEnabled
-                if type(resolveDebug) == 'function' then
-                    local okDebug, debugEnabled = pcall(resolveDebug)
-                    if okDebug and debugEnabled == true and type(LuaHookRuntime.NotifyAimbotStatus) == 'function' then
-                        pcall(LuaHookRuntime.NotifyAimbotStatus, 'silent_prime', string.format('Silent Camera shot-hook: %s', targetInfo.displayName), true)
-                    end
-                end
-                return true, camera, originalCFrame
-            end
-            LuaHookRuntime.FinishAimbotSilentShot = function(didPrime, camera, originalCFrame)
-                if not didPrime then
-                    return
-                end
-                AimbotSilentState.ShotPrimeDepth = math.max((AimbotSilentState.ShotPrimeDepth or 1) - 1, 0)
-                if camera and originalCFrame and Workspace.CurrentCamera == camera and LuaHookRuntime.IsReadyToFight() then
-                    camera.CFrame = originalCFrame
-                end
-            end
-            LuaHookWeaponState.BeginAimbotSilentShot = LuaHookRuntime.BeginAimbotSilentShot
-            LuaHookWeaponState.FinishAimbotSilentShot = LuaHookRuntime.FinishAimbotSilentShot
-            local function EnsureAimbotSilentStartShootingHook(item)
-                if type(Rivals) ~= 'table' or type(Rivals.Gun) ~= 'table' then
-                    return
-                end
-                if AimbotSilentConnections.HookedItem == item then
-                    return
-                end
-                if not LuaHookAimRuntime.IsAimbotSilentShotHookItem(item) then
-                    return
-                end
-                local originalStartShooting = item.StartShooting
-                local wrappedStartShooting
-                wrappedStartShooting = function(self, ...)
-                    local didPrime, camera, originalCFrame = false, nil, nil
-                    local okBegin, a, b, c = xpcall(function()
-                        return LuaHookRuntime.BeginAimbotSilentShot(self)
-                    end, function(err)
-                        return debug.traceback('[Aimbot] BeginAimbotSilentShot: ' .. tostring(err), 2)
-                    end)
-                    if okBegin then
-                        didPrime, camera, originalCFrame = a, b, c
-                    else
-                        ReportLuaHookRuntimeLifecycleIssue('rivals_mods_aimbot_silent_begin', a)
-                    end
-                    local baseStartShooting = originalStartShooting
-                    if type(baseStartShooting) ~= 'function' then
-                        pcall(function()
-                            LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
-                        end)
-                        return nil
-                    end
-                    local results = table.pack(pcall(baseStartShooting, self, ...))
-                    pcall(function()
-                        LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
-                    end)
-                    if not results[1] then
-                        ReportLuaHookRuntimeLifecycleIssue('silent_start_shooting', results[2])
-                        return nil
-                    end
-                    return table.unpack(results, 2, results.n)
-                end
-                AimbotSilentConnections.HookedItem = item
-                AimbotSilentConnections.OriginalStartShooting = originalStartShooting
-                AimbotSilentConnections.WrappedStartShooting = wrappedStartShooting
-                item.StartShooting = wrappedStartShooting
             end
             local function UpdateAimbot()
                 if type(LuaHookAimRuntime) ~= 'table' or type(LuaHookRuntime) ~= 'table' then
@@ -38380,6 +38265,10 @@ do (function()
                 end
             end
         end) })
+    DEF:AddDivider('Bait pulse')
+    DEF:AddToggle('RageAttackTranslocate', { Text='Bait Pulse', Default=Config.RageAttackTranslocate,
+        Tooltip='Legacy LuaHook attack-translocate pulse after the normal attack sequence.',
+        Callback=function(v) Config.RageAttackTranslocate = v == true end })
     DEF:AddDivider('Park transport')
     DEF:AddDropdown('RageRestoreMode', { Values={'auto','none','render','luahook'},
         Default=Config.RageRestoreMode, Text='Park transport',
