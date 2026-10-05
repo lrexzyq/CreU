@@ -27871,6 +27871,7 @@ ErrorReporter.set_game(GameName)
                     currentRotation.Y + ((yaw - currentRotation.Y + math.pi) % (2 * math.pi) - math.pi) * blendAlpha
                 ))
             end
+            end
             local function UpdateAimbot()
                 if type(LuaHookAimRuntime) ~= 'table' or type(LuaHookRuntime) ~= 'table' then
                     return
