@@ -553,7 +553,6 @@ local Config = {
     AimbotNoiseDeg = 0,
     AimbotOvershoot = 0,
     AimbotDirectCamera = false,
-    AimbotManipulation = false,
     Trigger = false,
     TriggerKey = "Always",
     TriggerDelayMs = 0,
@@ -789,14 +788,6 @@ local Config = {
     FXCrosshairHitPop    = true,
     HUDWatermark      = true,
     HUDWatermarkStats = true,
-    HUDManipulated = false,
-    HUDManipulatedText = "Manipulated",
-    HUDManipulatedOffsetX = 0,
-    HUDManipulatedOffsetY = 24,
-    HUDManipulatedSize = 16,
-    HUDManipulatedDuration = 0.35,
-    HUDManipulatedColor = Color3.fromRGB(255, 220, 90),
-    HUDManipulatedOutline = false,
     FXTargetInfo       = false,
     FXTargetInfoOffset = 110,
     HUDBindList     = false,
@@ -937,8 +928,6 @@ local State = {
     RageAutoTransport = "luahook", RageTransportSwitches = 0, RageLastLossAt = 0,
     AutoWeaponFails = 0,
     AimbotFlickActive = false, AimbotSpringOffset = Vector2.zero,
-    AimbotManipulatedUntil = 0,
-    AimbotManipulatedTarget = nil,
     RageRealCF   = nil,
     RageRealChar = nil,
     RageTarget   = nil,
@@ -2742,7 +2731,6 @@ local Visuals = {}
         local _chLines, _chLinesBlk, _chDot, _chDotBlk = nil, nil, nil, nil
         local _chTri, _chTriBlk = nil, nil
         local _ch2 = { shots = 0, shotT = -10, rot = 0, rotTgt = 0 }
-        local _manipText = nil
         local _wmBg, _wmAccent, _wmText = nil, nil, nil
         local _wm = { fps = 60, ping = 0, pingT = 0, str = "", strT = 0, bw = nil, pw = 60 }
         local _sessKills, _sessT0 = 0, tick()
@@ -2841,7 +2829,6 @@ local Visuals = {}
             for i = 1, 3 do _chTriBlk[i] = mkDraw("Circle", { Filled = true, Color = C_BLACK }) end
             _chTri = {}
             for i = 1, 3 do _chTri[i] = mkDraw("Circle", { Filled = true }) end
-            _manipText = mkDraw("Text", { Center = true, Outline = false, Font = 3, Size = 16, Text = "Manipulated", Color = C_GOLD })
             _wmBg     = mkDraw("Square", { Filled = true, Color = C_FILL })
             _wmAccent = mkDraw("Line",   { Color = C_GOLD, Thickness = 2 })
             _wmText   = mkDraw("Text",   { Center = false, Outline = true, Font = 2, Size = 13, Text = "LuaHook", Color = _WHITE })
@@ -3222,30 +3209,6 @@ local Visuals = {}
                             local db = _chTriBlk and _chTriBlk[i]; if db and db.Visible then db.Visible = false end
                         end
                     end
-                end
-            end
-            if _manipText then
-                local aimMode = Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'
-                local showManip = Config.HUDManipulated == true
-                    and Config.AimbotManipulation == true
-                    and aimMode == 'Silent'
-                    and type(State.AimbotManipulatedUntil) == 'number'
-                    and now < State.AimbotManipulatedUntil
-                if showManip then
-                    local text = tostring(Config.HUDManipulatedText or 'Manipulated')
-                    if text == '' then text = 'Manipulated' end
-                    _manipText.Text = text
-                    _manipText.Size = math.clamp(tonumber(Config.HUDManipulatedSize) or 16, 8, 32)
-                    _manipText.Color = Config.HUDManipulatedColor or C_GOLD
-                    _manipText.Outline = Config.HUDManipulatedOutline == true
-                    _manipText.Position = Vector2.new(
-                        cx + (tonumber(Config.HUDManipulatedOffsetX) or 0),
-                        cy + (tonumber(Config.HUDManipulatedOffsetY) or 24)
-                    )
-                    _manipText.Transparency = 1
-                    _manipText.Visible = true
-                else
-                    _manipText.Visible = false
                 end
             end
             if _dnActive[1] then
@@ -3709,7 +3672,6 @@ local Visuals = {}
             if _chDotBlk then _chDotBlk.Visible = false end
             if _chTri then for i = 1, 3 do if _chTri[i] then _chTri[i].Visible = false end end end
             if _chTriBlk then for i = 1, 3 do if _chTriBlk[i] then _chTriBlk[i].Visible = false end end end
-            if _manipText then _manipText.Visible = false end
             if _wmBg then _wmBg.Visible = false end
             if _wmAccent then _wmAccent.Visible = false end
             if _wmText then _wmText.Visible = false end
@@ -3788,7 +3750,6 @@ local Visuals = {}
             rm(_chDot); rm(_chDotBlk); _chDot, _chDotBlk = nil, nil
             if _chTri then for _, d in ipairs(_chTri) do rm(d) end _chTri = nil end
             if _chTriBlk then for _, d in ipairs(_chTriBlk) do rm(d) end _chTriBlk = nil end
-            rm(_manipText); _manipText = nil
             rm(_wmBg); rm(_wmAccent); rm(_wmText); _wmBg, _wmAccent, _wmText = nil, nil, nil
             rm(_wm.stats); _wm.stats = nil
             rm(_tiBg); rm(_tiAccent); rm(_tiName); rm(_tiHpBg); rm(_tiHpFill); rm(_tiInfo)
@@ -8016,6 +7977,10 @@ local Weather = {}
         Config.WeatherSoundVolume = v
         if _ambient then pcall(function() _ambient.Volume = v end) end
     end
+    function Weather.toggleSkyFlash(on)
+        Config.WeatherStormFlash = on == true
+    end
+
     function Weather.toggleStorm(on)
         Config.WeatherStorm = on
         if not Config.Weather then return end
@@ -26868,25 +26833,7 @@ ErrorReporter.set_game(GameName)
                 return 'Silent'
             end
             LuaHookAimRuntime.ResolveAimbotTargetMode = ResolveAimbotTargetMode
-            local function IsAimbotWallCheckEnabled(mode)
-                if mode == 'Triggerbot' then
-                    return true
-                end
-                local targetMode = LuaHookAimRuntime.ResolveAimbotTargetMode(mode)
-                local toggleId = targetMode == 'Camera' and 'LH_P2S2T1' or 'LH_P2S3T1'
-                local toggle = Toggles and Toggles[toggleId]
-                return toggle ~= nil and toggle.Value == true
-            end
-            local function IsAimbotTeamCheckEnabled(mode)
-                if mode == 'Triggerbot' then
-                    return true
-                end
-                local targetMode = LuaHookAimRuntime.ResolveAimbotTargetMode(mode)
-                local toggleId = targetMode == 'Camera' and 'LH_P2S2T2' or 'LH_P2S3T2'
-                local toggle = Toggles and Toggles[toggleId]
-                return toggle ~= nil and toggle.Value == true
-            end
-            local BuildAimbotTargetInfo = function(subject, targetType, aimPart, mousePosition, player, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, allowHiddenTargets, requireVisible, wallCheck)
+            local BuildAimbotTargetInfo = function(subject, targetType, aimPart, mousePosition, player, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, allowHiddenTargets, requireVisible)
                 if not subject or not subject.Parent then
                     LuaHookRuntime.RecordTargetValidityRejection('subject_invalid', subject, player, targetType)
                     return nil
@@ -26917,26 +26864,31 @@ ErrorReporter.set_game(GameName)
                 end
                 allowHiddenTargets = allowHiddenTargets == true
                 requireVisible = requireVisible == true
-                wallCheck = wallCheck ~= false
+
                 local equippedItem = LuaHookAimRuntime.ResolveAimbotEquippedItem()
                 local equippedInfo = equippedItem and equippedItem.Info or nil
                 local effectiveAimPart = ((equippedInfo and equippedInfo.Class == 'Melee') or (equippedInfo and equippedInfo.Type == 'Melee')) and 'Closest' or aimPart
                 local rootPosition = HumanoidRootPart and HumanoidRootPart.Position or nil
                 local maxDistanceSquared = maxDistance * maxDistance
-                local part, worldPosition, isVisible = ResolvePrefilteredAimbotTargetPart(subject, effectiveAimPart, targetType, mousePosition, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, wallCheck)
+
+                -- Kicia-compatible target resolution: visibility is part of target validity,
+                -- with allowHiddenTargets/requireVisible controlling strictness rather than UI toggles.
+                local part, worldPosition, isVisible = ResolvePrefilteredAimbotTargetPart(
+                    subject, effectiveAimPart, targetType, mousePosition, maxDistance,
+                    fovRadius, ignoreFov, camera, cacheProfile, false
+                )
                 if not part or not part:IsA('BasePart') or not worldPosition then
                     LuaHookRuntime.RecordTargetValidityRejection('no_part_resolved', subject, player, targetType)
                     return nil
                 end
-                if wallCheck then
-                    if requireVisible and not isVisible then
-                        LuaHookRuntime.RecordTargetValidityRejection('not_visible', subject, player, targetType)
-                        return nil
-                    elseif not isVisible and not allowHiddenTargets then
-                        LuaHookRuntime.RecordTargetValidityRejection('not_visible', subject, player, targetType)
-                        return nil
-                    end
+                if requireVisible and not isVisible then
+                    LuaHookRuntime.RecordTargetValidityRejection('not_visible', subject, player, targetType)
+                    return nil
+                elseif not isVisible and not allowHiddenTargets then
+                    LuaHookRuntime.RecordTargetValidityRejection('not_visible', subject, player, targetType)
+                    return nil
                 end
+
                 local worldDistance = 0
                 if rootPosition then
                     local rootOffset = worldPosition - rootPosition
@@ -26950,6 +26902,7 @@ ErrorReporter.set_game(GameName)
                     end
                     worldDistance = math.sqrt(worldDistanceSquared)
                 end
+
                 local screenPosition, onScreen = camera:WorldToViewportPoint(worldPosition)
                 local isOnScreen = onScreen and screenPosition.Z > 0
                 if not ignoreFov and not isOnScreen then
@@ -26965,6 +26918,7 @@ ErrorReporter.set_game(GameName)
                     })
                     return nil
                 end
+
                 local resolvedDisplayName = player and (player.DisplayName or player.Name) or subject.Name
                 LuaHookRuntime.RecordTargetValidityAcquired(resolvedDisplayName, {
                     targetType = targetType,
@@ -26987,22 +26941,30 @@ ErrorReporter.set_game(GameName)
                     isVisible = isVisible,
                 }
             end
-            local ConsiderBestAimbotTarget = function(bestTarget, subject, targetType, aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, player, camera, cacheProfile, requireVisible, wallCheck)
-                local targetInfo = BuildAimbotTargetInfo(subject, targetType, aimPart, mousePosition, player, maxDistance, fovRadius, ignoreFov, camera, cacheProfile, nil, requireVisible, wallCheck)
+
+            local ConsiderBestAimbotTarget = function(bestTarget, subject, targetType, aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, player, camera, cacheProfile, requireVisible)
+                local targetInfo = BuildAimbotTargetInfo(
+                    subject, targetType, aimPart, mousePosition, player, maxDistance,
+                    fovRadius, ignoreFov, camera, cacheProfile, nil, requireVisible
+                )
                 if targetInfo and (not requireVisible or targetInfo.isVisible)
                     and (not bestTarget or targetInfo.selectionDistance < bestTarget.selectionDistance) then
                     return targetInfo
                 end
                 return bestTarget
             end
-            local RefreshAimbotTargetInfo = function(targetInfo, aimPart, mousePosition, maxDistance, cacheProfile, aimMode)
+
+            local RefreshAimbotTargetInfo = function(targetInfo, aimPart, mousePosition, maxDistance, cacheProfile)
                 if not targetInfo then
                     return nil
                 end
-                if targetInfo.player and IsAimbotTeamCheckEnabled(aimMode) and not ShouldShow(targetInfo.player, false) then
+                -- Match Kicia's baseline behavior: no explicit Team Check / Wall Check options.
+                if targetInfo.player and not ShouldShow(targetInfo.player, false) then
                     return nil
                 end
-                if targetInfo.player and LuaHookAimRuntime.ShouldIgnoreAimbotKatanaDeflectTarget(targetInfo.player, LuaHookAimRuntime.ResolveAimbotEquippedItem()) then
+                if targetInfo.player and LuaHookAimRuntime.ShouldIgnoreAimbotKatanaDeflectTarget(
+                    targetInfo.player, LuaHookAimRuntime.ResolveAimbotEquippedItem()
+                ) then
                     return nil
                 end
                 local subject = targetInfo.instance
@@ -27014,11 +26976,19 @@ ErrorReporter.set_game(GameName)
                         return nil
                     end
                 end
-                if ShouldIgnoreRivalsRiotShieldTarget(targetInfo.player, subject or (targetInfo.player and targetInfo.player.Character), LuaHookAimRuntime.ResolveAimbotEquippedItem()) then
+                if ShouldIgnoreRivalsRiotShieldTarget(
+                    targetInfo.player,
+                    subject or (targetInfo.player and targetInfo.player.Character),
+                    LuaHookAimRuntime.ResolveAimbotEquippedItem()
+                ) then
                     return nil
                 end
-                return BuildAimbotTargetInfo(subject, targetInfo.targetType, aimPart, mousePosition, targetInfo.player, maxDistance, nil, nil, nil, cacheProfile, nil, false, IsAimbotWallCheckEnabled(aimMode))
+                return BuildAimbotTargetInfo(
+                    subject, targetInfo.targetType, aimPart, mousePosition, targetInfo.player,
+                    maxDistance, nil, nil, nil, cacheProfile
+                )
             end
+
             LuaHookRuntime.PrimeAimbotAim = function(targetInfo, item)
                 if not targetInfo then
                     return false
@@ -27256,7 +27226,7 @@ ErrorReporter.set_game(GameName)
                 end
                 return FireTriggerbotShot()
             end
-            local CollectBestAimbotTarget = function(requireVisible, ignoreFovOverride, aimMode)
+            local CollectBestAimbotTarget = function(requireVisible, ignoreFovOverride)
                 if type(Options) ~= 'table' or type(Toggles) ~= 'table' then
                     return nil
                 end
@@ -27264,13 +27234,6 @@ ErrorReporter.set_game(GameName)
                     return nil
                 end
                 EnsureAimbotTargetTracking()
-                local resolveMode = LuaHookAimRuntime.ResolveAimbotTargetMode
-                if type(resolveMode) ~= 'function' then
-                    resolveMode = function(mode) return mode == 'Camera' and 'Camera' or 'Silent' end
-                end
-                aimMode = resolveMode(aimMode or (Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'))
-                local wallCheck = IsAimbotWallCheckEnabled(aimMode)
-                local teamCheck = IsAimbotTeamCheckEnabled(aimMode)
                 local aimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 local fovRadius = Options.LH_P2S1S2 and Options.LH_P2S1S2.Value or 170
                 local maxDistance = DEFAULT_ESP_MAX_DISTANCE
@@ -27283,41 +27246,50 @@ ErrorReporter.set_game(GameName)
                 if not camera then
                     return nil
                 end
+
                 local bestTarget = nil
                 for _, fighter in ipairs(LocalFighterController and LocalFighterController.Objects or {}) do
                     local player = fighter and fighter.Player
                     if player and player ~= LP and player.Parent == Players then
                         local entity = fighter.Entity
                         local subject = entity and entity.Model
-                        if teamCheck and not ShouldShow(player, false) then
+                        if not ShouldShow(player, false) then
                             LuaHookRuntime.RecordTargetValidityRejection('team_or_self', subject, player, 'Players')
                         elseif FighterDataCache.ReadEntity(entity) then
                             LuaHookRuntime.RecordTargetValidityRejection('invincible', subject, player, 'Players')
-                        elseif ShouldIgnoreRivalsRiotShieldTarget(player, subject or player.Character, LuaHookAimRuntime.ResolveAimbotEquippedItem()) then
+                        elseif ShouldIgnoreRivalsRiotShieldTarget(
+                            player, subject or player.Character, LuaHookAimRuntime.ResolveAimbotEquippedItem()
+                        ) then
                             LuaHookRuntime.RecordTargetValidityRejection('riot_shield', subject, player, 'Players')
                         else
-                            bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(bestTarget, subject, 'Players', aimPart, mousePosition, maxDistance, fovRadius, ignoreFov, player, camera, AIMBOT_VISIBILITY_CACHE_PROFILE, requireVisible, wallCheck)
+                            bestTarget = LuaHookRuntime.ConsiderBestAimbotTarget(
+                                bestTarget, subject, 'Players', aimPart, mousePosition,
+                                maxDistance, fovRadius, ignoreFov, player, camera,
+                                AIMBOT_VISIBILITY_CACHE_PROFILE, requireVisible
+                            )
                         end
                     end
                 end
-                -- Main Aimbot is Player-only. Triggerbot keeps its own range/dummy pools.
+
+                -- Main Aimbot is Player-only, matching Kicia. Triggerbot keeps its own pools.
                 LuaHookRuntime.LastAimbotSweepTarget = bestTarget
                 LuaHookRuntime.LastAimbotSweepAt = os.clock()
                 return bestTarget
             end
+
             local AIMBOT_TARGET_REFRESH_INTERVAL = 0.10
-            local AIMBOT_WALLCHECK_REFRESH_INTERVAL = 0.15
             local AimbotTargetSweepCache = {
                 At = 0,
                 Target = nil,
                 Key = nil,
             }
-            local GetBestAimbotTarget = function(requireVisible, ignoreFovOverride, forceRefresh, aimModeOverride)
-                local resolveMode = LuaHookAimRuntime.ResolveAimbotTargetMode
-                if type(resolveMode) ~= 'function' then
-                    resolveMode = function(mode) return mode == 'Camera' and 'Camera' or 'Silent' end
-                end
-                local aimMode = resolveMode(aimModeOverride or (Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'))
+            local AIMBOT_TARGET_REFRESH_INTERVAL = 0.10
+            local AimbotTargetSweepCache = {
+                At = 0,
+                Target = nil,
+                Key = nil,
+            }
+            local GetBestAimbotTarget = function(requireVisible, ignoreFovOverride, forceRefresh)
                 local ignoreFov = ignoreFovOverride
                 if ignoreFov == nil then
                     ignoreFov = LuaHookAimRuntime.IsAimbotIgnoreFovEnabled()
@@ -27325,23 +27297,18 @@ ErrorReporter.set_game(GameName)
                 local aimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 local fov = Options.LH_P2S1S2 and Options.LH_P2S1S2.Value or 170
                 local key = table.concat({
-                    aimMode,
                     tostring(requireVisible == true),
                     tostring(ignoreFov == true),
                     tostring(aimPart),
                     tostring(fov),
-                    tostring(IsAimbotWallCheckEnabled(aimMode)),
-                    tostring(IsAimbotTeamCheckEnabled(aimMode)),
                 }, '|')
                 local now = os.clock()
-                local sweepInterval = IsAimbotWallCheckEnabled(aimMode)
-                    and AIMBOT_WALLCHECK_REFRESH_INTERVAL
-                    or AIMBOT_TARGET_REFRESH_INTERVAL
-                if not forceRefresh and AimbotTargetSweepCache.Key == key
-                    and (now - AimbotTargetSweepCache.At) < sweepInterval then
+                if not forceRefresh
+                    and AimbotTargetSweepCache.Key == key
+                    and (now - AimbotTargetSweepCache.At) < AIMBOT_TARGET_REFRESH_INTERVAL then
                     return AimbotTargetSweepCache.Target
                 end
-                local target = CollectBestAimbotTarget(requireVisible, ignoreFovOverride, aimMode)
+                local target = CollectBestAimbotTarget(requireVisible, ignoreFovOverride)
                 AimbotTargetSweepCache.At = now
                 AimbotTargetSweepCache.Key = key
                 AimbotTargetSweepCache.Target = target
@@ -27780,7 +27747,7 @@ ErrorReporter.set_game(GameName)
                     LuaHookAimRuntime.ResetCameraAimRandomState()
                     return
                 end
-                local targetInfo = getBestTarget(IsAimbotWallCheckEnabled('Camera'), ignoreFov, false, 'Camera')
+                local targetInfo = getBestTarget(true, ignoreFov, false)
                 local configuredAimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 if configuredAimPart == 'Random' and targetInfo then
                     local targetIdentity = targetInfo.player or targetInfo.instance
@@ -27889,7 +27856,7 @@ ErrorReporter.set_game(GameName)
                 local aimPart = Options.LH_P2S1D2 and Options.LH_P2S1D2.Value or 'Auto'
                 local maxDistance = DEFAULT_ESP_MAX_DISTANCE
                 local mousePosition = LuaHookAimRuntime.GetAimbotPointerPosition()
-                local refreshedTarget = currentTargetInfo and LuaHookRuntime.RefreshAimbotTargetInfo(currentTargetInfo, aimPart, mousePosition, maxDistance, TRIGGERBOT_VISIBILITY_CACHE_PROFILE, 'Triggerbot')
+                local refreshedTarget = currentTargetInfo and LuaHookRuntime.RefreshAimbotTargetInfo(currentTargetInfo, aimPart, mousePosition, maxDistance, TRIGGERBOT_VISIBILITY_CACHE_PROFILE)
                 if refreshedTarget then
                     return refreshedTarget
                 end
@@ -27901,87 +27868,6 @@ ErrorReporter.set_game(GameName)
             end
             local TryTriggerbotShot = SharedTryTriggerbotShot
             GetBestTriggerbotTarget = SharedGetBestTriggerbotTarget
-            local function TryAimbotSilentManipulationShot(item, targetInfo)
-                local aimMode = Options.LH_P2S1D1 and Options.LH_P2S1D1.Value or 'Silent'
-                if aimMode ~= 'Silent' or Config.AimbotManipulation ~= true then
-                    return false
-                end
-                if not targetInfo
-                    or targetInfo.targetType ~= 'Players'
-                    or not targetInfo.player
-                    or targetInfo.player == LP
-                    or targetInfo.player.Parent ~= Players then
-                    return false
-                end
-                if not targetInfo.part or not targetInfo.part.Parent or typeof(targetInfo.worldPosition) ~= 'Vector3' then
-                    return false
-                end
-                local info = item and item.Info or nil
-                if info and (info.Class == 'Melee' or info.Type == 'Melee') then
-                    return false
-                end
-                if type(Rage) ~= 'table' or type(Rage._buildShotFields) ~= 'function' then
-                    return false
-                end
-                if type(ReplicatedStorage) ~= 'userdata' and type(ReplicatedStorage) ~= 'table' then
-                    return false
-                end
-                local useItem, shootEnum, objectId
-                local ok = pcall(function()
-                    local remotes = ReplicatedStorage.Remotes
-                    local replication = remotes and remotes.Replication
-                    local fighterRemote = replication and replication.Fighter
-                    useItem = fighterRemote and fighterRemote.UseItem
-                    if Rivals and Rivals.Enums and type(Rivals.Enums.ToEnum) == 'function' then
-                        shootEnum = Rivals.Enums:ToEnum('StartShooting')
-                    end
-                    if item and type(item.Get) == 'function' then
-                        objectId = item:Get('ObjectID')
-                    end
-                end)
-                if not ok or useItem == nil or shootEnum == nil or objectId == nil then
-                    return false
-                end
-                if type(useItem.FireServer) ~= 'function' then
-                    return false
-                end
-                local camera = Workspace.CurrentCamera
-                local character = LP.Character
-                local root = character and character:FindFirstChild('HumanoidRootPart')
-                if not camera or not root or not root.Parent then
-                    return false
-                end
-                local eyePos = camera.CFrame.Position
-                if typeof(eyePos) ~= 'Vector3' then
-                    return false
-                end
-                local dir = targetInfo.worldPosition - eyePos
-                if dir.Magnitude < 1e-4 then
-                    return false
-                end
-                local eyeCF = CFrame.lookAt(eyePos, targetInfo.worldPosition)
-                local muzzleCF = eyeCF - Vector3.new(0, Config.RageEyeMuzzleSep or 0.07, 0)
-                local inner = {}
-                local builtOk, built = pcall(function()
-                    return type(Rage._buildShotFields) == "function"
-                        and Rage._buildShotFields(inner, eyeCF, muzzleCF, targetInfo.part, targetInfo.worldPosition, true, 0.30, 1.0) == true
-                end)
-                if not builtOk or built ~= true then
-                    return false
-                end
-                local fired = pcall(function()
-                    useItem:FireServer(objectId, shootEnum, { [utf8.char(1)] = inner }, nil)
-                end)
-                if not fired then
-                    return false
-                end
-                local now = tick()
-                State.AimbotManipulatedUntil = now + math.clamp(tonumber(Config.HUDManipulatedDuration) or 0.35, 0.05, 3)
-                State.AimbotManipulatedTarget = targetInfo.player
-                State.Shots = (State.Shots or 0) + 1
-                return true
-            end
-
             LuaHookRuntime.BeginAimbotSilentShot = function(item)
                 if (AimbotSilentState.ShotPrimeDepth or 0) > 0 then
                     return false, nil, nil
@@ -28022,9 +27908,6 @@ ErrorReporter.set_game(GameName)
                 end
                 if targetInfo.player and IsRivalsSpawnShieldActive(targetInfo.player.Character) then
                     return false, nil, nil
-                end
-                if TryAimbotSilentManipulationShot(item, targetInfo) then
-                    return 'MANIPULATED', nil, nil
                 end
                 local camera = Workspace.CurrentCamera
                 local originalCFrame = camera and camera.CFrame or nil
@@ -28087,27 +27970,6 @@ ErrorReporter.set_game(GameName)
                             LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
                         end)
                         return nil
-                    end
-                    if didPrime == 'MANIPULATED' then
-                        -- Direct manipulation has already sent the forged server shot.
-                        -- Some weapon modules still require their local StartShooting pipeline
-                        -- to advance cooldown/animation state. Give that pipeline a guarded
-                        -- fallback only if the direct shot did not advance _last_shot.
-                        local previousLastShot = rawget(self, '_last_shot')
-                        local startArgs = table.pack(...)
-                        task.delay(0.03, GuardLuaHookCallback('Aimbot_Manipulation_LocalFallback', function()
-                            if Library and Library.Unloaded then return end
-                            if not self then return end
-                            if type(baseStartShooting) ~= 'function' then return end
-                            local currentLastShot = rawget(self, '_last_shot')
-                            if currentLastShot == previousLastShot then
-                                pcall(baseStartShooting, self, table.unpack(startArgs, 1, startArgs.n))
-                            end
-                        end))
-                        pcall(function()
-                            LuaHookRuntime.FinishAimbotSilentShot(didPrime, camera, originalCFrame)
-                        end)
-                        return true
                     end
                     local results = table.pack(pcall(baseStartShooting, self, ...))
                     pcall(function()
@@ -38269,8 +38131,7 @@ Tabs = {
 }
 
 do
-                do
-                    local Combat = Tabs.Main:AddLeftGroupbox("Aimbot + Silent Aim", "crosshair")
+                    local Combat = Tabs.Main:AddLeftGroupbox("Aimbot", "crosshair")
                     local aimbotToggle = Combat:AddToggle("LH_P2S1T1", {
                         Text = "Aimbot",
                         Default = false,
@@ -38282,7 +38143,9 @@ do
                         Text = "Aimbot",
                         NoUI = false,
                     })
-                    RefreshAimbotEnabledToggleKeypickerState = LuaHookAimRuntime.SyncAimbotToggleKeypickerToUi(aimbotToggle, aimbotKeypicker)
+                    RefreshAimbotEnabledToggleKeypickerState =
+                        LuaHookAimRuntime.SyncAimbotToggleKeypickerToUi(aimbotToggle, aimbotKeypicker)
+
                     Combat:AddDropdown("LH_P2S1D1", {
                         Values = { "Silent", "Camera" },
                         Default = "Silent",
@@ -38295,14 +38158,7 @@ do
                             end
                         end),
                     })
-                    Combat:AddSlider("LH_P2S1S2", {
-                        Text = "FOV",
-                        Default = 282,
-                        Min = 25,
-                        Max = 500,
-                        Rounding = 0,
-                        Compact = true,
-                    })
+
                     local CameraAimSettings = Combat:AddDependencyBox()
                     CameraAimSettings:AddSlider("LH_P2S2S1", {
                         Text = "Smoothing",
@@ -38311,67 +38167,45 @@ do
                         Max = 100,
                         Rounding = 2,
                         Compact = true,
-                        Tooltip = "Camera aim smoothing. Lower values turn faster; 0 snaps instantly.",
-                    })
-                    CameraAimSettings:AddToggle("LH_P2S2T1", {
-                        Text = "Wall Check",
-                        Default = false,
-                        Tooltip = "Only target players that are directly visible.",
-                    })
-                    CameraAimSettings:AddToggle("LH_P2S2T2", {
-                        Text = "Team Check",
-                        Default = false,
-                        Tooltip = "Reject teammates while Camera mode is active.",
                     })
                     CameraAimSettings:SetupDependencies({ { Options.LH_P2S1D1, "Camera" } })
-                    local SilentAimSettings = Combat:AddDependencyBox()
-                    SilentAimSettings:AddToggle("LH_P2S3T1", {
-                        Text = "Wall Check",
-                        Default = false,
-                        Tooltip = "Only target players that are directly visible.",
-                    })
-                    SilentAimSettings:AddToggle("LH_P2S3T2", {
-                        Text = "Team Check",
-                        Default = false,
-                        Tooltip = "Reject teammates while Silent mode is active.",
-                    })
-                    SilentAimSettings:AddToggle("LH_P2S3T3", {
-                        Text = "Manipulation",
-                        Default = false,
-                        Tooltip = "Forges the shot directly without moving the camera/character to the target.",
-                        Callback = GuardLuaHookCallback('Aimbot_SilentManipulation', function(v)
-                            Config.AimbotManipulation = v == true
-                            if not Config.AimbotManipulation then
-                                State.AimbotManipulatedUntil = 0
-                                State.AimbotManipulatedTarget = nil
-                            end
-                        end),
-                    })
-                    SilentAimSettings:SetupDependencies({ { Options.LH_P2S1D1, "Silent" } })
+
                     Combat:AddToggle("LH_P2S1T3", {
                         Text = "Ignore FOV",
                         Default = false,
                         Tooltip = "Allows targets anywhere around you, even when they are off-screen.",
                     })
+
+                    local DepFovRadius = Combat:AddDependencyBox()
+                    DepFovRadius:AddSlider("LH_P2S1S2", {
+                        Text = "FOV Radius",
+                        Default = 282,
+                        Min = 25,
+                        Max = 500,
+                        Rounding = 0,
+                        Compact = true,
+                    })
+                    DepFovRadius:SetupDependencies({ { Toggles.LH_P2S1T3, false } })
+
                     Combat:AddToggle("LH_P2S1T5", {
                         Text = "Show FOV",
                         Default = false,
                     })
+
                     Combat:AddDropdown("LH_P2S1D2", {
                         Values = { "Auto", "Head", "Random" },
                         Default = "Auto",
                         Multi = false,
                         Text = "Aim Part",
                     })
+
                     local Flickbot = Combat:AddToggle("LH_P2S1T12", {
                         Text = "Flickbot",
                         Default = false,
                         Tooltip = "Flicks to the selected target.",
                         Callback = GuardLuaHookCallback('Flickbot_Enabled', function(value)
-                            if not value then
-                                if LuaHookRuntime and type(LuaHookRuntime.ResetFlickbot) == 'function' then
-                                    LuaHookRuntime.ResetFlickbot()
-                                end
+                            if not value and LuaHookRuntime and type(LuaHookRuntime.ResetFlickbot) == 'function' then
+                                LuaHookRuntime.ResetFlickbot()
                             end
                         end),
                     })
@@ -38381,6 +38215,7 @@ do
                         Text = "Flickbot",
                         NoUI = false,
                     })
+
                     local FlickbotSettings = Combat:AddDependencyBox()
                     FlickbotSettings:AddToggle("LH_P2S1T13", {
                         Text = "Shoot",
@@ -38430,11 +38265,6 @@ do
                         Compact = true,
                     })
                     FlickbotSettings:SetupDependencies({ { Toggles.LH_P2S1T12, true } })
-                    Toggles.LH_P2S1T1:OnChanged(GuardLuaHookCallback("Aimbot_Enabled", function()
-                        if RefreshAimbotEnabledToggleKeypickerState then
-                            RefreshAimbotEnabledToggleKeypickerState()
-                        end
-                    end))
                 end
 
 do
@@ -39137,7 +38967,7 @@ do (function()
         Callback=function(v) Weather.setIntensity(v) end })
     wxDep:AddSlider('WeatherSoundVolume', { Text='Volume', Default=(Config.WeatherSoundVolume or 0.35),
         Min=0, Max=1, Rounding=2,
-        Callback=function(v) Weather.setVolume(v) end })
+        Callback=function(v) Weather.setSoundVolume(v) end })
     wxDep:AddToggle('WeatherMood', { Text='Mood tint', Default=(Config.WeatherMood == true),
         Callback=function(v) Weather.toggleMood(v) end })
     wxDep:AddDivider('Atmosphere')
@@ -39152,14 +38982,14 @@ do (function()
     local metDep = wxDep:AddDependencyBox()
     metDep:AddSlider('WeatherMeteorRate', { Text='Rate', Default=(Config.WeatherMeteorRate or 1.0),
         Min=0.25, Max=3, Rounding=2, Suffix='x', Compact=true,
-        Callback=function(v) Weather.setMeteorsRate(v) end })
+        Callback=function(v) Weather.setMeteorRate(v) end })
     metDep:SetupDependencies({ { Toggles.WeatherMeteors, true } })
     wxDep:AddToggle('WeatherShootingStars', { Text='Shooting stars', Default=(Config.WeatherShootingStars == true),
         Callback=function(v) Weather.toggleShootingStars(v) end })
     local starDep = wxDep:AddDependencyBox()
     starDep:AddSlider('WeatherStarRate', { Text='Rate', Default=(Config.WeatherStarRate or 1.0),
         Min=0.25, Max=3, Rounding=2, Suffix='x', Compact=true,
-        Callback=function(v) Weather.setStarsRate(v) end })
+        Callback=function(v) Weather.setStarRate(v) end })
     starDep:SetupDependencies({ { Toggles.WeatherShootingStars, true } })
     wxDep:AddDropdown('SkyboxPreset', { Values=Weather.SkyboxOrder or {'Off','Space','Sunset','Clouds','Storm','Winter','Vaporwave'},
         Default=(Config.SkyboxPreset or 'Off'), Text='Skybox',
@@ -39627,28 +39457,6 @@ do
     wmDep:AddToggle('HUDWatermarkStats', { Text='Show fps/ping/kills', Default=Config.HUDWatermarkStats,
         Callback=function(v) Config.HUDWatermarkStats = v end })
     wmDep:SetupDependencies({ { Toggles.HUDWatermark, true } })
-    local MI = Tabs.HUD:AddRightGroupbox('Silent Aim Indicator')
-    MI:AddToggle('HUDManipulated', { Text='Show "Manipulated"', Default=false,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_Toggle', function(v)
-            Config.HUDManipulated = v == true
-            if not Config.HUDManipulated then State.AimbotManipulatedUntil = 0 end
-        end) })
-    local miDep = MI:AddDependencyBox()
-    miDep:AddInput('HUDManipulatedText', { Text='Text', Default=Config.HUDManipulatedText, AllowEmpty=false,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_Text', function(v) Config.HUDManipulatedText = tostring(v or 'Manipulated') end) })
-    miDep:AddSlider('HUDManipulatedOffsetX', { Text='Offset X', Default=Config.HUDManipulatedOffsetX, Min=-200, Max=200, Rounding=0,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_OffsetX', function(v) Config.HUDManipulatedOffsetX = math.floor(v) end) })
-    miDep:AddSlider('HUDManipulatedOffsetY', { Text='Offset Y', Default=Config.HUDManipulatedOffsetY, Min=-100, Max=200, Rounding=0,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_OffsetY', function(v) Config.HUDManipulatedOffsetY = math.floor(v) end) })
-    miDep:AddSlider('HUDManipulatedSize', { Text='Size', Default=Config.HUDManipulatedSize, Min=8, Max=32, Rounding=0,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_Size', function(v) Config.HUDManipulatedSize = math.floor(v) end) })
-    miDep:AddSlider('HUDManipulatedDuration', { Text='Duration', Default=Config.HUDManipulatedDuration, Min=0.05, Max=3, Rounding=2,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_Duration', function(v) Config.HUDManipulatedDuration = math.clamp(v, 0.05, 3) end) })
-    miDep:AddLabel('Color'):AddColorPicker('HUDManipulatedColor', { Default=Config.HUDManipulatedColor,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_Color', function(v) Config.HUDManipulatedColor = v end) })
-    miDep:AddToggle('HUDManipulatedOutline', { Text='Outline', Default=false,
-        Callback=GuardLuaHookCallback('HUD_Manipulated_Outline', function(v) Config.HUDManipulatedOutline = v == true end) })
-    miDep:SetupDependencies({ { Toggles.HUDManipulated, true } })
     local XH = Tabs.HUD:AddLeftGroupbox('Crosshair')
     XH:AddToggle('FXCrosshair', { Text='Custom crosshair', Default=Config.FXCrosshair,
         Callback=function(v) Config.FXCrosshair = v end })
@@ -41071,8 +40879,7 @@ do
                 'LH_P10S4T1','LH_P10S4T2','LH_P10S4T3','LH_P10S4T4','LH_P10S4T5','LH_P10S6T1','LH_P10S7T1',
                 'LH_P1S1T1','LH_P1S1T10','LH_P1S1T11','LH_P1S1T2','LH_P1S1T3','LH_P1S1T4','LH_P1S1T5','LH_P1S1T6','LH_P1S1T7','LH_P1S1T8','LH_P1S1T9',
                 'LH_P1S2T1','LH_P1S2T2','LH_P1S2T4','LH_P1S2T5','LH_P1S2T6',
-                'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5','LH_P2S2T1','LH_P2S2T2','LH_P2S3T1','LH_P2S3T2','LH_P2S3T3',
-                'HUDManipulated','HUDManipulatedOutline',
+                'LH_P2S1T1','LH_P2S1T12','LH_P2S1T13','LH_P2S1T3','LH_P2S1T5',
                 'LH_P4S1T1','LH_P4S1T2','LH_P4S1T3','LH_P4S1T4','LH_P4S1T5','LH_P4S1T6','LH_P4S1T7','LH_P4S1T8',
                 'LH_P4S2T2','LH_P4S2T3','LH_P4S2T4','LH_P4S2T5',
                 'LH_P5S1T2',
