@@ -605,7 +605,6 @@ local Config = {
     RageMode = "Polar",
     RageDirectFire        = true,
     RageRateLimit         = false,
-    RageManipulation      = true,
     RageTaps              = 6,
     RageCombatOrbitRadius = 60,
     RageOrbitDwell        = 0.30,
@@ -940,7 +939,6 @@ local State = {
     AimbotFlickActive = false, AimbotSpringOffset = Vector2.zero,
     AimbotManipulatedUntil = 0,
     AimbotManipulatedTarget = nil,
-    RageManipulated = false,
     RageRealCF   = nil,
     RageRealChar = nil,
     RageTarget   = nil,
@@ -9235,20 +9233,6 @@ local Rage = {}
             if setthreadidentity then setthreadidentity(8) elseif setidentity then setidentity(8) end
         end)
     end
-    local function rageOrbitManipulationFire(hrp, aimPos, hh)
-        if Config.RageManipulation ~= true then return 0 end
-        if not hrp or not hrp.Parent or not hh or not hh.Parent or typeof(aimPos) ~= 'Vector3' then return 0 end
-        local item = getEquippedItem()
-        if not item or meleeProfile(item) ~= nil or not isSanePos(aimPos) or posIsOOB(aimPos) then return 0 end
-        local sent = 0
-        local ok = pcall(function()
-            local before = State.Shots or 0
-            polarFire(hrp.Position + Vector3.new(0, Config.RagePBEyeUp or 3, 0), aimPos, hh)
-            sent = math.max(0, (State.Shots or 0) - before)
-        end)
-        State.RageManipulated = ok and sent > 0
-        return ok and sent or 0
-    end
     local function clearFireSolution()
         State.RageFireFromPos = nil
         State.RageFireAimPos  = nil
@@ -9329,20 +9313,6 @@ local Rage = {}
             end
             local holdFire = false
             if Config.RageSkipImmune ~= false then holdFire = isSpawnProtected(tgt) end
-            if Config.RageManipulation == true and not holdFire and meleeProfile(getEquippedItem()) == nil then
-                local sent = rageOrbitManipulationFire(hrp, aimPos, hh)
-                if sent > 0 then
-                    State.RageFiring = true
-                    State.RageVoidActive = false
-                    State.RageStatus = 'Orbit • Manipulated'
-                    _orbHiding = false
-                    _orbPrimeUntil = 0
-                    pcall(Visuals.notifyTarget, tgt)
-                    return
-                end
-            else
-                State.RageManipulated = false
-            end
             local ignore = { tc, lp.Character }
             local vantage, status = nil, nil
             local flank = flankPoint(tgt, hh)
@@ -9719,7 +9689,6 @@ local Rage = {}
                 State.RageTarget = tgt
             end
             State.RagePostPark = true
-            Config.RageManipulation = true
             Rage._rageTick(ch, hrp, tgt)
             local anchor    = State.RageRealCF
             local displaced = false
@@ -9730,8 +9699,6 @@ local Rage = {}
     end
     function Rage.enable()
         Config.Rage = true
-        Config.RageManipulation = true
-        State.RageManipulated = false
         if Rage._startTargetLoop then Rage._startTargetLoop() end
         local mode = Config.RageMode or "Polar"
         if mode == "Orbit" or mode == "Translocate" then
@@ -10730,28 +10697,6 @@ end)()
         State.Shots = State.Shots + sent
         return sent
     end
-    local function rageManipulationFire(hrp, aimPos, hh, taps)
-        if Config.RageManipulation ~= true then
-            return 0
-        end
-        if not hrp or not hrp.Parent or not hh or not hh.Parent or typeof(aimPos) ~= 'Vector3' then
-            return 0
-        end
-        local item = getEquippedItem()
-        if not item or meleeProfile(item) ~= nil then
-            return 0
-        end
-        if not isSanePos(aimPos) or posIsOOB(aimPos) then
-            return 0
-        end
-        local eye = hrp.Position + Vector3.new(0, Config.RagePBEyeUp or 3, 0)
-        local sent = 0
-        local ok = pcall(function()
-            sent = polarFire(eye, aimPos, hh, taps or 1)
-        end)
-        State.RageManipulated = ok and sent > 0
-        return ok and sent or 0
-    end
     local function tapsPerFrame()
         local n = Config.RageTapsPerFrame
         if type(n) ~= "number" then return 1 end
@@ -10929,20 +10874,6 @@ end)()
             end
         end
         local aimPos = hpos
-        if Config.RageManipulation == true and not holdFire and not predicting and meleeProfile(it) == nil then
-            local sent = rageManipulationFire(hrp, aimPos, hh, tapsPerFrame())
-            if sent > 0 then
-                _attackReadyTgt = tgt
-                _firing = true
-                State.RageFiring = true
-                State.RageVoidActive = false
-                State.RageStatus = 'Manipulated'
-                pcall(Visuals.notifyTarget, tgt)
-                return nil
-            end
-        else
-            State.RageManipulated = false
-        end
         if rv == nil and not predicting and not melee then
             if gumMode() == "off" then
                 -- Virtual Gum: preserve the original Glue firing path without
@@ -14792,6 +14723,10 @@ end
 local function safe_is_a(instance, class)
     return cloneref(instance):IsA(class)
 end
+local LuaHookRiotKnifeBypass
+local LuaHookRiotKnifeBypassToggleEnabled
+local Tabs
+local resolveDirectMethodOwner
 local __game_ok, __game_err = xpcall(function()
 do
     local OriginalNotify = rawget(Library, 'Notify')
@@ -17519,10 +17454,21 @@ ErrorReporter.set_game(GameName)
                     return binding
                 end
                 function inputHookPrototype:_Dispatch(packet)
+                    if type(packet) ~= 'table' then
+                        ReportLuaHookRuntimeLifecycleIssue('mods_input_dispatch', 'Invalid input packet')
+                        return
+                    end
                     for _, binding in ipairs(self._inputBindings) do
-                        if binding.enabled and binding.handler ~= nil then
-                            binding.handler(packet)
-                            if packet.block then
+                        if binding.enabled and type(binding.handler) == 'function' then
+                            local ok, err = xpcall(function()
+                                binding.handler(packet)
+                            end, function(e)
+                                return debug.traceback(tostring(e), 2)
+                            end)
+                            if not ok then
+                                ReportLuaHookRuntimeLifecycleIssue('mods_input_binding', err)
+                            end
+                            if packet.block == true then
                                 break
                             end
                         end
@@ -17715,17 +17661,21 @@ ErrorReporter.set_game(GameName)
                 self._originalStartThrow = nil
             end
             function LuaHookWeaponState.LuaHookGrenadeFusePrototype:_ComputeImpactTime(trajectoryVisual)
+                if type(trajectoryVisual) ~= 'table' then
+                    return nil
+                end
                 local lastArgs = rawget(trajectoryVisual, '_last_args')
-                local step = lastArgs[4]
-                if not step then
-                    step = 0.05
+                if type(lastArgs) ~= 'table' then
+                    return nil
                 end
-                local cap = lastArgs[6]
-                if not cap then
-                    cap = math.huge
-                end
-                local impactCFrame = rawget(trajectoryVisual, '_impact_sphere').CFrame
+                local step = tonumber(lastArgs[4]) or 0.05
+                local cap = tonumber(lastArgs[6]) or math.huge
+                local impactSphere = rawget(trajectoryVisual, '_impact_sphere')
+                local impactCFrame = impactSphere and impactSphere.CFrame or nil
                 local segments = rawget(trajectoryVisual, '_segments')
+                if impactCFrame == nil or type(segments) ~= 'table' then
+                    return nil
+                end
                 local key
                 while true do
                     local segment
@@ -17733,28 +17683,34 @@ ErrorReporter.set_game(GameName)
                     if key == nil then
                         break
                     end
-                    if segment.CFrame == impactCFrame then
+                    if type(segment) == 'table' and segment.CFrame == impactCFrame then
                         return math.min(cap, (key - 2) * step)
                     end
                 end
                 return nil
             end
             function LuaHookWeaponState.LuaHookGrenadeFusePrototype:_HandleInput(packet)
+                if type(packet) ~= 'table' or type(packet.args) ~= 'table' then
+                    return
+                end
                 local packetType = packet.type
                 local isStart = packetType == 'StartShooting' or packetType == 'StartAiming'
                 local isFinish = packetType == 'FinishShooting' or packetType == 'FinishAiming'
                 if not (isStart or isFinish) then
                     return
                 end
-                local inner = self._playerContext.inner
-                if inner == nil then
+                local context = self._playerContext
+                local inner = context and context.inner
+                local fighterState = inner and inner.fighterState
+                if type(fighterState) ~= 'table' or type(fighterState.GetItemById) ~= 'function' then
                     return
                 end
-                local item = inner.fighterState:GetItemById(packet.objectId)
+                local item = fighterState:GetItemById(packet.objectId)
                 if item == nil then
                     return
                 end
-                if not rawget(rawget(item, 'Info'), 'CanCook') then
+                local info = rawget(item, 'Info')
+                if type(info) ~= 'table' or info.CanCook ~= true then
                     return
                 end
                 if isStart then
@@ -18465,8 +18421,11 @@ ErrorReporter.set_game(GameName)
                         local originalShootCooldown = nil
                         local originalBurstCooldown = nil
                         local originalQuickShotCooldown = nil
-                        if IsRivalsModToggleEnabled('LH_P4S1T1') and info then
-                            local weaponSpeedScale = ResolveRivalsWeaponSpeedScale()
+                        if IsRivalsModToggleEnabled('LH_P4S1T1') and type(info) == 'table' then
+                            local speedOk, weaponSpeedScale = pcall(ResolveRivalsWeaponSpeedScale)
+                            if not speedOk or type(weaponSpeedScale) ~= 'number' then
+                                weaponSpeedScale = 1
+                            end
                             if type(info.ShootCooldown) == 'number' then
                                 originalShootCooldown = info.ShootCooldown
                                 info.ShootCooldown = math.max(0.001, originalShootCooldown * weaponSpeedScale)
@@ -18480,22 +18439,36 @@ ErrorReporter.set_game(GameName)
                                 info.QuickShotCooldown = math.max(0.001, originalQuickShotCooldown * weaponSpeedScale)
                             end
                         end
+
                         local didPrimeSilent, silentCamera, silentOriginalCFrame = false, nil, nil
                         if type(state.BeginAimbotSilentShot) == 'function' then
-                            didPrimeSilent, silentCamera, silentOriginalCFrame = state.BeginAimbotSilentShot(item)
+                            local beginOk, a, b, c = pcall(state.BeginAimbotSilentShot, item)
+                            if beginOk then
+                                didPrimeSilent, silentCamera, silentOriginalCFrame = a, b, c
+                            else
+                                ReportLuaHookRuntimeLifecycleIssue('mods_aimbot_silent_begin', a)
+                            end
                         end
+
                         local results = table.pack(pcall(originalStartShooting, item, ...))
+
                         if type(state.FinishAimbotSilentShot) == 'function' then
-                            state.FinishAimbotSilentShot(didPrimeSilent, silentCamera, silentOriginalCFrame)
+                            local finishOk, finishErr = pcall(state.FinishAimbotSilentShot, didPrimeSilent, silentCamera, silentOriginalCFrame)
+                            if not finishOk then
+                                ReportLuaHookRuntimeLifecycleIssue('mods_aimbot_silent_finish', finishErr)
+                            end
                         end
-                        if originalShootCooldown ~= nil then
-                            info.ShootCooldown = originalShootCooldown
-                        end
-                        if originalBurstCooldown ~= nil then
-                            info.ShootBurstCooldown = originalBurstCooldown
-                        end
-                        if originalQuickShotCooldown ~= nil then
-                            info.QuickShotCooldown = originalQuickShotCooldown
+
+                        if type(info) == 'table' then
+                            if originalShootCooldown ~= nil then
+                                info.ShootCooldown = originalShootCooldown
+                            end
+                            if originalBurstCooldown ~= nil then
+                                info.ShootBurstCooldown = originalBurstCooldown
+                            end
+                            if originalQuickShotCooldown ~= nil then
+                                info.QuickShotCooldown = originalQuickShotCooldown
+                            end
                         end
                         if not results[1] then
                             ReportLuaHookRuntimeLifecycleIssue('mods_start_shooting', results[2])
@@ -18680,66 +18653,101 @@ ErrorReporter.set_game(GameName)
             end
             function LuaHookWeaponState.EnsureHooks()
                 local state = LuaHookWeaponState
-                if LuaHookRiotKnifeBypassToggleEnabled('LH_P4S1T8') then
-                    LuaHookRiotKnifeBypass.Start()
-                else
-                    LuaHookRiotKnifeBypass.Stop()
+                local function SafeEnsure(name, callback)
+                    if type(callback) ~= 'function' then
+                        ReportLuaHookRuntimeLifecycleIssue(name, 'missing callback')
+                        return false, nil
+                    end
+                    local ok, result = xpcall(callback, function(err)
+                        return debug.traceback(tostring(err), 2)
+                    end)
+                    if not ok then
+                        ReportLuaHookRuntimeLifecycleIssue(name, result)
+                        return false, nil
+                    end
+                    return true, result
                 end
-                LuaHookWeaponState.RefreshPersistentItemModifiers()
-                LuaHookWeaponState.UpdateCameraModifiers()
+
+                local bypassEnabled = false
+                local bypassToggleOk, bypassToggleValue = SafeEnsure('mods_riot_knife_toggle', function()
+                    return LuaHookRiotKnifeBypassToggleEnabled('LH_P4S1T8')
+                end)
+                if bypassToggleOk then
+                    bypassEnabled = bypassToggleValue == true
+                end
+                if bypassEnabled then
+                    SafeEnsure('mods_riot_knife_start', LuaHookRiotKnifeBypass.Start)
+                else
+                    SafeEnsure('mods_riot_knife_stop', LuaHookRiotKnifeBypass.Stop)
+                end
+
+                SafeEnsure('mods_persistent_modifiers', LuaHookWeaponState.RefreshPersistentItemModifiers)
+                SafeEnsure('mods_camera_modifiers', LuaHookWeaponState.UpdateCameraModifiers)
                 if state.NoSpreadController then
-                    LuaHookWeaponState.SyncNoSpreadEnabled()
+                    SafeEnsure('mods_no_spread_sync', LuaHookWeaponState.SyncNoSpreadEnabled)
                 end
                 if state.GrenadeFuseController then
-                    LuaHookWeaponState.SyncGrenadeFuse()
+                    SafeEnsure('mods_grenade_fuse_sync', LuaHookWeaponState.SyncGrenadeFuse)
                 end
 
-
-                if IsReplicatedStateReady() then
-                    LuaHookWeaponState.EnsureKnifeHooks()
+                local replicatedReady = false
+                local readyOk, readyValue = SafeEnsure('mods_replicated_state_ready', IsReplicatedStateReady)
+                if readyOk then
+                    replicatedReady = readyValue == true
                 end
-                if not (
-                    IsRivalsModToggleEnabled('LH_P4S1T1')
-                    or IsRivalsModToggleEnabled('LH_P4S1T2')
-                    or IsRivalsModToggleEnabled('LH_P4S1T3')
-                    or IsRivalsModToggleEnabled('LH_P4S1T4')
-                    or IsRivalsModToggleEnabled('LH_P4S1T5')
-                    or IsRivalsModToggleEnabled('LH_P4S1T6')
-                    or IsRivalsModToggleEnabled('LH_P4S1T7')
-                    or IsRivalsModToggleEnabled('LH_P4S2T2')
-                    or IsRivalsModToggleEnabled('LH_P4S2T3')
-                    or IsRivalsModToggleEnabled('LH_P4S2T4')
-                    or IsRivalsModToggleEnabled('LH_P4S2T5')
-                    or IsRivalsModToggleEnabled('LH_P4S2T6')
-                    or IsRivalsModToggleEnabled('LH_P4S2T8')
-                    or IsRivalsModToggleEnabled('LH_P4S2T9')
-                    or IsRivalsModToggleEnabled('LH_P4S2T10')
-                    or IsRivalsModToggleEnabled('LH_P4S1T8')
-                ) then
+
+                local anyModEnabled = false
+                local modToggleIds = {
+                    'LH_P4S1T1','LH_P4S1T2','LH_P4S1T3','LH_P4S1T4','LH_P4S1T5','LH_P4S1T6','LH_P4S1T7',
+                    'LH_P4S2T2','LH_P4S2T3','LH_P4S2T4','LH_P4S2T5','LH_P4S2T6','LH_P4S2T8','LH_P4S2T9','LH_P4S2T10','LH_P4S1T8'
+                }
+                for _, toggleId in ipairs(modToggleIds) do
+                    local ok, value = SafeEnsure('mods_toggle_' .. toggleId, function()
+                        return IsRivalsModToggleEnabled(toggleId)
+                    end)
+                    if ok and value == true then
+                        anyModEnabled = true
+                        break
+                    end
+                end
+                if not anyModEnabled then
                     state.PendingEnsureHooks = false
                     return false
                 end
-                if not IsReplicatedStateReady() then
+                if not replicatedReady then
                     state.PendingEnsureHooks = true
                     return false
                 end
 
-
-                LuaHookWeaponState.EnsureKnifeHooks()
+                SafeEnsure('mods_knife_hooks_initial', LuaHookWeaponState.EnsureKnifeHooks)
                 state.PendingEnsureHooks = false
-                if IsRivalsModToggleEnabled('LH_P4S1T3')
-                    or IsRivalsModToggleEnabled('LH_P4S1T6')
-                    or IsRivalsModToggleEnabled('LH_P4S1T7') then
-                    __luahook_hook_genv.LuaHookHookCaps.gate('No Spread / Grenade Fuse', 'debug.getupvalues', 'debug.setupvalue')
+
+                local needsInputHook = false
+                for _, toggleId in ipairs({'LH_P4S1T3','LH_P4S1T6','LH_P4S1T7'}) do
+                    local ok, value = SafeEnsure('mods_input_toggle_' .. toggleId, function()
+                        return IsRivalsModToggleEnabled(toggleId)
+                    end)
+                    if ok and value == true then
+                        needsInputHook = true
+                        break
+                    end
                 end
-                if LuaHookWeaponState.EnsureLuaHookInputHook() then
-                    LuaHookWeaponState.SyncNoSpreadEnabled()
-                    LuaHookWeaponState.SyncGrenadeFuse()
+                if needsInputHook and __luahook_hook_genv.LuaHookHookCaps and type(__luahook_hook_genv.LuaHookHookCaps.gate) == 'function' then
+                    SafeEnsure('mods_input_hook_caps', function()
+                        return __luahook_hook_genv.LuaHookHookCaps.gate('No Spread / Grenade Fuse', 'debug.getupvalues', 'debug.setupvalue')
+                    end)
                 end
-                LuaHookWeaponState.EnsureGunHooks()
-                LuaHookWeaponState.EnsureMeleeHooks()
-                LuaHookWeaponState.EnsureKnifeHooks()
-                LuaHookWeaponState.EnsureGunbladeHooks()
+
+                local inputHookOk, inputHookReady = SafeEnsure('mods_input_hook_ensure', LuaHookWeaponState.EnsureLuaHookInputHook)
+                if inputHookOk and inputHookReady == true then
+                    SafeEnsure('mods_no_spread_sync_after_hook', LuaHookWeaponState.SyncNoSpreadEnabled)
+                    SafeEnsure('mods_grenade_fuse_sync_after_hook', LuaHookWeaponState.SyncGrenadeFuse)
+                end
+
+                SafeEnsure('mods_gun_hooks', LuaHookWeaponState.EnsureGunHooks)
+                SafeEnsure('mods_melee_hooks', LuaHookWeaponState.EnsureMeleeHooks)
+                SafeEnsure('mods_knife_hooks', LuaHookWeaponState.EnsureKnifeHooks)
+                SafeEnsure('mods_gunblade_hooks', LuaHookWeaponState.EnsureGunbladeHooks)
                 return true
             end
             function LuaHookWeaponState.RestoreHooks()
@@ -31999,7 +32007,7 @@ ErrorReporter.set_game(GameName)
                 }
                 return true
             end
-            local function resolveDirectMethodOwner(controller, methodName)
+            resolveDirectMethodOwner = function(controller, methodName)
                 if type(controller) ~= 'table' then return nil, nil end
                 local direct = rawget(controller, methodName)
                 if type(direct) == 'function' then
@@ -37679,7 +37687,7 @@ ErrorReporter.set_game(GameName)
 
 -- LuaHook-native Riot/Knife Bypass port.
 -- Ported from the Kicia behavior, but uses only LuaHook runtime state/helpers.
-local LuaHookRiotKnifeBypass = {}
+LuaHookRiotKnifeBypass = LuaHookRiotKnifeBypass or {}
 LuaHookRiotKnifeBypass._connection = nil
 LuaHookRiotKnifeBypass._active = false
 LuaHookRiotKnifeBypass._lastEncoded = utf8.char(255) .. utf8.char(255)
@@ -37695,7 +37703,7 @@ LuaHookRiotKnifeBypass._nextHookScanAt = 0
 local LUAHOOK_RIOT_BYPASS_TRIGGER_DIST = 500
 local LUAHOOK_KNIFE_BYPASS_TRIGGER_DIST = 35
 
-local function LuaHookRiotKnifeBypassToggleEnabled(id)
+LuaHookRiotKnifeBypassToggleEnabled = function(id)
     local toggle = Toggles and Toggles[id]
     return toggle ~= nil and toggle.Value == true
 end
@@ -37986,7 +37994,7 @@ local EnsureLuaHookWeaponHooksCallback = GuardLuaHookCallback('WeaponMods_Ensure
     return LuaHookWeaponState.EnsureHooks()
 end)
 
-local Tabs = {
+Tabs = {
     Main       = Window:AddTab('Main'),
     Rage       = Window:AddTab('Rage'),
     Movement   = Window:AddTab('Movement'),
@@ -39024,8 +39032,11 @@ do (function()
     pickDep:SetupDependencies({ { Toggles.GameVisuals, true } })
     task.spawn(function()
         local sig = nil
-        while true do
+        while GameVisuals.uiAlive do
             task.wait(3)
+            if not GameVisuals.uiAlive then
+                break
+            end
             local ok, lists = pcall(function()
                 return { GameVisuals.weaponList(), GameVisuals.skinList(), GameVisuals.charmList(),
                          GameVisuals.wrapList(), GameVisuals.finisherList(), GameVisuals.rankNames(),
@@ -40228,7 +40239,6 @@ end
 end
 
 
-Config.RageManipulation = true
 
 local LuaHookRuntimeLifecycle = {}
             function LuaHookRuntimeLifecycle.ResetState()
@@ -40786,7 +40796,7 @@ do
         Library.Notify = origNotify
 
         -- Migration only clears toggles which were added by the merge and are required to
-        -- start disabled. Rage Manipulation is no longer a toggle and is always enabled by Rage.
+        -- start disabled. Rage configuration remains disabled by default.
         if staleAddedFeatureConfig then
             local LuaHook_AddedFeatureToggles = {
                 'AimbotKatanaDeflectCheck','AimbotRiotShieldCheck','AutoRespawn',
@@ -40847,6 +40857,14 @@ Library.Unload = function(self, ...)
     pcall(ConstPatch.revertAll)
     GameVisuals.uiAlive = false
     pcall(GameVisuals.disable)
+    pcall(function()
+        if __luahook_hook_genv then
+            __luahook_hook_genv.Executed = nil
+        end
+        if _G then
+            _G.__LuaHookHookExecuted = nil
+        end
+    end)
     return _origUnload(self, ...)
 end
 pcall(function() Library:SetWatermark('LuaHook') end)
