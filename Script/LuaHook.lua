@@ -38131,6 +38131,7 @@ Tabs = {
 }
 
 do
+do
                     local Combat = Tabs.Main:AddLeftGroupbox("Aimbot", "crosshair")
                     local aimbotToggle = Combat:AddToggle("LH_P2S1T1", {
                         Text = "Aimbot",
