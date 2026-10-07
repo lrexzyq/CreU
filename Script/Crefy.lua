@@ -29909,13 +29909,10 @@ local itemModifiers = v115.Data and v115.Data.ItemModifiers
 local characterController = innerContext and innerContext.CharacterController
 
 local function clearBackstab()
-if not arg._backstabActive then
-return
-end
 arg._backstabActive = false
 if characterController ~= nil then
-characterController:SendViewAngles(10, nil)
-characterController:ClearRawCameraRotation()
+pcall(function() characterController:SendViewAngles(10, nil) end)
+pcall(function() characterController:ClearRawCameraRotation() end)
 end
 end
 
@@ -29960,7 +29957,10 @@ if targetPart == nil or not targetPart:IsA("BasePart") then
 targetPart = targetRoot
 end
 
-local targetPitch, targetYaw = targetPart.CFrame:ToOrientation()
+-- Knife keeps Kicia's original backstab-facing behavior (target RootPart orientation).
+-- Riot keeps the LuaHook silent-camera behavior (target HitboxHead orientation).
+local angleSource = backstabMode == "Knife" and targetRoot or targetPart
+local targetPitch, targetYaw = angleSource.CFrame:ToOrientation()
 local myCharacter = cloneref(game:GetService("Players")).LocalPlayer.Character
 local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
 local absPitch = math.abs(targetPitch)
@@ -63623,12 +63623,12 @@ if item.__type == "Gun" then
 if item:IsReloading() then
 return fn36()
 end
-local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg5, flag19)
+local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg4, flag19)
 return { CFrame = v131, WeaponAction = v132, ShouldForceCrouch = true, IsAimPose = v132 ~= nil }
 end
 
 if item.__type == "Melee" then
-local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
+local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg4, flag19)
 
 return {
 CFrame = v131,
@@ -66505,10 +66505,11 @@ if v225 then
 v225:Update(arg2)
 end
 
--- Always Backstab owns its own Heartbeat connection.
--- Deliberately not updated from this shared Heartbeat to avoid duplicate execution.
+-- Ragebot must tick every Heartbeat; construction alone does not schedule updates.
+v227:Update(arg2)
 
-v228:Update(arg2)
+-- Always Backstab owns its own dedicated Heartbeat connection.
+-- Do not tick it from the shared loop: doing so would evaluate it twice per frame.
 v219:Update(arg2)
 v232:Update()
 v233:Update()
