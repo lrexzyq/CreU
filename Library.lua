@@ -857,6 +857,51 @@ local function ResolveLucideIcon(IconValue)
     return nil;
 end;
 
+-- RichText helpers for use in any control that accepts Roblox RichText
+-- (labels, notifications, tooltips, etc). Escape() is the one to reach
+-- for whenever user-supplied or otherwise untrusted text is interpolated
+-- into a RichText string -- without it, a player name or chat message
+-- containing "<" could be misread as markup.
+-- Ported from ChilliLibrary (ChilliLibrary.Rich), credit to its authors.
+-- Defined as a local table here (before Library exists further below)
+-- and attached as Library.Rich right after Library's own declaration.
+local Rich = {
+    Bullet = utf8.char(0x2022),
+}
+
+function Rich.Escape(text)
+    return (string.gsub(tostring(text), '[<>&]', {
+        ['<'] = '&lt;',
+        ['>'] = '&gt;',
+        ['&'] = '&amp;',
+    }))
+end
+
+function Rich.Color(color, text)
+    local hex = typeof(color) == 'Color3' and ('#' .. color:ToHex()) or tostring(color)
+    return string.format('<font color="%s">%s</font>', hex, tostring(text))
+end
+
+function Rich.Bold(text)
+    return '<b>' .. tostring(text) .. '</b>'
+end
+
+function Rich.Italic(text)
+    return '<i>' .. tostring(text) .. '</i>'
+end
+
+function Rich.Muted(text)
+    return Rich.Color('#AAAAAA', text)
+end
+
+function Rich.Rule(count)
+    return Rich.Color('#444455', string.rep(utf8.char(0x2500), tonumber(count) or 38))
+end
+
+function Rich.Join(lines)
+    return table.concat(lines, '\n')
+end
+
 local Base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 local function Base64Encode(data)
@@ -1015,6 +1060,7 @@ Library.Toggles = Toggles;
 
 Library.Base64Encode = Base64Encode;
 Library.Base64Decode = Base64Decode;
+Library.Rich = Rich;
 
 Library.ExportPrefix = 'CREU1';
 
@@ -3526,8 +3572,15 @@ do
     end;
     function Funcs:AddLabel(Text, DoesWrap)
         local Label = {};
+        -- RichText: off by default (matches prior behaviour -- a label
+        -- with a stray "<" in it keeps showing that character literally
+        -- rather than being silently reinterpreted as markup). Pass
+        -- {Text=..., RichText=true} to opt in, e.g. for Library.Rich.*
+        -- helper output.
+        local UseRichText = false;
         if type(Text) == 'table' then
             local Info = Text;
+            UseRichText = Info.RichText == true;
             Text = Info.Text or Info.Name or '';
             DoesWrap = Info.DoesWrap == true;
         end
@@ -3539,6 +3592,7 @@ do
             Size = UDim2.new(1, -4, 0, 15);
             TextSize = Library.FontSize;
             Text = Text;
+            RichText = UseRichText;
             TextWrapped = DoesWrap or false,
             TextXAlignment = Enum.TextXAlignment.Left;
             ZIndex = 5;
@@ -4323,6 +4377,69 @@ do
             SupportsAddons = false;
         };
 
+        -- Optional unit-conversion display, ported from ChilliLibrary's
+        -- Slider Unit system (credit to its authors), reworked to layer
+        -- entirely on top of this Slider's existing API instead of
+        -- replacing any of it: Slider.Value/Callback/Changed always stay
+        -- in the slider's base unit (whatever Min/Max/Default were given
+        -- in) -- Units only changes what's shown in the label text, via
+        -- FormatDisplayValue, which this slider already supported. A
+        -- slider with no Info.Units behaves exactly as before.
+        --
+        -- Info.Units = { "Studs", { Name = "Meters", Suffix = "m",
+        --   FromBase = function(v) return v / 3.57 end,
+        --   ToBase   = function(v) return v * 3.57 end } }
+        -- A plain string entry is a label-only unit (no conversion, just
+        -- a different suffix) -- useful for relabeling without math.
+        local UnitList = {}
+        if type(Info.Units) == 'table' then
+            for _, Entry in ipairs(Info.Units) do
+                if type(Entry) == 'string' or type(Entry) == 'number' then
+                    local Text = tostring(Entry)
+                    table.insert(UnitList, { Name = Text, Suffix = Text })
+                elseif type(Entry) == 'table' then
+                    table.insert(UnitList, {
+                        Name = tostring(Entry.Name or Entry.Suffix or 'Unit'),
+                        Suffix = Entry.Suffix ~= nil and tostring(Entry.Suffix) or tostring(Entry.Name or ''),
+                        FromBase = type(Entry.FromBase) == 'function' and Entry.FromBase or nil,
+                        ToBase = type(Entry.ToBase) == 'function' and Entry.ToBase or nil,
+                        Format = type(Entry.Format) == 'function' and Entry.Format or nil,
+                    })
+                end
+            end
+        end
+        local UnitIndex = 1;
+        if Info.DefaultUnit then
+            for Index, Unit in ipairs(UnitList) do
+                if Unit.Name == Info.DefaultUnit then
+                    UnitIndex = Index;
+                    break
+                end
+            end
+        end
+
+        -- Auto-generate a FormatDisplayValue from the selected unit, but
+        -- only if the caller didn't already supply their own -- an
+        -- explicit Info.FormatDisplayValue always wins, Units is just a
+        -- convenience for the common case.
+        if #UnitList > 0 and type(Info.FormatDisplayValue) ~= 'function' then
+            Info.FormatDisplayValue = function(_, BaseValue)
+                local Unit = UnitList[UnitIndex];
+                local Shown = (Unit.FromBase and Unit.FromBase(BaseValue)) or BaseValue;
+                if Unit.Format then
+                    local Ok, Result = pcall(Unit.Format, Shown);
+                    if Ok and Result ~= nil then
+                        return tostring(Result);
+                    end
+                end
+                local Prefix = Slider.Prefix ~= nil and Slider.Prefix or (Info.Prefix or '');
+                local Rounded = Slider.Rounding > 0
+                    and tonumber(string.format('%.' .. Slider.Rounding .. 'f', Shown))
+                    or math.floor(Shown + 0.5);
+                return Prefix .. tostring(Rounded) .. Unit.Suffix;
+            end;
+        end
+
         local Groupbox = self;
         local Container = Groupbox.Container;
         if not Info.Compact then
@@ -4464,6 +4581,38 @@ do
             Library:SafeCallback(Slider.Callback, Slider.Value);
             Library:SafeCallback(Slider.Changed, Slider.Value);
         end;
+
+        -- Unit switching: only wired up if Info.Units was actually given.
+        -- Slider.Value/Callback never change unit -- only the label text
+        -- (via the auto-generated FormatDisplayValue above) does.
+        if #UnitList > 0 then
+            function Slider:SetUnit(Name)
+                for Index, Unit in ipairs(UnitList) do
+                    if Unit.Name == Name then
+                        UnitIndex = Index;
+                        Slider:Display();
+                        return true;
+                    end
+                end
+                return false;
+            end;
+            function Slider:GetUnit()
+                return UnitList[UnitIndex].Name;
+            end;
+            if #UnitList > 1 then
+                SliderOuter.InputBegan:Connect(function(Input)
+                    if Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame(Input.Position) then
+                        UnitIndex = (UnitIndex % #UnitList) + 1;
+                        Slider:Display();
+                        Library:AttemptSave();
+                    end
+                end)
+                if type(Info.Tooltip) ~= 'string' then
+                    Slider._TooltipHandle = Library:AddToolTip('Right-click to switch units', SliderOuter)
+                end
+            end
+        end
+
         SliderInner.InputBegan:Connect(function(Input)
             if (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) and not Library:MouseIsOverOpenedFrame(Input.Position) then
                 if not Library:BeginGesture(Input) then return end

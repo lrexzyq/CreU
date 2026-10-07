@@ -314,6 +314,34 @@ do
         true
     )
 
+    -- Library.Rich: small RichText helpers (ported from ChilliLibrary,
+    -- credit to its authors). Escape() is the important one -- always
+    -- wrap untrusted text (a player name, a chat message, anything not
+    -- written by you) in it before it ends up inside a RichText label,
+    -- or a "<" in that text could be misread as markup.
+    -- RichText = true is required on the label for any of these tags to
+    -- actually render instead of showing as literal text.
+    Labels:AddLabel({
+        Text = Library.Rich.Bold("Bold")
+            .. " / " .. Library.Rich.Italic("italic")
+            .. " / " .. Library.Rich.Color(Color3.fromRGB(0, 255, 140), "colored")
+            .. " / " .. Library.Rich.Muted("muted"),
+        RichText = true,
+        DoesWrap = true,
+    })
+    Labels:AddLabel({ Text = Library.Rich.Rule(30), RichText = true, DoesWrap = true })
+    Labels:AddLabel({
+        Text = Library.Rich.Bullet .. " Bulleted line one\n"
+            .. Library.Rich.Bullet .. " Bulleted line two",
+        RichText = true,
+        DoesWrap = true,
+    })
+    Labels:AddLabel({
+        Text = "Escaped input: " .. Library.Rich.Escape('<b>not actually bold</b>'),
+        RichText = true,
+        DoesWrap = true,
+    })
+
     local Sliders = Tabs.Elements:AddLeftGroupbox(
         "Sliders",
         "sliders-horizontal"
@@ -344,6 +372,27 @@ do
 
             return tostring(Value)
         end,
+    })
+
+    -- Units: the slider's Value/Callback stay in the base unit (studs)
+    -- no matter what -- only the label text changes. Right-click the
+    -- slider to cycle between the units given here. A unit entry can
+    -- also be a plain string (just relabels the suffix, no conversion).
+    Sliders:AddSlider("UnitSlider", {
+        Text = "Distance (right-click to switch units)",
+        Default = 50,
+        Min = 0,
+        Max = 200,
+        Rounding = 1,
+        Units = {
+            { Name = "Studs", Suffix = " studs" },
+            {
+                Name = "Meters",
+                Suffix = "m",
+                FromBase = function(Studs) return Studs * 0.357 end,
+                ToBase = function(Meters) return Meters / 0.357 end,
+            },
+        },
     })
 
     Sliders:AddSlider("CompactSlider", {
@@ -957,79 +1006,12 @@ do
 end
 
 do
-    local LayoutLeft = Tabs.Layout:AddLeftGroupbox(
-        "Layouts",
-        "panels-top-left"
-    )
-
-    LayoutLeft:AddLabel(
-        "This section demonstrates Row and collapsed controls.",
-        true
-    )
-
-    local RowColumn1, RowColumn2 = LayoutLeft:AddRow(2)
-
-    RowColumn1:AddToggle("RowToggle", {
-        Text = "Row Toggle",
-        Default = false,
-    })
-
-    RowColumn2:AddSlider("RowSlider", {
-        Text = "Row Slider",
-        Default = 50,
-        Min = 0,
-        Max = 100,
-        Rounding = 0,
-    })
-
-    LayoutLeft:AddDivider()
-
-    LayoutLeft:AddToggle("CollapsedDemoToggle", {
-        Text = "Toggle inside groupbox",
-        Default = false,
-    })
-
-    local Collapsed = Tabs.Layout:AddRightGroupbox(
-        "Collapsible Groupbox",
-        "chevrons-down-up"
-    )
-
-    Collapsed:AddLabel(
-        "This whole groupbox can be collapsed.",
-        true
-    )
-
-    Collapsed:AddToggle("CollapsedToggle", {
-        Text = "Collapsed Toggle",
-        Default = false,
-    })
-
-    Collapsed:AddSlider("CollapsedSlider", {
-        Text = "Collapsed Slider",
-        Default = 25,
-        Min = 0,
-        Max = 100,
-        Rounding = 0,
-        Suffix = "%",
-    })
-
-    Collapsed:AddDropdown("CollapsedDropdown", {
-        Text = "Collapsed Dropdown",
-        Values = {
-            "One",
-            "Two",
-            "Three",
-        },
-        Default = 1,
-    })
-
-    Collapsed:AddButton({
-        Text = "Collapse / Expand",
-        Func = function()
-            Collapsed:ToggleCollapsed()
-        end,
-    })
-
+    -- Nested tab structure, shown first on this tab so it's visible
+    -- immediately without scrolling: a top-level tab (this one, "Layout")
+    -- holding a sub-tab strip ("Tabbox Showcase" -> Tab 1/Tab 2), with
+    -- "Tab 1" itself holding a further nested sub-tab strip ("Weapon
+    -- Category" -> General/Primary/Secondary/Melee/Utility). Three tab
+    -- levels stacked on top of each other.
     local Tabbox = Tabs.Layout:AddRightTabbox("Tabbox Showcase")
 
     local TabOne = Tabbox:AddTab("Tab 1")
@@ -1109,6 +1091,79 @@ do
         Text = "Tab 2 Input",
         Default = "Hello",
         Placeholder = "Input...",
+    })
+
+    local LayoutLeft = Tabs.Layout:AddLeftGroupbox(
+        "Layouts",
+        "panels-top-left"
+    )
+
+    LayoutLeft:AddLabel(
+        "This section demonstrates Row and collapsed controls.",
+        true
+    )
+
+    local RowColumn1, RowColumn2 = LayoutLeft:AddRow(2)
+
+    RowColumn1:AddToggle("RowToggle", {
+        Text = "Row Toggle",
+        Default = false,
+    })
+
+    RowColumn2:AddSlider("RowSlider", {
+        Text = "Row Slider",
+        Default = 50,
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+    })
+
+    LayoutLeft:AddDivider()
+
+    LayoutLeft:AddToggle("CollapsedDemoToggle", {
+        Text = "Toggle inside groupbox",
+        Default = false,
+    })
+
+    local Collapsed = Tabs.Layout:AddRightGroupbox(
+        "Collapsible Groupbox",
+        "chevrons-down-up"
+    )
+
+    Collapsed:AddLabel(
+        "This whole groupbox can be collapsed.",
+        true
+    )
+
+    Collapsed:AddToggle("CollapsedToggle", {
+        Text = "Collapsed Toggle",
+        Default = false,
+    })
+
+    Collapsed:AddSlider("CollapsedSlider", {
+        Text = "Collapsed Slider",
+        Default = 25,
+        Min = 0,
+        Max = 100,
+        Rounding = 0,
+        Suffix = "%",
+    })
+
+    Collapsed:AddDropdown("CollapsedDropdown", {
+        Text = "Collapsed Dropdown",
+        Values = {
+            "One",
+            "Two",
+            "Three",
+        },
+        Default = 1,
+    })
+
+    Collapsed:AddButton({
+        Text = "Collapse / Expand",
+        Func = function()
+            Collapsed:ToggleCollapsed()
+        end,
     })
 end
 
