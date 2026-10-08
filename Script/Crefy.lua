@@ -66147,6 +66147,7 @@ elseif kind ~= "Jump" and kind ~= "Slide" then
 fn36("Recording is invalid or incomplete")
 return false
 end
+end
 
 local lastPositionOffset = -math.huge
 for _, sample in ipairs(arg2.Positions) do
