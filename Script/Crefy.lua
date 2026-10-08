@@ -19870,7 +19870,7 @@ return bj.c
 end
 end
 do 
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,BackstabMode="Knife",GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -29826,8 +29826,22 @@ local itemBehaviors = innerContext.ItemBehaviors
 if characterController == nil or itemBehaviors == nil then
 return
 end
-local alwaysBackstab = v115.Data.ItemModifiers.AlwaysBackstab == true
-if not alwaysBackstab or itemBehaviors:FindMeleeByName("Knife") == nil then
+local itemModifiers = v115.Data and v115.Data.ItemModifiers
+local alwaysBackstab = itemModifiers ~= nil and itemModifiers.AlwaysBackstab == true
+if not alwaysBackstab then
+characterController:SendViewAngles(10, nil)
+characterController:FlushViewAngles()
+return
+end
+
+local backstabMode = itemModifiers.BackstabMode
+if backstabMode ~= "Riot" then
+backstabMode = "Knife"
+end
+
+-- Knife mode intentionally checks inventory, not only the currently equipped melee.
+-- Riot mode does not require a Knife in inventory.
+if backstabMode == "Knife" and itemBehaviors:FindMeleeByName("Knife") == nil then
 characterController:SendViewAngles(10, nil)
 characterController:FlushViewAngles()
 return
@@ -29839,14 +29853,21 @@ characterController:SendViewAngles(10, nil)
 characterController:FlushViewAngles()
 return
 end
-local v117 = arg:_FindClosestEnemy(serverHeadOrigin.Position)
+
+local triggerDistance = backstabMode == "Riot" and 10000000 or 20
+local v117 = arg:_FindClosestEnemy(serverHeadOrigin.Position, triggerDistance)
 if v117 == nil then
 characterController:SendViewAngles(v86[133], nil)
 characterController:FlushViewAngles()
 return
 end
+
 local v118, v119 = v117.CFrame:ToOrientation()
-characterController:SendViewAngles(10, { Kind = "Normalized", Pitch = math.deg(v118), Yaw = math.deg(v119) })
+characterController:SendViewAngles(10, {
+Kind = "Normalized",
+Pitch = math.deg(v118),
+Yaw = math.deg(v119),
+})
 characterController:FlushViewAngles()
 end
 
@@ -59045,7 +59066,7 @@ return ic.c
 end
 end
 do 
-local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
+local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Mode",Options={"Knife","Riot"},Config={"ItemModifiers","BackstabMode"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
 
 tbl17.id = function()
 local id = tbl17.cache.id
@@ -62559,7 +62580,15 @@ local index2 = {}
 index2.__index = index2
 
 index2.new = function(arg)
-return setmetatable({ _partGlue = arg, _shootLock = v116.new(), _hitboxWindowUntil = -1, _attackCooldown = -1 }, index2)
+return setmetatable({
+_partGlue = arg,
+_shootLock = v116.new(),
+_hitboxWindowUntil = -1,
+_hitboxWindowTarget = nil,
+_attackCooldown = -1,
+_knifePrimeTarget = nil,
+_knifePrimeUntil = 0,
+}, index2)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, gluedOurPart, arg5)
@@ -62585,10 +62614,18 @@ local v125 = (flag19 and { tbl19 } or { tbl21 })[1]
 local v126 = fn38(v124, n33, v122, v123)
 local v127 = fn38(v125, n33, v122, v123)
 local now2 = os.clock()
-if now2 < arg._hitboxWindowUntil then
+-- Leaving Knife invalidates its temporary prime and multi-frame hitbox window.
+if arg4.Name ~= "Knife" then
+arg:InvalidateKnifeState()
+end
+-- The multi-frame hitbox window belongs only to the Knife and original target.
+-- A newly selected target must not inherit the old window.
+if now2 < arg._hitboxWindowUntil and arg4.Name == "Knife" and arg._hitboxWindowTarget == hitboxHead then
 return n, fn37(v121, v122), function()
 arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
 end
+elseif now2 >= arg._hitboxWindowUntil then
+arg._hitboxWindowTarget = nil
 end
 
 if not arg._shootLock:ShouldFire(arg5, arg2 * ragebot.ShootFrames) then
@@ -62600,27 +62637,56 @@ return fn36(), nil, nil
 end
 
 if arg4.Name == "Knife" then
-arg:_RecordBackstab()
+-- Prime the camera for one client update before the first heavy attack.
+-- The existing FlushViewAngles call in Ragebot.Update then sends this angle
+-- before the attack packet on the following tick. This removes the intermittent
+-- "teleported behind target but camera was still on the old angle" failure.
+if arg._knifePrimeTarget ~= hitboxHead then
+arg._knifePrimeTarget = hitboxHead
+arg._knifePrimeUntil = now2 + 0.05
+return n, fn37(v121, v122), nil
+end
+
+if now2 < arg._knifePrimeUntil then
+return n, fn37(v121, v122), nil
+end
+
+arg._knifePrimeTarget = nil
+arg._knifePrimeUntil = 0
+arg:_RecordBackstab(hitboxHead)
 
 return n, fn37(v121, v122), function()
 arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
 end
 end
 
+arg._knifePrimeTarget = nil
+arg._knifePrimeUntil = 0
 return n, nil, function()
 arg4:AttackEncoded(v126, v127, hitboxHead, tbl22)
 end
 end
 
-index2._RecordBackstab = function(arg)
+index2._RecordBackstab = function(arg, targetHitbox)
 local now2 = os.clock()
 arg._hitboxWindowUntil = now2 + 0.625
+arg._hitboxWindowTarget = targetHitbox
 arg._attackCooldown = now2 + 1.25
+end
+
+index2.InvalidateKnifeState = function(arg)
+arg._hitboxWindowUntil = -1
+arg._hitboxWindowTarget = nil
+arg._knifePrimeTarget = nil
+arg._knifePrimeUntil = 0
 end
 
 index2.ResetState = function(arg)
 arg._hitboxWindowUntil = -1
+arg._hitboxWindowTarget = nil
 arg._attackCooldown = -1
+arg._knifePrimeTarget = nil
+arg._knifePrimeUntil = 0
 arg._shootLock:Reset()
 local gluedOurPart = arg._gluedOurPart
 
@@ -63497,7 +63563,7 @@ local state = character ~= nil and character.State or nil
 local characterController = innerContext.CharacterController
 if fighterState == nil or fighterState.EnvironmentId == nil or not arg._enabled
    or state == nil or not state.Alive
-   or characterController == nil then
+   or characterController == nil or innerContext.ItemBehaviors == nil then
 arg:_Reset()
 return
 end
@@ -63513,7 +63579,7 @@ local okClientCFrame, resultClientCFrame = pcall(characterController.GetClientCF
 if okClientCFrame then
 clientCFrame = resultClientCFrame
 end
-if clientCFrame == nil then
+if typeof(clientCFrame) ~= "CFrame" then
 arg:_Reset()
 return
 end
@@ -63533,7 +63599,7 @@ if okTarget then
 target = resultTarget
 end
 
-if target ~= nil and target.AliveState ~= nil and target.AliveState.RootPart ~= nil then
+if target ~= nil and target.AliveState ~= nil and target.AliveState.RootPart ~= nil and target.AliveState.RootPart.Parent ~= nil then
 arg._lastTargetWorld = target.AliveState.RootPart.Position
 else
 if target ~= nil then
@@ -63566,6 +63632,12 @@ local shotRequestCount = v132 ~= nil and v132.ShotRequestCount or 0
 local weaponAction = v131.WeaponAction
 
 if type(weaponAction) == "function" then
+-- Final camera commit immediately before the weapon packet.
+-- Keep the earlier flush as well so Knife gets both a priming update and
+-- a last-moment camera replication immediately before HeavyAttackEncoded.
+if v131.ViewAngles ~= nil then
+innerContext.CharacterController:FlushViewAngles()
+end
 weaponAction()
 
 if v132 ~= nil and (v132 ~= nil and v132.ShotRequestCount - shotRequestCount or 0) > 0 and v132:GetExpectedAmmoAfterPendingShots() <= 0 then
@@ -63591,6 +63663,7 @@ return arg:_EvadePlan(arg6, arg7)
 end
 
 if arg3.Type == "Swap" then
+arg._meleeStrategy:InvalidateKnifeState()
 local item = arg3.Item
 local v131 = arg:_EvadePlan(arg6, arg7)
 
@@ -63602,15 +63675,18 @@ return v131
 end
 
 if arg3.Type == "Reload" then
+arg._meleeStrategy:InvalidateKnifeState()
 return fn36()
 end
 
 if arg4 == nil then
+arg._meleeStrategy:InvalidateKnifeState()
 return arg:_EvadePlan(arg6, arg7)
 end
 local item = arg3.Item
 
 if item.__type == "Gun" then
+arg._meleeStrategy:InvalidateKnifeState()
 if item:IsReloading() then
 return fn36()
 end
@@ -63775,11 +63851,21 @@ local innerContext = arg._innerContext
 if innerContext == nil then
 return
 end
-innerContext.CharacterController:SetServerCFrame(nil)
-innerContext.CharacterController:SendViewAngles(20, nil)
+local characterController = innerContext.CharacterController
+if characterController == nil then
+return
+end
+pcall(function() characterController:SetServerCFrame(nil) end)
+pcall(function() characterController:SendViewAngles(20, nil) end)
 end
 
 index2.Destroy = function(arg)
+-- Restore executor/game globals and release temporary movement/camera state
+-- before destroying the Trove, including unload while Ragebot is enabled.
+if arg._enabled then
+pcall(function() arg:SetEnabled(false) end)
+end
+pcall(function() arg:_Reset() end)
 arg._trove:Destroy()
 end
 
@@ -64475,6 +64561,9 @@ end
 
 local function fn37()
 local currentCamera = workspace.CurrentCamera
+if currentCamera == nil then
+return nil
+end
 local n = currentCamera.ViewportSize / v86[56]
 local v119 = currentCamera:ViewportPointToRay(n.X, n.Y)
 return v119.Origin + v119.Direction * 100
@@ -64490,6 +64579,19 @@ index2.__index = index2
 index2.new = function(arg, arg2, arg3, arg4, arg5, arg6)
 local v119 = arg2:Inverse()
 local v120 = v115.get()
+if typeof(v120) ~= "Vector2" then
+local currentCamera = workspace.CurrentCamera
+if currentCamera ~= nil then
+local pitch, yaw = currentCamera.CFrame:ToOrientation()
+v120 = Vector2.new(pitch, yaw)
+else
+v120 = Vector2.zero
+end
+end
+local displayWorldPosition = fn37()
+if displayWorldPosition == nil then
+displayWorldPosition = arg3.RootPart.Position
+end
 local equipped = arg5:GetEquipped()
 local index3 = equipped and equipped.Index
 local n = nil
@@ -64520,7 +64622,7 @@ _lastSliding = false,
 _lastPositionSampleTime = 0,
 _recording = {
 MapName = arg,
-DisplayPosition = v119 * fn37(),
+DisplayPosition = v119 * displayWorldPosition,
 StartCFrame = v119 * arg3.RootPart.CFrame,
 Keypoints = { { Offset = 0, Action = { Kind = "Look", CFrame = fn38(v119, v120) } } },
 LoadoutRequirementSet = {},
@@ -64884,24 +64986,33 @@ local flag19 = true
 if startLookRotation ~= nil then
 local v120 = v116.get()
 if v120 == nil or typeof(v120) ~= "Vector2" then
-return false
-end
+-- Keep position alignment progressing while camera state is unavailable;
+-- otherwise the replay can remain in Aligning forever.
+flag19 = false
+else
 local alignSpeed = tonumber(v117.Data.Movement.MovementRecorder.LookAlignSpeed) or 180
-if alignSpeed ~= alignSpeed then
+if alignSpeed ~= alignSpeed or alignSpeed == math.huge then
 alignSpeed = 180
 end
 alignSpeed = math.clamp(alignSpeed, 0, 7200)
-local n = math.rad(alignSpeed) * math.max(0, tonumber(arg3) or 0)
+local alignDt = math.max(0, tonumber(arg3) or 0)
+if alignDt ~= alignDt or alignDt == math.huge then alignDt = 0 end
+local n = math.rad(alignSpeed) * alignDt
 local v121
-v121, flag19 = fn38(v120, startLookRotation, fn40(arg3), n)
+v121, flag19 = fn38(v120, startLookRotation, fn40(alignDt), n)
 if v121 ~= nil then
 v116.set(v121)
+end
 end
 end
 
 if not arg._isRoundActive() then
 arg._moveHook:SetMoveVector(Vector3.zero)
-return false
+arg._finished = true
+if type(arg._finishedCallback) == "function" then
+arg._finishedCallback("InvalidState")
+end
+return false, true
 end
 arg2.Elapsed = arg2.Elapsed + arg3
 local aliveState = arg._aliveState
@@ -64926,7 +65037,14 @@ local flag20 = magnitude <= snapDistance
 if flag20 then
 arg._moveHook:SetMoveVector(Vector3.zero)
 else
-arg._moveHook:SetMoveVector(fn36(vector.Unit))
+local moveVector = fn36(vector.Unit)
+if typeof(moveVector) == "Vector3" then
+arg._moveHook:SetMoveVector(moveVector)
+else
+-- No active camera means camera-relative movement cannot be computed this frame.
+-- Use neutral input rather than passing nil into the movement hook.
+arg._moveHook:SetMoveVector(Vector3.zero)
+end
 end
 
 if magnitude < arg2.BestDistance - v86[62] then
@@ -64958,7 +65076,7 @@ end
 index2.Update = function(arg, arg2)
 local state = arg._state
 local dt = tonumber(arg2) or 0
-if dt ~= dt or dt < 0 then
+if dt ~= dt or dt < 0 or dt == math.huge then
 dt = 0
 end
 
@@ -65512,6 +65630,9 @@ end
 end
 
 index2._Clear = function(arg)
+-- Route objects are destroyed below; never leave active/selected references pointing at them.
+arg._selectedRoute = nil
+arg._activatedRoute = nil
 for _, v119 in arg._markers, nil, nil do
 v119:Destroy()
 end
@@ -65527,13 +65648,18 @@ end
 
 index2._Rebuild = function(arg, arg2)
 arg:_Clear()
-if arg2 == nil then
+if type(arg2) ~= "table" then
 return
 end
 local tbl18 = {}
 
 for _, v119 in arg2, nil, nil do
-local position = v119.StartCFrame.Position
+local startCFrame = type(v119) == "table" and v119.StartCFrame or nil
+local displayPosition = type(v119) == "table" and v119.DisplayPosition or nil
+if typeof(startCFrame) ~= "CFrame" or typeof(displayPosition) ~= "Vector3" then
+continue
+end
+local position = startCFrame.Position
 local str7 = math.floor(position.X / 8) .. "," .. math.floor(position.Y / 8) .. "," .. math.floor(position.Z / v86[162])
 local tbl19 = tbl18[str7]
 
@@ -65546,6 +65672,9 @@ table.insert(tbl19, v119)
 end
 
 local mapAnchor = arg._mapAnchor
+if typeof(mapAnchor) ~= "CFrame" then
+return
+end
 
 for _, v119 in tbl18, nil, nil do
 local vector = Vector3.zero
@@ -65568,18 +65697,21 @@ end
 
 index2.SetActivatedRecording = function(arg, arg2)
 local activatedRoute = arg._activatedRoute
+arg._activatedRoute = nil
 
 if activatedRoute ~= nil then
-activatedRoute:SetActivated(v86[153])
+pcall(function() activatedRoute:SetActivated(v86[153]) end)
 end
 
 if arg2 ~= nil then
-local v119 = arg._routesByRecording[arg2]
-v119:SetActivated(true)
-arg._activatedRoute = v119
-else
-arg._activatedRoute = nil
+local route = arg._routesByRecording[arg2]
+if route == nil then
+return false
 end
+route:SetActivated(true)
+arg._activatedRoute = route
+end
+return true
 end
 
 index2.Update = function(arg)
@@ -65596,8 +65728,12 @@ local inner = arg._playerContext.Inner
 if inner == nil then
 return
 end
-local clientCFrame = inner.CharacterController:GetClientCFrame()
-if clientCFrame == nil then
+local characterController = inner.CharacterController
+if characterController == nil or type(characterController.GetClientCFrame) ~= "function" then
+return
+end
+local okClientCFrame, clientCFrame = pcall(characterController.GetClientCFrame, characterController)
+if not okClientCFrame or typeof(clientCFrame) ~= "CFrame" then
 return
 end
 local position = clientCFrame.Position
@@ -65658,8 +65794,14 @@ end
 end
 
 index2._ForEachRoute = function(arg, arg2, arg3)
+if type(arg2) ~= "table" then
+return
+end
 for _, v119 in arg2, nil, nil do
-arg3(arg._routesByRecording[v119])
+local route = arg._routesByRecording[v119]
+if route ~= nil then
+arg3(route)
+end
 end
 end
 
@@ -65682,13 +65824,16 @@ end
 
 index2._ComputeSelectedRoute = function(arg, arg2)
 local currentCamera = workspace.CurrentCamera
+if currentCamera == nil or type(arg2) ~= "table" then
+return nil
+end
 local huge = math.huge
 local v119 = nil
 
 for _, v120 in arg2, nil, nil do
 local v121 = arg._routesByRecording[v120]
 
-if not v121.Unfulfillable then
+if v121 ~= nil and not v121.Unfulfillable then
 local v122 = currentCamera:WorldToViewportPoint(v121.Position)
 
 if not (v122.Z < 0) then
