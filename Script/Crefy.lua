@@ -26401,8 +26401,6 @@ _payloadBySlot = {},
 _winning = nil,
 _fullySuppressed = v86[153],
 _dirty = false,
-_rawSentThisCycle = false,
-_rawCameraPayload = nil,
 }, index2)
 end
 
@@ -26499,10 +26497,9 @@ return v115.err("ViewAngleDriver", "upvalue_search", "Utility upvalue index not 
 end
 local replacement = {
 EncodeCameraRotation = function(arg2, arg3)
-local payload = arg._rawCameraPayload
-if (next(arg._payloadBySlot) ~= nil or arg._fullySuppressed) and type(payload) == "string" and #payload == 2 then
+if next(arg._payloadBySlot) ~= nil or arg._fullySuppressed then
 v103(fighterController, "_replication_stopped", false)
-return payload
+return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
 end
 return v117.encodeCameraRotation(arg3)
 end,
@@ -26576,25 +26573,6 @@ end
 return v115.VoidOk
 end
 
-index2.SendRawCameraRotation = function(arg, arg2)
-if type(arg2) ~= "string" or #arg2 ~= 2 then
-return v115.err("ViewAngleDriver", "raw_camera_rotation", "encoded camera payload must be a 2-byte string")
-end
-local hookResult = arg:_LoadReplicationHook()
-if not hookResult.Ok then
-return hookResult
-end
-arg._rawSentThisCycle = true
-arg._rawCameraPayload = arg2
-fireServer2(updateCameraRotationRemote, arg2, nil)
-return v115.VoidOk
-end
-
-index2.ClearRawCameraRotation = function(arg)
-arg._rawSentThisCycle = false
-arg._rawCameraPayload = nil
-end
-
 index2.Suppress = function(arg, fullySuppressed)
 if arg._fullySuppressed == fullySuppressed then
 return v115.VoidOk
@@ -26612,33 +26590,9 @@ arg:_CancelRestore()
 table.clear(arg._payloadBySlot)
 arg._winning = nil
 arg._dirty = v86[153]
-arg._rawSentThisCycle = false
-arg._rawCameraPayload = nil
 end
 
 index2.Flush = function(arg)
--- A raw silent-camera packet may be sent by Always Backstab, but it must not
--- suppress a higher-priority Ragebot view-angle payload that was queued later.
-if arg._rawSentThisCycle then
-arg._rawSentThisCycle = false
-
-if next(arg._payloadBySlot) ~= nil and not arg._fullySuppressed then
-local winning = arg._winning
-if winning ~= nil then
-arg._dirty = false
-fireServer2(updateCameraRotationRemote, fn36(winning), nil)
-arg._rawCameraPayload = nil
-return
-end
-end
-
-arg._dirty = false
-if next(arg._payloadBySlot) == nil then
-arg._rawCameraPayload = nil
-end
-return
-end
-
 if not arg._dirty then
 return
 end
@@ -26666,8 +26620,6 @@ fireServer2(updateCameraRotationRemote, fn36(winning), nil)
 end
 
 index2._RevertHooks = function(arg)
-arg._rawCameraPayload = nil
-arg._rawSentThisCycle = false
 local jointsRestore = arg._jointsRestore
 
 if jointsRestore ~= nil then
@@ -26797,14 +26749,6 @@ end
 
 index2.SendViewAngles = function(arg, arg2, arg3)
 return arg._viewAngleDriver:SendViewAngles(arg2, arg3)
-end
-
-index2.SendRawCameraRotation = function(arg, arg2)
-return arg._viewAngleDriver:SendRawCameraRotation(arg2)
-end
-
-index2.ClearRawCameraRotation = function(arg)
-return arg._viewAngleDriver:ClearRawCameraRotation()
 end
 
 index2.SuppressCameraReplication = function(arg, arg2)
@@ -29881,24 +29825,22 @@ local function fn35()
 local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.cX()
-local cameraCodec = tbl17.cH()
 local v116 = tbl17.k()
 local index2 = {}
 index2.__index = index2
 
 index2.new = function(arg, arg2)
-local tbl18 = { _trove = v116.new("always_backstab"), _fighters = arg2, _backstabActive = false }
+local tbl18 = { _trove = v116.new("always_backstab"), _fighters = arg2 }
 setmetatable(tbl18, index2)
 
--- Dedicated Heartbeat loop: Always Backstab is evaluated continuously and
--- the connection is owned by the component Trove so it is cleaned up on Destroy.
+-- Knife keeps the original/main update path. Riot gets its own Heartbeat.
 local runService = cloneref(game:GetService("RunService"))
 tbl18._trove:Connect(runService.Heartbeat, function()
 local ok, err = pcall(function()
- tbl18:Update()
+ tbl18:HeartbeatUpdate()
 end)
 if not ok and type(warn) == "function" then
- warn("[AlwaysBackstab] Heartbeat update failed: " .. tostring(err))
+ warn("[AlwaysBackstab] Riot Heartbeat update failed: " .. tostring(err))
 end
 end)
 
@@ -29916,16 +29858,14 @@ arg._innerContext = nil
 end)
 end
 
-index2.Update = function(arg)
+index2._UpdateMode = function(arg, expectedMode, triggerDistance, requireKnife)
 local innerContext = arg._innerContext
 local itemModifiers = v115.Data and v115.Data.ItemModifiers
 local characterController = innerContext and innerContext.CharacterController
 
 local function clearBackstab()
-arg._backstabActive = false
 if characterController ~= nil then
 pcall(function() characterController:SendViewAngles(10, nil) end)
-pcall(function() characterController:ClearRawCameraRotation() end)
 end
 end
 
@@ -29934,17 +29874,17 @@ clearBackstab()
 return
 end
 
+local backstabMode = itemModifiers.BackstabMode == "Riot" and "Riot" or "Knife"
+if backstabMode ~= expectedMode then
+return
+end
+
 if characterController == nil then
 clearBackstab()
 return
 end
 
-local backstabMode = itemModifiers.BackstabMode
-if backstabMode ~= "Riot" then
-backstabMode = "Knife"
-end
-
-if backstabMode == "Knife" then
+if requireKnife then
 local equippedMelee = innerContext.ItemObserver and innerContext.ItemObserver:EquippedItemAsMelee()
 if equippedMelee == nil or equippedMelee.Name ~= "Knife" then
 clearBackstab()
@@ -29958,65 +29898,40 @@ clearBackstab()
 return
 end
 
-local triggerDistance = backstabMode == "Riot" and 10000000 or 20
-local targetRoot, targetState = arg:_FindClosestEnemy(serverHeadOrigin.Position, triggerDistance)
+local targetRoot = arg:_FindClosestEnemy(serverHeadOrigin.Position, triggerDistance)
 if targetRoot == nil then
 clearBackstab()
 return
 end
 
-local targetPart = targetState and targetState.TargetPartsByName and targetState.TargetPartsByName.HitboxHead
-if targetPart == nil or not targetPart:IsA("BasePart") then
-targetPart = targetRoot
-end
-
--- Knife keeps Kicia's original backstab-facing behavior (target RootPart orientation).
--- Riot keeps the LuaHook silent-camera behavior (target HitboxHead orientation).
-local angleSource = backstabMode == "Knife" and targetRoot or targetPart
-local targetPitch, targetYaw = angleSource.CFrame:ToOrientation()
-local myCharacter = cloneref(game:GetService("Players")).LocalPlayer.Character
-local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
-local absPitch = math.abs(targetPitch)
-
-if myRoot ~= nil and absPitch > math.rad(45) then
-local eyePosition = myRoot.Position + Vector3.new(0, 1.5, 0)
-local computedPitch = select(1, CFrame.lookAt(eyePosition, targetPart.Position):ToOrientation())
-if absPitch >= math.rad(65) then
-targetPitch = computedPitch
-else
-local t = (absPitch - math.rad(45)) / (math.rad(65) - math.rad(45))
-targetPitch = targetPitch + (computedPitch - targetPitch) * t
-end
-end
-
+-- Always Backstab copies the target's RootPart orientation exactly like the
+-- original Kicia logic; it does not calculate a local look-at from the camera.
+local targetPitch, targetYaw = targetRoot.CFrame:ToOrientation()
 local angleResult = characterController:SendViewAngles(10, {
 Kind = "Normalized",
 Pitch = math.deg(targetPitch),
 Yaw = math.deg(targetYaw),
 })
 if type(angleResult) == "table" and angleResult.Ok == false then
-arg._backstabActive = true
-clearBackstab()
-return
-end
-arg._backstabActive = true
-
-local encoded = cameraCodec.encodeCameraRotation(Vector2.new(targetPitch, targetYaw))
-if type(encoded) ~= "string" or #encoded ~= 2 then
 clearBackstab()
 return
 end
 
-local rawResult = characterController:SendRawCameraRotation(encoded)
-if type(rawResult) == "table" and rawResult.Ok == false then
-clearBackstab()
 end
+
+-- Main/legacy path: Knife only.
+index2.Update = function(arg)
+arg:_UpdateMode("Knife", 20, true)
+end
+
+-- Dedicated path: Riot only.
+index2.HeartbeatUpdate = function(arg)
+arg:_UpdateMode("Riot", 10000000, false)
 end
 
 index2._FindClosestEnemy = function(arg, originPosition, triggerDistance)
 local closestDistance = triggerDistance or 20
 local v117 = nil
-local targetState = nil
 
 if originPosition == nil then
 return nil, nil
@@ -30037,17 +29952,15 @@ local magnitude = (rootPart.Position - originPosition).Magnitude
 if magnitude <= closestDistance then
 closestDistance = magnitude
 v117 = rootPart
-targetState = state
 end
 end
 end
 end
 
-return v117, targetState
+return v117
 end
 
 index2.Destroy = function(arg)
-arg._backstabActive = false
 arg._trove:Destroy()
 end
 
@@ -63636,12 +63549,12 @@ if item.__type == "Gun" then
 if item:IsReloading() then
 return fn36()
 end
-local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg4, flag19)
+local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg5, flag19)
 return { CFrame = v131, WeaponAction = v132, ShouldForceCrouch = true, IsAimPose = v132 ~= nil }
 end
 
 if item.__type == "Melee" then
-local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg4, flag19)
+local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
 
 return {
 CFrame = v131,
@@ -66523,8 +66436,9 @@ end
 -- Ragebot must tick every Heartbeat; construction alone does not schedule updates.
 v227:Update(arg2)
 
--- Always Backstab owns its own dedicated Heartbeat connection.
--- Do not tick it from the shared loop: doing so would evaluate it twice per frame.
+-- Always Backstab Knife keeps the original/main Heartbeat path.
+v228:Update()
+
 v219:Update(arg2)
 v232:Update()
 v233:Update()
