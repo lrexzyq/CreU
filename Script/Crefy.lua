@@ -26617,8 +26617,21 @@ arg._rawCameraPayload = nil
 end
 
 index2.Flush = function(arg)
+-- A raw silent-camera packet may be sent by Always Backstab, but it must not
+-- suppress a higher-priority Ragebot view-angle payload that was queued later.
 if arg._rawSentThisCycle then
 arg._rawSentThisCycle = false
+
+if next(arg._payloadBySlot) ~= nil and not arg._fullySuppressed then
+local winning = arg._winning
+if winning ~= nil then
+arg._dirty = false
+fireServer2(updateCameraRotationRemote, fn36(winning), nil)
+arg._rawCameraPayload = nil
+return
+end
+end
+
 arg._dirty = false
 if next(arg._payloadBySlot) == nil then
 arg._rawCameraPayload = nil
@@ -63755,7 +63768,9 @@ if arg2.IsAimPose or arg2.ShouldDefendInPlace then
 arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterState)
 end
 
-characterController:SendViewAngles(v86[9], arg2.ViewAngles or arg._lastDefensiveViewAngles)
+-- Ragebot owns a fixed high-priority camera slot so clearing the slot on
+-- the next frame cannot leave a stale lower-priority payload behind.
+characterController:SendViewAngles(20, arg2.ViewAngles or arg._lastDefensiveViewAngles)
 end
 
 index2.GetLastTargetWorld = function(arg)
