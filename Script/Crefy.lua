@@ -29795,11 +29795,12 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.cX()
 local v116 = tbl17.k()
+local cameraArbiter = tbl17.co()
 local index2 = {}
 index2.__index = index2
 
 index2.new = function(arg, arg2)
-local tbl18 = { _trove = v116.new("always_backstab"), _fighters = arg2 }
+local tbl18 = { _trove = v116.new("always_backstab"), _fighters = arg2, _cameraArbiter = cameraArbiter }
 setmetatable(tbl18, index2)
 tbl18:_Initialize(arg)
 return tbl18
@@ -29947,6 +29948,18 @@ arg._lastBackstabMode = mode
 -- depend on the equipped item or Knife being present in inventory.
 if mode == "Riot" then
 arg:_UpdateRiot(innerContext, itemModifiers.AlwaysBackstabTriggerDist)
+return
+end
+
+-- When Ragebot owns the Knife camera, do not let the independent Always
+-- Backstab tracker replace its selected target's angle with the nearest target.
+-- Drop only this module's priority-10 slot without flushing; Ragebot commits its
+-- own priority-20 angle immediately before the HeavyAttack request.
+if arg._cameraArbiter ~= nil and arg._cameraArbiter.isBlockedFor("AlwaysBackstab.Knife", 0) then
+if arg._anglePayloadApplied and characterController ~= nil then
+pcall(function() characterController:SendViewAngles(10, nil) end)
+end
+arg._anglePayloadApplied = false
 return
 end
 
@@ -62686,6 +62699,8 @@ _attackCooldownTarget = nil,
 _lastKnifeTarget = nil,
 _knifePrimeTarget = nil,
 _knifePrimeUntil = 0,
+_knifePrimePitch = nil,
+_knifePrimeYaw = nil,
 }, index2)
 end
 
@@ -62712,32 +62727,71 @@ local v125 = (flag19 and { tbl19 } or { tbl21 })[1]
 local v126 = fn38(v124, n33, v122, v123)
 local v127 = fn38(v125, n33, v122, v123)
 local now2 = os.clock()
+local isKnife = arg4.Name == "Knife"
 
--- Knife timing belongs to a target, not to the entire weapon session.
--- When the target changes (commonly immediately after a kill), discard the
--- previous target's active hitbox window and prime timer so the new target
--- can receive a fresh camera-prime cycle without inheriting stale state.
-if arg4.Name == "Knife" then
+local primeDelay = 0.08
+local okPing, ping = pcall(function()
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+return localPlayer ~= nil and localPlayer:GetNetworkPing() or nil
+end)
+if okPing and type(ping) == "number" and ping == ping and ping >= 0 and ping < 1 then
+primeDelay = math.clamp(0.05 + ping * 0.5, 0.075, 0.18)
+end
+
+if isKnife then
 if arg._lastKnifeTarget ~= hitboxHead then
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
+arg._knifePrimePitch = nil
+arg._knifePrimeYaw = nil
 arg._lastKnifeTarget = hitboxHead
 end
 else
 arg._lastKnifeTarget = nil
 end
 
--- Leaving Knife invalidates its temporary prime and multi-frame hitbox window.
-if arg4.Name ~= "Knife" then
+-- A non-Knife melee action must discard all Knife-specific timing state.
+if not isKnife then
 arg:InvalidateKnifeState()
 end
--- The multi-frame hitbox window belongs only to the Knife and original target.
--- A newly selected target must not inherit the old window.
-if now2 < arg._hitboxWindowUntil and arg4.Name == "Knife" and arg._hitboxWindowTarget == hitboxHead then
+
+local hasHitboxWindow = isKnife
+and now2 < arg._hitboxWindowUntil
+and arg._hitboxWindowTarget == hitboxHead
+
+-- Keep the camera angle used to prime the attack stable. If the target turns
+-- meaningfully during priming or the multi-frame attack window, prime again
+-- instead of firing with a stale heading.
+if isKnife and arg._knifePrimeTarget == hitboxHead
+and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil
+and (now2 < arg._knifePrimeUntil or hasHitboxWindow
+or not (now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead)) then
+local pitchDelta = math.abs(v121 - arg._knifePrimePitch)
+local yawDifference = v122 - arg._knifePrimeYaw
+local yawDelta = math.abs(math.atan2(math.sin(yawDifference), math.cos(yawDifference)))
+if pitchDelta > math.rad(7) or yawDelta > math.rad(7) then
+arg._knifePrimePitch = v121
+arg._knifePrimeYaw = v122
+arg._knifePrimeUntil = now2 + primeDelay
+return n, fn37(v121, v122), nil
+end
+end
+
+if isKnife and arg._knifePrimeTarget == hitboxHead and now2 < arg._knifePrimeUntil then
+return n, fn37(arg._knifePrimePitch or v121, arg._knifePrimeYaw or v122), nil
+end
+
+if hasHitboxWindow then
 return n, fn37(v121, v122), function()
+local okAttack = pcall(function()
 arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
+end)
+if not okAttack then
+arg:_AbortBackstabAttempt(hitboxHead)
+end
 end
 elseif now2 >= arg._hitboxWindowUntil then
 arg._hitboxWindowTarget = nil
@@ -62747,38 +62801,41 @@ if not arg._shootLock:ShouldFire(arg5, arg2 * ragebot.ShootFrames) then
 return fn36(), nil, nil
 end
 
--- A previous target's cooldown must not block the first backstab attempt
--- against a different target after the previous target is eliminated.
+-- The cooldown is per target. A failed local invocation must not lock the
+-- target out as though a backstab attempt had already been sent.
 if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
 return fn36(), nil, nil
 end
 
-if arg4.Name == "Knife" then
--- Prime the camera for one client update before the first heavy attack.
--- The existing FlushViewAngles call in Ragebot.Update then sends this angle
--- before the attack packet on the following tick. This removes the intermittent
--- "teleported behind target but camera was still on the old angle" failure.
+if isKnife then
 if arg._knifePrimeTarget ~= hitboxHead then
 arg._knifePrimeTarget = hitboxHead
-arg._knifePrimeUntil = now2 + 0.05
+arg._knifePrimePitch = v121
+arg._knifePrimeYaw = v122
+arg._knifePrimeUntil = now2 + primeDelay
 return n, fn37(v121, v122), nil
 end
 
-if now2 < arg._knifePrimeUntil then
-return n, fn37(v121, v122), nil
-end
-
-arg._knifePrimeTarget = nil
-arg._knifePrimeUntil = 0
-arg:_RecordBackstab(hitboxHead)
-
-return n, fn37(v121, v122), function()
+local attackPitch = arg._knifePrimePitch or v121
+local attackYaw = arg._knifePrimeYaw or v122
+return n, fn37(attackPitch, attackYaw), function()
+local okAttack = pcall(function()
 arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
+end)
+if okAttack then
+-- Start the repeat window/cooldown only after the attack method has actually
+-- been invoked; planning an attack is not proof that the invocation happened.
+arg:_RecordBackstab(hitboxHead)
+else
+arg:_AbortBackstabAttempt(hitboxHead)
+end
 end
 end
 
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
+arg._knifePrimePitch = nil
+arg._knifePrimeYaw = nil
 return n, nil, function()
 arg4:AttackEncoded(v126, v127, hitboxHead, tbl22)
 end
@@ -62792,12 +62849,33 @@ arg._attackCooldown = now2 + 1.25
 arg._attackCooldownTarget = targetHitbox
 end
 
+index2._AbortBackstabAttempt = function(arg, targetHitbox)
+if targetHitbox == nil or arg._hitboxWindowTarget == targetHitbox then
+arg._hitboxWindowUntil = -1
+arg._hitboxWindowTarget = nil
+end
+if targetHitbox == nil or arg._attackCooldownTarget == targetHitbox then
+arg._attackCooldown = -1
+arg._attackCooldownTarget = nil
+end
+if targetHitbox == nil or arg._knifePrimeTarget == targetHitbox then
+arg._knifePrimeTarget = nil
+arg._knifePrimeUntil = 0
+arg._knifePrimePitch = nil
+arg._knifePrimeYaw = nil
+end
+end
+
 index2.InvalidateKnifeState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
+arg._attackCooldown = -1
+arg._attackCooldownTarget = nil
 arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
+arg._knifePrimePitch = nil
+arg._knifePrimeYaw = nil
 end
 
 index2.ResetState = function(arg)
@@ -62808,6 +62886,8 @@ arg._attackCooldownTarget = nil
 arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
+arg._knifePrimePitch = nil
+arg._knifePrimeYaw = nil
 arg._shootLock:Reset()
 local gluedOurPart = arg._gluedOurPart
 
@@ -63972,7 +64052,8 @@ if arg2.IsAimPose or arg2.ShouldDefendInPlace then
 arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterState)
 end
 
-characterController:SendViewAngles(v86[9], arg2.ViewAngles or arg._lastDefensiveViewAngles)
+local viewAngleSlot = arg._knifeCameraLocked and 20 or v86[9]
+characterController:SendViewAngles(viewAngleSlot, arg2.ViewAngles or arg._lastDefensiveViewAngles)
 end
 
 index2.GetLastTargetWorld = function(arg)
