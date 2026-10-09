@@ -19870,7 +19870,7 @@ return bj.c
 end
 end
 do 
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,BackstabMode="Knife",GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=1000,GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -29811,90 +29811,175 @@ arg._innerContext = innerContext
 end))
 
 arg._trove:Connect(arg2.ContextRemoved, function()
+arg:_ClearAnglePayload(arg._lastCharacterController)
 arg._innerContext = nil
+arg._lastCharacterController = nil
+arg._lastBackstabMode = nil
 end)
+end
+
+index2._ClearAnglePayload = function(arg, characterController)
+characterController = characterController or arg._lastCharacterController
+if arg._anglePayloadApplied and characterController ~= nil then
+pcall(function()
+characterController:SendViewAngles(10, nil)
+characterController:FlushViewAngles()
+end)
+end
+arg._anglePayloadApplied = false
+arg._lastRiotTarget = nil
+end
+
+index2._FindClosestEnemy = function(arg, origin, maxDistance)
+if typeof(origin) ~= "Vector3" then
+return nil
+end
+local distanceLimit = tonumber(maxDistance) or 20
+if distanceLimit ~= distanceLimit or distanceLimit == math.huge or distanceLimit < 0 then
+return nil
+end
+distanceLimit = math.clamp(distanceLimit, 0, 1000000000)
+local fighters = arg._fighters
+local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
+if enemies == nil then
+return nil
+end
+local closestRoot = nil
+local closestDistance = math.huge
+
+for _, fighter in enemies, nil, nil do
+local character = fighter ~= nil and fighter.Character or nil
+local state = character ~= nil and character.State or nil
+if state ~= nil and state.Alive then
+local rootPart = state.RootPart
+if rootPart ~= nil and rootPart.Parent ~= nil then
+local distance = (rootPart.Position - origin).Magnitude
+if distance == distance and distance <= distanceLimit and distance < closestDistance then
+closestDistance = distance
+closestRoot = rootPart
+end
+end
+end
+end
+return closestRoot
+end
+
+index2._UpdateRiot = function(arg, innerContext, triggerDistance)
+local characterController = innerContext ~= nil and innerContext.CharacterController or nil
+local fighterState = innerContext ~= nil and innerContext.FighterState or nil
+local character = fighterState ~= nil and fighterState.Character or nil
+local state = character ~= nil and character.State or nil
+local localRoot = state ~= nil and state.RootPart or nil
+
+if localRoot == nil or localRoot.Parent == nil then
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+local localCharacter = localPlayer ~= nil and localPlayer.Character or nil
+localRoot = localCharacter ~= nil and localCharacter:FindFirstChild("HumanoidRootPart") or nil
+end
+
+if characterController == nil or localRoot == nil or localRoot.Parent == nil then
+arg:_ClearAnglePayload(characterController)
+return
+end
+
+local distanceLimit = tonumber(triggerDistance) or 1000
+if distanceLimit ~= distanceLimit or distanceLimit == math.huge or distanceLimit == -math.huge then
+ distanceLimit = 1000
+end
+distanceLimit = math.floor(math.clamp(distanceLimit, 1000, 1000000000) + 0.5)
+
+-- EnemyByPlayer is the game's authoritative enemy roster. This deliberately
+-- avoids treating a missing TeamID as permission to target every player.
+local targetRoot = arg:_FindClosestEnemy(localRoot.Position, distanceLimit)
+if targetRoot == nil then
+arg:_ClearAnglePayload(characterController)
+return
+end
+
+local targetModel = targetRoot.Parent
+local targetPart = targetModel ~= nil and targetModel:FindFirstChild("Head") or nil
+targetPart = targetPart or targetRoot
+local pitch, yaw = targetPart.CFrame:ToOrientation()
+if pitch ~= pitch or yaw ~= yaw then
+arg:_ClearAnglePayload(characterController)
+return
+end
+
+characterController:SendViewAngles(10, {
+Kind = "Normalized",
+Pitch = math.deg(pitch),
+Yaw = math.deg(yaw),
+})
+characterController:FlushViewAngles()
+arg._anglePayloadApplied = true
+arg._lastRiotTarget = targetRoot
 end
 
 index2.Update = function(arg)
 local innerContext = arg._innerContext
+local characterController = innerContext ~= nil and innerContext.CharacterController or nil
+if characterController ~= nil then
+arg._lastCharacterController = characterController
+end
+
 if innerContext == nil then
+arg:_ClearAnglePayload(arg._lastCharacterController)
 return
 end
 
-local characterController = innerContext.CharacterController
+local itemModifiers = v115.Data ~= nil and v115.Data.ItemModifiers or nil
+if type(itemModifiers) ~= "table" or itemModifiers.AlwaysBackstab ~= true then
+arg:_ClearAnglePayload(characterController)
+return
+end
+
+local mode = itemModifiers.AlwaysBackstabMode
+if mode ~= "Riot" then
+mode = "Knife"
+end
+if arg._lastBackstabMode ~= nil and arg._lastBackstabMode ~= mode then
+arg:_ClearAnglePayload(characterController)
+end
+arg._lastBackstabMode = mode
+
+-- Riot mode is always active while the feature toggle is on; it does not
+-- depend on the equipped item or Knife being present in inventory.
+if mode == "Riot" then
+arg:_UpdateRiot(innerContext, itemModifiers.AlwaysBackstabTriggerDist)
+return
+end
+
+-- Preserve the original Knife mode's inventory gate and 20-stud target range.
 local itemBehaviors = innerContext.ItemBehaviors
-if characterController == nil or itemBehaviors == nil then
-return
-end
-local itemModifiers = v115.Data and v115.Data.ItemModifiers
-local alwaysBackstab = itemModifiers ~= nil and itemModifiers.AlwaysBackstab == true
-if not alwaysBackstab then
-characterController:SendViewAngles(10, nil)
-characterController:FlushViewAngles()
+if itemBehaviors == nil or itemBehaviors:FindMeleeByName("Knife") == nil then
+arg:_ClearAnglePayload(characterController)
 return
 end
 
-local backstabMode = itemModifiers.BackstabMode
-if backstabMode ~= "Riot" then
-backstabMode = "Knife"
-end
-
--- Knife mode intentionally checks inventory, not only the currently equipped melee.
--- Riot mode does not require a Knife in inventory.
-if backstabMode == "Knife" and itemBehaviors:FindMeleeByName("Knife") == nil then
-characterController:SendViewAngles(10, nil)
-characterController:FlushViewAngles()
-return
-end
-
-local serverHeadOrigin = characterController:GetServerHeadOrigin()
+local serverHeadOrigin = characterController ~= nil and characterController:GetServerHeadOrigin() or nil
 if serverHeadOrigin == nil then
-characterController:SendViewAngles(10, nil)
-characterController:FlushViewAngles()
+arg:_ClearAnglePayload(characterController)
+return
+end
+local targetRoot = arg:_FindClosestEnemy(serverHeadOrigin.Position, 20)
+if targetRoot == nil then
+arg:_ClearAnglePayload(characterController)
 return
 end
 
-local triggerDistance = backstabMode == "Riot" and 10000000 or 20
-local v117 = arg:_FindClosestEnemy(serverHeadOrigin.Position, triggerDistance)
-if v117 == nil then
-characterController:SendViewAngles(v86[133], nil)
-characterController:FlushViewAngles()
-return
-end
-
-local v118, v119 = v117.CFrame:ToOrientation()
+local pitch, yaw = targetRoot.CFrame:ToOrientation()
 characterController:SendViewAngles(10, {
 Kind = "Normalized",
-Pitch = math.deg(v118),
-Yaw = math.deg(v119),
+Pitch = math.deg(pitch),
+Yaw = math.deg(yaw),
 })
 characterController:FlushViewAngles()
-end
-
-index2._FindClosestEnemy = function(arg, arg2)
-local huge = math.huge
-local v117 = nil
-
-for _, v118 in arg._fighters.EnemyByPlayer, nil, nil do
-local state = v118.Character.State
-
-if state ~= nil and state.Alive then
-local rootPart = state.RootPart
-if rootPart ~= nil and rootPart.Parent ~= nil then
-local magnitude = (rootPart.Position - arg2).Magnitude
-
-if magnitude < 20 and magnitude < huge then
-huge = magnitude
-v117 = rootPart
-end
-end
-end
-end
-
-return v117
+arg._anglePayloadApplied = true
 end
 
 index2.Destroy = function(arg)
+arg:_ClearAnglePayload(arg._lastCharacterController)
 arg._trove:Destroy()
 end
 
@@ -54361,6 +54446,7 @@ _includedHitboxes = v119.DefaultProfile.HitboxSet,
 _targetHitboxes = {},
 _active = false,
 _reactionElapsed = nil,
+_reactionTarget = nil,
 _releaseRemaining = 0,
 }, index2)
 
@@ -54439,6 +54525,7 @@ end
 
 index2.ResetFiringState = function(arg)
 arg._reactionElapsed = nil
+arg._reactionTarget = nil
 arg._releaseRemaining = 0
 end
 
@@ -54524,7 +54611,7 @@ end
 if shielded then
 return false
 end
-return true
+return true, v126
 end
 
 index2.Update = function(arg, arg2)
@@ -54559,26 +54646,32 @@ if equipped == nil or equipped.__type ~= "Gun" or v120(equipped, triggerbot.Acti
 arg:ResetFiringState()
 return
 end
-local v124 = arg:_CheckCrosshair(equipped, triggerbot)
+local hasTarget, targetKey = arg:_CheckCrosshair(equipped, triggerbot)
 
-if v124 then
-if arg._reactionElapsed == nil then
+if hasTarget then
+if arg._reactionTarget ~= targetKey then
+arg._reactionTarget = targetKey
 arg._reactionElapsed = 0
+arg._releaseRemaining = 0
 else
-arg._reactionElapsed = arg._reactionElapsed + dt
+arg._reactionElapsed = (arg._reactionElapsed or 0) + dt
 end
 else
 arg._reactionElapsed = nil
+arg._reactionTarget = nil
 end
 
-if v124 and arg._reactionElapsed ~= nil and arg._reactionElapsed >= reactionTime then
+if hasTarget and arg._reactionElapsed ~= nil and arg._reactionElapsed >= reactionTime then
 arg._releaseRemaining = releaseTime
 local input = inner.FighterState.Input
 if type(input) ~= "function" then
 arg:ResetFiringState()
 return
 end
-input(inner.FighterState, "StartShooting")
+local okInput = pcall(input, inner.FighterState, "StartShooting")
+if not okInput then
+arg:ResetFiringState()
+end
 return
 end
 
@@ -54587,7 +54680,10 @@ arg._releaseRemaining = math.max(0, arg._releaseRemaining - dt)
 if arg._releaseRemaining > v86[186] then
 local input = inner.FighterState.Input
 if type(input) == "function" then
-input(inner.FighterState, "StartShooting")
+local okInput = pcall(input, inner.FighterState, "StartShooting")
+if not okInput then
+arg._releaseRemaining = 0
+end
 else
 arg._releaseRemaining = 0
 end
@@ -59066,7 +59162,7 @@ return ic.c
 end
 end
 do 
-local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Mode",Options={"Knife","Riot"},Config={"ItemModifiers","BackstabMode"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
+local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});local backstabMode=P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Always Backstab Mode",Options={"Knife","Riot"},Config={"ItemModifiers","AlwaysBackstabMode"}});P:AddGroup({Source=backstabMode,Option="Riot"}):AddSlider({Label="Trigger Distance",Min=1000,Max=1000000000,Step=1,Config={"ItemModifiers","AlwaysBackstabTriggerDist"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
 
 tbl17.id = function()
 local id = tbl17.cache.id
@@ -62586,6 +62682,8 @@ _shootLock = v116.new(),
 _hitboxWindowUntil = -1,
 _hitboxWindowTarget = nil,
 _attackCooldown = -1,
+_attackCooldownTarget = nil,
+_lastKnifeTarget = nil,
 _knifePrimeTarget = nil,
 _knifePrimeUntil = 0,
 }, index2)
@@ -62614,6 +62712,23 @@ local v125 = (flag19 and { tbl19 } or { tbl21 })[1]
 local v126 = fn38(v124, n33, v122, v123)
 local v127 = fn38(v125, n33, v122, v123)
 local now2 = os.clock()
+
+-- Knife timing belongs to a target, not to the entire weapon session.
+-- When the target changes (commonly immediately after a kill), discard the
+-- previous target's active hitbox window and prime timer so the new target
+-- can receive a fresh camera-prime cycle without inheriting stale state.
+if arg4.Name == "Knife" then
+if arg._lastKnifeTarget ~= hitboxHead then
+arg._hitboxWindowUntil = -1
+arg._hitboxWindowTarget = nil
+arg._knifePrimeTarget = nil
+arg._knifePrimeUntil = 0
+arg._lastKnifeTarget = hitboxHead
+end
+else
+arg._lastKnifeTarget = nil
+end
+
 -- Leaving Knife invalidates its temporary prime and multi-frame hitbox window.
 if arg4.Name ~= "Knife" then
 arg:InvalidateKnifeState()
@@ -62632,7 +62747,9 @@ if not arg._shootLock:ShouldFire(arg5, arg2 * ragebot.ShootFrames) then
 return fn36(), nil, nil
 end
 
-if now2 < arg._attackCooldown then
+-- A previous target's cooldown must not block the first backstab attempt
+-- against a different target after the previous target is eliminated.
+if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
 return fn36(), nil, nil
 end
 
@@ -62672,11 +62789,13 @@ local now2 = os.clock()
 arg._hitboxWindowUntil = now2 + 0.625
 arg._hitboxWindowTarget = targetHitbox
 arg._attackCooldown = now2 + 1.25
+arg._attackCooldownTarget = targetHitbox
 end
 
 index2.InvalidateKnifeState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
+arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 end
@@ -62685,6 +62804,8 @@ index2.ResetState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
 arg._attackCooldown = -1
+arg._attackCooldownTarget = nil
+arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 arg._shootLock:Reset()
@@ -63460,6 +63581,7 @@ local function fn35()
 tbl17.cJ()
 local v115 = tbl17.bG()
 local v116 = tbl17.jz()
+local cameraArbiter = tbl17.co()
 tbl17.cF()
 local v117 = tbl17.jD()
 tbl17.cU()
@@ -63497,6 +63619,8 @@ _trove = ragebot,
 _enabled = false,
 _lastTargetWorld = nil,
 _lastDefensiveViewAngles = nil,
+_cameraArbiter = cameraArbiter,
+_knifeCameraLocked = false,
 _playerContext = arg3,
 _targetSelection = v124.new(arg, arg2),
 _spatialLimitGate = v130,
@@ -63533,6 +63657,21 @@ arg._trove:Add(v118:ObserveEnabledKeybind({ "Ragebot" }, function(arg2)
 arg:SetEnabled(arg2)
 arg:_Reset()
 end))
+end
+
+index2._SetKnifeCameraLock = function(arg, locked)
+locked = locked == true
+if arg._knifeCameraLocked == locked then
+return
+end
+arg._knifeCameraLocked = locked
+if locked then
+-- Higher priority than movement replay: recorded Look actions must
+-- not rotate the camera away from the Knife target mid-prime/attack.
+arg._cameraArbiter.claim("Ragebot.Knife", math.huge)
+else
+arg._cameraArbiter.release("Ragebot.Knife")
+end
 end
 
 index2.SetEnabled = function(arg, enabled)
@@ -63652,6 +63791,14 @@ end
 end
 
 index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
+local actionItem = arg3 ~= nil and arg3.Item or nil
+local shouldLockKnifeCamera = arg._enabled
+and arg3 ~= nil
+and arg3.Type == "Melee"
+and actionItem ~= nil
+and actionItem.Name == "Knife"
+arg:_SetKnifeCameraLock(shouldLockKnifeCamera)
+
 local flag19 = arg4 ~= nil and not arg._spatialLimitGate:Tick(arg4)
 local v130 = arg:_PlanReloadTransport(arg3)
 if v130 ~= nil then
@@ -63841,6 +63988,7 @@ end
 end
 
 index2._Reset = function(arg)
+arg:_SetKnifeCameraLock(false)
 arg:_ClearReloadTransport()
 arg._lastTargetWorld = nil
 arg._lastDefensiveViewAngles = nil
@@ -64983,7 +65131,7 @@ index2._StepAlign = function(arg, arg2, arg3)
 local startLookRotation = arg._startLookRotation
 local flag19 = true
 
-if startLookRotation ~= nil then
+if startLookRotation ~= nil and not v115.isBlockedFor("MovementRecorder.Replay", 0) then
 local v120 = v116.get()
 if v120 == nil or typeof(v120) ~= "Vector2" then
 -- Keep position alignment progressing while camera state is unavailable;
@@ -65163,7 +65311,13 @@ if arg._lookRotation ~= nil then
 local lookRotation = arg._lookRotation
 local currentRotation = v116.get()
 if currentRotation ~= nil then
+if v115.isBlockedFor("MovementRecorder.Replay", 0) then
+-- Yield to Ragebot/Aimbot camera ownership. Rebase the replay
+-- rotation on the live camera so resuming will not snap to stale data.
+arg._lookRotation = currentRotation
+else
 v116.set(fn37(currentRotation, lookRotation, fn40(dt)))
+end
 end
 end
 
@@ -66102,6 +66256,7 @@ end
 
 local function fn38()
 if not v115.Data.Movement.MovementRecorder.Enabled then
+arg:_Reset()
 fn37()
 return
 end
@@ -66225,6 +66380,22 @@ index2._StartReplaying = function(arg, arg2)
 local v123 = arg:_ResolveStartContext()
 if v123 == nil then
 return false
+end
+if type(arg2) ~= "table" or typeof(arg2.StartCFrame) ~= "CFrame" or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or type(arg2.Positions) ~= "table" then
+fn36("Recording data is invalid")
+return false
+end
+for _, keypoint in ipairs(arg2.Keypoints) do
+if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
+fn36("Recording data is invalid")
+return false
+end
+end
+for _, sample in ipairs(arg2.Positions) do
+if type(sample) ~= "table" or type(sample.Offset) ~= "number" or typeof(sample.Position) ~= "Vector3" then
+fn36("Recording data is invalid")
+return false
+end
 end
 local kind = arg._state.Kind
 
