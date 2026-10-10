@@ -29796,6 +29796,270 @@ tbl17.cF()
 tbl17.cX()
 local v116 = tbl17.k()
 local cameraArbiter = tbl17.co()
+local riotStateKey = "__SilentCamTargetRotationExactReplication_v1"
+local riotGlobalEnv = (type(getgenv) == "function" and getgenv()) or _G
+local riotPreviousState = riotGlobalEnv[riotStateKey]
+if type(riotPreviousState) == "table" and type(riotPreviousState.stop) == "function" then
+pcall(riotPreviousState.stop)
+end
+local riotState = { enabled = false, active = false, initializing = false, generation = 0, triggerDistance = 25 }
+riotGlobalEnv[riotStateKey] = riotState
+local riotTwoPi = 2 * math.pi
+local riotMaxCopyPitch = math.rad(89.9)
+local riotMaxSafePitch = math.rad(360 * 63 / 256)
+local function riotFinite(n)
+return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+end
+local function riotEncodeByte(n)
+if not riotFinite(n) then return string.char(0) end
+local value = math.floor((n % riotTwoPi) / riotTwoPi * 256 + 0.5) % 256
+return string.char(value)
+end
+local function riotEncodeRotation(pitch, yaw)
+return riotEncodeByte(pitch) .. riotEncodeByte(yaw)
+end
+local function riotNormalizeAngle(angle)
+if not riotFinite(angle) then return nil end
+return (angle + math.pi) % riotTwoPi - math.pi
+end
+local function riotGetRuntime()
+if type(getgc) ~= "function" or type(debug) ~= "table" or type(debug.getupvalues) ~= "function" then
+return nil, nil, nil, "Executor does not expose getgc/debug.getupvalues"
+end
+local okGc, gc = pcall(getgc, true)
+if not okGc or type(gc) ~= "table" then return nil, nil, nil, "Could not enumerate runtime tables" end
+local fighterClasses, seenClasses = {}, {}
+for _, object in pairs(gc) do
+if type(object) == "table" then
+local idx = rawget(object, "__index")
+if type(idx) == "table" and type(rawget(idx, "_CameraReplicationLoop")) == "function" and type(rawget(idx, "GetFighter")) == "function" and type(rawget(idx, "GetFighterFromNetworkID")) == "function" and not seenClasses[idx] then
+seenClasses[idx] = true
+fighterClasses[#fighterClasses + 1] = idx
+end
+end
+end
+if #fighterClasses == 0 then return nil, nil, nil, "FighterController class not found" end
+local lastError = "No matching controller/encoder pair found"
+for _, fighterClass in ipairs(fighterClasses) do
+local controller
+for _, object in pairs(gc) do
+if type(object) == "table" and getmetatable(object) == fighterClass and type(rawget(object, "_player_to_fighter")) == "table" and type(rawget(object, "_network_id_map")) == "table" then
+controller = object
+break
+end
+end
+if controller then
+local loop = rawget(fighterClass, "_CameraReplicationLoop")
+local okUps, upvalues = pcall(debug.getupvalues, loop)
+if okUps and type(upvalues) == "table" then
+for _, value in pairs(upvalues) do
+if type(value) == "table" then
+local mt = getmetatable(value)
+local idx = type(mt) == "table" and rawget(mt, "__index") or nil
+if type(idx) == "table" and type(rawget(idx, "EncodeCameraRotation")) == "function" then
+return controller, value, idx
+end
+end
+end
+else
+lastError = "Could not inspect camera replication loop"
+end
+end
+end
+return nil, nil, nil, lastError
+end
+local function riotInstallHook(controller, utilityObject, utilityIndex)
+if riotState.hooked and type(riotState.wrapper) == "function" and riotState.utilityObject == utilityObject and rawget(utilityIndex, "EncodeCameraRotation") == riotState.wrapper then
+riotState.utilityIndex = utilityIndex
+riotState.controller = controller
+return true
+end
+local current = rawget(utilityIndex, "EncodeCameraRotation")
+if type(current) ~= "function" then return false, "EncodeCameraRotation is not a function" end
+local previousEncoder = current
+local wrapper = function(self, rotation)
+local encoded = riotState.lastEncoded
+if self == utilityObject and riotState.active and type(encoded) == "string" and #encoded == 2 then
+return encoded
+end
+return previousEncoder(self, rotation)
+end
+local okSet = pcall(rawset, utilityIndex, "EncodeCameraRotation", wrapper)
+if not okSet or rawget(utilityIndex, "EncodeCameraRotation") ~= wrapper then
+return false, "Could not replace EncodeCameraRotation"
+end
+riotState.originalEncoder = previousEncoder
+riotState.utilityObject = utilityObject
+riotState.utilityIndex = utilityIndex
+riotState.controller = controller
+riotState.wrapper = wrapper
+riotState.hooked = true
+return true
+end
+local function riotGetFighter(player)
+local ok, fighter = pcall(function() return riotState.controller:GetFighter(player) end)
+return ok and fighter or nil
+end
+local function riotGetValue(fighter, player, key)
+if fighter then
+local ok, value = pcall(function() return fighter:Get(key) end)
+if ok and value ~= nil then return value end
+end
+if player then
+local ok, value = pcall(function() return player:GetAttribute(key) end)
+if ok then return value end
+end
+return nil
+end
+local function riotFindNearestEnemy()
+local localPlayer = Players.LocalPlayer
+local localCharacter = localPlayer and localPlayer.Character
+local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+local localHumanoid = localCharacter and localCharacter:FindFirstChildOfClass("Humanoid")
+if not localPlayer or not localRoot or not localHumanoid or localHumanoid.Health <= 0 then return nil, nil, nil end
+local localFighter = riotGetFighter(localPlayer)
+local localTeam = riotGetValue(localFighter, localPlayer, "TeamID")
+if localTeam == nil then return nil, nil, nil end
+local bestPlayer, bestFighter, bestRotation
+local bestDistance = riotState.triggerDistance
+for _, player in ipairs(Players:GetPlayers()) do
+if player ~= localPlayer then
+local fighter = riotGetFighter(player)
+local team = riotGetValue(fighter, player, "TeamID")
+if fighter and team ~= nil and team ~= localTeam then
+local character = player.Character
+local root = character and character:FindFirstChild("HumanoidRootPart")
+local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+if root and humanoid and humanoid.Health > 0 then
+local distance = (root.Position - localRoot.Position).Magnitude
+if riotFinite(distance) and distance <= bestDistance then
+local okRotation, rotation = pcall(function() return fighter:Get("CameraRotation") end)
+if okRotation and typeof(rotation) == "Vector2" and riotFinite(rotation.X) and riotFinite(rotation.Y) then
+bestDistance = distance
+bestPlayer = player
+bestFighter = fighter
+bestRotation = rotation
+end
+end
+end
+end
+end
+end
+return bestPlayer, bestFighter, bestRotation
+end
+local function riotStop()
+if not riotState.enabled and not riotState.active and not riotState.initializing and not riotState.heartbeat and not riotState.hooked then return end
+riotState.enabled = false
+riotState.active = false
+riotState.targetPlayer = nil
+riotState.generation = riotState.generation + 1
+if riotState.heartbeat then
+pcall(function() riotState.heartbeat:Disconnect() end)
+riotState.heartbeat = nil
+end
+local idx, wrapper, previous = riotState.utilityIndex, riotState.wrapper, riotState.originalEncoder
+if type(idx) == "table" and type(wrapper) == "function" and type(previous) == "function" and rawget(idx, "EncodeCameraRotation") == wrapper then
+pcall(rawset, idx, "EncodeCameraRotation", previous)
+end
+riotState.hooked = false
+riotState.wrapper = nil
+riotState.originalEncoder = nil
+riotState.utilityIndex = nil
+riotState.utilityObject = nil
+riotState.controller = nil
+riotState.lastEncoded = nil
+riotState.lastScanError = nil
+riotState.initializing = false
+end
+riotState.stop = riotStop
+local function riotStart(distance)
+local wanted = tonumber(distance)
+if not riotFinite(wanted) then wanted = 25 end
+riotState.triggerDistance = math.floor(math.clamp(wanted, 25, 100000000000) + 0.5)
+riotState.enabled = true
+if riotState.hooked and riotState.heartbeat then return end
+if riotState.initializing then return end
+if os.clock() < (riotState.retryAfter or 0) then return end
+riotState.initializing = true
+local generation = riotState.generation
+task.spawn(function()
+local controller, utilityObject, utilityIndex, runtimeError
+for _ = 1, 40 do
+if not riotState.enabled or riotState.generation ~= generation then
+if riotState.generation == generation then riotState.initializing = false end
+return
+end
+controller, utilityObject, utilityIndex, runtimeError = riotGetRuntime()
+if controller and utilityObject and utilityIndex then break end
+task.wait(0.25)
+end
+if not riotState.enabled or riotState.generation ~= generation then
+if riotState.generation == generation then riotState.initializing = false end
+return
+end
+if not controller or not utilityObject or not utilityIndex then
+riotState.initializing = false
+riotState.retryAfter = os.clock() + 5
+warn("[SilentCam] Setup failed: " .. tostring(runtimeError))
+return
+end
+local hookOk, hookError = riotInstallHook(controller, utilityObject, utilityIndex)
+if not hookOk then
+riotState.initializing = false
+riotState.retryAfter = os.clock() + 5
+warn("[SilentCam] Hook failed: " .. tostring(hookError))
+return
+end
+riotState.lastEncoded = string.char(0) .. string.char(0)
+riotState.retryAfter = 0
+local connectOk, connection = pcall(function()
+return _RunService.Heartbeat:Connect(function()
+if not riotState.enabled then
+riotState.active = false
+riotState.targetPlayer = nil
+return
+end
+local scanOk, targetPlayer, _, rotation = pcall(riotFindNearestEnemy)
+if not scanOk then
+local err = tostring(targetPlayer)
+if riotState.lastScanError ~= err then
+warn("[SilentCam] Target scan failed: " .. err)
+riotState.lastScanError = err
+end
+riotState.active = false
+riotState.targetPlayer = nil
+return
+end
+riotState.lastScanError = nil
+if not targetPlayer or typeof(rotation) ~= "Vector2" or not riotFinite(rotation.X) or not riotFinite(rotation.Y) then
+riotState.active = false
+riotState.targetPlayer = nil
+return
+end
+local pitch = riotNormalizeAngle(rotation.X)
+if not riotFinite(pitch) then
+riotState.active = false
+riotState.targetPlayer = nil
+return
+end
+pitch = math.clamp(pitch, -math.min(riotMaxCopyPitch, riotMaxSafePitch), math.min(riotMaxCopyPitch, riotMaxSafePitch))
+local yaw = rotation.Y % riotTwoPi
+riotState.lastEncoded = riotEncodeRotation(pitch, yaw)
+riotState.targetPlayer = targetPlayer
+riotState.active = true
+end)
+end)
+if not connectOk or not connection then
+riotStop()
+riotState.retryAfter = os.clock() + 5
+warn("[SilentCam] Heartbeat setup failed")
+return
+end
+riotState.heartbeat = connection
+riotState.initializing = false
+end)
+end
+
 local index2 = {}
 index2.__index = index2
 
@@ -29812,6 +30076,7 @@ arg._innerContext = innerContext
 end))
 
 arg._trove:Connect(arg2.ContextRemoved, function()
+riotStop()
 arg:_ClearAnglePayload(arg._lastCharacterController)
 arg._innerContext = nil
 arg._lastCharacterController = nil
@@ -29866,55 +30131,14 @@ return closestRoot
 end
 
 index2._UpdateRiot = function(arg, innerContext, triggerDistance)
-local characterController = innerContext ~= nil and innerContext.CharacterController or nil
-local fighterState = innerContext ~= nil and innerContext.FighterState or nil
-local character = fighterState ~= nil and fighterState.Character or nil
-local state = character ~= nil and character.State or nil
-local localRoot = state ~= nil and state.RootPart or nil
-
-if localRoot == nil or localRoot.Parent == nil then
-local players = game:GetService("Players")
-local localPlayer = players.LocalPlayer
-local localCharacter = localPlayer ~= nil and localPlayer.Character or nil
-localRoot = localCharacter ~= nil and localCharacter:FindFirstChild("HumanoidRootPart") or nil
-end
-
-if characterController == nil or localRoot == nil or localRoot.Parent == nil then
-arg:_ClearAnglePayload(characterController)
+if innerContext == nil then
+riotStop()
 return
 end
-
-local distanceLimit = tonumber(triggerDistance) or 1000
-if distanceLimit ~= distanceLimit or distanceLimit == math.huge or distanceLimit == -math.huge then
- distanceLimit = 1000
+if arg._anglePayloadApplied then
+arg:_ClearAnglePayload(innerContext.CharacterController)
 end
-distanceLimit = math.floor(math.clamp(distanceLimit, 1000, 1000000000) + 0.5)
-
--- EnemyByPlayer is the game's authoritative enemy roster. This deliberately
--- avoids treating a missing TeamID as permission to target every player.
-local targetRoot = arg:_FindClosestEnemy(localRoot.Position, distanceLimit)
-if targetRoot == nil then
-arg:_ClearAnglePayload(characterController)
-return
-end
-
-local targetModel = targetRoot.Parent
-local targetPart = targetModel ~= nil and targetModel:FindFirstChild("Head") or nil
-targetPart = targetPart or targetRoot
-local pitch, yaw = targetPart.CFrame:ToOrientation()
-if pitch ~= pitch or yaw ~= yaw then
-arg:_ClearAnglePayload(characterController)
-return
-end
-
-characterController:SendViewAngles(10, {
-Kind = "Normalized",
-Pitch = math.deg(pitch),
-Yaw = math.deg(yaw),
-})
-characterController:FlushViewAngles()
-arg._anglePayloadApplied = true
-arg._lastRiotTarget = targetRoot
+riotStart(triggerDistance)
 end
 
 index2.Update = function(arg)
@@ -29925,12 +30149,14 @@ arg._lastCharacterController = characterController
 end
 
 if innerContext == nil then
+riotStop()
 arg:_ClearAnglePayload(arg._lastCharacterController)
 return
 end
 
 local itemModifiers = v115.Data ~= nil and v115.Data.ItemModifiers or nil
 if type(itemModifiers) ~= "table" or itemModifiers.AlwaysBackstab ~= true then
+riotStop()
 arg:_ClearAnglePayload(characterController)
 return
 end
@@ -29940,21 +30166,19 @@ if mode ~= "Riot" then
 mode = "Knife"
 end
 if arg._lastBackstabMode ~= nil and arg._lastBackstabMode ~= mode then
+riotStop()
 arg:_ClearAnglePayload(characterController)
 end
 arg._lastBackstabMode = mode
 
--- Riot mode is always active while the feature toggle is on; it does not
--- depend on the equipped item or Knife being present in inventory.
+                                                                         
+                                                                   
 if mode == "Riot" then
 arg:_UpdateRiot(innerContext, itemModifiers.AlwaysBackstabTriggerDist)
 return
 end
 
--- When Ragebot owns the Knife camera, do not let the independent Always
--- Backstab tracker replace its selected target's angle with the nearest target.
--- Drop only this module's priority-10 slot without flushing; Ragebot commits its
--- own priority-20 angle immediately before the HeavyAttack request.
+riotStop()
 if arg._cameraArbiter ~= nil and arg._cameraArbiter.isBlockedFor("AlwaysBackstab.Knife", 0) then
 if arg._anglePayloadApplied and characterController ~= nil then
 pcall(function() characterController:SendViewAngles(10, nil) end)
@@ -29963,7 +30187,7 @@ arg._anglePayloadApplied = false
 return
 end
 
--- Preserve the original Knife mode's inventory gate and 20-stud target range.
+                                                                              
 local itemBehaviors = innerContext.ItemBehaviors
 if itemBehaviors == nil or itemBehaviors:FindMeleeByName("Knife") == nil then
 arg:_ClearAnglePayload(characterController)
@@ -29992,6 +30216,7 @@ arg._anglePayloadApplied = true
 end
 
 index2.Destroy = function(arg)
+riotStop()
 arg:_ClearAnglePayload(arg._lastCharacterController)
 arg._trove:Destroy()
 end
@@ -59175,7 +59400,7 @@ return ic.c
 end
 end
 do 
-local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});local backstabMode=P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Always Backstab Mode",Options={"Knife","Riot"},Config={"ItemModifiers","AlwaysBackstabMode"}});P:AddGroup({Source=backstabMode,Option="Riot"}):AddSlider({Label="Trigger Distance",Min=1000,Max=1000000000,Step=1,Config={"ItemModifiers","AlwaysBackstabTriggerDist"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
+local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});local backstabMode=P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Always Backstab Mode",Options={"Knife","Riot"},Config={"ItemModifiers","AlwaysBackstabMode"}});P:AddGroup({Source=backstabMode,Option="Riot"}):AddSlider({Label="Trigger Distance",Min=25,Max=100000000000,Step=1,Config={"ItemModifiers","AlwaysBackstabTriggerDist"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
 
 tbl17.id = function()
 local id = tbl17.cache.id
@@ -62753,7 +62978,7 @@ else
 arg._lastKnifeTarget = nil
 end
 
--- A non-Knife melee action must discard all Knife-specific timing state.
+                                                                         
 if not isKnife then
 arg:InvalidateKnifeState()
 end
@@ -62762,9 +62987,9 @@ local hasHitboxWindow = isKnife
 and now2 < arg._hitboxWindowUntil
 and arg._hitboxWindowTarget == hitboxHead
 
--- Keep the camera angle used to prime the attack stable. If the target turns
--- meaningfully during priming or the multi-frame attack window, prime again
--- instead of firing with a stale heading.
+                                                                             
+                                                                            
+                                          
 if isKnife and arg._knifePrimeTarget == hitboxHead
 and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil
 and (now2 < arg._knifePrimeUntil or hasHitboxWindow
@@ -62801,8 +63026,8 @@ if not arg._shootLock:ShouldFire(arg5, arg2 * ragebot.ShootFrames) then
 return fn36(), nil, nil
 end
 
--- The cooldown is per target. A failed local invocation must not lock the
--- target out as though a backstab attempt had already been sent.
+                                                                          
+                                                                 
 if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
 return fn36(), nil, nil
 end
@@ -62823,8 +63048,8 @@ local okAttack = pcall(function()
 arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
 end)
 if okAttack then
--- Start the repeat window/cooldown only after the attack method has actually
--- been invoked; planning an attack is not proof that the invocation happened.
+                                                                             
+                                                                              
 arg:_RecordBackstab(hitboxHead)
 else
 arg:_AbortBackstabAttempt(hitboxHead)
@@ -63746,8 +63971,8 @@ return
 end
 arg._knifeCameraLocked = locked
 if locked then
--- Higher priority than movement replay: recorded Look actions must
--- not rotate the camera away from the Knife target mid-prime/attack.
+                                                                   
+                                                                     
 arg._cameraArbiter.claim("Ragebot.Knife", math.huge)
 else
 arg._cameraArbiter.release("Ragebot.Knife")
@@ -63851,9 +64076,9 @@ local shotRequestCount = v132 ~= nil and v132.ShotRequestCount or 0
 local weaponAction = v131.WeaponAction
 
 if type(weaponAction) == "function" then
--- Final camera commit immediately before the weapon packet.
--- Keep the earlier flush as well so Knife gets both a priming update and
--- a last-moment camera replication immediately before HeavyAttackEncoded.
+                                                            
+                                                                         
+                                                                          
 if v131.ViewAngles ~= nil then
 innerContext.CharacterController:FlushViewAngles()
 end
@@ -64089,8 +64314,8 @@ pcall(function() characterController:SendViewAngles(20, nil) end)
 end
 
 index2.Destroy = function(arg)
--- Restore executor/game globals and release temporary movement/camera state
--- before destroying the Trove, including unload while Ragebot is enabled.
+                                                                            
+                                                                          
 if arg._enabled then
 pcall(function() arg:SetEnabled(false) end)
 end
@@ -65215,8 +65440,8 @@ local flag19 = true
 if startLookRotation ~= nil and not v115.isBlockedFor("MovementRecorder.Replay", 0) then
 local v120 = v116.get()
 if v120 == nil or typeof(v120) ~= "Vector2" then
--- Keep position alignment progressing while camera state is unavailable;
--- otherwise the replay can remain in Aligning forever.
+                                                                         
+                                                       
 flag19 = false
 else
 local alignSpeed = tonumber(v117.Data.Movement.MovementRecorder.LookAlignSpeed) or 180
@@ -65270,8 +65495,8 @@ local moveVector = fn36(vector.Unit)
 if typeof(moveVector) == "Vector3" then
 arg._moveHook:SetMoveVector(moveVector)
 else
--- No active camera means camera-relative movement cannot be computed this frame.
--- Use neutral input rather than passing nil into the movement hook.
+                                                                                 
+                                                                    
 arg._moveHook:SetMoveVector(Vector3.zero)
 end
 end
@@ -65393,8 +65618,8 @@ local lookRotation = arg._lookRotation
 local currentRotation = v116.get()
 if currentRotation ~= nil then
 if v115.isBlockedFor("MovementRecorder.Replay", 0) then
--- Yield to Ragebot/Aimbot camera ownership. Rebase the replay
--- rotation on the live camera so resuming will not snap to stale data.
+                                                              
+                                                                       
 arg._lookRotation = currentRotation
 else
 v116.set(fn37(currentRotation, lookRotation, fn40(dt)))
@@ -65865,7 +66090,7 @@ end
 end
 
 index2._Clear = function(arg)
--- Route objects are destroyed below; never leave active/selected references pointing at them.
+                                                                                              
 arg._selectedRoute = nil
 arg._activatedRoute = nil
 for _, v119 in arg._markers, nil, nil do
