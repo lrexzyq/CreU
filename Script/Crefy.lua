@@ -63821,7 +63821,19 @@ local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
 local RAGE_MIN_FIRE_INTERVAL = 0.03
-local ragebotGlobalEnv = (type(getgenv) == "function" and getgenv()) or _G
+local ragebotGlobalEnv
+if type(getgenv) == "function" then
+local envOk, envValue = pcall(getgenv)
+if envOk and type(envValue) == "table" then
+ragebotGlobalEnv = envValue
+end
+end
+if type(ragebotGlobalEnv) ~= "table" and type(_G) == "table" then
+ragebotGlobalEnv = _G
+end
+if type(ragebotGlobalEnv) ~= "table" then
+ragebotGlobalEnv = {}
+end
 local RAGEBOT_TARGET_STATE_KEY = "__CrefyRagebotTargetState"
 
 local tbl18 = {
