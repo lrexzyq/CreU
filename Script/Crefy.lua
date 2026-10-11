@@ -29832,19 +29832,18 @@ local riotTwoPi = 2 * math.pi
 local riotMinTriggerDist = 25
 local riotMaxTriggerDist = 1000000000000
 local riotTriggerDist = riotMinTriggerDist
-local riotFireInterval = 1 / 300
 local riotPlayers = game:GetService("Players")
 local riotLocalPlayer = riotPlayers.LocalPlayer
 local riotRunService = game:GetService("RunService")
 local riotSilentActive = false
-local riotLastEncoded = utf8.char(255) .. utf8.char(255)
+local riotLastEncoded = string.char(255) .. string.char(255)
 local function riotFinite(n)
 return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
 local function riotEncodeByte(n)
-if type(n) ~= "number" or n ~= n then return utf8.char(0) end
-local value = math.floor(n % (2 * math.pi) / math.pi / 2 * 256 + 0.5)
-return utf8.char(math.clamp(value, 0, 255))
+if not riotFinite(n) then return string.char(0) end
+local value = math.floor((n % (2 * math.pi)) / (2 * math.pi) * 256 + 0.5) % 256
+return string.char(value)
 end
 local function riotResolveRemote()
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -29950,7 +29949,7 @@ riotState.wrapper = nil
 riotState.originalEncoder = nil
 riotState.utilityIndex = nil
 riotState.remote = nil
-riotLastEncoded = utf8.char(255) .. utf8.char(255)
+riotLastEncoded = string.char(255) .. string.char(255)
 riotState.lastEncoded = nil
 riotState.lastScanError = nil
 riotState.lastFireError = nil
@@ -29992,7 +29991,7 @@ if not riotState.enabled or riotState.generation ~= generation then
 if riotState.generation == generation then riotState.initializing = false end
 return
 end
-riotLastEncoded = utf8.char(255) .. utf8.char(255)
+riotLastEncoded = string.char(255) .. string.char(255)
 riotState.lastEncoded = riotLastEncoded
 riotState.retryAfter = 0
 local connectOk, connection = pcall(function()
@@ -30039,10 +30038,17 @@ riotState.lastEncoded = encoded
 riotSilentActive = true
 riotState.active = true
 riotState.targetCharacter = targetCharacter
-local now = tick()
-if now - riotState.lastFireAt < riotFireInterval then return end
-riotState.lastFireAt = now
-pcall(function() riotState.remote:FireServer(encoded, nil) end)
+riotState.lastFireAt = os.clock()
+local fireOk, fireError = pcall(function()
+riotState.remote:FireServer(encoded, nil)
+end)
+if not fireOk then
+local warningNow = os.clock()
+if warningNow >= (riotState.nextFireWarningAt or 0) then
+riotState.nextFireWarningAt = warningNow + 5
+warn("[SilentCam] Rotation remote failed: " .. tostring(fireError))
+end
+end
 end)
 end)
 if not connectOk or not connection then
@@ -60296,7 +60302,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
-local UNDERGROUND_RAGEBOT_Y_OFFSET = -4.5
+local UNDERGROUND_RAGEBOT_Y_OFFSET = -4
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -63744,10 +63750,6 @@ else
 n = v118(v120.Position + v119, hitboxHead.Position)
 end
 
-if not arg._shootLock:ShouldFire(arg6, arg2 * ragebot.ShootFrames) then
-local random2 = math.random
-return CFrame.new(math.random(-1000000, 1000000), math.random(5000, 10000), random2(-1000000, 1000000)), nil
-end
 local v121 = (flag19 and { tbl18 } or { tbl20 })[1]
 local v122 = (flag19 and { tbl19 } or { tbl21 })[v86[63]]
 
@@ -65123,6 +65125,9 @@ _pendingDepletionAmmo = nil,
 _reloadReadFailureSince = nil,
 _reloadReadRetryAt = nil,
 _nextReloadReadWarningAt = 0,
+_lastAimServerCFrame = nil,
+_depletionHoldCFrame = nil,
+_depletionHoldUntil = nil,
 }
 
 setmetatable(tbl18, index2)
@@ -65318,13 +65323,21 @@ local weaponAction = v131.WeaponAction
 if weaponAction ~= nil then
 weaponAction()
 
-if v132 ~= nil and (v132 ~= nil and v132.ShotRequestCount - shotRequestCount or 0) > 0 and v132:GetExpectedAmmoAfterPendingShots() <= 0 then
-innerContext.CharacterController:SetServerCFrame(arg:_ApplyUndergroundOffset(v127.getImmune(), innerContext.CharacterController))
+if v132 ~= nil and (v132.ShotRequestCount - shotRequestCount) > 0 then
+local okExpected, expectedAmmo = pcall(v132.GetExpectedAmmoAfterPendingShots, v132)
+if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 then
 local now2 = os.clock()
 arg._reloadGun = v132
 arg._reloadReadyAt = now2 + v122.getEstimatedReplicationDelay()
 arg._pendingDepletionAmmo = ammo
-arg._reloadAcknowledgementDeadline = now2 + v122.getEstimatedRemoteDelay() + v122.getEstimatedReplicationDelay()
+local remoteDelay = tonumber(v122.getEstimatedRemoteDelay()) or 0
+local replicationDelay = tonumber(v122.getEstimatedReplicationDelay()) or 0
+if remoteDelay ~= remoteDelay or remoteDelay < 0 or remoteDelay == math.huge then remoteDelay = 0 end
+if replicationDelay ~= replicationDelay or replicationDelay < 0 or replicationDelay == math.huge then replicationDelay = 0 end
+arg._reloadAcknowledgementDeadline = now2 + remoteDelay + replicationDelay
+arg._depletionHoldCFrame = typeof(arg._lastAimServerCFrame) == "CFrame" and arg._lastAimServerCFrame or nil
+arg._depletionHoldUntil = now2 + math.max(0.05, remoteDelay + replicationDelay)
+end
 end
 end
 end
@@ -65416,6 +65429,8 @@ arg._reloadAcknowledgementDeadline = nil
 arg._pendingDepletionAmmo = nil
 arg._reloadReadFailureSince = nil
 arg._reloadReadRetryAt = nil
+arg._depletionHoldCFrame = nil
+arg._depletionHoldUntil = nil
 arg._nextReloadReadWarningAt = arg._nextReloadReadWarningAt or 0
 end
 
@@ -65424,6 +65439,22 @@ local reloadGun = arg._reloadGun
 local now2 = os.clock()
 
 if reloadGun ~= nil then
+local function pendingShotHoldPlan()
+local holdCFrame = arg._depletionHoldCFrame
+local holdUntil = arg._depletionHoldUntil
+if typeof(holdCFrame) == "CFrame" and type(holdUntil) == "number" and now2 < holdUntil then
+return { CFrame = holdCFrame, ShouldSkipDefense = true }
+end
+return fn36()
+end
+
+if arg._pendingDepletionAmmo ~= nil
+and typeof(arg._depletionHoldCFrame) == "CFrame"
+and type(arg._depletionHoldUntil) == "number"
+and now2 < arg._depletionHoldUntil then
+return pendingShotHoldPlan()
+end
+
 local function transientReadFailure(stage, detail)
 if arg._reloadReadFailureSince == nil then
 arg._reloadReadFailureSince = now2
@@ -65434,14 +65465,14 @@ arg._nextReloadReadWarningAt = now2 + 5
 warn("[Ragebot] Reload state temporarily unavailable (" .. tostring(stage) .. "): " .. tostring(detail))
 end
 if now2 - arg._reloadReadFailureSince <= 2 then
-return fn36()
+return pendingShotHoldPlan()
 end
 arg:_ClearReloadTransport()
 return nil
 end
 
 if arg._reloadReadRetryAt ~= nil and now2 < arg._reloadReadRetryAt then
-return fn36()
+return pendingShotHoldPlan()
 end
 
 local okEquipped, equippedGun = pcall(function()
@@ -65500,11 +65531,13 @@ if timedOut then
 arg:_ClearReloadTransport()
 return nil
 end
-return fn36()
+return pendingShotHoldPlan()
 end
 
 arg._pendingDepletionAmmo = nil
 arg._reloadAcknowledgementDeadline = nil
+arg._depletionHoldCFrame = nil
+arg._depletionHoldUntil = nil
 end
 
 arg._reloadReadFailureSince = nil
@@ -65606,6 +65639,9 @@ end
 local aliveState = arg3.AliveState
 local v130 = v129(arg4.ItemBehaviors)
 local v131 = v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
+if arg2.IsAimPose == true and type(arg2.WeaponAction) == "function" and typeof(v131) == "CFrame" then
+arg._lastAimServerCFrame = v131
+end
 characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(v131, characterController))
 
 if arg2.IsAimPose or arg2.ShouldDefendInPlace then
@@ -65633,6 +65669,9 @@ pcall(arg._SetKnifeCameraLock, arg, false)
 arg:_ClearReloadTransport()
 arg._lastTargetWorld = nil
 arg._lastDefensiveViewAngles = nil
+arg._lastAimServerCFrame = nil
+arg._depletionHoldCFrame = nil
+arg._depletionHoldUntil = nil
 pcall(arg._ApplyForcedCrouch, arg, false)
 if arg._meleeStrategy ~= nil then
 pcall(arg._meleeStrategy.ResetState, arg._meleeStrategy)
