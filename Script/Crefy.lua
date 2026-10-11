@@ -24,9 +24,24 @@ local _player = Players.LocalPlayer
 local rawget, rawset = rawget, rawset
 
 function K.fn(name)
+    if type(name) ~= "string" then return nil end
     local v
-    pcall(function() v = getgenv()[name] end)
-    if type(v) ~= "function" then pcall(function() v = getgenv()[name] end) end
+    pcall(function()
+        local env = getgenv()
+        if type(env) == "table" then v = env[name] end
+    end)
+    if type(v) ~= "function" then
+        pcall(function()
+            local env = getfenv(0)
+            if type(env) == "table" then v = env[name] end
+        end)
+    end
+    if type(v) ~= "function" then
+        pcall(function()
+            local env = getfenv()
+            if type(env) == "table" then v = env[name] end
+        end)
+    end
     return type(v) == "function" and v or nil
 end
 
@@ -36,9 +51,15 @@ local _sethiddenproperty = K.fn("sethiddenproperty")
 local gethui_ = K.fn("gethui")
 local function identity(n)
     if not setthreadidentity_ then return function() end end
-    local old = getthreadidentity_ and getthreadidentity_() or nil
+    local old = nil
+    if getthreadidentity_ then
+        local okOld, value = pcall(getthreadidentity_)
+        if okOld then old = value end
+    end
     pcall(setthreadidentity_, n)
-    return function() if old then pcall(setthreadidentity_, old) end end
+    return function()
+        if old ~= nil then pcall(setthreadidentity_, old) end
+    end
 end
 K.identity = identity
 local function hudParent()
@@ -386,8 +407,43 @@ local v108 = clonefn(K.fn("setfflag")) or function() end
 local v109 = clonefn(K.fn("isexecutorclosure")) or function() return false end
 local v110 = clonefn(K.fn("setrawmetatable")) or setmetatable
 local v111 = clonefn(K.fn("getrawmetatable")) or getmetatable
-local v112 = clonefn(v111(game).__newindex)
-local v113 = clonefn(v111(game).__index)
+local _gameMetatable = nil
+do
+    local okMetatable, resultMetatable = pcall(v111, game)
+    if okMetatable and type(resultMetatable) == "table" then
+        _gameMetatable = resultMetatable
+    end
+end
+local _rawNewIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, "__newindex") or nil
+local _rawIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, "__index") or nil
+local v112 = type(_rawNewIndex) == "function" and clonefn(_rawNewIndex) or nil
+if type(v112) ~= "function" then
+    -- Prefer normal property assignment; if that fails, try the hidden-property API.
+    -- Both attempts are protected so a missing executor API cannot escape this helper.
+    v112 = function(instance, property, value)
+        local directOk, directError = pcall(function()
+            instance[property] = value
+        end)
+        if directOk then return end
+        if type(v104) == "function" then
+            local hiddenOk, hiddenResult = pcall(v104, instance, property, value)
+            if hiddenOk then return hiddenResult end
+            error("Instance property write failed: " .. tostring(directError) .. "; hidden setter failed: " .. tostring(hiddenResult), 2)
+        end
+        error(directError, 2)
+    end
+end
+local v113 = type(_rawIndex) == "function" and clonefn(_rawIndex) or nil
+if type(v113) ~= "function" then
+    -- Guard ordinary indexing too: some proxy Instances can throw from __index.
+    v113 = function(instance, property)
+        local readOk, result = pcall(function()
+            return instance[property]
+        end)
+        if readOk then return result end
+        return nil
+    end
+end
 local v114 = clonefn(game.FindFirstChildOfClass)
 local function _n27() return 0 end
 local firetouchinterest = K.fn("firetouchinterest") or function() end
@@ -395,7 +451,12 @@ local getconnections = K.fn("getconnections") or function() return {} end
 local setclipboard = K.fn("setclipboard") or K.fn("toclipboard") or function() end
 local InstanceHandle
 pcall(function() InstanceHandle = getgenv().InstanceHandle end)
-if InstanceHandle == nil then pcall(function() InstanceHandle = getgenv().InstanceHandle end) end
+if InstanceHandle == nil then
+    pcall(function()
+        local env = getfenv(0)
+        if type(env) == "table" then InstanceHandle = env.InstanceHandle end
+    end)
+end
 if InstanceHandle == nil then InstanceHandle = { new = function(x) return x end } end
 
 
@@ -26457,24 +26518,31 @@ return v115.err("ViewAngleDriver", "function_lookup", "FighterController._Camera
 end
 local v121 = nil
 local v122 = nil
+if type(debug) ~= "table" or type(debug.getupvalues) ~= "function" then
+return v115.err("ViewAngleDriver", "getupvalues", "debug.getupvalues is unavailable")
+end
+local okUpvalues, cameraUpvalues = pcall(debug.getupvalues, v120)
+if not okUpvalues or type(cameraUpvalues) ~= "table" then
+return v115.err("ViewAngleDriver", "getupvalues", "debug.getupvalues failed or returned a non-table result")
+end
 
-for k, v123 in debug.getupvalues(v120) do
+for k, v123 in cameraUpvalues do
 if type(v123) ~= "table" then
 v121 = nil
 v122 = nil
 else
 local v124 = getmetatable(v123)
 
-if v124 == nil then
+if type(v124) ~= "table" then
 v121 = nil
 v122 = nil
 else
-local v125 = v102(v124, "__index")
+local v125 = rawget(v124, "__index")
 
 if type(v125) ~= "table" then
 v121 = nil
 v122 = nil
-elseif type(v102(v125, "EncodeCameraRotation")) == "function" then
+elseif type(rawget(v125, "EncodeCameraRotation")) == "function" then
 v121 = k
 v122 = v123
 break
@@ -26490,13 +26558,20 @@ if v121 == nil or v122 == nil then
 return v115.err("ViewAngleDriver", "upvalue_search", "Utility upvalue index not found")
 end
 
-debug.setupvalue(v120, v121, { EncodeCameraRotation = function(arg2, arg3)
+if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
+return v115.err("ViewAngleDriver", "setupvalue", "debug.setupvalue is unavailable")
+end
+local patchedUtility = setmetatable({ EncodeCameraRotation = function(arg2, arg3)
 if next(arg._payloadBySlot) ~= nil or arg._fullySuppressed then
 v103(fighterController, "_replication_stopped", false)
 return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
 end
 return v117.encodeCameraRotation(arg3)
-end })
+end }, { __index = v122 })
+local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
+if not okSetup or setupResult == nil then
+return v115.err("ViewAngleDriver", "setupvalue", "failed to install camera-rotation wrapper: " .. tostring(setupResult))
+end
 
 arg._replicationRestore = { CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122 }
 return v115.VoidOk
@@ -26604,8 +26679,20 @@ end
 local replicationRestore = arg._replicationRestore
 
 if replicationRestore ~= nil then
+local restoreOk, restoreError = false, "debug.setupvalue is unavailable"
+if type(debug) == "table" and type(debug.setupvalue) == "function" then
+local callOk, restoreResult = pcall(debug.setupvalue, replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex, replicationRestore.Utility)
+restoreOk = callOk and restoreResult ~= nil
+restoreError = callOk and (restoreResult == nil and "debug.setupvalue returned nil" or nil) or restoreResult
+end
+if restoreOk then
 arg._replicationRestore = nil
-debug.setupvalue(replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex, replicationRestore.Utility)
+else
+if os.clock() >= (arg._nextReplicationRestoreWarningAt or 0) then
+arg._nextReplicationRestoreWarningAt = os.clock() + 5
+warn("[ViewAngleDriver] Failed to restore camera replication utility: " .. tostring(restoreError))
+end
+end
 end
 end
 
@@ -27258,8 +27345,13 @@ local reconciled = arg:_ReconcilePendingShots(now2, ammoSnapshot, useSnapshot ==
 if reconciled ~= true then return end
 local expectedAmmoRaw = arg._expectedAmmoRaw
 if not pendingAmmoNumber(expectedAmmoRaw) then return end
+-- Match Doiyen's prediction semantics: requests sent inside the known weapon cooldown
+-- still increment ShotRequestCount, but are not assumed to consume ammo a second time.
+-- This is estimator-only; ShootEncoded itself is not gated here.
 local nextRequestAt = tonumber(arg._nextLikelyShotRequestAt) or 0
-if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then nextRequestAt = 0 end
+if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then
+nextRequestAt = 0
+end
 if now2 < nextRequestAt then return end
 local outstanding = tonumber(arg._outstandingAmmoSpend) or 0
 if outstanding ~= outstanding or outstanding == math.huge or outstanding == -math.huge or outstanding < 0 then outstanding = 0 end
@@ -29579,8 +29671,29 @@ end
 do 
 local function fn35()
 local cameraController = tbl17.aS().CameraController
-local getCameraCFrame = v102(v102(v111(cameraController), "__index"), "GetCameraCFrame")
-return function()return coroutine.wrap( getCameraCFrame )( cameraController );end
+local getCameraCFrame = nil
+local okCameraMethod, cameraMethod = pcall(function()
+local controllerMetatable = v111(cameraController)
+if type(controllerMetatable) ~= "table" then return nil end
+local controllerPrototype = rawget(controllerMetatable, "__index")
+if type(controllerPrototype) ~= "table" then return nil end
+return rawget(controllerPrototype, "GetCameraCFrame")
+end)
+if okCameraMethod and type(cameraMethod) == "function" then
+getCameraCFrame = cameraMethod
+end
+return function()
+if type(getCameraCFrame) == "function" then
+local okCameraCFrame, resultCameraCFrame = pcall(function()
+return coroutine.wrap(getCameraCFrame)(cameraController)
+end)
+if okCameraCFrame and typeof(resultCameraCFrame) == "CFrame" then
+return resultCameraCFrame
+end
+end
+local currentCamera = workspace.CurrentCamera
+return currentCamera and currentCamera.CFrame or CFrame.identity
+end
 end
 
 tbl17.db = function()
@@ -30022,8 +30135,8 @@ return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
 local function riotEncodeByte(n)
 if not riotFinite(n) then return string.char(0) end
-local value = math.floor((n % (2 * math.pi)) / (2 * math.pi) * 256 + 0.5)
-return string.char(math.clamp(value, 0, 255))
+local value = math.floor((n % (2 * math.pi)) / (2 * math.pi) * 256 + 0.5) % 256
+return string.char(value)
 end
 local function riotBuildPayload(origin, targetPart)
 if typeof(origin) ~= "Vector3" or targetPart == nil or targetPart.Parent == nil then
@@ -30495,7 +30608,10 @@ end
 
                                                                               
 local itemBehaviors = innerContext.ItemBehaviors
-if itemBehaviors == nil or itemBehaviors:FindMeleeByName("Knife") == nil then
+local okEquippedMelee, equippedMelee = pcall(function()
+return itemBehaviors ~= nil and itemBehaviors:EquippedItemAsMelee() or nil
+end)
+if not okEquippedMelee or equippedMelee == nil or equippedMelee.Name ~= "Knife" then
 arg:_ClearAnglePayload(characterController)
 return
 end
@@ -51833,40 +51949,102 @@ local random2 = math.random
 local cframe = CFrame.new(math.random(-100000, -10000), 100000, random2(-100000, 10000))
 
 local function fn36(arg, arg2)
-local v118 = getthreadidentity()
-setthreadidentity(8)
-local physicsRepRootRef, v119 = v107(v104, arg, "PhysicsRepRootRef", arg2)
-setthreadidentity(v118)
-
-if not physicsRepRootRef then
-error(v119, 0)
+local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
+local identitySetter = K.fn("setthreadidentity") or K.fn("setidentity")
+local oldIdentity = nil
+local restoreIdentity = false
+if identityGetter ~= nil and identitySetter ~= nil then
+local okIdentity, identityValue = pcall(identityGetter)
+if okIdentity and identityValue ~= nil then
+oldIdentity = identityValue
+restoreIdentity = true
+pcall(identitySetter, 8)
 end
+end
+
+-- Capture the previous hidden reference when the executor permits it, so a
+-- failed acquisition can undo a partial write instead of leaving a stale link.
+local previousReference, previousReferenceKnown = nil, false
+local hiddenGetter = K.fn("gethiddenproperty")
+if type(hiddenGetter) == "function" then
+    local readOk, value = pcall(hiddenGetter, arg, "PhysicsRepRootRef")
+    if readOk then previousReference, previousReferenceKnown = value, true end
+else
+    local readOk, value = pcall(v116, arg, "PhysicsRepRootRef")
+    if readOk and value ~= nil then previousReference, previousReferenceKnown = value, true end
+end
+
+local okSet, setError = false, "sethiddenproperty API unavailable"
+if type(v104) == "function" then
+local callOk, result = pcall(v104, arg, "PhysicsRepRootRef", arg2)
+if callOk and result ~= false then
+    okSet = true
+else
+    setError = callOk and "sethiddenproperty returned false" or result
+end
+end
+-- ThreePass's useful fallback: if the hidden setter is unavailable/blocked, try
+-- the guarded property/metamethod setter used elsewhere in this runtime.
+if not okSet and type(v117) == "function" then
+local fallbackOk, fallbackResult = pcall(v117, arg, "PhysicsRepRootRef", arg2)
+if fallbackOk and fallbackResult ~= false then
+okSet = true
+else
+setError = tostring(setError) .. "; property fallback failed: " .. tostring(fallbackOk and "setter returned false" or fallbackResult)
+end
+end
+if restoreIdentity then pcall(identitySetter, oldIdentity) end
+if not okSet then
+    if previousReferenceKnown then
+        local restored = false
+        if type(v104) == "function" then
+            local restoreOk, restoreResult = pcall(v104, arg, "PhysicsRepRootRef", previousReference)
+            restored = restoreOk and restoreResult ~= false
+        end
+        if not restored and type(v117) == "function" then
+            local restoreOk, restoreResult = pcall(v117, arg, "PhysicsRepRootRef", previousReference)
+            restored = restoreOk and restoreResult ~= false
+        end
+        if not restored then setError = tostring(setError) .. "; previous PhysicsRepRootRef restore also failed" end
+    end
+return false, setError
+end
+return true, nil, previousReference, previousReferenceKnown
 end
 
 local function fn37(arg, arg2)
+if arg == nil or type(arg2) ~= "table" then return false end
+local allRestored = true
 local originalCFrame = arg2.OriginalCFrame
 local originalPart1 = arg2.OriginalPart1
 local originalPart1ToTarget = arg2.OriginalPart1ToTarget
 
 if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
-originalCFrame = originalPart1.CFrame * originalPart1ToTarget
+local okOriginalCFrame, computedCFrame = pcall(function()
+return originalPart1.CFrame * originalPart1ToTarget
+end)
+if okOriginalCFrame then originalCFrame = computedCFrame end
 end
 
-if originalCFrame ~= nil then
-v117(arg, v86[127], originalCFrame)
+local function restoreProperty(instance, property, value)
+local ok, result = pcall(v117, instance, property, value)
+return ok and result ~= false
+end
+
+if originalCFrame ~= nil and not restoreProperty(arg, v86[127], originalCFrame) then
+allRestored = false
 end
 
 local weld = arg2.Weld
-
-if weld ~= nil and originalPart1 ~= nil then
-v117(weld, "Part1", originalPart1)
+if weld ~= nil and originalPart1 ~= nil and not restoreProperty(weld, "Part1", originalPart1) then
+allRestored = false
 end
 
 local originalAnchored = arg2.OriginalAnchored
-
-if originalAnchored ~= nil then
-v117(arg, "Anchored", originalAnchored)
+if originalAnchored ~= nil and not restoreProperty(arg, "Anchored", originalAnchored) then
+allRestored = false
 end
+return allRestored
 end
 
 local index2 = {}
@@ -51881,19 +52059,64 @@ end
 index2.Acquire = function(arg, arg2, arg3)
 local v118 = arg._glueInfoByTargetPart[arg3]
 local reference = v118 and v118.Reference or InstanceHandle.new(arg3)
-fn36(arg2, reference)
+local okReference, referenceError, previousReference, previousReferenceKnown = fn36(arg2, reference)
+if not okReference then
+local warningNow = os.clock()
+if warningNow >= (arg._nextAcquireWarningAt or 0) then
+arg._nextAcquireWarningAt = warningNow + 5
+warn("[PartGlue] Acquire skipped safely: " .. tostring(referenceError))
+end
+return nil
+end
+local function restoreSourceReference()
+    if not previousReferenceKnown then return false, "previous value unavailable" end
+    local restoreOk, restoreResult = false, nil
+    if type(v104) == "function" then
+        restoreOk, restoreResult = pcall(v104, arg2, "PhysicsRepRootRef", previousReference)
+        restoreOk = restoreOk and restoreResult ~= false
+    end
+    if not restoreOk and type(v117) == "function" then
+        local fallbackOk, fallbackResult = pcall(v117, arg2, "PhysicsRepRootRef", previousReference)
+        restoreOk = fallbackOk and fallbackResult ~= false
+        restoreResult = fallbackResult
+    end
+    return restoreOk, restoreResult
+end
 local v119 = arg._targetPartBySourcePart[arg2]
 
 if v119 ~= arg3 then
+local setupOk, setupError = pcall(arg._SetupGlue, arg, arg3, reference)
+if not setupOk then
+local restored, restoreError = restoreSourceReference()
+local warningNow = os.clock()
+if warningNow >= (arg._nextAcquireWarningAt or 0) then
+arg._nextAcquireWarningAt = warningNow + 5
+warn("[PartGlue] Glue setup rolled back/aborted: " .. tostring(setupError) ..
+    (restored and "; PhysicsRepRootRef restored" or ("; PhysicsRepRootRef restore unverified/failed: " .. tostring(restoreError))))
+end
+return nil
+end
+
+-- Keep the prior target attached until the replacement has been prepared.
 if v119 ~= nil then
 arg:_ReleaseGlue(v119)
 end
-
-arg:_SetupGlue(arg3, reference)
 arg._targetPartBySourcePart[arg2] = arg3
 end
 
-v117(arg3, "CFrame", CFrame.new(cframe.Position))
+local moveOk, moveError = pcall(v117, arg3, "CFrame", CFrame.new(cframe.Position))
+if not moveOk or moveError == false then
+arg._targetPartBySourcePart[arg2] = nil
+arg:_ReleaseGlue(arg3)
+local restored, restoreError = restoreSourceReference()
+local warningNow = os.clock()
+if warningNow >= (arg._nextAcquireWarningAt or 0) then
+arg._nextAcquireWarningAt = warningNow + 5
+warn("[PartGlue] Target CFrame write failed: " .. tostring(moveError) ..
+    (restored and "; PhysicsRepRootRef restored" or ("; PhysicsRepRootRef restore unverified/failed: " .. tostring(restoreError))))
+end
+return nil
+end
 return cframe
 end
 
@@ -51907,64 +52130,104 @@ arg:_ReleaseGlue(v118)
 end
 
 index2._SetupGlue = function(arg, arg2, arg3)
-local v118 = arg._glueInfoByTargetPart[arg2]
-if v118 ~= nil then
-v118.RefCount = v118.RefCount + 1
-return
+local existing = arg._glueInfoByTargetPart[arg2]
+if existing ~= nil then
+    if existing.RestorePending == true then
+        if not fn37(arg2, existing) then
+            error("previous PartGlue state still requires restoration", 2)
+        end
+        arg._glueInfoByTargetPart[arg2] = nil
+        existing = nil
+    else
+        existing.RefCount = existing.RefCount + 1
+        return true
+    end
 end
+
 local weldConstraint = v115(arg2, "WeldConstraint")
-local v119 = nil
-local v120 = nil
-local v121 = nil
-local v122 = nil
+local originalCFrame = nil
+local originalAnchored = nil
+local originalPart1 = nil
+local originalPart1ToTarget = nil
 
 if weldConstraint ~= nil then
-local cFrame = v116(arg2, "CFrame") or arg2.CFrame
-local anchored = v116(arg2, "Anchored")
-local v123 = v86[116]
+    local readCFrameOk, cFrameValue = pcall(v116, arg2, "CFrame")
+    if readCFrameOk then originalCFrame = cFrameValue end
+    if originalCFrame == nil then originalCFrame = arg2.CFrame end
 
-if typeof(anchored) ~= v123 then
-anchored = arg2.Anchored
+    local readAnchoredOk, anchoredValue = pcall(v116, arg2, "Anchored")
+    if readAnchoredOk then originalAnchored = anchoredValue end
+    if typeof(originalAnchored) ~= "boolean" then originalAnchored = arg2.Anchored end
+
+    local readPart1Ok, part1Value = pcall(v116, weldConstraint, "Part1")
+    if readPart1Ok then originalPart1 = part1Value end
+    if originalPart1 == nil then originalPart1 = weldConstraint.Part1 end
+
+    if originalPart1 ~= nil and originalCFrame ~= nil then
+        local okOffset, offset = pcall(function()
+            return originalPart1.CFrame:ToObjectSpace(originalCFrame)
+        end)
+        if not okOffset then error("could not snapshot original weld offset: " .. tostring(offset), 2) end
+        originalPart1ToTarget = offset
+    end
 end
 
-local part1 = v116(weldConstraint, "Part1") or weldConstraint.Part1
-local flag19 = part1 ~= nil and cFrame ~= nil
-local v124 = nil
-
-if flag19 then
-v124 = part1.CFrame:ToObjectSpace(cFrame)
-v117(weldConstraint, "Part1", nil)
-end
-
-v117(arg2, "Anchored", v86[34])
-v119 = anchored
-v120 = cFrame
-v121 = v124
-v122 = part1
-end
-
-arg._glueInfoByTargetPart[arg2] = {
-RefCount = 1,
-Reference = arg3,
-Weld = weldConstraint,
-OriginalPart1 = v122,
-OriginalPart1ToTarget = v121,
-OriginalCFrame = v120,
-OriginalAnchored = v119,
+local info = {
+    RefCount = 1,
+    Reference = arg3,
+    Weld = weldConstraint,
+    OriginalPart1 = originalPart1,
+    OriginalPart1ToTarget = originalPart1ToTarget,
+    OriginalCFrame = originalCFrame,
+    OriginalAnchored = originalAnchored,
+    RestorePending = false,
 }
+-- Store the complete rollback record before the first mutation.
+arg._glueInfoByTargetPart[arg2] = info
+
+if weldConstraint ~= nil then
+    local setupOk, setupError = pcall(function()
+        if originalPart1 ~= nil and originalCFrame ~= nil then
+            local okDetach, detachResult = pcall(v117, weldConstraint, "Part1", nil)
+            if not okDetach or detachResult == false then
+                error("failed detaching original weld: " .. tostring(detachResult), 0)
+            end
+        end
+        local okAnchor, anchorResult = pcall(v117, arg2, "Anchored", true)
+        if not okAnchor or anchorResult == false then
+            error("failed anchoring target: " .. tostring(anchorResult), 0)
+        end
+    end)
+
+    if not setupOk then
+        if fn37(arg2, info) then
+            arg._glueInfoByTargetPart[arg2] = nil
+        else
+            info.RefCount = 0
+            info.RestorePending = true
+            warn("[PartGlue] Setup failed and rollback is incomplete; retaining restore record: " .. tostring(setupError))
+        end
+        error(setupError, 2)
+    end
+end
+return true
 end
 
 index2._ReleaseGlue = function(arg, arg2)
 local v118 = arg._glueInfoByTargetPart[arg2]
-if v118 == nil then
-return
+if v118 == nil then return end
+v118.RefCount = math.max((tonumber(v118.RefCount) or 1) - 1, 0)
+if v118.RefCount > 0 then return end
+if fn37(arg2, v118) then
+    arg._glueInfoByTargetPart[arg2] = nil
+    return
 end
-v118.RefCount = v118.RefCount - 1
-if v118.RefCount > 0 then
-return
+v118.RestorePending = true
+local warningNow = os.clock()
+if warningNow >= (arg._nextRestoreWarningAt or 0) then
+    arg._nextRestoreWarningAt = warningNow + 5
+    warn("[PartGlue] Restore incomplete; retaining record for cleanup retry")
 end
-fn37(arg2, v118)
-arg._glueInfoByTargetPart[arg2] = nil
 end
 
 index2.FindAnchor = function(arg, arg2)
@@ -51972,11 +52235,15 @@ return arg._targetPartBySourcePart[arg2]
 end
 
 index2.Destroy = function(arg)
-for k, v118 in arg._glueInfoByTargetPart, nil, nil do
-fn37(k, v118)
+for target, info in pairs(arg._glueInfoByTargetPart) do
+    if fn37(target, info) then
+        arg._glueInfoByTargetPart[target] = nil
+    else
+        info.RestorePending = true
+        info.RefCount = 0
+        warn("[PartGlue] Destroy could not fully restore a target; manual/runtime verification may be needed")
+    end
 end
-
-table.clear(arg._glueInfoByTargetPart)
 table.clear(arg._targetPartBySourcePart)
 end
 
@@ -63748,18 +64015,20 @@ end
 index2.ShouldFire = function(arg, canFire, lockDuration)
 local now2 = os.clock()
 local lockedUntil = arg._lockedUntil
-if lockedUntil ~= nil and now2 < lockedUntil then
-return false
+local lockActive = type(lockedUntil) == "number"
+    and lockedUntil == lockedUntil
+    and lockedUntil ~= math.huge
+    and lockedUntil ~= -math.huge
+    and now2 < lockedUntil
+local canFireNow = canFire == true
+if canFireNow then
+    local duration = tonumber(lockDuration) or 0
+    if duration ~= duration or duration == math.huge or duration == -math.huge or duration < 0 then
+        duration = 0
+    end
+    arg._lockedUntil = now2 + duration
 end
-if not canFire then
-return false
-end
-lockDuration = tonumber(lockDuration) or 0
-if lockDuration < 0 then
-lockDuration = 0
-end
-arg._lockedUntil = now2 + lockDuration
-return true
+return lockActive or canFireNow
 end
 
 index2.Reset = function(arg)
@@ -64000,7 +64269,6 @@ local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
-local RAGE_MIN_FIRE_INTERVAL = 0.03
 local function ragebotSafeEstimatedDelay(callback)
 if type(callback) ~= "function" then return 0 end
 local ok, value = pcall(callback)
@@ -64087,6 +64355,54 @@ ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, { owner = owner, active = false, chara
 end
 end
 
+local function ragebotSafeDeactivateTargetState(owner)
+local deactivate = ragebotDeactivateTargetState
+if type(deactivate) == "function" then
+local ok = pcall(deactivate, owner)
+if ok then return end
+end
+local shared = type(ragebotStateGet) == "function" and ragebotStateGet(RAGEBOT_TARGET_STATE_KEY) or nil
+if type(shared) == "table" then
+local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+if okOwner and sharedOwner == owner then
+local okWrite = pcall(function()
+shared.active = false
+shared.character = nil
+shared.updatedAt = os.clock()
+end)
+if not okWrite and type(ragebotStateSet) == "function" then
+pcall(ragebotStateSet, RAGEBOT_TARGET_STATE_KEY, { owner = owner, active = false, character = nil, updatedAt = os.clock() })
+end
+end
+end
+end
+
+local function ragebotSafeClearReloadTransport(owner)
+if type(owner) ~= "table" then return end
+local clearFn
+local getOk = pcall(function() clearFn = owner._ClearReloadTransport end)
+if getOk and type(clearFn) == "function" then
+local clearOk = pcall(clearFn, owner)
+if clearOk then return end
+end
+owner._reloadGun = nil
+owner._reloadReadyAt = nil
+owner._reloadAcknowledgementDeadline = nil
+owner._pendingDepletionAmmo = nil
+owner._reloadReadFailureSince = nil
+owner._reloadReadRetryAt = nil
+owner._depletionHoldCFrame = nil
+owner._depletionHoldUntil = nil
+end
+
+local function ragebotSafeInvokeMethod(owner, methodName, ...)
+if type(owner) ~= "table" then return false end
+local method
+local getOk = pcall(function() method = owner[methodName] end)
+if not getOk or type(method) ~= "function" then return false end
+return pcall(method, owner, ...)
+end
+
 local tbl18 = {
 ["\0"] = -9e37,
 ["\1"] = 0,
@@ -64128,7 +64444,7 @@ local index2 = {}
 index2.__index = index2
 
 index2.new = function(arg)
-return setmetatable({ _partGlue = arg, _shootLock = v116.new(), _lastShotAt = -math.huge }, index2)
+return setmetatable({ _partGlue = arg, _shootLock = v116.new() }, index2)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6)
@@ -64150,7 +64466,16 @@ end
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
+if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
+arg:ClearTeleport()
+end
 local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
+if typeof(v120) ~= "CFrame" then
+arg:ClearTeleport()
+arg._shootLock:Reset()
+return arg5 and arg5.CFrame or nil, nil
+end
+arg._gluedPart = arg5
 local n
 
 if flag19 then
@@ -64162,6 +64487,10 @@ end
 local v121 = (flag19 and { tbl18 } or { tbl20 })[1]
 local v122 = (flag19 and { tbl19 } or { tbl21 })[v86[63]]
 local shootFrames = tonumber(ragebot.ShootFrames) or 1
+if shootFrames ~= shootFrames or shootFrames == math.huge or shootFrames == -math.huge then
+shootFrames = 1
+end
+shootFrames = math.clamp(shootFrames, 1, 5)
 local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
@@ -64175,67 +64504,10 @@ if hitboxHead == nil or hitboxHead.Parent == nil then
 arg._shootLock:Reset()
 return false
 end
-
-local now2 = os.clock()
-local info = type(arg4) == "table" and rawget(arg4, "Info") or nil
-local configuredCooldown = type(info) == "table" and rawget(info, "ShootCooldown") or nil
-if type(configuredCooldown) ~= "number" or configuredCooldown ~= configuredCooldown
-or configuredCooldown == math.huge or configuredCooldown == -math.huge then
-configuredCooldown = RAGE_MIN_FIRE_INTERVAL
-end
-local minInterval = math.max(RAGE_MIN_FIRE_INTERVAL, configuredCooldown)
-local lastShotAt = tonumber(arg._lastShotAt) or -math.huge
-if now2 - lastShotAt < minInterval then
-arg._shootLock:Reset()
-return false
-end
-
-local okReload, isReloading = pcall(function()
-return arg4:IsReloading()
+local okSend = pcall(function()
+arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
 end)
-if not okReload or type(isReloading) ~= "boolean" or isReloading then
-arg._shootLock:Reset()
-return false
-end
-local okAmmoBased, ammoBased = pcall(function()
-return arg4:IsAmmoBased()
-end)
-if not okAmmoBased or type(ammoBased) ~= "boolean" then
-arg._shootLock:Reset()
-return false
-end
-if ammoBased then
-local okAmmo, ammo = pcall(function()
-return arg4:GetAmmo()
-end)
-if not okAmmo or type(ammo) ~= "number" or ammo ~= ammo or ammo == -math.huge or ammo < 0 or ammo <= 0 then
-arg._shootLock:Reset()
-return false
-end
-end
-
-local itemTable = type(arg4) == "table" and arg4 or nil
-local inner = itemTable ~= nil and rawget(itemTable, "Inner") or nil
-local innerData = type(inner) == "table" and rawget(inner, "Data") or nil
-local objectId = itemTable ~= nil and rawget(itemTable, "ObjectId") or nil
-local runtimeCooldown = type(inner) == "table" and rawget(inner, "_shoot_cooldown") or nil
-if type(runtimeCooldown) == "number" and runtimeCooldown == runtimeCooldown and runtimeCooldown > tick() then
-arg._shootLock:Reset()
-return false
-end
-
-pcall(function()
-if objectId ~= nil and type(inner) == "table" and type(innerData) == "table" and rawget(innerData, "ObjectID") == objectId then
-rawset(inner, "_shoot_cooldown", 0)
-rawset(inner, "_shoot_cooldown_no_ammo", 0)
-rawset(inner, "_last_shot", tick() - 1)
-end
-end)
-local okSend, sendResult = pcall(function()
-return arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
-end)
-if okSend and sendResult ~= false then
-arg._lastShotAt = os.clock()
+if okSend then
 return true
 end
 arg._shootLock:Reset()
@@ -64243,12 +64515,21 @@ return false
 end
 end
 
-index2.ResetState = function(arg, resetShotTime)
+index2.ClearTeleport = function(arg)
+local gluedPart = arg._gluedPart
+arg._gluedPart = nil
+if gluedPart == nil then return end
+local partGlue = arg._partGlue
+local free = type(partGlue) == "table" and partGlue.Free or nil
+if type(free) == "function" then
+pcall(free, partGlue, gluedPart)
+end
+end
+
+index2.ResetState = function(arg)
+arg:ClearTeleport()
 if arg._shootLock ~= nil then
 arg._shootLock:Reset()
-end
-if resetShotTime == true then
-arg._lastShotAt = -math.huge
 end
 end
 
@@ -64389,6 +64670,10 @@ local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
+if typeof(v120) ~= "CFrame" then
+arg:ResetState()
+return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
+end
 arg._gluedOurPart = gluedOurPart
 local n
 
@@ -64483,7 +64768,16 @@ elseif now2 >= arg._hitboxWindowUntil then
 arg._hitboxWindowTarget = nil
 end
 
-if not arg._shootLock:ShouldFire(arg5, arg2 * ragebot.ShootFrames) then
+local meleeDt = tonumber(arg2) or 0
+if meleeDt ~= meleeDt or meleeDt == math.huge or meleeDt == -math.huge or meleeDt < 0 then
+    meleeDt = 0
+end
+local meleeShootFrames = tonumber(ragebot.ShootFrames) or 1
+if meleeShootFrames ~= meleeShootFrames or meleeShootFrames == math.huge or meleeShootFrames == -math.huge then
+    meleeShootFrames = 1
+end
+meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
+if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
 return fn36(), nil, nil
 end
 
@@ -65445,6 +65739,41 @@ local enabled = v115.Data.Ragebot.Weapons.Enabled
 return type(enabled) == "table" and enabled[arg] == true
 end
 
+local function readAmmoState(item)
+local okAmmoBased, ammoBased = pcall(function() return item:IsAmmoBased() end)
+if not okAmmoBased or type(ammoBased) ~= "boolean" then
+local okFallback, fallbackBased = pcall(function()
+local data = item._data
+if type(data) ~= "table" then return nil end
+return rawget(data, "Ammo") ~= nil
+end)
+-- Conservative behavior from ThreePass: if neither the API nor raw data can
+-- determine whether this is an ammo-based weapon, skip this item rather than
+-- accidentally treating an unreadable gun as ammo-free.
+if not okFallback or type(fallbackBased) ~= "boolean" then return false end
+if fallbackBased == false then return false end
+ammoBased = fallbackBased
+end
+
+local okAmmo, ammo = pcall(function() return item:GetAmmo() end)
+if not okAmmo then
+local okFallback, fallbackAmmo = pcall(function()
+local data = item._data
+if type(data) == "table" then return rawget(data, "Ammo") end
+return nil
+end)
+if okFallback and fallbackAmmo ~= nil then
+okAmmo = true
+ammo = fallbackAmmo
+end
+end
+if not okAmmo then return false end
+if ammoBased and (type(ammo) ~= "number" or ammo ~= ammo or ammo == math.huge or ammo == -math.huge or ammo < 0) then
+return false
+end
+return true, ammoBased, ammo
+end
+
 return { getAction = function(arg)
 local weapons = v115.Data.Ragebot.Weapons
 local onEmpty = weapons.OnEmpty
@@ -65471,18 +65800,11 @@ local huge3 = table.find(priority, v119) or math.huge
 local ammoValue = nil
 local ammoBased = false
 if v118.__type == "Gun" then
-local okAmmoBased, readAmmoBased = pcall(v118.IsAmmoBased, v118)
-if not okAmmoBased or type(readAmmoBased) ~= "boolean" then
+local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
+if not okAmmoState then
 continue
 end
 ammoBased = readAmmoBased
-local okAmmo, readAmmo = pcall(v118.GetAmmo, v118)
-if not okAmmo then
-continue
-end
-if ammoBased and (type(readAmmo) ~= "number" or readAmmo ~= readAmmo or readAmmo == -math.huge or readAmmo < 0) then
-continue
-end
 ammoValue = readAmmo
 end
 if v118.__type == "Gun" and ammoBased and ammoValue == 0 then
@@ -65515,15 +65837,11 @@ end
 if v116 ~= nil then
 local flag20 = false
 if v116.__type == "Gun" then
-local okAmmoBased, ammoBased = pcall(v116.IsAmmoBased, v116)
-if not okAmmoBased or type(ammoBased) ~= "boolean" then
+local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
+if not okAmmoState then
 return nil
 end
 if ammoBased then
-local okAmmo, currentAmmo = pcall(v116.GetAmmo, v116)
-if not okAmmo or type(currentAmmo) ~= "number" or currentAmmo ~= currentAmmo or currentAmmo == -math.huge or currentAmmo < 0 then
-return nil
-end
 flag20 = currentAmmo == v86[186]
 end
 end
@@ -65615,6 +65933,36 @@ local v127 = tbl17.jL()
 local v128 = tbl17.jM()
 local v129 = tbl17.jN()
 local fallenPartsDestroyHeight = workspace.FallenPartsDestroyHeight
+local function ragebotTrySetInstanceProperty(instance, property, value)
+    local lastError = "no compatible property setter is available"
+    local function attempt(setter, ...)
+        local ok, result = pcall(setter, ...)
+        if ok and result ~= false then return true end
+        if ok then return false, "setter explicitly returned false" end
+        return false, result
+    end
+
+    if type(v112) == "function" then
+        local ok, err = attempt(v112, instance, property, value)
+        if ok then return true end
+        lastError = err
+    end
+    if type(v104) == "function" then
+        local ok, err = attempt(v104, instance, property, value)
+        if ok then return true end
+        lastError = err
+    end
+    if type(_sethiddenproperty) == "function" then
+        local ok, err = attempt(_sethiddenproperty, instance, property, value)
+        if ok then return true end
+        lastError = err
+    end
+    local ok, err = pcall(function()
+        instance[property] = value
+    end)
+    if ok then return true end
+    return false, tostring(lastError) .. "; direct write failed: " .. tostring(err)
+end
 
 local function fn36()
 return { CFrame = v127.getImmune(), ShouldSkipDefense = true }
@@ -65630,6 +65978,8 @@ local v130 = ragebot:Add(v123.new(arg))
 local tbl18 = {
 _trove = ragebot,
 _enabled = false,
+_destroyHeightOverrideActive = false,
+_destroyHeightRestorePending = false,
 _lastTargetWorld = nil,
 _lastDefensiveViewAngles = nil,
 _cameraArbiter = cameraArbiter,
@@ -65664,7 +66014,7 @@ if not flag2 then
 return
 end
 arg._innerContext = innerContext
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 end))
 
 arg._trove:Connect(arg._playerContext.ContextRemoved, function()
@@ -65673,8 +66023,29 @@ arg._innerContext = nil
 end)
 
 arg._trove:Add(v118:ObserveEnabledKeybind({ "Ragebot" }, function(arg2)
-arg:SetEnabled(arg2)
-arg:_Reset()
+local desiredEnabled = arg2 == true
+local wasEnabled = arg._enabled == true
+if desiredEnabled == wasEnabled then
+    return
+end
+local setEnabled = arg.SetEnabled
+if type(setEnabled) == "function" then
+    local okEnabled, enabledError = pcall(setEnabled, arg, desiredEnabled)
+    if not okEnabled and os.clock() >= (arg._nextResetWarningAt or 0) then
+        arg._nextResetWarningAt = os.clock() + 5
+        warn("[Ragebot] SetEnabled callback failed: " .. tostring(enabledError))
+    end
+end
+if not desiredEnabled then
+    local reset = arg._Reset
+    if type(reset) == "function" then
+        local okReset, resetError = pcall(reset, arg)
+        if not okReset and os.clock() >= (arg._nextResetWarningAt or 0) then
+            arg._nextResetWarningAt = os.clock() + 5
+            warn("[Ragebot] Reset callback failed: " .. tostring(resetError))
+        end
+    end
+end
 end))
 end
 
@@ -65683,29 +66054,96 @@ locked = locked == true
 if arg._knifeCameraLocked == locked then
 return
 end
-arg._knifeCameraLocked = locked
+local arbiter = arg._cameraArbiter
+if type(arbiter) ~= "table" then
+arg._knifeCameraLocked = nil
+return
+end
+local okCall = false
 if locked then
-                                                                   
-                                                                     
-arg._cameraArbiter.claim("Ragebot.Knife", math.huge)
+if type(arbiter.claim) == "function" then
+okCall = pcall(arbiter.claim, "Ragebot.Knife", 20)
+end
 else
-arg._cameraArbiter.release("Ragebot.Knife")
+if type(arbiter.release) == "function" then
+okCall = pcall(arbiter.release, "Ragebot.Knife")
+end
+end
+-- Retry on a later update if the arbiter is temporarily unavailable.
+if okCall then
+arg._knifeCameraLocked = locked
+else
+arg._knifeCameraLocked = nil
 end
 end
 
 index2.SetEnabled = function(arg, enabled)
-if arg._enabled == enabled then
-return
-end
-arg._enabled = enabled
-v112(workspace, "FallenPartsDestroyHeight", enabled and (0/0) or fallenPartsDestroyHeight)
+enabled = enabled == true
+local wasEnabled = arg._enabled == true
+local overrideActive = arg._destroyHeightOverrideActive == true
+local restorePending = arg._destroyHeightRestorePending == true
 
-if not enabled then
-arg:_ClearReloadTransport()
-local undergroundController = rawget(_G, "__CrefyUndergroundController")
-if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
-pcall(undergroundController.SetRagebotIntegration, false)
-end
+if enabled then
+    if wasEnabled and overrideActive and not restorePending then
+        return
+    end
+
+    local targetDestroyHeight = 0 / 0
+    local heightSetOk, heightWriteError = ragebotTrySetInstanceProperty(
+        workspace,
+        "FallenPartsDestroyHeight",
+        targetDestroyHeight
+    )
+    if heightSetOk then
+        arg._enabled = true
+        arg._destroyHeightOverrideActive = true
+        arg._destroyHeightRestorePending = false
+    else
+        -- A setter may fail after a partial side effect. Attempt restoration now,
+        -- and keep an independent retry flag if restoring also fails.
+        arg._enabled = false
+        local restoreOk, restoreError = ragebotTrySetInstanceProperty(
+            workspace,
+            "FallenPartsDestroyHeight",
+            fallenPartsDestroyHeight
+        )
+        arg._destroyHeightOverrideActive = not restoreOk and (overrideActive or wasEnabled)
+        arg._destroyHeightRestorePending = not restoreOk
+        if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
+            arg._nextDestroyHeightWarningAt = os.clock() + 5
+            warn("[Ragebot] FallenPartsDestroyHeight update failed; integration disabled: " ..
+                tostring(heightWriteError) .. (restoreOk and "" or ("; restore failed: " .. tostring(restoreError))))
+        end
+    end
+else
+    -- Keep enabled-state and property-restoration state separate. A failed restore
+    -- must not be hidden by _enabled=false or skipped by a later Unload/Destroy.
+    arg._enabled = false
+    local mustRestore = wasEnabled or overrideActive or restorePending
+    if mustRestore then
+        local restoreOk, restoreError = ragebotTrySetInstanceProperty(
+            workspace,
+            "FallenPartsDestroyHeight",
+            fallenPartsDestroyHeight
+        )
+        if restoreOk then
+            arg._destroyHeightOverrideActive = false
+            arg._destroyHeightRestorePending = false
+        else
+            arg._destroyHeightOverrideActive = overrideActive or wasEnabled
+            arg._destroyHeightRestorePending = true
+            if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
+                arg._nextDestroyHeightWarningAt = os.clock() + 5
+                warn("[Ragebot] Failed to restore FallenPartsDestroyHeight; will retry during cleanup: " .. tostring(restoreError))
+            end
+        end
+    end
+
+    ragebotSafeClearReloadTransport(arg)
+    local undergroundController = rawget(_G, "__CrefyUndergroundController")
+    if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
+        pcall(undergroundController.SetRagebotIntegration, false)
+    end
 end
 end
 
@@ -65820,7 +66258,7 @@ ragebotPublishTargetState(arg, arg._enabled == true, candidateModel)
 else
 if target ~= nil then target = nil end
 arg._lastTargetWorld = nil
-ragebotDeactivateTargetState(arg)
+ragebotSafeDeactivateTargetState(arg)
 end
 
 local safeDt = tonumber(arg2) or 0
@@ -65862,7 +66300,7 @@ arg._nextReloadReadWarningAt = nowReloadCheck + 5
 warn("[Ragebot] Reload status read failed temporarily: " .. tostring(isReloading))
 end
 if nowReloadCheck - arg._reloadReadFailureSince > 2 then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 end
 elseif isReloading then
 arg._reloadReadFailureSince = nil
@@ -65886,13 +66324,8 @@ elseif os.clock() >= (arg._nextEquippedGunWarningAt or 0) then
 arg._nextEquippedGunWarningAt = os.clock() + 5
 warn("[Ragebot] Equipped gun lookup failed: " .. tostring(equippedGun))
 end
-local ammo = nil
 local shotRequestCount = nil
 if v132 ~= nil then
-local okAmmoRead, ammoValue = pcall(function() return v132:GetAmmo() end)
-if okAmmoRead and type(ammoValue) == "number" and ammoValue == ammoValue and ammoValue ~= math.huge and ammoValue ~= -math.huge and ammoValue >= 0 then
-ammo = ammoValue
-end
 local okCountRead, countValue = pcall(function() return v132.ShotRequestCount end)
 if okCountRead and type(countValue) == "number" and countValue == countValue and countValue ~= math.huge and countValue ~= -math.huge and countValue >= 0 then
 shotRequestCount = countValue
@@ -65908,15 +66341,20 @@ arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
 end
 
-if actionOk and v132 ~= nil and ammo ~= nil and shotRequestCount ~= nil then
+if actionOk and v132 ~= nil and shotRequestCount ~= nil then
 local okCountAfter, countAfter = pcall(function() return v132.ShotRequestCount end)
 if okCountAfter and type(countAfter) == "number" and countAfter == countAfter and countAfter ~= math.huge and countAfter ~= -math.huge and countAfter > shotRequestCount then
 local okExpected, expectedAmmo = pcall(function() return v132:GetExpectedAmmoAfterPendingShots() end)
-if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 then
+local okAmmoAfter, ammoAfter = pcall(function() return v132:GetAmmo() end)
+local observedEmpty = okAmmoAfter and type(ammoAfter) == "number" and ammoAfter == ammoAfter
+and ammoAfter ~= math.huge and ammoAfter ~= -math.huge and ammoAfter <= 0
+if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 and observedEmpty then
+-- Confirm depletion from a fresh post-request ammo read, not the pre-shot snapshot.
+-- A pending-shot estimate alone must not suppress a firing plan while ammo is still observed.
 local now2 = os.clock()
 arg._reloadGun = v132
 arg._reloadReadyAt = now2 + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
-arg._pendingDepletionAmmo = ammo
+arg._pendingDepletionAmmo = ammoAfter
 local remoteDelay = ragebotSafeEstimatedDelay(v122.getEstimatedRemoteDelay)
 local replicationDelay = ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 arg._reloadAcknowledgementDeadline = now2 + remoteDelay + replicationDelay
@@ -66076,7 +66514,7 @@ end
 if now2 - arg._reloadReadFailureSince <= 2 then
 return pendingShotHoldPlan()
 end
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 
@@ -66096,7 +66534,7 @@ if equippedGun == nil then
 return transientReadFailure("equipped gun", "no equipped gun reported during a pending reload")
 end
 if equippedGun ~= reloadGun or arg2 ~= nil and (arg2.Type == "Swap" or arg2.Type == "Attack") and arg2.Item ~= reloadGun then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 
@@ -66137,7 +66575,7 @@ timedOut = expected > 0
 end
 
 if timedOut then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 return pendingShotHoldPlan()
@@ -66152,7 +66590,7 @@ end
 arg._reloadReadFailureSince = nil
 arg._reloadReadRetryAt = nil
 if ammo > 0 or reserve <= 0 then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 local reloadReadyAt = arg._reloadReadyAt
@@ -66317,43 +66755,56 @@ end
 end
 
 index2._Reset = function(arg)
-pcall(arg._SetKnifeCameraLock, arg, false)
-ragebotDeactivateTargetState(arg)
-arg:_ClearReloadTransport()
+if type(arg) ~= "table" then return end
+ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
+ragebotSafeDeactivateTargetState(arg)
+ragebotSafeClearReloadTransport(arg)
 arg._lastTargetWorld = nil
 arg._lastDefensiveViewAngles = nil
 arg._lastAimServerCFrame = nil
 arg._depletionHoldCFrame = nil
 arg._depletionHoldUntil = nil
-pcall(arg._ApplyForcedCrouch, arg, false)
-if arg._meleeStrategy ~= nil then
-pcall(arg._meleeStrategy.ResetState, arg._meleeStrategy)
+ragebotSafeInvokeMethod(arg, "_ApplyForcedCrouch", false)
+local meleeStrategy = arg._meleeStrategy
+if type(meleeStrategy) == "table" then
+local reset = meleeStrategy.ResetState
+if type(reset) == "function" then pcall(reset, meleeStrategy) end
 end
-if arg._hitscanStrategy ~= nil then
-pcall(arg._hitscanStrategy.ResetState, arg._hitscanStrategy, true)
+local hitscanStrategy = arg._hitscanStrategy
+if type(hitscanStrategy) == "table" then
+local reset = hitscanStrategy.ResetState
+if type(reset) == "function" then pcall(reset, hitscanStrategy, true) end
 end
-if arg._projectileBreakerTeleport ~= nil then
-pcall(arg._projectileBreakerTeleport.ResetState, arg._projectileBreakerTeleport)
+local breaker = arg._projectileBreakerTeleport
+if type(breaker) == "table" then
+local reset = breaker.ResetState
+if type(reset) == "function" then pcall(reset, breaker) end
 end
 local innerContext = arg._innerContext
-if innerContext == nil then
-return
-end
+if innerContext == nil then return end
 local characterController = innerContext.CharacterController
-if characterController == nil then
-return
-end
-pcall(function() characterController:SetServerCFrame(nil) end)
-pcall(function() characterController:SendViewAngles(20, nil) end)
+if characterController == nil then return end
+pcall(function()
+if type(characterController.SetServerCFrame) == "function" then characterController:SetServerCFrame(nil) end
+end)
+pcall(function()
+if type(characterController.SendViewAngles) == "function" then characterController:SendViewAngles(20, nil) end
+end)
 end
 
 index2.Destroy = function(arg)
-                                                                            
-                                                                          
-if arg._enabled then
+-- Always call SetEnabled(false): it also retries a pending workspace-property restore.
 pcall(function() arg:SetEnabled(false) end)
-end
 pcall(function() arg:_Reset() end)
+if arg._destroyHeightRestorePending == true then
+    local okRestore, restoreError = ragebotTrySetInstanceProperty(workspace, "FallenPartsDestroyHeight", fallenPartsDestroyHeight)
+    if okRestore then
+        arg._destroyHeightOverrideActive = false
+        arg._destroyHeightRestorePending = false
+    else
+        warn("[Ragebot] Unload could not restore FallenPartsDestroyHeight: " .. tostring(restoreError))
+    end
+end
 arg._trove:Destroy()
 end
 
