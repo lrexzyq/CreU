@@ -29826,7 +29826,7 @@ local riotPreviousState = riotGlobalEnv[riotStateKey]
 if type(riotPreviousState) == "table" and type(riotPreviousState.stop) == "function" then
 pcall(riotPreviousState.stop)
 end
-local riotState = { enabled = false, active = false, initializing = false, generation = 0, triggerDistance = 25, lastFireAt = 0, retryAfter = 0, characterController = nil, angleApplied = false, lastAngleBytes = nil, payload = nil, lastAngleAt = 0, aimPart = nil, buildPayload = nil }
+local riotState = { enabled = false, active = false, initializing = false, generation = 0, triggerDistance = 25, lastFireAt = 0, retryAfter = 0, characterController = nil, angleApplied = false, lastAngleBytes = nil }
 riotGlobalEnv[riotStateKey] = riotState
 local riotTwoPi = 2 * math.pi
 local riotMinTriggerDist = 25
@@ -29845,32 +29845,6 @@ if not riotFinite(n) then return string.char(0) end
 local value = math.floor((n % (2 * math.pi)) / (2 * math.pi) * 256 + 0.5)
 return string.char(math.clamp(value, 0, 255))
 end
-local function riotBuildPayload(origin, targetPart)
-if typeof(origin) ~= "Vector3" or targetPart == nil or targetPart.Parent == nil then
-return nil, nil
-end
-local okPosition, targetPosition = pcall(function() return targetPart.Position end)
-if not okPosition or typeof(targetPosition) ~= "Vector3"
-or not riotFinite(targetPosition.X) or not riotFinite(targetPosition.Y) or not riotFinite(targetPosition.Z) then
-return nil, nil
-end
-local direction = targetPosition - origin
-if direction.Magnitude < 0.001 then return nil, nil end
-local okRotation, pitch, yaw = pcall(function()
-local pitchValue, yawValue = CFrame.lookAt(origin, targetPosition):ToOrientation()
-return pitchValue, yawValue
-end)
-if not okRotation or not riotFinite(pitch) or not riotFinite(yaw) then
-return nil, nil
-end
-local maxPitch = math.rad(88.59375)
-pitch = math.clamp(pitch, -maxPitch, maxPitch)
-local pitchDegrees = math.deg(pitch)
-local yawDegrees = math.deg(yaw)
-local bytes = riotEncodeByte(math.rad(pitchDegrees)) .. riotEncodeByte(math.rad(yawDegrees))
-return { Kind = "Normalized", Pitch = pitchDegrees, Yaw = yawDegrees }, bytes
-end
-riotState.buildPayload = riotBuildPayload
 local RIOT_VIEW_ANGLE_SLOT = 15
 local RIOT_RAGEBOT_TARGET_KEY = "__CrefyRagebotTargetState"
 local function riotClearAnglePayload(controller)
@@ -29899,13 +29873,9 @@ if clearSucceeded then
 riotState.angleApplied = false
 end
 riotState.lastAngleBytes = nil
-riotState.payload = nil
-riotState.lastAngleAt = 0
-riotState.aimPart = nil
 riotState.active = false
 riotState.targetCharacter = nil
 riotSilentActive = false
-return clearSucceeded
 end
 local function riotCharacterEligible(character, localRoot, localTeam, localEnvironment)
 if character == nil or character.Parent == nil or localRoot == nil or localRoot.Parent == nil then
@@ -30051,15 +30021,10 @@ riotState.fighters = fighters
 if os.clock() < (tonumber(riotState.retryAfter) or 0) then return false end
 if characterController ~= nil and riotState.characterController ~= characterController then
 local previousController = riotState.characterController
-local clearedPrevious = riotClearAnglePayload(previousController)
-if not clearedPrevious then
-riotState.enabled = false
-if riotState.heartbeat ~= nil then
-pcall(function() riotState.heartbeat:Disconnect() end)
-riotState.heartbeat = nil
-end
-riotState.retryAfter = os.clock() + 0.25
-return false
+riotClearAnglePayload(previousController)
+if riotState.angleApplied == true then
+riotState.angleApplied = false
+riotState.lastAngleBytes = nil
 end
 riotState.characterController = characterController
 end
@@ -30098,23 +30063,6 @@ riotClearAnglePayload(controller)
 return
 end
 local aimOrigin = nil
-local sharedTargetState = rawget(riotGlobalEnv, RIOT_RAGEBOT_TARGET_KEY)
-local ragebotOwnsTarget = type(sharedTargetState) == "table"
-and sharedTargetState.active == true
-and sharedTargetState.character == targetCharacter
-local currentController = riotState.characterController
-if ragebotOwnsTarget and currentController ~= nil then
-local serverOriginOk, serverOrigin = pcall(function()
-return currentController:GetServerHeadOrigin()
-end)
-if serverOriginOk and typeof(serverOrigin) == "CFrame" then
-local position = serverOrigin.Position
-if riotFinite(position.X) and riotFinite(position.Y) and riotFinite(position.Z) then
- aimOrigin = position
-end
-end
-end
-if aimOrigin == nil then
 local currentCamera = workspace.CurrentCamera
 if currentCamera ~= nil then
 local cameraOk, cameraPosition = pcall(function()
@@ -30122,8 +30070,7 @@ return currentCamera.CFrame.Position
 end)
 if cameraOk and typeof(cameraPosition) == "Vector3"
 and riotFinite(cameraPosition.X) and riotFinite(cameraPosition.Y) and riotFinite(cameraPosition.Z) then
- aimOrigin = cameraPosition
-end
+aimOrigin = cameraPosition
 end
 end
 if aimOrigin == nil then
@@ -30134,19 +30081,29 @@ else
  aimOrigin = localRoot.Position
 end
 end
-local payload, angleBytes = riotBuildPayload(aimOrigin, targetHead)
-if payload == nil or angleBytes == nil then
+local direction = targetHead.Position - aimOrigin
+if direction.Magnitude < 0.001 then
 riotClearAnglePayload(controller)
 return
 end
+local lookCFrame = CFrame.lookAt(aimOrigin, targetHead.Position)
+local pitch, yaw = lookCFrame:ToOrientation()
+if not riotFinite(pitch) or not riotFinite(yaw) then
+riotClearAnglePayload(controller)
+return
+end
+local maxPitch = math.rad(88.59375)
+pitch = math.clamp(pitch, -maxPitch, maxPitch)
+local normalizedPitch = math.deg(pitch)
+local normalizedYaw = math.deg(yaw)
+local angleBytes = riotEncodeByte(math.rad(normalizedPitch)) .. riotEncodeByte(math.rad(normalizedYaw))
 riotState.active = true
 riotState.targetCharacter = targetCharacter
-riotState.aimPart = targetHead
 riotState.lastEncoded = angleBytes
-riotState.payload = payload
-riotState.lastAngleAt = os.clock()
 riotSilentActive = false
 if riotState.angleApplied ~= true or riotState.lastAngleBytes ~= angleBytes then
+local payload = { Kind = "Normalized", Pitch = normalizedPitch, Yaw = normalizedYaw }
+riotState.angleApplied = true
 local result = controller:SendViewAngles(RIOT_VIEW_ANGLE_SLOT, payload)
 if type(result) == "table" and result.Ok == false then
 pcall(function()
@@ -30155,14 +30112,7 @@ controller:FlushViewAngles()
 end)
 error(result.Error and result.Error.Detail or "ViewAngleDriver rejected Riot payload")
 end
-riotState.angleApplied = true
-local currentTargetState = rawget(riotGlobalEnv, RIOT_RAGEBOT_TARGET_KEY)
-local ragebotConsumesAngle = type(currentTargetState) == "table"
-and currentTargetState.active == true
-and currentTargetState.character == targetCharacter
-if not ragebotConsumesAngle then
 controller:FlushViewAngles()
-end
 riotState.lastAngleBytes = angleBytes
 end
 end)
@@ -63821,19 +63771,7 @@ local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
 local RAGE_MIN_FIRE_INTERVAL = 0.03
-local ragebotGlobalEnv
-if type(getgenv) == "function" then
-local envOk, envValue = pcall(getgenv)
-if envOk and type(envValue) == "table" then
-ragebotGlobalEnv = envValue
-end
-end
-if type(ragebotGlobalEnv) ~= "table" and type(_G) == "table" then
-ragebotGlobalEnv = _G
-end
-if type(ragebotGlobalEnv) ~= "table" then
-ragebotGlobalEnv = {}
-end
+local ragebotGlobalEnv = (type(getgenv) == "function" and getgenv()) or _G
 local RAGEBOT_TARGET_STATE_KEY = "__CrefyRagebotTargetState"
 
 local tbl18 = {
@@ -65888,49 +65826,7 @@ arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterSta
 end
 
 local viewAngleSlot = arg._knifeCameraLocked and 20 or v86[9]
-local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
-if arg2.ViewAngles == nil and arg3 ~= nil and arg3.AliveState ~= nil and arg3.AliveState.RootPart ~= nil then
-local targetCharacter = arg3.AliveState.RootPart.Parent
-local riotSharedState = rawget(ragebotGlobalEnv, "__SilentCamTargetRotationExactReplication_v1")
-if type(riotSharedState) == "table" and riotSharedState.enabled == true and riotSharedState.active == true
-and riotSharedState.targetCharacter == targetCharacter and type(riotSharedState.payload) == "table" then
-local angleAt = tonumber(riotSharedState.lastAngleAt)
-local angleAge = angleAt ~= nil and (os.clock() - angleAt) or math.huge
-local riotPayload = riotSharedState.payload
-if angleAge >= 0 and angleAge <= 0.15 then
-local freshPayload = nil
-local buildPayload = riotSharedState.buildPayload
-local aimPart = riotSharedState.aimPart
-if type(buildPayload) == "function" and aimPart ~= nil then
-local partOk, isTargetPart = pcall(function()
-return aimPart:IsA("BasePart") and aimPart:IsDescendantOf(targetCharacter)
-end)
-if partOk and isTargetPart then
-local serverOriginOk, serverOrigin = pcall(function()
-return characterController:GetServerHeadOrigin()
-end)
-if serverOriginOk and typeof(serverOrigin) == "CFrame" then
-local buildOk, rebuiltPayload = pcall(buildPayload, serverOrigin.Position, aimPart)
-if buildOk and type(rebuiltPayload) == "table" then
-freshPayload = rebuiltPayload
-end
-end
-end
-end
-if freshPayload == nil and type(riotPayload) == "table"
-and type(riotPayload.Pitch) == "number" and riotPayload.Pitch == riotPayload.Pitch
-and riotPayload.Pitch ~= math.huge and riotPayload.Pitch ~= -math.huge
-and type(riotPayload.Yaw) == "number" and riotPayload.Yaw == riotPayload.Yaw
-and riotPayload.Yaw ~= math.huge and riotPayload.Yaw ~= -math.huge then
-freshPayload = riotPayload
-end
-if freshPayload ~= nil then
-viewAnglePayload = freshPayload
-end
-end
-end
-end
-characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
+characterController:SendViewAngles(viewAngleSlot, arg2.ViewAngles or arg._lastDefensiveViewAngles)
 end
 
 index2.GetLastTargetWorld = function(arg)
