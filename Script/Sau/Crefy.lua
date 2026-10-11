@@ -27101,7 +27101,6 @@ _expectedAmmoRaw = v102(data, "Ammo"),
 _nextLikelyShotRequestAt = 0,
 _outstandingAmmoSpend = 0,
 _outstandingAmmoSpendDeadline = nil,
-_pendingAmmoSpendBatches = {},
 ItemInterface = v117.new(arg),
 Inner = arg,
 Name = v102(arg, "Name"),
@@ -27121,163 +27120,58 @@ arg.ItemInterface:Destroy()
 end
 
 index2._ClearPendingShots = function(arg)
-local okAmmo, ammo = pcall(function() return arg:GetAmmo() end)
-if okAmmo and type(ammo) == "number" and ammo == ammo and ammo ~= math.huge and ammo ~= -math.huge then
-arg._expectedAmmoRaw = ammo
-else
-arg._expectedAmmoRaw = nil
-end
+arg._expectedAmmoRaw = arg:GetAmmo()
 arg._nextLikelyShotRequestAt = v86[186]
-arg._pendingAmmoSpendBatches = {}
 arg._outstandingAmmoSpend = v86[186]
 arg._outstandingAmmoSpendDeadline = nil
 end
 
-index2._RecomputePendingShotSpend = function(arg, now2)
-local batches = arg._pendingAmmoSpendBatches
-if type(batches) ~= "table" then
-batches = {}
-arg._pendingAmmoSpendBatches = batches
-end
-local outstanding = 0
-local earliestDeadline = nil
-local removedExpired = false
-for i = #batches, 1, -1 do
-local batch = batches[i]
-local spend = type(batch) == "table" and tonumber(batch.Spend) or nil
-local deadline = type(batch) == "table" and tonumber(batch.Deadline) or nil
-local badSpend = type(spend) ~= "number" or spend ~= spend or spend == math.huge or spend == -math.huge or spend <= 0
-local badDeadline = type(deadline) ~= "number" or deadline ~= deadline or deadline == math.huge or deadline == -math.huge
-if badSpend or badDeadline or deadline <= now2 then
-if not badDeadline and deadline <= now2 then removedExpired = true end
-table.remove(batches, i)
-else
-outstanding += spend
-if earliestDeadline == nil or deadline < earliestDeadline then
- earliestDeadline = deadline
-end
-end
-end
-arg._outstandingAmmoSpend = math.max(outstanding, 0)
-arg._outstandingAmmoSpendDeadline = earliestDeadline
-if removedExpired and arg._outstandingAmmoSpend <= 0 then
-arg._nextLikelyShotRequestAt = 0
-end
-end
-
 index2._ReconcilePendingShots = function(arg, arg2)
-local okAmmo, ammo = pcall(function() return arg:GetAmmo() end)
-if not okAmmo or type(ammo) ~= "number" or ammo ~= ammo or ammo == math.huge or ammo == -math.huge then
-return false
-end
+local ammo = arg:GetAmmo()
 local expectedAmmoRaw = arg._expectedAmmoRaw
-if type(expectedAmmoRaw) ~= "number" or expectedAmmoRaw ~= expectedAmmoRaw or expectedAmmoRaw == math.huge or expectedAmmoRaw == -math.huge then
-arg._expectedAmmoRaw = ammo
-arg._pendingAmmoSpendBatches = {}
-arg._outstandingAmmoSpend = 0
-arg._outstandingAmmoSpendDeadline = nil
-return true
-end
 if ammo > expectedAmmoRaw then
-arg._expectedAmmoRaw = ammo
-arg._pendingAmmoSpendBatches = {}
-arg._outstandingAmmoSpend = 0
-arg._outstandingAmmoSpendDeadline = nil
-arg._nextLikelyShotRequestAt = 0
-return true
+arg:_ClearPendingShots()
+return
 end
 
 if ammo < expectedAmmoRaw then
-local acknowledgedSpend = expectedAmmoRaw - ammo
-local batches = arg._pendingAmmoSpendBatches
-if type(batches) ~= "table" then
-batches = {}
-arg._pendingAmmoSpendBatches = batches
-end
-for i = 1, #batches do
-if acknowledgedSpend <= 0 then break end
-local batch = batches[i]
-if type(batch) ~= "table" then
-batches[i] = false
-else
-local spend = tonumber(batch.Spend) or 0
-if type(spend) ~= "number" or spend ~= spend or spend == math.huge or spend == -math.huge or spend < 0 then
-spend = 0
-end
-local consumed = math.min(spend, acknowledgedSpend)
-batch.Spend = spend - consumed
-acknowledgedSpend -= consumed
-end
-end
-local compacted = {}
-for _, batch in batches do
-local spend = type(batch) == "table" and tonumber(batch.Spend) or 0
-if type(spend) == "number" and spend == spend and spend ~= math.huge and spend ~= -math.huge and spend > 0 then
- table.insert(compacted, batch)
-end
-end
-arg._pendingAmmoSpendBatches = compacted
+arg._outstandingAmmoSpend = math.max(arg._outstandingAmmoSpend - expectedAmmoRaw - ammo, v86[186])
 arg._expectedAmmoRaw = ammo
+
+if arg._outstandingAmmoSpend <= 0 then
+arg._outstandingAmmoSpendDeadline = nil
 end
-arg:_RecomputePendingShotSpend(arg2)
-return true
+end
+
+local outstandingAmmoSpendDeadline = arg._outstandingAmmoSpendDeadline
+
+if outstandingAmmoSpendDeadline ~= nil and arg2 >= outstandingAmmoSpendDeadline then
+arg._outstandingAmmoSpend = 0
+arg._nextLikelyShotRequestAt = 0
+arg._outstandingAmmoSpendDeadline = nil
+end
 end
 
 index2._RecordPendingShot = function(arg)
 local now2 = os.clock()
-local reconcileOk = arg:_ReconcilePendingShots(now2)
-if reconcileOk == false then
+arg:_ReconcilePendingShots(now2)
+if now2 < arg._nextLikelyShotRequestAt then
 return
 end
-local expectedAmmoRaw = arg._expectedAmmoRaw
-if type(expectedAmmoRaw) ~= "number" or expectedAmmoRaw ~= expectedAmmoRaw or expectedAmmoRaw == math.huge or expectedAmmoRaw == -math.huge then
-return
-end
-local outstandingSpend = tonumber(arg._outstandingAmmoSpend) or 0
-if outstandingSpend ~= outstandingSpend or outstandingSpend == math.huge or outstandingSpend == -math.huge then
-outstandingSpend = 0
-arg._outstandingAmmoSpend = 0
-arg._pendingAmmoSpendBatches = {}
-end
-if now2 < (tonumber(arg._nextLikelyShotRequestAt) or 0) then
-return
-end
-local n = math.max(expectedAmmoRaw - outstandingSpend, 0)
+local n = math.max(arg._expectedAmmoRaw - arg._outstandingAmmoSpend, 0)
 if n <= v86[186] then
 return
 end
-local info = type(arg.Info) == "table" and arg.Info or {}
-local n33 = tonumber(info.ShootBurst) or 1
-if n33 ~= n33 or n33 == math.huge or n33 == -math.huge or n33 < 1 then
-n33 = 1
-end
-n33 = math.max(n33, 1)
-local okRemoteDelay, remoteDelay = pcall(v118.getEstimatedRemoteDelay)
-local okReplicationDelay, replicationDelay = pcall(v118.getEstimatedReplicationDelay)
-remoteDelay = okRemoteDelay and tonumber(remoteDelay) or 0.1
-replicationDelay = okReplicationDelay and tonumber(replicationDelay) or 0.1
-if remoteDelay ~= remoteDelay or remoteDelay == math.huge or remoteDelay == -math.huge or remoteDelay < 0 then remoteDelay = 0.1 end
-if replicationDelay ~= replicationDelay or replicationDelay == math.huge or replicationDelay == -math.huge or replicationDelay < 0 then replicationDelay = 0.1 end
-local trackedSpend = math.min(n33, n)
-if trackedSpend > 0 then
-local batches = arg._pendingAmmoSpendBatches
-if type(batches) ~= "table" then
-batches = {}
-arg._pendingAmmoSpendBatches = batches
-end
-table.insert(batches, { Spend = trackedSpend, Deadline = now2 + remoteDelay + replicationDelay })
-arg:_RecomputePendingShotSpend(now2)
-end
-local quickShotCooldown = arg:IsFanFired() and v102(info, "QuickShotCooldown") or nil
-if type(quickShotCooldown) == "number" and quickShotCooldown == quickShotCooldown and quickShotCooldown ~= math.huge and quickShotCooldown ~= -math.huge and quickShotCooldown >= 0 then
+local n33 = math.max(arg.Info.ShootBurst or 1, 1)
+arg._outstandingAmmoSpend = arg._outstandingAmmoSpend + math.min(n33, n)
+arg._outstandingAmmoSpendDeadline = now2 + v118.getEstimatedRemoteDelay() + v118.getEstimatedReplicationDelay()
+local quickShotCooldown = arg:IsFanFired() and v102(arg.Info, "QuickShotCooldown") or nil
+if quickShotCooldown ~= nil then
 arg._nextLikelyShotRequestAt = now2 + quickShotCooldown
 return
 end
-local shootBurstCooldown = tonumber(info.ShootBurstCooldown) or 0
-local shootCooldown = tonumber(info.ShootCooldown) or 0
-if shootBurstCooldown ~= shootBurstCooldown or shootBurstCooldown == math.huge or shootBurstCooldown == -math.huge or shootBurstCooldown < 0 then shootBurstCooldown = 0 end
-if shootCooldown ~= shootCooldown or shootCooldown == math.huge or shootCooldown == -math.huge or shootCooldown < 0 then shootCooldown = 0 end
-arg._nextLikelyShotRequestAt = now2 + (n33 - 1) * shootBurstCooldown + math.max(shootCooldown, shootBurstCooldown)
+local shootBurstCooldown = arg.Info.ShootBurstCooldown or 0
+arg._nextLikelyShotRequestAt = now2 + (n33 - 1) * shootBurstCooldown + math.max(arg.Info.ShootCooldown or 0, shootBurstCooldown)
 end
 
 index2.Equip = function(arg)
@@ -27351,23 +27245,8 @@ return v102(arg._data, "Ammo")
 end
 
 index2.GetExpectedAmmoAfterPendingShots = function(arg)
-local okAmmo, ammo = pcall(function() return arg:GetAmmo() end)
-if not okAmmo or type(ammo) ~= "number" or ammo ~= ammo or ammo == math.huge or ammo == -math.huge then
-return math.huge
-end
-local reconcileOk = arg:_ReconcilePendingShots(os.clock())
-if reconcileOk == false then
-return math.huge
-end
-local expectedAmmoRaw = arg._expectedAmmoRaw
-local outstandingSpend = tonumber(arg._outstandingAmmoSpend) or 0
-if type(expectedAmmoRaw) ~= "number" or expectedAmmoRaw ~= expectedAmmoRaw or expectedAmmoRaw == math.huge or expectedAmmoRaw == -math.huge then
-return math.max(ammo, 0)
-end
-if outstandingSpend ~= outstandingSpend or outstandingSpend == math.huge or outstandingSpend == -math.huge then
-outstandingSpend = 0
-end
-return math.max(expectedAmmoRaw - outstandingSpend, 0)
+arg:_ReconcilePendingShots(os.clock())
+return math.max(arg._expectedAmmoRaw - arg._outstandingAmmoSpend, 0)
 end
 
 index2.GetAmmoReserve = function(arg)
@@ -60464,6 +60343,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
+local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.6
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -61062,6 +60942,20 @@ startUnderground = function()
             stopUnderground()
             return
         end
+        if undergroundRagebotIntegrated then
+            if typeof(undergroundLastClientCFrame) ~= 'CFrame' then
+                local okClient, clientCFrame = pcall(function() return currentRoot.CFrame end)
+                if okClient and typeof(clientCFrame) == 'CFrame' then
+                    undergroundLastClientCFrame = clientCFrame
+                end
+            end
+            if undergroundDesync then
+                pcall(function() undergroundDesync:Destroy() end)
+                undergroundDesync = nil
+            end
+            undergroundLastServerCFrame = nil
+            return
+        end
         local observedClientCFrame = currentRoot.CFrame
         if typeof(observedClientCFrame) ~= 'CFrame' then
             return
@@ -61071,12 +60965,7 @@ startUnderground = function()
             undergroundAdaptiveScanAt = 0
         end
         undergroundLastClientCFrame = observedClientCFrame
-        if undergroundRagebotIntegrated then
-            if undergroundDesync then
-                pcall(function() undergroundDesync:Destroy() end)
-                undergroundDesync = nil
-            end
-        elseif not undergroundDesync or undergroundDesync._rootPart ~= currentRoot then
+        if not undergroundDesync or undergroundDesync._rootPart ~= currentRoot then
             if undergroundDesync then
                 pcall(function() undergroundDesync:Destroy() end)
             end
@@ -61086,17 +60975,17 @@ startUnderground = function()
         local serverCF = undergroundServerCFrame(currentChar, currentRoot)
         if serverCF ~= nil then
             undergroundLastServerCFrame = serverCF
-            if not undergroundRagebotIntegrated and undergroundDesync then
+            if undergroundDesync then
                 undergroundDesync:SetServerCFrame(serverCF)
             end
         else
             undergroundLastServerCFrame = nil
-            if not undergroundRagebotIntegrated and undergroundDesync then
+            if undergroundDesync then
                 undergroundDesync:SetServerCFrame(nil)
                 undergroundDesync._oldCFrame = currentRoot.CFrame
             end
         end
-        if not undergroundRagebotIntegrated and undergroundDesync then
+        if undergroundDesync then
             undergroundDesync:HeartbeatUpdate()
         end
     end)
@@ -61208,17 +61097,19 @@ if undergroundDesync then
 pcall(function() undergroundDesync:Destroy() end)
 end
 undergroundDesync = UndergroundRootDesync.new(root)
-if typeof(undergroundLastServerCFrame) == "CFrame" then
-undergroundDesync:SetServerCFrame(undergroundLastServerCFrame)
 end
 end
 end
-end
-undergroundController.ApplyToRagebotCFrame = function(cframe)
+undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame)
 if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
 return cframe
 end
-return cframe + Vector3.new(0, -3, 0)
+if typeof(clientCFrame) == "CFrame" then
+undergroundLastClientCFrame = clientCFrame
+end
+local adjusted = cframe + Vector3.new(0, UNDERGROUND_RAGEBOT_Y_OFFSET, 0)
+undergroundLastServerCFrame = adjusted
+return adjusted
 end
 _G.__CrefyUndergroundController = undergroundController
 local undergroundCleanup = function()
@@ -63618,7 +63509,7 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.bM()
 
-local function fn36(arg)
+local function fn36(arg, player)
 if arg == nil or not arg.IsEnemy then
 return false
 end
@@ -63640,14 +63531,24 @@ if not okParts or rootPart == nil or hitboxHead == nil then
 return false
 end
 local okPartState, partsValid = pcall(function()
-return rootPart:IsA("BasePart") and rootPart.Parent ~= nil
-and hitboxHead:IsA("BasePart") and hitboxHead.Parent ~= nil
+if not rootPart:IsA("BasePart") or not hitboxHead:IsA("BasePart") then
+return false
+end
+if not rootPart:IsDescendantOf(workspace) or not hitboxHead:IsDescendantOf(workspace) then
+return false
+end
+if player ~= nil then
+local currentCharacter = player.Character
+if currentCharacter == nil then return false end
+return rootPart:IsDescendantOf(currentCharacter) and hitboxHead:IsDescendantOf(currentCharacter)
+end
+return rootPart.Parent ~= nil and hitboxHead.Parent ~= nil
 end)
 if not okPartState or not partsValid then
 return false
 end
-local itemObserver = arg.ItemObserver
-if itemObserver ~= nil then
+local okObserver, itemObserver = pcall(function() return arg.ItemObserver end)
+if okObserver and itemObserver ~= nil then
 local okItem, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
 if okItem and melee ~= nil then
 local okDeflecting, isDeflecting = pcall(melee.IsDeflecting, melee)
@@ -63660,7 +63561,13 @@ return true
 end
 
 local function fn37(arg)
-return { FighterState = arg, AliveState = arg.Character.State }
+local ok, target = pcall(function()
+local character = arg and arg.Character or nil
+local state = character and character.State or nil
+if state == nil or state.Alive ~= true then return nil end
+return { FighterState = arg, AliveState = state }
+end)
+return ok and target or nil
 end
 
 local index2 = {}
@@ -63678,7 +63585,7 @@ local players = game:GetService("Players")
 local localPlayer = players.LocalPlayer
 local character = localPlayer and localPlayer.Character
 local root = character and character:FindFirstChild("HumanoidRootPart")
-if root ~= nil and root.Parent ~= nil then
+if root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace) then
 return root.Position
 end
 return nil
@@ -63694,22 +63601,31 @@ end
 
 local function distanceTo(fighter)
 if localPosition == nil then
-return math.huge
+return nil
 end
 local okDistance, distance = pcall(function()
-return (fighter.Character.State.RootPart.Position - localPosition).Magnitude
+local character = fighter.Character
+local state = character and character.State or nil
+local root = state and state.RootPart or nil
+if root == nil or not root:IsA("BasePart") or not root:IsDescendantOf(workspace) then
+return nil
+end
+return (root.Position - localPosition).Magnitude
 end)
-if not okDistance or type(distance) ~= "number" or distance ~= distance or distance == math.huge or distance < 0 then
-return math.huge
+if not okDistance or type(distance) ~= "number" or distance ~= distance or distance == math.huge or distance == -math.huge or distance < 0 then
+return nil
 end
 return distance
 end
 
-local function consider(best, bestDistance, fighter)
-if fighter == nil or not fn36(fighter) then
+local function consider(best, bestDistance, fighter, player)
+if fighter == nil or not fn36(fighter, player) then
 return best, bestDistance
 end
 local distance = distanceTo(fighter)
+if distance == nil then
+return best, bestDistance
+end
 if best == nil or distance < bestDistance then
 return fighter, distance
 end
@@ -63720,7 +63636,7 @@ if prioritizeHackers then
 local bestHacker, bestHackerDistance = nil, math.huge
 for _, player in arg._playerTags:GetPlayersWith("Hacker") do
 local fighter = arg._fighters.StateByPlayer[player]
-bestHacker, bestHackerDistance = consider(bestHacker, bestHackerDistance, fighter)
+bestHacker, bestHackerDistance = consider(bestHacker, bestHackerDistance, fighter, player)
 end
 if bestHacker ~= nil then
 return fn37(bestHacker)
@@ -63732,15 +63648,15 @@ for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
 if prioritizeHackers and isHacker(player) then
 continue
 end
-bestTarget, bestTargetDistance = consider(bestTarget, bestTargetDistance, fighter)
+bestTarget, bestTargetDistance = consider(bestTarget, bestTargetDistance, fighter, player)
 end
 
 return bestTarget ~= nil and fn37(bestTarget) or nil
 end
 
 index2.HasTargets = function(arg)
-for _, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116) then
+for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
+if fn36(v116, player) then
 return true
 end
 end
@@ -64415,6 +64331,22 @@ end
 return v121 - position2 + Vector3.new(x, y, z)
 end
 
+local function fn45(surface)
+if type(surface) ~= "table" then return false end
+local part = surface.Part
+local ok, valid = pcall(function()
+return typeof(part) == "Instance"
+and part:IsA("BasePart")
+and part:IsDescendantOf(workspace)
+and not fn41(part)
+and part.Transparency ~= 1
+and part.CFrame == surface._SourceCFrame
+and part.Size == surface._SourceSize
+and part.Transparency == surface._SourceTransparency
+end)
+return ok and valid == true
+end
+
 local index2 = {}
 index2.__index = index2
 
@@ -64427,9 +64359,12 @@ _fighters = arg,
 _nextPositionCooldown = -v86[63],
 _poolEnvironmentId = nil,
 _pool = {},
+_poolPartSet = {},
 _processedPartSet = {},
-_scanQueue = {},
-_scanQueueIndex = 1,
+_scanRoots = nil,
+_scanRootIndex = 1,
+_scanStack = {},
+_scanVisitedInstanceSet = {},
 _scanQueueEnvironmentId = nil,
 _scanQueueReadyAt = 0,
 }
@@ -64458,11 +64393,16 @@ end
 index2._BindEnvironment = function(arg, poolEnvironmentId)
 arg._poolEnvironmentId = poolEnvironmentId
 arg._pool = {}
+arg._poolPartSet = {}
 arg._processedPartSet = {}
-arg._scanQueue = {}
-arg._scanQueueIndex = 1
+arg._scanRoots = nil
+arg._scanRootIndex = 1
+arg._scanStack = {}
+arg._scanVisitedInstanceSet = {}
 arg._scanQueueEnvironmentId = poolEnvironmentId
 arg._scanQueueReadyAt = 0
+arg._lastBreakSurface = nil
+arg._nextPositionCooldown = -1
 end
 
 index2.Compute = function(arg, arg2)
@@ -64470,9 +64410,11 @@ local nextPositionCooldown = arg._nextPositionCooldown
 
 if os.clock() < nextPositionCooldown then
 local lastBreakSurface = arg._lastBreakSurface
-if lastBreakSurface ~= nil then
+if lastBreakSurface ~= nil and fn45(lastBreakSurface) then
 return fn40(lastBreakSurface, fn38(), fn39())
 end
+arg._lastBreakSurface = nil
+arg._nextPositionCooldown = -1
 end
 
 if not arg:_HasProjectileThreat() then
@@ -64511,7 +64453,7 @@ local n33 = (projectileBreaker.DepthForward.Min + projectileBreaker.DepthForward
 local processedCount = 0
 
 local function processPart(part)
-if typeof(part) ~= "Instance" or not part:IsA("BasePart") or arg._processedPartSet[part] then
+if typeof(part) ~= "Instance" or not part:IsA("BasePart") or arg._processedPartSet[part] or arg._poolPartSet[part] then
 return
 end
 arg._processedPartSet[part] = true
@@ -64519,6 +64461,15 @@ local okSurface, surface = pcall(fn43, part)
 if not okSurface or surface == nil then
 return
 end
+local okGeometry, sourceCFrame, sourceSize, sourceTransparency = pcall(function()
+return part.CFrame, part.Size, part.Transparency
+end)
+if not okGeometry or typeof(sourceCFrame) ~= "CFrame" or typeof(sourceSize) ~= "Vector3" then
+return
+end
+surface._SourceCFrame = sourceCFrame
+surface._SourceSize = sourceSize
+surface._SourceTransparency = sourceTransparency
 local okPosition, candidatePosition = pcall(function()
 return fn40(surface, n, n33).Position
 end)
@@ -64527,67 +64478,113 @@ return
 end
 local okUnsafe, unsafePosition = pcall(fn42, candidatePosition)
 if okUnsafe and not unsafePosition then
+arg._poolPartSet[part] = true
  table.insert(arg._pool, surface)
 end
 end
 
 if arg._scanQueueEnvironmentId ~= arg2 then
-arg._scanQueue = {}
-arg._scanQueueIndex = 1
+arg._scanRoots = nil
+arg._scanRootIndex = 1
+arg._scanStack = {}
+arg._scanVisitedInstanceSet = {}
 arg._scanQueueEnvironmentId = arg2
 arg._scanQueueReadyAt = 0
 end
 
-if arg._scanQueueIndex > #arg._scanQueue and os.clock() >= (arg._scanQueueReadyAt or 0) then
+if arg._scanRoots == nil then
+if os.clock() < (arg._scanQueueReadyAt or 0) then
+return
+end
 local okRoots, roots = pcall(v119.GetTagged, v119, "RaycastWhitelist" .. arg2)
 if not okRoots or type(roots) ~= "table" then
 arg._scanQueueReadyAt = os.clock() + 0.5
 return
 end
-local queue = {}
-for _, root in ipairs(roots) do
-if #queue >= 4096 then
+arg._scanRoots = roots
+arg._scanRootIndex = 1
+arg._scanStack = {}
+arg._scanVisitedInstanceSet = {}
+end
+
+local roots = arg._scanRoots
+local stack = arg._scanStack
+local visited = arg._scanVisitedInstanceSet
+while processedCount < 64 and #arg._pool < 30 do
+if #stack == 0 then
+local rootFound = false
+while roots ~= nil and arg._scanRootIndex <= #roots do
+local root = roots[arg._scanRootIndex]
+arg._scanRootIndex += 1
+if typeof(root) == "Instance" then
+local okRoot, validRoot = pcall(function()
+return root:IsDescendantOf(workspace) and not fn41(root)
+end)
+if okRoot and validRoot and not visited[root] then
+visited[root] = true
+stack[#stack + 1] = { Instance = root, Expanded = false }
+rootFound = true
 break
 end
-if typeof(root) == "Instance" and not fn41(root) then
-queue[#queue + 1] = root
 end
 end
-arg._scanQueue = queue
-arg._scanQueueIndex = 1
+if not rootFound then
+break
+end
+end
+
+local frame = stack[#stack]
+local current = frame and frame.Instance or nil
+if current == nil then
+table.remove(stack)
+else
+if not frame.Expanded then
+frame.Expanded = true
+processedCount += 1
+local okCurrent, canVisit = pcall(function()
+return typeof(current) == "Instance" and current:IsDescendantOf(workspace) and not fn41(current)
+end)
+if not okCurrent or not canVisit then
+table.remove(stack)
+else
+if current:IsA("BasePart") then
+processPart(current)
+end
+local okChildren, children = pcall(current.GetChildren, current)
+frame.Children = okChildren and type(children) == "table" and children or {}
+frame.ChildIndex = 1
+end
+else
+local children = frame.Children
+local childIndex = frame.ChildIndex or 1
+if type(children) == "table" and childIndex <= #children then
+local child = children[childIndex]
+frame.ChildIndex = childIndex + 1
+if typeof(child) == "Instance" and not visited[child] then
+local okChild, canVisitChild = pcall(function()
+return child:IsDescendantOf(workspace) and not fn41(child)
+end)
+if okChild and canVisitChild then
+visited[child] = true
+stack[#stack + 1] = { Instance = child, Expanded = false }
+end
+end
+else
+table.remove(stack)
+end
+end
+end
+end
+
+if arg._scanRoots ~= nil and arg._scanRootIndex > #arg._scanRoots and #arg._scanStack == 0 then
+arg._scanRoots = nil
+arg._scanRootIndex = 1
+arg._scanStack = {}
+arg._scanVisitedInstanceSet = {}
+arg._processedPartSet = {}
 arg._scanQueueReadyAt = os.clock() + 0.5
 end
-
-local queue = arg._scanQueue
-while processedCount < 64 and #arg._pool < 30 and arg._scanQueueIndex <= #queue do
-local current = queue[arg._scanQueueIndex]
-arg._scanQueueIndex += 1
-processedCount += 1
-if typeof(current) == "Instance" then
-if not fn41(current) then
-processPart(current)
-local okChildren, children = pcall(current.GetChildren, current)
-if okChildren and type(children) == "table" then
-for _, child in ipairs(children) do
-if #queue >= 4096 then
-break
 end
-if typeof(child) == "Instance" and not fn41(child) then
-queue[#queue + 1] = child
-end
-end
-end
-end
-end
-end
-
-if arg._scanQueueIndex > #queue then
-arg._scanQueue = {}
-arg._scanQueueIndex = 1
-arg._scanQueueReadyAt = math.max(arg._scanQueueReadyAt or 0, os.clock() + 0.5)
-end
-end
-
 index2._BreakLine = function(arg)
 local poolEnvironmentId = arg._poolEnvironmentId
 if poolEnvironmentId == nil then
@@ -64597,10 +64594,12 @@ end
 for i = #arg._pool, 1, -1 do
 local surface = arg._pool[i]
 local part = type(surface) == "table" and surface.Part or nil
-if typeof(part) ~= "Instance" or part.Parent == nil then
+local surfaceStillValid = fn45(surface)
+if not surfaceStillValid then
  table.remove(arg._pool, i)
-if part ~= nil then
+if typeof(part) == "Instance" then
 arg._processedPartSet[part] = nil
+arg._poolPartSet[part] = nil
 end
 end
 end
@@ -64726,7 +64725,7 @@ local itemObserver = fighterState.ItemObserver
 local okAmmoState, ammoState = pcall(function()
 return itemObserver:GetEquippedAmmoState()
 end)
-local flag19 = not okAmmoState or ammoState ~= false
+local flag19 = okAmmoState and type(ammoState) == "boolean" and ammoState == true
 
 if not fn36(rootPart.Position) then
 if limitEntryTime ~= nil then
@@ -65157,6 +65156,9 @@ _reloadGun = nil,
 _reloadReadyAt = nil,
 _reloadAcknowledgementDeadline = nil,
 _pendingDepletionAmmo = nil,
+_reloadReadFailureSince = nil,
+_reloadReadRetryAt = nil,
+_nextReloadReadWarningAt = 0,
 }
 
 setmetatable(tbl18, index2)
@@ -65256,6 +65258,13 @@ end
 local mode = v115.Data.Ragebot.Evasion.Mode
 local okAction, actionResult = pcall(v128.getAction, innerContext)
 local v130 = okAction and actionResult or nil
+if not okAction then
+local warningNow = os.clock()
+if warningNow >= (arg._nextGetActionWarningAt or 0) then
+arg._nextGetActionWarningAt = warningNow + 5
+warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
+end
+end
 
 if mode == "Translocate" and arg._reloadGun == nil and (v130 == nil or v130.Type ~= "Reload") then
 arg:_ApplyForcedCrouch(v86[153])
@@ -65264,7 +65273,7 @@ local destination = v125.compute(clientCFrame, arg._targetSelection:HasTargets()
 if typeof(destination) ~= "CFrame" then
 error("Translocate returned an invalid destination CFrame")
 end
-characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(destination))
+characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(destination, characterController))
 end)
 if not okTranslocate then
 local warningNow = os.clock()
@@ -65371,7 +65380,7 @@ if v132 ~= nil and ammoReadable and currentShotRequestCount - shotRequestCount >
 local okExpected, expectedAmmo = pcall(v132.GetExpectedAmmoAfterPendingShots, v132)
 if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 then
 pcall(function()
-innerContext.CharacterController:SetServerCFrame(arg:_ApplyUndergroundOffset(v127.getImmune()))
+innerContext.CharacterController:SetServerCFrame(arg:_ApplyUndergroundOffset(v127.getImmune(), innerContext.CharacterController))
 end)
 local now2 = os.clock()
 arg._reloadGun = v132
@@ -65388,7 +65397,12 @@ if arg4 ~= nil then
 local aliveState = arg4.AliveState
 local root = aliveState ~= nil and aliveState.RootPart or nil
 local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
-if root == nil or root.Parent == nil or hitbox == nil or hitbox.Parent == nil then
+local okTargetParts, targetPartsValid = pcall(function()
+return root ~= nil and hitbox ~= nil
+and root:IsA("BasePart") and hitbox:IsA("BasePart")
+and root:IsDescendantOf(workspace) and hitbox:IsDescendantOf(workspace)
+end)
+if not okTargetParts or not targetPartsValid then
 arg4 = nil
 end
 end
@@ -65463,6 +65477,9 @@ arg._reloadGun = nil
 arg._reloadReadyAt = nil
 arg._reloadAcknowledgementDeadline = nil
 arg._pendingDepletionAmmo = nil
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nil
+arg._nextReloadReadWarningAt = arg._nextReloadReadWarningAt or 0
 end
 
 index2._PlanReloadTransport = function(arg, arg2)
@@ -65470,14 +65487,36 @@ local reloadGun = arg._reloadGun
 local now2 = os.clock()
 
 if reloadGun ~= nil then
+local function transientReadFailure(stage, detail)
+if arg._reloadReadFailureSince == nil then
+arg._reloadReadFailureSince = now2
+end
+arg._reloadReadRetryAt = now2 + 0.1
+if now2 >= (arg._nextReloadReadWarningAt or 0) then
+arg._nextReloadReadWarningAt = now2 + 5
+warn("[Ragebot] Reload state temporarily unavailable (" .. tostring(stage) .. "): " .. tostring(detail))
+end
+if now2 - arg._reloadReadFailureSince <= 2 then
+return fn36()
+end
+arg:_ClearReloadTransport()
+return nil
+end
+
+if arg._reloadReadRetryAt ~= nil and now2 < arg._reloadReadRetryAt then
+return fn36()
+end
+
 local okEquipped, equippedGun = pcall(function()
 local context = arg._innerContext
 local behaviors = context ~= nil and context.ItemBehaviors or nil
 return behaviors ~= nil and behaviors:EquippedItemAsGun() or nil
 end)
 if not okEquipped then
-arg:_ClearReloadTransport()
-return nil
+return transientReadFailure("equipped gun", equippedGun)
+end
+if equippedGun == nil then
+return transientReadFailure("equipped gun", "no equipped gun reported during a pending reload")
 end
 if equippedGun ~= reloadGun or arg2 ~= nil and (arg2.Type == "Swap" or arg2.Type == "Attack") and arg2.Item ~= reloadGun then
 arg:_ClearReloadTransport()
@@ -65486,10 +65525,11 @@ end
 
 local okReloading, isReloading = pcall(function() return reloadGun:IsReloading() end)
 if not okReloading or type(isReloading) ~= "boolean" then
-arg:_ClearReloadTransport()
-return nil
+return transientReadFailure("reload flag", isReloading)
 end
 if isReloading then
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nil
 arg._reloadReadyAt = nil
 arg._pendingDepletionAmmo = nil
 arg._reloadAcknowledgementDeadline = nil
@@ -65501,8 +65541,7 @@ local okReserve, reserve = pcall(function() return reloadGun:GetAmmoReserve() en
 local validAmmo = okAmmo and type(ammo) == "number" and ammo == ammo and ammo ~= math.huge and ammo ~= -math.huge and ammo >= 0
 local validReserve = okReserve and type(reserve) == "number" and reserve == reserve and reserve ~= -math.huge and reserve >= 0
 if not validAmmo or not validReserve then
-arg:_ClearReloadTransport()
-return nil
+return transientReadFailure("ammo/reserve", (not validAmmo and ammo) or reserve)
 end
 
 if arg._pendingDepletionAmmo ~= nil then
@@ -65512,10 +65551,11 @@ if not (ammo <= 0 and reserve > 0) then
 local timedOut = reloadAcknowledgementDeadline == nil or now2 >= reloadAcknowledgementDeadline
 if not timedOut then
 local okExpected, expected = pcall(function() return reloadGun:GetExpectedAmmoAfterPendingShots() end)
-if not okExpected or type(expected) ~= "number" or expected ~= expected or expected == -math.huge then
-arg:_ClearReloadTransport()
-return nil
+if not okExpected or type(expected) ~= "number" or expected ~= expected or expected == math.huge or expected == -math.huge then
+return transientReadFailure("expected ammo", expected)
 end
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nil
 timedOut = expected > 0
 end
 
@@ -65530,6 +65570,8 @@ arg._pendingDepletionAmmo = nil
 arg._reloadAcknowledgementDeadline = nil
 end
 
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nil
 if ammo > 0 or reserve <= 0 then
 arg:_ClearReloadTransport()
 return nil
@@ -65578,7 +65620,7 @@ end
 return { CFrame = v121.compute(arg2) }
 end
 
-index2._ApplyUndergroundOffset = function(arg, cframe)
+index2._ApplyUndergroundOffset = function(arg, cframe, characterController)
 if not arg._enabled or typeof(cframe) ~= "CFrame" then
 return cframe
 end
@@ -65586,7 +65628,16 @@ local controller = rawget(_G, "__CrefyUndergroundController")
 if type(controller) ~= "table" or type(controller.ApplyToRagebotCFrame) ~= "function" then
 return cframe
 end
-local ok, adjusted = pcall(controller.ApplyToRagebotCFrame, cframe)
+local clientCFrame = nil
+if characterController ~= nil then
+local okClient, resultClient = pcall(function()
+return characterController:GetClientCFrame()
+end)
+if okClient and typeof(resultClient) == "CFrame" then
+clientCFrame = resultClient
+end
+end
+local ok, adjusted = pcall(controller.ApplyToRagebotCFrame, cframe, clientCFrame)
 if ok and typeof(adjusted) == "CFrame" then
 return adjusted
 end
@@ -65601,7 +65652,7 @@ end
 local cFrame = arg2 ~= nil and arg2.CFrame or nil
 
 if cFrame == nil or arg3 == nil or arg2.ShouldSkipDefense then
-characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(cFrame))
+characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(cFrame, characterController))
 characterController:SendViewAngles(20, arg2.ViewAngles)
 return
 end
@@ -65609,7 +65660,7 @@ end
 local aliveState = arg3.AliveState
 local v130 = v129(arg4.ItemBehaviors)
 local v131 = v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
-characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(v131))
+characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(v131, characterController))
 
 if arg2.IsAimPose or arg2.ShouldDefendInPlace then
 arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterState)
