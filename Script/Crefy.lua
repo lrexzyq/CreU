@@ -27101,6 +27101,7 @@ _expectedAmmoRaw = v102(data, "Ammo"),
 _nextLikelyShotRequestAt = 0,
 _outstandingAmmoSpend = 0,
 _outstandingAmmoSpendDeadline = nil,
+_pendingShotBatches = {},
 ItemInterface = v117.new(arg),
 Inner = arg,
 Name = v102(arg, "Name"),
@@ -27119,59 +27120,181 @@ index2.Destroy = function(arg)
 arg.ItemInterface:Destroy()
 end
 
+local function pendingAmmoNumber(value)
+return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge and value >= 0
+end
+
+local function syncPendingShotSummary(item)
+local batches = item._pendingShotBatches
+if type(batches) ~= "table" then
+batches = {}
+item._pendingShotBatches = batches
+end
+local outstanding = 0
+local earliestDeadline = nil
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local spend = type(batch) == "table" and tonumber(batch.spend) or nil
+local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
+if spend == nil or spend ~= spend or spend == math.huge or spend == -math.huge or spend <= 0
+or deadline == nil or deadline ~= deadline or deadline == math.huge or deadline == -math.huge then
+table.remove(batches, i)
+else
+batch.spend = spend
+batch.deadline = deadline
+outstanding = outstanding + spend
+if earliestDeadline == nil or deadline < earliestDeadline then
+ earliestDeadline = deadline
+end
+end
+end
+item._outstandingAmmoSpend = outstanding
+item._outstandingAmmoSpendDeadline = earliestDeadline
+end
+
+local function consumeObservedAmmoSpend(item, observedSpend)
+local batches = item._pendingShotBatches
+if type(batches) ~= "table" or observedSpend <= 0 then return end
+local remaining = observedSpend
+for i = 1, #batches do
+if remaining <= 0 then break end
+local batch = batches[i]
+if type(batch) == "table" then
+local spend = tonumber(batch.spend) or 0
+if spend > 0 then
+local consumed = math.min(spend, remaining)
+batch.spend = spend - consumed
+remaining = remaining - consumed
+end
+end
+end
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local spend = type(batch) == "table" and tonumber(batch.spend) or nil
+if spend == nil or spend ~= spend or spend <= 0 then
+ table.remove(batches, i)
+end
+end
+end
+
 index2._ClearPendingShots = function(arg)
-arg._expectedAmmoRaw = arg:GetAmmo()
-arg._nextLikelyShotRequestAt = v86[186]
-arg._outstandingAmmoSpend = v86[186]
-arg._outstandingAmmoSpendDeadline = nil
-end
-
-index2._ReconcilePendingShots = function(arg, arg2)
-local ammo = arg:GetAmmo()
-local expectedAmmoRaw = arg._expectedAmmoRaw
-if ammo > expectedAmmoRaw then
-arg:_ClearPendingShots()
-return
-end
-
-if ammo < expectedAmmoRaw then
-arg._outstandingAmmoSpend = math.max(arg._outstandingAmmoSpend - expectedAmmoRaw - ammo, v86[186])
-arg._expectedAmmoRaw = ammo
-
-if arg._outstandingAmmoSpend <= 0 then
-arg._outstandingAmmoSpendDeadline = nil
-end
-end
-
-local outstandingAmmoSpendDeadline = arg._outstandingAmmoSpendDeadline
-
-if outstandingAmmoSpendDeadline ~= nil and arg2 >= outstandingAmmoSpendDeadline then
-arg._outstandingAmmoSpend = 0
+local okAmmo, ammo = pcall(arg.GetAmmo, arg)
+local validAmmo = okAmmo and pendingAmmoNumber(ammo)
+arg._expectedAmmoRaw = validAmmo and ammo or nil
 arg._nextLikelyShotRequestAt = 0
+arg._pendingShotBatches = {}
+arg._outstandingAmmoSpend = 0
 arg._outstandingAmmoSpendDeadline = nil
-end
+return validAmmo
 end
 
-index2._RecordPendingShot = function(arg)
+index2._ReconcilePendingShots = function(arg, now, ammoOverride, useAmmoOverride)
+now = tonumber(now)
+if now == nil or now ~= now or now == math.huge or now == -math.huge then now = os.clock() end
+local ammo, okAmmo
+if useAmmoOverride == true then
+ammo = ammoOverride
+okAmmo = true
+else
+okAmmo, ammo = pcall(arg.GetAmmo, arg)
+end
+local validAmmo = okAmmo and pendingAmmoNumber(ammo)
+local batches = arg._pendingShotBatches
+if type(batches) ~= "table" then
+batches = {}
+arg._pendingShotBatches = batches
+end
+if not validAmmo then
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
+if deadline ~= nil and now >= deadline then table.remove(batches, i) end
+end
+syncPendingShotSummary(arg)
+if #batches == 0 then
+arg._expectedAmmoRaw = nil
+arg._nextLikelyShotRequestAt = 0
+end
+return false
+end
+
+local expectedAmmoRaw = arg._expectedAmmoRaw
+if not pendingAmmoNumber(expectedAmmoRaw) then
+arg._expectedAmmoRaw = ammo
+arg._pendingShotBatches = {}
+arg._outstandingAmmoSpend = 0
+arg._outstandingAmmoSpendDeadline = nil
+arg._nextLikelyShotRequestAt = 0
+return true
+end
+if ammo > expectedAmmoRaw then
+arg._expectedAmmoRaw = ammo
+arg._pendingShotBatches = {}
+arg._outstandingAmmoSpend = 0
+arg._outstandingAmmoSpendDeadline = nil
+arg._nextLikelyShotRequestAt = 0
+return true
+end
+if ammo < expectedAmmoRaw then
+local observedAmmoSpend = expectedAmmoRaw - ammo
+consumeObservedAmmoSpend(arg, observedAmmoSpend)
+arg._expectedAmmoRaw = ammo
+end
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
+if deadline ~= nil and now >= deadline then table.remove(batches, i) end
+end
+syncPendingShotSummary(arg)
+if #batches == 0 then
+arg._nextLikelyShotRequestAt = 0
+end
+return true
+end
+
+index2._RecordPendingShot = function(arg, ammoSnapshot, useSnapshot)
 local now2 = os.clock()
-arg:_ReconcilePendingShots(now2)
-if now2 < arg._nextLikelyShotRequestAt then
-return
+local reconciled = arg:_ReconcilePendingShots(now2, ammoSnapshot, useSnapshot == true)
+if reconciled ~= true then return end
+local expectedAmmoRaw = arg._expectedAmmoRaw
+if not pendingAmmoNumber(expectedAmmoRaw) then return end
+local nextRequestAt = tonumber(arg._nextLikelyShotRequestAt) or 0
+if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then nextRequestAt = 0 end
+if now2 < nextRequestAt then return end
+local outstanding = tonumber(arg._outstandingAmmoSpend) or 0
+if outstanding ~= outstanding or outstanding == math.huge or outstanding == -math.huge or outstanding < 0 then outstanding = 0 end
+local available = math.max(expectedAmmoRaw - outstanding, 0)
+if available <= 0 then return end
+local info = type(arg.Info) == "table" and arg.Info or {}
+local burstCount = tonumber(info.ShootBurst) or 1
+if burstCount ~= burstCount or burstCount == math.huge or burstCount == -math.huge or burstCount < 1 then burstCount = 1 end
+local predictedSpend = math.min(burstCount, available)
+local remoteDelay = 0
+local replicationDelay = 0
+local okRemoteDelay, estimatedRemoteDelay = pcall(v118.getEstimatedRemoteDelay)
+local okReplicationDelay, estimatedReplicationDelay = pcall(v118.getEstimatedReplicationDelay)
+if okRemoteDelay then remoteDelay = tonumber(estimatedRemoteDelay) or 0 end
+if okReplicationDelay then replicationDelay = tonumber(estimatedReplicationDelay) or 0 end
+if remoteDelay ~= remoteDelay or remoteDelay < 0 or remoteDelay == math.huge or remoteDelay == -math.huge then remoteDelay = 0 end
+if replicationDelay ~= replicationDelay or replicationDelay < 0 or replicationDelay == math.huge or replicationDelay == -math.huge then replicationDelay = 0 end
+local deadline = now2 + math.max(0.05, remoteDelay + replicationDelay)
+local pendingBatches = arg._pendingShotBatches
+if type(pendingBatches) ~= "table" then
+pendingBatches = {}
+arg._pendingShotBatches = pendingBatches
 end
-local n = math.max(arg._expectedAmmoRaw - arg._outstandingAmmoSpend, 0)
-if n <= v86[186] then
-return
-end
-local n33 = math.max(arg.Info.ShootBurst or 1, 1)
-arg._outstandingAmmoSpend = arg._outstandingAmmoSpend + math.min(n33, n)
-arg._outstandingAmmoSpendDeadline = now2 + v118.getEstimatedRemoteDelay() + v118.getEstimatedReplicationDelay()
-local quickShotCooldown = arg:IsFanFired() and v102(arg.Info, "QuickShotCooldown") or nil
-if quickShotCooldown ~= nil then
+table.insert(pendingBatches, { spend = predictedSpend, deadline = deadline })
+syncPendingShotSummary(arg)
+local quickShotCooldown = arg:IsFanFired() and v102(info, "QuickShotCooldown") or nil
+if type(quickShotCooldown) == "number" and quickShotCooldown == quickShotCooldown and quickShotCooldown >= 0 and quickShotCooldown < math.huge then
 arg._nextLikelyShotRequestAt = now2 + quickShotCooldown
 return
 end
-local shootBurstCooldown = arg.Info.ShootBurstCooldown or 0
-arg._nextLikelyShotRequestAt = now2 + (n33 - 1) * shootBurstCooldown + math.max(arg.Info.ShootCooldown or 0, shootBurstCooldown)
+local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
+local shootCooldown = tonumber(info.ShootCooldown) or 0
+if burstCooldown ~= burstCooldown or burstCooldown < 0 or burstCooldown == math.huge or burstCooldown == -math.huge then burstCooldown = 0 end
+if shootCooldown ~= shootCooldown or shootCooldown < 0 or shootCooldown == math.huge or shootCooldown == -math.huge then shootCooldown = 0 end
+arg._nextLikelyShotRequestAt = now2 + (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
 end
 
 index2.Equip = function(arg)
@@ -27204,11 +27327,20 @@ arg:ShootEncoded(v115.encode(arg2), v115.encode(arg3), v122, v123)
 end
 
 index2.ShootEncoded = function(arg, arg2, arg3, arg4, arg5)
+local ammoSnapshot = nil
+local okAmmoSnapshot, snapshotValue = pcall(arg.GetAmmo, arg)
+if okAmmoSnapshot and pendingAmmoNumber(snapshotValue) then
+ammoSnapshot = snapshotValue
+end
 local tbl18 = { ["\0"] = arg2, ["\1"] = arg3, ["\2"] = arg4, ["\3"] = arg5, ["\4"] = arg:IsFanFired() or nil }
 local tbl19 = arg.IsRaycast and { ["\1"] = tbl18, ["\2"] = true } or { ["\1"] = tbl18 }
 fireServer(useItemRemote, arg.ObjectId, v116.encode("StartShooting"), tbl19, nil)
 arg.ShotRequestCount = arg.ShotRequestCount + 1
+if ammoSnapshot ~= nil then
+arg:_RecordPendingShot(ammoSnapshot, true)
+else
 arg:_RecordPendingShot()
+end
 end
 
 index2.IsFullyAiming = function(arg)
@@ -27245,8 +27377,25 @@ return v102(arg._data, "Ammo")
 end
 
 index2.GetExpectedAmmoAfterPendingShots = function(arg)
-arg:_ReconcilePendingShots(os.clock())
-return math.max(arg._expectedAmmoRaw - arg._outstandingAmmoSpend, 0)
+local reconciled = arg:_ReconcilePendingShots(os.clock())
+if reconciled ~= true then
+local okAmmo, currentAmmo = pcall(arg.GetAmmo, arg)
+if okAmmo and type(currentAmmo) == "number" and currentAmmo == currentAmmo and currentAmmo ~= math.huge and currentAmmo ~= -math.huge and currentAmmo >= 0 then
+return currentAmmo
+end
+return nil
+end
+local expectedAmmoRaw = arg._expectedAmmoRaw
+if type(expectedAmmoRaw) ~= "number" or expectedAmmoRaw ~= expectedAmmoRaw or expectedAmmoRaw == math.huge or expectedAmmoRaw == -math.huge or expectedAmmoRaw < 0 then
+local okAmmo, ammo = pcall(arg.GetAmmo, arg)
+if okAmmo and type(ammo) == "number" and ammo == ammo and ammo ~= math.huge and ammo ~= -math.huge and ammo >= 0 then
+return ammo
+end
+return nil
+end
+local outstanding = tonumber(arg._outstandingAmmoSpend) or 0
+if outstanding ~= outstanding or outstanding == math.huge or outstanding == -math.huge or outstanding < 0 then outstanding = 0 end
+return math.max(expectedAmmoRaw - outstanding, 0)
 end
 
 index2.GetAmmoReserve = function(arg)
@@ -29821,13 +29970,44 @@ tbl17.cX()
 local v116 = tbl17.k()
 local cameraArbiter = tbl17.co()
 local riotStateKey = "__SilentCamTargetRotationExactReplication_v1"
-local riotGlobalEnv = (type(getgenv) == "function" and getgenv()) or _G
-local riotPreviousState = riotGlobalEnv[riotStateKey]
+local riotGlobalEnv
+local function riotEnsureGlobalEnv()
+if type(riotGlobalEnv) == "table" then return riotGlobalEnv end
+local candidate = nil
+if type(getgenv) == "function" then
+local okEnv, valueEnv = pcall(getgenv)
+if okEnv and type(valueEnv) == "table" then candidate = valueEnv end
+end
+if type(candidate) ~= "table" and type(_G) == "table" then candidate = _G end
+if type(candidate) ~= "table" then candidate = {} end
+riotGlobalEnv = candidate
+return candidate
+end
+local function riotStateGet(key)
+local env = riotEnsureGlobalEnv()
+local okValue, value = pcall(rawget, env, key)
+if okValue then return value end
+return nil
+end
+local function riotStateSet(key, value)
+local env = riotEnsureGlobalEnv()
+local okSet = pcall(rawset, env, key, value)
+if okSet then return true end
+if type(_G) == "table" and env ~= _G then
+local fallbackOk = pcall(rawset, _G, key, value)
+if fallbackOk then
+riotGlobalEnv = _G
+return true
+end
+end
+return false
+end
+local riotPreviousState = riotStateGet(riotStateKey)
 if type(riotPreviousState) == "table" and type(riotPreviousState.stop) == "function" then
 pcall(riotPreviousState.stop)
 end
-local riotState = { enabled = false, active = false, initializing = false, generation = 0, triggerDistance = 25, lastFireAt = 0, retryAfter = 0, characterController = nil, angleApplied = false, lastAngleBytes = nil }
-riotGlobalEnv[riotStateKey] = riotState
+local riotState = { enabled = false, active = false, initializing = false, generation = 0, triggerDistance = 25, lastFireAt = 0, retryAfter = 0, characterController = nil, angleApplied = false, lastAngleBytes = nil, payload = nil, lastAngleAt = 0, aimPart = nil, buildPayload = nil }
+riotStateSet(riotStateKey, riotState)
 local riotTwoPi = 2 * math.pi
 local riotMinTriggerDist = 25
 local riotMaxTriggerDist = 1000000000000
@@ -29845,6 +30025,32 @@ if not riotFinite(n) then return string.char(0) end
 local value = math.floor((n % (2 * math.pi)) / (2 * math.pi) * 256 + 0.5)
 return string.char(math.clamp(value, 0, 255))
 end
+local function riotBuildPayload(origin, targetPart)
+if typeof(origin) ~= "Vector3" or targetPart == nil or targetPart.Parent == nil then
+return nil, nil
+end
+local okPosition, targetPosition = pcall(function() return targetPart.Position end)
+if not okPosition or typeof(targetPosition) ~= "Vector3"
+or not riotFinite(targetPosition.X) or not riotFinite(targetPosition.Y) or not riotFinite(targetPosition.Z) then
+return nil, nil
+end
+local direction = targetPosition - origin
+if direction.Magnitude < 0.001 then return nil, nil end
+local okRotation, pitch, yaw = pcall(function()
+local pitchValue, yawValue = CFrame.lookAt(origin, targetPosition):ToOrientation()
+return pitchValue, yawValue
+end)
+if not okRotation or not riotFinite(pitch) or not riotFinite(yaw) then
+return nil, nil
+end
+local maxPitch = math.rad(88.59375)
+pitch = math.clamp(pitch, -maxPitch, maxPitch)
+local pitchDegrees = math.deg(pitch)
+local yawDegrees = math.deg(yaw)
+local bytes = riotEncodeByte(math.rad(pitchDegrees)) .. riotEncodeByte(math.rad(yawDegrees))
+return { Kind = "Normalized", Pitch = pitchDegrees, Yaw = yawDegrees }, bytes
+end
+riotState.buildPayload = riotBuildPayload
 local RIOT_VIEW_ANGLE_SLOT = 15
 local RIOT_RAGEBOT_TARGET_KEY = "__CrefyRagebotTargetState"
 local function riotClearAnglePayload(controller)
@@ -29873,9 +30079,13 @@ if clearSucceeded then
 riotState.angleApplied = false
 end
 riotState.lastAngleBytes = nil
+riotState.payload = nil
+riotState.lastAngleAt = 0
+riotState.aimPart = nil
 riotState.active = false
 riotState.targetCharacter = nil
 riotSilentActive = false
+return clearSucceeded
 end
 local function riotCharacterEligible(character, localRoot, localTeam, localEnvironment)
 if character == nil or character.Parent == nil or localRoot == nil or localRoot.Parent == nil then
@@ -29947,7 +30157,7 @@ if localRoot == nil or localHumanoid == nil or localHumanoid.Health <= 0 then re
 local localTeam = localPlayer:GetAttribute("TeamID")
 local localEnvironment = localPlayer:GetAttribute("EnvironmentID")
 if localEnvironment == nil or localTeam == nil then return nil end
-local sharedTargetState = rawget(riotGlobalEnv, RIOT_RAGEBOT_TARGET_KEY)
+local sharedTargetState = riotStateGet(RIOT_RAGEBOT_TARGET_KEY)
 if type(sharedTargetState) == "table" and sharedTargetState.active == true then
 local updatedAt = tonumber(sharedTargetState.updatedAt) or 0
 local targetAge = os.clock() - updatedAt
@@ -30021,10 +30231,15 @@ riotState.fighters = fighters
 if os.clock() < (tonumber(riotState.retryAfter) or 0) then return false end
 if characterController ~= nil and riotState.characterController ~= characterController then
 local previousController = riotState.characterController
-riotClearAnglePayload(previousController)
-if riotState.angleApplied == true then
-riotState.angleApplied = false
-riotState.lastAngleBytes = nil
+local clearedPrevious = riotClearAnglePayload(previousController)
+if not clearedPrevious then
+riotState.enabled = false
+if riotState.heartbeat ~= nil then
+pcall(function() riotState.heartbeat:Disconnect() end)
+riotState.heartbeat = nil
+end
+riotState.retryAfter = os.clock() + 0.25
+return false
 end
 riotState.characterController = characterController
 end
@@ -30063,6 +30278,23 @@ riotClearAnglePayload(controller)
 return
 end
 local aimOrigin = nil
+local sharedTargetState = riotStateGet(RIOT_RAGEBOT_TARGET_KEY)
+local ragebotOwnsTarget = type(sharedTargetState) == "table"
+and sharedTargetState.active == true
+and sharedTargetState.character == targetCharacter
+local currentController = riotState.characterController
+if ragebotOwnsTarget and currentController ~= nil then
+local serverOriginOk, serverOrigin = pcall(function()
+return currentController:GetServerHeadOrigin()
+end)
+if serverOriginOk and typeof(serverOrigin) == "CFrame" then
+local position = serverOrigin.Position
+if riotFinite(position.X) and riotFinite(position.Y) and riotFinite(position.Z) then
+ aimOrigin = position
+end
+end
+end
+if aimOrigin == nil then
 local currentCamera = workspace.CurrentCamera
 if currentCamera ~= nil then
 local cameraOk, cameraPosition = pcall(function()
@@ -30070,7 +30302,8 @@ return currentCamera.CFrame.Position
 end)
 if cameraOk and typeof(cameraPosition) == "Vector3"
 and riotFinite(cameraPosition.X) and riotFinite(cameraPosition.Y) and riotFinite(cameraPosition.Z) then
-aimOrigin = cameraPosition
+ aimOrigin = cameraPosition
+end
 end
 end
 if aimOrigin == nil then
@@ -30081,29 +30314,19 @@ else
  aimOrigin = localRoot.Position
 end
 end
-local direction = targetHead.Position - aimOrigin
-if direction.Magnitude < 0.001 then
+local payload, angleBytes = riotBuildPayload(aimOrigin, targetHead)
+if payload == nil or angleBytes == nil then
 riotClearAnglePayload(controller)
 return
 end
-local lookCFrame = CFrame.lookAt(aimOrigin, targetHead.Position)
-local pitch, yaw = lookCFrame:ToOrientation()
-if not riotFinite(pitch) or not riotFinite(yaw) then
-riotClearAnglePayload(controller)
-return
-end
-local maxPitch = math.rad(88.59375)
-pitch = math.clamp(pitch, -maxPitch, maxPitch)
-local normalizedPitch = math.deg(pitch)
-local normalizedYaw = math.deg(yaw)
-local angleBytes = riotEncodeByte(math.rad(normalizedPitch)) .. riotEncodeByte(math.rad(normalizedYaw))
 riotState.active = true
 riotState.targetCharacter = targetCharacter
+riotState.aimPart = targetHead
 riotState.lastEncoded = angleBytes
+riotState.payload = payload
+riotState.lastAngleAt = os.clock()
 riotSilentActive = false
 if riotState.angleApplied ~= true or riotState.lastAngleBytes ~= angleBytes then
-local payload = { Kind = "Normalized", Pitch = normalizedPitch, Yaw = normalizedYaw }
-riotState.angleApplied = true
 local result = controller:SendViewAngles(RIOT_VIEW_ANGLE_SLOT, payload)
 if type(result) == "table" and result.Ok == false then
 pcall(function()
@@ -30112,7 +30335,14 @@ controller:FlushViewAngles()
 end)
 error(result.Error and result.Error.Detail or "ViewAngleDriver rejected Riot payload")
 end
+riotState.angleApplied = true
+local currentTargetState = riotStateGet(RIOT_RAGEBOT_TARGET_KEY)
+local ragebotConsumesAngle = type(currentTargetState) == "table"
+and currentTargetState.active == true
+and currentTargetState.character == targetCharacter
+if not ragebotConsumesAngle then
 controller:FlushViewAngles()
+end
 riotState.lastAngleBytes = angleBytes
 end
 end)
@@ -63771,8 +64001,91 @@ local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
 local RAGE_MIN_FIRE_INTERVAL = 0.03
-local ragebotGlobalEnv = (type(getgenv) == "function" and getgenv()) or _G
+local function ragebotSafeEstimatedDelay(callback)
+if type(callback) ~= "function" then return 0 end
+local ok, value = pcall(callback)
+value = ok and tonumber(value) or nil
+if value == nil or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+return 0
+end
+return math.min(value, 5)
+end
+local ragebotGlobalEnv
+if type(getgenv) == "function" then
+local envOk, envValue = pcall(getgenv)
+if envOk and type(envValue) == "table" then
+ragebotGlobalEnv = envValue
+end
+end
+if type(ragebotGlobalEnv) ~= "table" and type(_G) == "table" then
+ragebotGlobalEnv = _G
+end
+if type(ragebotGlobalEnv) ~= "table" then
+ragebotGlobalEnv = {}
+end
 local RAGEBOT_TARGET_STATE_KEY = "__CrefyRagebotTargetState"
+local function ragebotEnsureGlobalEnv()
+if type(ragebotGlobalEnv) == "table" then return ragebotGlobalEnv end
+local candidate = nil
+if type(getgenv) == "function" then
+local envOk, envValue = pcall(getgenv)
+if envOk and type(envValue) == "table" then candidate = envValue end
+end
+if type(candidate) ~= "table" and type(_G) == "table" then candidate = _G end
+if type(candidate) ~= "table" then candidate = {} end
+ragebotGlobalEnv = candidate
+return candidate
+end
+local function ragebotStateGet(key)
+local env = ragebotEnsureGlobalEnv()
+local ok, value = pcall(rawget, env, key)
+if ok then return value end
+return nil
+end
+local function ragebotStateSet(key, value)
+local env = ragebotEnsureGlobalEnv()
+local ok = pcall(rawset, env, key, value)
+if ok then return true end
+local fallback = type(_G) == "table" and _G or {}
+local fallbackOk = pcall(rawset, fallback, key, value)
+if fallbackOk then
+ragebotGlobalEnv = fallback
+return true
+end
+fallback = {}
+ragebotGlobalEnv = fallback
+return pcall(rawset, fallback, key, value)
+end
+local function ragebotPublishTargetState(owner, active, character)
+local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+if type(shared) ~= "table" then shared = {} end
+local updatedAt = os.clock()
+local okWrite = pcall(function()
+shared.owner = owner
+shared.active = active == true
+shared.character = character
+shared.updatedAt = updatedAt
+end)
+if not okWrite then
+shared = { owner = owner, active = active == true, character = character, updatedAt = updatedAt }
+end
+return ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, shared)
+end
+local function ragebotDeactivateTargetState(owner)
+local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+if type(shared) ~= "table" then return end
+local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+if not okOwner or sharedOwner ~= owner then return end
+local updatedAt = os.clock()
+local okWrite = pcall(function()
+shared.active = false
+shared.character = nil
+shared.updatedAt = updatedAt
+end)
+if not okWrite then
+ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, { owner = owner, active = false, character = nil, updatedAt = updatedAt })
+end
+end
 
 local tbl18 = {
 ["\0"] = -9e37,
@@ -63819,8 +64132,19 @@ return setmetatable({ _partGlue = arg, _shootLock = v116.new(), _lastShotAt = -m
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6)
-local hitboxHead = arg3.AliveState.HitboxHead
-if hitboxHead == nil or hitboxHead.Parent == nil then
+local aliveState = arg3 ~= nil and arg3.AliveState or nil
+local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
+local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
+local okTarget, targetPartsValid = pcall(function()
+return arg3 ~= nil and aliveState ~= nil and arg3.AliveState == aliveState and aliveState.Alive == true
+and hitboxHead ~= nil and targetRoot ~= nil
+and hitboxHead:IsA("BasePart") and targetRoot:IsA("BasePart")
+and hitboxHead:IsDescendantOf(workspace) and targetRoot:IsDescendantOf(workspace)
+and hitboxHead.Parent ~= nil and targetRoot.Parent ~= nil
+end)
+if not okTarget or not targetPartsValid then
+arg:ClearTeleport()
+arg._shootLock:Reset()
 return arg5 and arg5.CFrame or nil, nil
 end
 local flag19 = v117(arg3.FighterState) ~= "Below"
@@ -63848,6 +64172,7 @@ end
 
 return n, function()
 if hitboxHead == nil or hitboxHead.Parent == nil then
+arg._shootLock:Reset()
 return false
 end
 
@@ -63861,44 +64186,59 @@ end
 local minInterval = math.max(RAGE_MIN_FIRE_INTERVAL, configuredCooldown)
 local lastShotAt = tonumber(arg._lastShotAt) or -math.huge
 if now2 - lastShotAt < minInterval then
+arg._shootLock:Reset()
 return false
 end
 
 local okReload, isReloading = pcall(function()
 return arg4:IsReloading()
 end)
-if okReload and isReloading == true then
+if not okReload or type(isReloading) ~= "boolean" or isReloading then
+arg._shootLock:Reset()
 return false
 end
+local okAmmoBased, ammoBased = pcall(function()
+return arg4:IsAmmoBased()
+end)
+if not okAmmoBased or type(ammoBased) ~= "boolean" then
+arg._shootLock:Reset()
+return false
+end
+if ammoBased then
 local okAmmo, ammo = pcall(function()
 return arg4:GetAmmo()
 end)
-if okAmmo and type(ammo) == "number" and ammo == ammo and ammo <= 0 then
+if not okAmmo or type(ammo) ~= "number" or ammo ~= ammo or ammo == -math.huge or ammo < 0 or ammo <= 0 then
+arg._shootLock:Reset()
 return false
 end
+end
 
-local inner = rawget(arg4, "Inner")
+local itemTable = type(arg4) == "table" and arg4 or nil
+local inner = itemTable ~= nil and rawget(itemTable, "Inner") or nil
 local innerData = type(inner) == "table" and rawget(inner, "Data") or nil
-local objectId = rawget(arg4, "ObjectId")
+local objectId = itemTable ~= nil and rawget(itemTable, "ObjectId") or nil
 local runtimeCooldown = type(inner) == "table" and rawget(inner, "_shoot_cooldown") or nil
 if type(runtimeCooldown) == "number" and runtimeCooldown == runtimeCooldown and runtimeCooldown > tick() then
+arg._shootLock:Reset()
 return false
 end
 
 pcall(function()
-if type(inner) == "table" and type(innerData) == "table" and rawget(innerData, "ObjectID") == objectId then
+if objectId ~= nil and type(inner) == "table" and type(innerData) == "table" and rawget(innerData, "ObjectID") == objectId then
 rawset(inner, "_shoot_cooldown", 0)
 rawset(inner, "_shoot_cooldown_no_ammo", 0)
 rawset(inner, "_last_shot", tick() - 1)
 end
 end)
-local okSend = pcall(function()
-arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
+local okSend, sendResult = pcall(function()
+return arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
 end)
-if okSend then
+if okSend and sendResult ~= false then
 arg._lastShotAt = os.clock()
 return true
 end
+arg._shootLock:Reset()
 return false
 end
 end
@@ -64031,8 +64371,20 @@ return math.clamp(interval, 0.08, 3)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, gluedOurPart, arg5)
-local aliveState = arg3.AliveState
-local hitboxHead = aliveState.HitboxHead
+local aliveState = arg3 ~= nil and arg3.AliveState or nil
+local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
+local rootPart = aliveState ~= nil and aliveState.RootPart or nil
+local okTargetParts, targetPartsValid = pcall(function()
+return arg3 ~= nil and aliveState ~= nil and arg3.AliveState == aliveState and aliveState.Alive == true
+and hitboxHead ~= nil and rootPart ~= nil
+and hitboxHead:IsA("BasePart") and rootPart:IsA("BasePart")
+and hitboxHead:IsDescendantOf(workspace) and rootPart:IsDescendantOf(workspace)
+and hitboxHead.Parent ~= nil and rootPart.Parent ~= nil
+end)
+if not okTargetParts or not targetPartsValid or arg4 == nil then
+arg:ResetState()
+return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
+end
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
@@ -65117,14 +65469,23 @@ flag19 = v86[34]
 local huge3 = table.find(priority, v119) or math.huge
 
 local ammoValue = nil
+local ammoBased = false
 if v118.__type == "Gun" then
+local okAmmoBased, readAmmoBased = pcall(v118.IsAmmoBased, v118)
+if not okAmmoBased or type(readAmmoBased) ~= "boolean" then
+continue
+end
+ammoBased = readAmmoBased
 local okAmmo, readAmmo = pcall(v118.GetAmmo, v118)
 if not okAmmo then
 continue
 end
+if ammoBased and (type(readAmmo) ~= "number" or readAmmo ~= readAmmo or readAmmo == -math.huge or readAmmo < 0) then
+continue
+end
 ammoValue = readAmmo
 end
-if v118.__type == "Gun" and ammoValue == 0 then
+if v118.__type == "Gun" and ammoBased and ammoValue == 0 then
 local okReserve, reserve = pcall(v118.GetAmmoReserve, v118)
 if not okReserve or type(reserve) ~= "number" or reserve ~= reserve or reserve == -math.huge or reserve < 0 then
 continue
@@ -65152,11 +65513,19 @@ return nil
 end
 
 if v116 ~= nil then
-local flag20 = v116.__type == "Gun"
-
-if flag20 then
-local v118 = v86[186]
-flag20 = v116:GetAmmo() == v118
+local flag20 = false
+if v116.__type == "Gun" then
+local okAmmoBased, ammoBased = pcall(v116.IsAmmoBased, v116)
+if not okAmmoBased or type(ammoBased) ~= "boolean" then
+return nil
+end
+if ammoBased then
+local okAmmo, currentAmmo = pcall(v116.GetAmmo, v116)
+if not okAmmo or type(currentAmmo) ~= "number" or currentAmmo ~= currentAmmo or currentAmmo == -math.huge or currentAmmo < 0 then
+return nil
+end
+flag20 = currentAmmo == v86[186]
+end
 end
 
 if v116:IsEquipped() then
@@ -65421,30 +65790,37 @@ warn("[Ragebot] Target selection failed: " .. tostring(resultTarget))
 end
 end
 
-if target ~= nil and target.AliveState ~= nil
-and target.AliveState.RootPart ~= nil and target.AliveState.RootPart.Parent ~= nil
-and target.AliveState.HitboxHead ~= nil and target.AliveState.HitboxHead.Parent ~= nil then
-arg._lastTargetWorld = target.AliveState.RootPart.Position
-local sharedTargetState = rawget(ragebotGlobalEnv, RAGEBOT_TARGET_STATE_KEY)
-if type(sharedTargetState) ~= "table" then
-sharedTargetState = {}
-rawset(ragebotGlobalEnv, RAGEBOT_TARGET_STATE_KEY, sharedTargetState)
+local targetPartsValid = false
+local candidateModel = nil
+local targetWorldPosition = nil
+if target ~= nil and target.AliveState ~= nil then
+local candidateRoot = target.AliveState.RootPart
+local candidateHitbox = target.AliveState.HitboxHead
+local okParts, validatedModel, validatedPosition = pcall(function()
+if target.AliveState.Alive ~= true or candidateRoot == nil or candidateHitbox == nil then return nil, nil end
+if not candidateRoot:IsA("BasePart") or not candidateHitbox:IsA("BasePart") then return nil, nil end
+local model = candidateRoot:FindFirstAncestorOfClass("Model")
+if model == nil or not candidateRoot:IsDescendantOf(model) or not candidateHitbox:IsDescendantOf(model) then return nil, nil end
+if not candidateRoot:IsDescendantOf(workspace) or not candidateHitbox:IsDescendantOf(workspace) then return nil, nil end
+local position = candidateRoot.Position
+if typeof(position) ~= "Vector3" or position.X ~= position.X or position.Y ~= position.Y or position.Z ~= position.Z
+or position.X == math.huge or position.X == -math.huge or position.Y == math.huge or position.Y == -math.huge
+or position.Z == math.huge or position.Z == -math.huge then return nil, nil end
+return model, position
+end)
+targetPartsValid = okParts and validatedModel ~= nil and typeof(validatedPosition) == "Vector3"
+if targetPartsValid then
+candidateModel = validatedModel
+targetWorldPosition = validatedPosition
 end
-sharedTargetState.owner = arg
-sharedTargetState.active = arg._enabled == true
-sharedTargetState.character = target.AliveState.RootPart.Parent
-sharedTargetState.updatedAt = os.clock()
+end
+if targetPartsValid then
+arg._lastTargetWorld = targetWorldPosition
+ragebotPublishTargetState(arg, arg._enabled == true, candidateModel)
 else
-if target ~= nil then
-target = nil
-end
+if target ~= nil then target = nil end
 arg._lastTargetWorld = nil
-local sharedTargetState = rawget(ragebotGlobalEnv, RAGEBOT_TARGET_STATE_KEY)
-if type(sharedTargetState) == "table" and sharedTargetState.owner == arg then
-sharedTargetState.active = false
-sharedTargetState.character = nil
-sharedTargetState.updatedAt = os.clock()
-end
+ragebotDeactivateTargetState(arg)
 end
 
 local safeDt = tonumber(arg2) or 0
@@ -65475,37 +65851,84 @@ end
 local reloadGun = arg._reloadGun
 
 if reloadGun ~= nil and arg._reloadReadyAt == nil and arg._pendingDepletionAmmo == nil then
-local okReloading, isReloading = pcall(reloadGun.IsReloading, reloadGun)
-if not okReloading then
+local nowReloadCheck = os.clock()
+if arg._reloadReadRetryAt == nil or nowReloadCheck >= arg._reloadReadRetryAt then
+local okReloading, isReloading = pcall(function() return reloadGun:IsReloading() end)
+if not okReloading or type(isReloading) ~= "boolean" then
+if arg._reloadReadFailureSince == nil then arg._reloadReadFailureSince = nowReloadCheck end
+arg._reloadReadRetryAt = nowReloadCheck + 0.1
+if nowReloadCheck >= (arg._nextReloadReadWarningAt or 0) then
+arg._nextReloadReadWarningAt = nowReloadCheck + 5
+warn("[Ragebot] Reload status read failed temporarily: " .. tostring(isReloading))
+end
+if nowReloadCheck - arg._reloadReadFailureSince > 2 then
 arg:_ClearReloadTransport()
-elseif not isReloading then
-arg._reloadReadyAt = os.clock() + v122.getEstimatedReplicationDelay()
+end
+elseif isReloading then
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nowReloadCheck + 0.1
+else
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nil
+arg._reloadReadyAt = nowReloadCheck + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
+end
 end
 end
 
 arg:_ApplyForcedCrouch(v131.ShouldForceCrouch == true)
-local v132 = innerContext.ItemBehaviors:EquippedItemAsGun()
-local ammo = v132 ~= nil and v132:GetAmmo() or 0
-local shotRequestCount = v132 ~= nil and v132.ShotRequestCount or 0
+local v132 = nil
+local okEquippedGun, equippedGun = pcall(function()
+return innerContext.ItemBehaviors:EquippedItemAsGun()
+end)
+if okEquippedGun then
+v132 = equippedGun
+elseif os.clock() >= (arg._nextEquippedGunWarningAt or 0) then
+arg._nextEquippedGunWarningAt = os.clock() + 5
+warn("[Ragebot] Equipped gun lookup failed: " .. tostring(equippedGun))
+end
+local ammo = nil
+local shotRequestCount = nil
+if v132 ~= nil then
+local okAmmoRead, ammoValue = pcall(function() return v132:GetAmmo() end)
+if okAmmoRead and type(ammoValue) == "number" and ammoValue == ammoValue and ammoValue ~= math.huge and ammoValue ~= -math.huge and ammoValue >= 0 then
+ammo = ammoValue
+end
+local okCountRead, countValue = pcall(function() return v132.ShotRequestCount end)
+if okCountRead and type(countValue) == "number" and countValue == countValue and countValue ~= math.huge and countValue ~= -math.huge and countValue >= 0 then
+shotRequestCount = countValue
+end
+end
 local weaponAction = v131.WeaponAction
 
 if weaponAction ~= nil then
-weaponAction()
+if type(weaponAction) == "function" then
+local actionOk, actionError = pcall(weaponAction)
+if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
+arg._nextWeaponActionWarningAt = os.clock() + 5
+warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
+end
 
-if v132 ~= nil and (v132.ShotRequestCount - shotRequestCount) > 0 then
-local okExpected, expectedAmmo = pcall(v132.GetExpectedAmmoAfterPendingShots, v132)
+if actionOk and v132 ~= nil and ammo ~= nil and shotRequestCount ~= nil then
+local okCountAfter, countAfter = pcall(function() return v132.ShotRequestCount end)
+if okCountAfter and type(countAfter) == "number" and countAfter == countAfter and countAfter ~= math.huge and countAfter ~= -math.huge and countAfter > shotRequestCount then
+local okExpected, expectedAmmo = pcall(function() return v132:GetExpectedAmmoAfterPendingShots() end)
 if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 then
 local now2 = os.clock()
 arg._reloadGun = v132
-arg._reloadReadyAt = now2 + v122.getEstimatedReplicationDelay()
+arg._reloadReadyAt = now2 + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 arg._pendingDepletionAmmo = ammo
-local remoteDelay = tonumber(v122.getEstimatedRemoteDelay()) or 0
-local replicationDelay = tonumber(v122.getEstimatedReplicationDelay()) or 0
-if remoteDelay ~= remoteDelay or remoteDelay < 0 or remoteDelay == math.huge then remoteDelay = 0 end
-if replicationDelay ~= replicationDelay or replicationDelay < 0 or replicationDelay == math.huge then replicationDelay = 0 end
+local remoteDelay = ragebotSafeEstimatedDelay(v122.getEstimatedRemoteDelay)
+local replicationDelay = ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 arg._reloadAcknowledgementDeadline = now2 + remoteDelay + replicationDelay
 arg._depletionHoldCFrame = typeof(arg._lastAimServerCFrame) == "CFrame" and arg._lastAimServerCFrame or nil
 arg._depletionHoldUntil = now2 + math.max(0.05, remoteDelay + replicationDelay)
+end
+end
+end
+else
+if os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
+arg._nextWeaponActionWarningAt = os.clock() + 5
+warn("[Ragebot] Ignored non-function WeaponAction callback")
 end
 end
 end
@@ -65573,7 +65996,16 @@ local item = arg3.Item
 
 if item.__type == "Gun" then
 arg._meleeStrategy:InvalidateKnifeState()
-if item:IsReloading() then
+local okItemReloading, itemReloading = pcall(function() return item:IsReloading() end)
+if not okItemReloading or type(itemReloading) ~= "boolean" then
+arg._hitscanStrategy:ResetState()
+if os.clock() >= (arg._nextItemReloadWarningAt or 0) then
+arg._nextItemReloadWarningAt = os.clock() + 5
+warn("[Ragebot] Gun reload state unavailable; waiting before firing: " .. tostring(itemReloading))
+end
+return fn36()
+end
+if itemReloading then
 arg._hitscanStrategy:ResetState()
 return fn36()
 end
@@ -65726,7 +66158,7 @@ end
 local reloadReadyAt = arg._reloadReadyAt
 
 if reloadReadyAt == nil then
-reloadReadyAt = now2 + v122.getEstimatedReplicationDelay()
+reloadReadyAt = now2 + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 arg._reloadReadyAt = reloadReadyAt
 end
 
@@ -65736,7 +66168,7 @@ if now2 >= reloadReadyAt and (reloadAcknowledgementDeadline == nil or now2 >= re
 plan.WeaponAction = function()
 local okReload, started = pcall(reloadGun.Reload, reloadGun)
 if okReload and started == true then
-arg._reloadAcknowledgementDeadline = os.clock() + v122.getEstimatedRemoteDelay() + v122.getEstimatedReplicationDelay()
+arg._reloadAcknowledgementDeadline = os.clock() + ragebotSafeEstimatedDelay(v122.getEstimatedRemoteDelay) + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 else
 arg._reloadReadyAt = os.clock() + 0.25
 end
@@ -65826,7 +66258,50 @@ arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterSta
 end
 
 local viewAngleSlot = arg._knifeCameraLocked and 20 or v86[9]
-characterController:SendViewAngles(viewAngleSlot, arg2.ViewAngles or arg._lastDefensiveViewAngles)
+local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
+if arg2.ViewAngles == nil and arg3 ~= nil and arg3.AliveState ~= nil and arg3.AliveState.RootPart ~= nil then
+local targetRoot = arg3.AliveState.RootPart
+local targetCharacter = targetRoot:FindFirstAncestorOfClass("Model")
+local riotSharedState = ragebotStateGet("__SilentCamTargetRotationExactReplication_v1")
+if type(riotSharedState) == "table" and riotSharedState.enabled == true and riotSharedState.active == true
+and riotSharedState.targetCharacter == targetCharacter and type(riotSharedState.payload) == "table" then
+local angleAt = tonumber(riotSharedState.lastAngleAt)
+local angleAge = angleAt ~= nil and (os.clock() - angleAt) or math.huge
+local riotPayload = riotSharedState.payload
+if angleAge >= 0 and angleAge <= 0.15 then
+local freshPayload = nil
+local buildPayload = riotSharedState.buildPayload
+local aimPart = riotSharedState.aimPart
+if type(buildPayload) == "function" and aimPart ~= nil then
+local partOk, isTargetPart = pcall(function()
+return aimPart:IsA("BasePart") and aimPart:IsDescendantOf(targetCharacter)
+end)
+if partOk and isTargetPart then
+local serverOriginOk, serverOrigin = pcall(function()
+return characterController:GetServerHeadOrigin()
+end)
+if serverOriginOk and typeof(serverOrigin) == "CFrame" then
+local buildOk, rebuiltPayload = pcall(buildPayload, serverOrigin.Position, aimPart)
+if buildOk and type(rebuiltPayload) == "table" then
+freshPayload = rebuiltPayload
+end
+end
+end
+end
+if freshPayload == nil and type(riotPayload) == "table"
+and type(riotPayload.Pitch) == "number" and riotPayload.Pitch == riotPayload.Pitch
+and riotPayload.Pitch ~= math.huge and riotPayload.Pitch ~= -math.huge
+and type(riotPayload.Yaw) == "number" and riotPayload.Yaw == riotPayload.Yaw
+and riotPayload.Yaw ~= math.huge and riotPayload.Yaw ~= -math.huge then
+freshPayload = riotPayload
+end
+if freshPayload ~= nil then
+viewAnglePayload = freshPayload
+end
+end
+end
+end
+characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
 end
 
 index2.GetLastTargetWorld = function(arg)
@@ -65843,12 +66318,7 @@ end
 
 index2._Reset = function(arg)
 pcall(arg._SetKnifeCameraLock, arg, false)
-local sharedTargetState = rawget(ragebotGlobalEnv, RAGEBOT_TARGET_STATE_KEY)
-if type(sharedTargetState) == "table" and sharedTargetState.owner == arg then
-sharedTargetState.active = false
-sharedTargetState.character = nil
-sharedTargetState.updatedAt = os.clock()
-end
+ragebotDeactivateTargetState(arg)
 arg:_ClearReloadTransport()
 arg._lastTargetWorld = nil
 arg._lastDefensiveViewAngles = nil
