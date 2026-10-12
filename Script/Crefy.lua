@@ -65933,6 +65933,147 @@ local v127 = tbl17.jL()
 local v128 = tbl17.jM()
 local v129 = tbl17.jN()
 local fallenPartsDestroyHeight = workspace.FallenPartsDestroyHeight
+
+-- These helpers must live in this Ragebot module's lexical scope.
+-- The similarly named helpers in the earlier module are local to a different
+-- closure and are therefore not visible here (which caused the nil-call at
+-- _Initialize when ObserveContext first delivered the current context).
+local function ragebotSafeEstimatedDelay(callback)
+    if type(callback) ~= "function" then return 0 end
+    local ok, value = pcall(callback)
+    value = ok and tonumber(value) or nil
+    if value == nil or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+        return 0
+    end
+    return math.min(value, 5)
+end
+
+local ragebotGlobalEnv
+if type(getgenv) == "function" then
+    local envOk, envValue = pcall(getgenv)
+    if envOk and type(envValue) == "table" then ragebotGlobalEnv = envValue end
+end
+if type(ragebotGlobalEnv) ~= "table" and type(_G) == "table" then
+    ragebotGlobalEnv = _G
+end
+if type(ragebotGlobalEnv) ~= "table" then ragebotGlobalEnv = {} end
+local RAGEBOT_TARGET_STATE_KEY = "__CrefyRagebotTargetState"
+
+local function ragebotEnsureGlobalEnv()
+    if type(ragebotGlobalEnv) == "table" then return ragebotGlobalEnv end
+    local candidate
+    if type(getgenv) == "function" then
+        local envOk, envValue = pcall(getgenv)
+        if envOk and type(envValue) == "table" then candidate = envValue end
+    end
+    if type(candidate) ~= "table" and type(_G) == "table" then candidate = _G end
+    if type(candidate) ~= "table" then candidate = {} end
+    ragebotGlobalEnv = candidate
+    return candidate
+end
+
+local function ragebotStateGet(key)
+    local env = ragebotEnsureGlobalEnv()
+    local ok, value = pcall(rawget, env, key)
+    if ok then return value end
+    return nil
+end
+
+local function ragebotStateSet(key, value)
+    local env = ragebotEnsureGlobalEnv()
+    local ok = pcall(rawset, env, key, value)
+    if ok then return true end
+    local fallback = type(_G) == "table" and _G or {}
+    local fallbackOk = pcall(rawset, fallback, key, value)
+    if fallbackOk then
+        ragebotGlobalEnv = fallback
+        return true
+    end
+    fallback = {}
+    ragebotGlobalEnv = fallback
+    return pcall(rawset, fallback, key, value)
+end
+
+local function ragebotPublishTargetState(owner, active, character)
+    local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+    if type(shared) ~= "table" then shared = {} end
+    local updatedAt = os.clock()
+    local okWrite = pcall(function()
+        shared.owner = owner
+        shared.active = active == true
+        shared.character = character
+        shared.updatedAt = updatedAt
+    end)
+    if not okWrite then
+        shared = { owner = owner, active = active == true, character = character, updatedAt = updatedAt }
+    end
+    return ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, shared)
+end
+
+local function ragebotDeactivateTargetState(owner)
+    local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+    if type(shared) ~= "table" then return end
+    local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+    if not okOwner or sharedOwner ~= owner then return end
+    local updatedAt = os.clock()
+    local okWrite = pcall(function()
+        shared.active = false
+        shared.character = nil
+        shared.updatedAt = updatedAt
+    end)
+    if not okWrite then
+        ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, {
+            owner = owner, active = false, character = nil, updatedAt = updatedAt
+        })
+    end
+end
+
+local function ragebotSafeDeactivateTargetState(owner)
+    local ok = pcall(ragebotDeactivateTargetState, owner)
+    if ok then return end
+    local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+    if type(shared) ~= "table" then return end
+    local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+    if not okOwner or sharedOwner ~= owner then return end
+    local okWrite = pcall(function()
+        shared.active = false
+        shared.character = nil
+        shared.updatedAt = os.clock()
+    end)
+    if not okWrite then
+        pcall(ragebotStateSet, RAGEBOT_TARGET_STATE_KEY, {
+            owner = owner, active = false, character = nil, updatedAt = os.clock()
+        })
+    end
+end
+
+local function ragebotSafeClearReloadTransport(owner)
+    if type(owner) ~= "table" then return end
+    local clearFn
+    local getOk = pcall(function() clearFn = owner._ClearReloadTransport end)
+    if getOk and type(clearFn) == "function" then
+        local clearOk = pcall(clearFn, owner)
+        if clearOk then return end
+    end
+    -- Defensive field cleanup is deliberately best-effort so one bad field
+    -- cannot prevent the rest of the transient reload state from being reset.
+    for _, field in ipairs({
+        "_reloadGun", "_reloadReadyAt", "_reloadAcknowledgementDeadline",
+        "_pendingDepletionAmmo", "_reloadReadFailureSince", "_reloadReadRetryAt",
+        "_depletionHoldCFrame", "_depletionHoldUntil"
+    }) do
+        pcall(function() owner[field] = nil end)
+    end
+end
+
+local function ragebotSafeInvokeMethod(owner, methodName, ...)
+    if type(owner) ~= "table" then return false end
+    local method
+    local getOk = pcall(function() method = owner[methodName] end)
+    if not getOk or type(method) ~= "function" then return false end
+    return pcall(method, owner, ...)
+end
+
 local function ragebotTrySetInstanceProperty(instance, property, value)
     local lastError = "no compatible property setter is available"
     local function attempt(setter, ...)
