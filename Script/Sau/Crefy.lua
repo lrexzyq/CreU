@@ -24,9 +24,24 @@ local _player = Players.LocalPlayer
 local rawget, rawset = rawget, rawset
 
 function K.fn(name)
+    if type(name) ~= "string" then return nil end
     local v
-    pcall(function() v = getgenv()[name] end)
-    if type(v) ~= "function" then pcall(function() v = getgenv()[name] end) end
+    pcall(function()
+        local env = getgenv()
+        if type(env) == "table" then v = env[name] end
+    end)
+    if type(v) ~= "function" then
+        pcall(function()
+            local env = getfenv(0)
+            if type(env) == "table" then v = env[name] end
+        end)
+    end
+    if type(v) ~= "function" then
+        pcall(function()
+            local env = getfenv()
+            if type(env) == "table" then v = env[name] end
+        end)
+    end
     return type(v) == "function" and v or nil
 end
 
@@ -36,9 +51,15 @@ local _sethiddenproperty = K.fn("sethiddenproperty")
 local gethui_ = K.fn("gethui")
 local function identity(n)
     if not setthreadidentity_ then return function() end end
-    local old = getthreadidentity_ and getthreadidentity_() or nil
+    local old = nil
+    if getthreadidentity_ then
+        local okOld, value = pcall(getthreadidentity_)
+        if okOld then old = value end
+    end
     pcall(setthreadidentity_, n)
-    return function() if old then pcall(setthreadidentity_, old) end end
+    return function()
+        if old ~= nil then pcall(setthreadidentity_, old) end
+    end
 end
 K.identity = identity
 local function hudParent()
@@ -386,8 +407,43 @@ local v108 = clonefn(K.fn("setfflag")) or function() end
 local v109 = clonefn(K.fn("isexecutorclosure")) or function() return false end
 local v110 = clonefn(K.fn("setrawmetatable")) or setmetatable
 local v111 = clonefn(K.fn("getrawmetatable")) or getmetatable
-local v112 = clonefn(v111(game).__newindex)
-local v113 = clonefn(v111(game).__index)
+local _gameMetatable = nil
+do
+    local okMetatable, resultMetatable = pcall(v111, game)
+    if okMetatable and type(resultMetatable) == "table" then
+        _gameMetatable = resultMetatable
+    end
+end
+local _rawNewIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, "__newindex") or nil
+local _rawIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, "__index") or nil
+local v112 = type(_rawNewIndex) == "function" and clonefn(_rawNewIndex) or nil
+if type(v112) ~= "function" then
+    -- Prefer normal property assignment; if that fails, try the hidden-property API.
+    -- Both attempts are protected so a missing executor API cannot escape this helper.
+    v112 = function(instance, property, value)
+        local directOk, directError = pcall(function()
+            instance[property] = value
+        end)
+        if directOk then return end
+        if type(v104) == "function" then
+            local hiddenOk, hiddenResult = pcall(v104, instance, property, value)
+            if hiddenOk then return hiddenResult end
+            error("Instance property write failed: " .. tostring(directError) .. "; hidden setter failed: " .. tostring(hiddenResult), 2)
+        end
+        error(directError, 2)
+    end
+end
+local v113 = type(_rawIndex) == "function" and clonefn(_rawIndex) or nil
+if type(v113) ~= "function" then
+    -- Guard ordinary indexing too: some proxy Instances can throw from __index.
+    v113 = function(instance, property)
+        local readOk, result = pcall(function()
+            return instance[property]
+        end)
+        if readOk then return result end
+        return nil
+    end
+end
 local v114 = clonefn(game.FindFirstChildOfClass)
 local function _n27() return 0 end
 local firetouchinterest = K.fn("firetouchinterest") or function() end
@@ -395,7 +451,12 @@ local getconnections = K.fn("getconnections") or function() return {} end
 local setclipboard = K.fn("setclipboard") or K.fn("toclipboard") or function() end
 local InstanceHandle
 pcall(function() InstanceHandle = getgenv().InstanceHandle end)
-if InstanceHandle == nil then pcall(function() InstanceHandle = getgenv().InstanceHandle end) end
+if InstanceHandle == nil then
+    pcall(function()
+        local env = getfenv(0)
+        if type(env) == "table" then InstanceHandle = env.InstanceHandle end
+    end)
+end
 if InstanceHandle == nil then InstanceHandle = { new = function(x) return x end } end
 
 
@@ -26457,46 +26518,70 @@ return v115.err("ViewAngleDriver", "function_lookup", "FighterController._Camera
 end
 local v121 = nil
 local v122 = nil
+if type(debug) ~= "table" or type(debug.getupvalues) ~= "function" then
+return v115.err("ViewAngleDriver", "getupvalues", "debug.getupvalues is unavailable")
+end
+local okUpvalues, cameraUpvalues = pcall(debug.getupvalues, v120)
+if not okUpvalues or type(cameraUpvalues) ~= "table" then
+return v115.err("ViewAngleDriver", "getupvalues", "debug.getupvalues failed or returned a non-table result")
+end
 
-for k, v123 in debug.getupvalues(v120) do
-if type(v123) ~= "table" then
-v121 = nil
-v122 = nil
-else
-local v124 = getmetatable(v123)
+local function isCameraRotationUtility(candidate)
+if type(candidate) ~= "table" then return false end
+if type(rawget(candidate, "EncodeCameraRotation")) == "function" then
+return true
+end
+local okMeta, meta = pcall(getmetatable, candidate)
+if not okMeta or type(meta) ~= "table" then return false end
+local index = rawget(meta, "__index")
+return type(index) == "table" and type(rawget(index, "EncodeCameraRotation")) == "function"
+end
 
-if v124 == nil then
-v121 = nil
-v122 = nil
-else
-local v125 = v102(v124, "__index")
-
-if type(v125) ~= "table" then
-v121 = nil
-v122 = nil
-elseif type(v102(v125, "EncodeCameraRotation")) == "function" then
+for k, v123 in cameraUpvalues do
+-- debug.setupvalue requires an upvalue index, so ignore non-numeric keys returned by unusual executors.
+if type(k) == "number" and isCameraRotationUtility(v123) then
 v121 = k
 v122 = v123
 break
-else
-v121 = nil
-v122 = nil
-end
-end
 end
 end
 
 if v121 == nil or v122 == nil then
-return v115.err("ViewAngleDriver", "upvalue_search", "Utility upvalue index not found")
+return v115.err("ViewAngleDriver", "upvalue_search", "Utility upvalue index not found (no table upvalue exposes EncodeCameraRotation directly or through __index)")
 end
 
-debug.setupvalue(v120, v121, { EncodeCameraRotation = function(arg2, arg3)
+if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
+return v115.err("ViewAngleDriver", "setupvalue", "debug.setupvalue is unavailable")
+end
+local patchedUtility = setmetatable({ EncodeCameraRotation = function(arg2, arg3)
 if next(arg._payloadBySlot) ~= nil or arg._fullySuppressed then
 v103(fighterController, "_replication_stopped", false)
 return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
 end
 return v117.encodeCameraRotation(arg3)
-end })
+end }, { __index = v122 })
+local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
+if not okSetup then
+return v115.err("ViewAngleDriver", "setupvalue", "failed to install camera-rotation wrapper: " .. tostring(setupResult))
+end
+
+local verifyOk, wrapperInstalled = pcall(function()
+if type(debug.getupvalues) == "function" then
+local currentUpvalues = debug.getupvalues(v120)
+if type(currentUpvalues) == "table" and currentUpvalues[v121] == patchedUtility then
+return true
+end
+end
+if type(debug.getupvalue) == "function" then
+local first, second = debug.getupvalue(v120, v121)
+if second ~= nil then return second == patchedUtility end
+return first == patchedUtility
+end
+return false
+end)
+if not verifyOk or wrapperInstalled ~= true then
+return v115.err("ViewAngleDriver", "setupvalue", "camera-rotation wrapper verification failed after setupvalue (return=" .. tostring(setupResult) .. ")")
+end
 
 arg._replicationRestore = { CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122 }
 return v115.VoidOk
@@ -26604,8 +26689,20 @@ end
 local replicationRestore = arg._replicationRestore
 
 if replicationRestore ~= nil then
+local restoreOk, restoreError = false, "debug.setupvalue is unavailable"
+if type(debug) == "table" and type(debug.setupvalue) == "function" then
+local callOk, restoreResult = pcall(debug.setupvalue, replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex, replicationRestore.Utility)
+restoreOk = callOk and restoreResult ~= nil
+restoreError = callOk and (restoreResult == nil and "debug.setupvalue returned nil" or nil) or restoreResult
+end
+if restoreOk then
 arg._replicationRestore = nil
-debug.setupvalue(replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex, replicationRestore.Utility)
+else
+if os.clock() >= (arg._nextReplicationRestoreWarningAt or 0) then
+arg._nextReplicationRestoreWarningAt = os.clock() + 5
+warn("[ViewAngleDriver] Failed to restore camera replication utility: " .. tostring(restoreError))
+end
+end
 end
 end
 
@@ -26717,7 +26814,7 @@ return rootDesync:GetClientCFrame()
 end
 
 index2.SendViewAngles = function(arg, arg2, arg3)
-arg._viewAngleDriver:SendViewAngles(arg2, arg3)
+return arg._viewAngleDriver:SendViewAngles(arg2, arg3)
 end
 
 index2.SendRawCameraRotation = function(arg, arg2)
@@ -27101,6 +27198,7 @@ _expectedAmmoRaw = v102(data, "Ammo"),
 _nextLikelyShotRequestAt = 0,
 _outstandingAmmoSpend = 0,
 _outstandingAmmoSpendDeadline = nil,
+_pendingShotBatches = {},
 ItemInterface = v117.new(arg),
 Inner = arg,
 Name = v102(arg, "Name"),
@@ -27119,59 +27217,186 @@ index2.Destroy = function(arg)
 arg.ItemInterface:Destroy()
 end
 
+local function pendingAmmoNumber(value)
+return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge and value >= 0
+end
+
+local function syncPendingShotSummary(item)
+local batches = item._pendingShotBatches
+if type(batches) ~= "table" then
+batches = {}
+item._pendingShotBatches = batches
+end
+local outstanding = 0
+local earliestDeadline = nil
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local spend = type(batch) == "table" and tonumber(batch.spend) or nil
+local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
+if spend == nil or spend ~= spend or spend == math.huge or spend == -math.huge or spend <= 0
+or deadline == nil or deadline ~= deadline or deadline == math.huge or deadline == -math.huge then
+table.remove(batches, i)
+else
+batch.spend = spend
+batch.deadline = deadline
+outstanding = outstanding + spend
+if earliestDeadline == nil or deadline < earliestDeadline then
+ earliestDeadline = deadline
+end
+end
+end
+item._outstandingAmmoSpend = outstanding
+item._outstandingAmmoSpendDeadline = earliestDeadline
+end
+
+local function consumeObservedAmmoSpend(item, observedSpend)
+local batches = item._pendingShotBatches
+if type(batches) ~= "table" or observedSpend <= 0 then return end
+local remaining = observedSpend
+for i = 1, #batches do
+if remaining <= 0 then break end
+local batch = batches[i]
+if type(batch) == "table" then
+local spend = tonumber(batch.spend) or 0
+if spend > 0 then
+local consumed = math.min(spend, remaining)
+batch.spend = spend - consumed
+remaining = remaining - consumed
+end
+end
+end
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local spend = type(batch) == "table" and tonumber(batch.spend) or nil
+if spend == nil or spend ~= spend or spend <= 0 then
+ table.remove(batches, i)
+end
+end
+end
+
 index2._ClearPendingShots = function(arg)
-arg._expectedAmmoRaw = arg:GetAmmo()
-arg._nextLikelyShotRequestAt = v86[186]
-arg._outstandingAmmoSpend = v86[186]
-arg._outstandingAmmoSpendDeadline = nil
-end
-
-index2._ReconcilePendingShots = function(arg, arg2)
-local ammo = arg:GetAmmo()
-local expectedAmmoRaw = arg._expectedAmmoRaw
-if ammo > expectedAmmoRaw then
-arg:_ClearPendingShots()
-return
-end
-
-if ammo < expectedAmmoRaw then
-arg._outstandingAmmoSpend = math.max(arg._outstandingAmmoSpend - expectedAmmoRaw - ammo, v86[186])
-arg._expectedAmmoRaw = ammo
-
-if arg._outstandingAmmoSpend <= 0 then
-arg._outstandingAmmoSpendDeadline = nil
-end
-end
-
-local outstandingAmmoSpendDeadline = arg._outstandingAmmoSpendDeadline
-
-if outstandingAmmoSpendDeadline ~= nil and arg2 >= outstandingAmmoSpendDeadline then
-arg._outstandingAmmoSpend = 0
+local okAmmo, ammo = pcall(arg.GetAmmo, arg)
+local validAmmo = okAmmo and pendingAmmoNumber(ammo)
+arg._expectedAmmoRaw = validAmmo and ammo or nil
 arg._nextLikelyShotRequestAt = 0
+arg._pendingShotBatches = {}
+arg._outstandingAmmoSpend = 0
 arg._outstandingAmmoSpendDeadline = nil
-end
+return validAmmo
 end
 
-index2._RecordPendingShot = function(arg)
+index2._ReconcilePendingShots = function(arg, now, ammoOverride, useAmmoOverride)
+now = tonumber(now)
+if now == nil or now ~= now or now == math.huge or now == -math.huge then now = os.clock() end
+local ammo, okAmmo
+if useAmmoOverride == true then
+ammo = ammoOverride
+okAmmo = true
+else
+okAmmo, ammo = pcall(arg.GetAmmo, arg)
+end
+local validAmmo = okAmmo and pendingAmmoNumber(ammo)
+local batches = arg._pendingShotBatches
+if type(batches) ~= "table" then
+batches = {}
+arg._pendingShotBatches = batches
+end
+if not validAmmo then
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
+if deadline ~= nil and now >= deadline then table.remove(batches, i) end
+end
+syncPendingShotSummary(arg)
+if #batches == 0 then
+arg._expectedAmmoRaw = nil
+arg._nextLikelyShotRequestAt = 0
+end
+return false
+end
+
+local expectedAmmoRaw = arg._expectedAmmoRaw
+if not pendingAmmoNumber(expectedAmmoRaw) then
+arg._expectedAmmoRaw = ammo
+arg._pendingShotBatches = {}
+arg._outstandingAmmoSpend = 0
+arg._outstandingAmmoSpendDeadline = nil
+arg._nextLikelyShotRequestAt = 0
+return true
+end
+if ammo > expectedAmmoRaw then
+arg._expectedAmmoRaw = ammo
+arg._pendingShotBatches = {}
+arg._outstandingAmmoSpend = 0
+arg._outstandingAmmoSpendDeadline = nil
+arg._nextLikelyShotRequestAt = 0
+return true
+end
+if ammo < expectedAmmoRaw then
+local observedAmmoSpend = expectedAmmoRaw - ammo
+consumeObservedAmmoSpend(arg, observedAmmoSpend)
+arg._expectedAmmoRaw = ammo
+end
+for i = #batches, 1, -1 do
+local batch = batches[i]
+local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
+if deadline ~= nil and now >= deadline then table.remove(batches, i) end
+end
+syncPendingShotSummary(arg)
+if #batches == 0 then
+arg._nextLikelyShotRequestAt = 0
+end
+return true
+end
+
+index2._RecordPendingShot = function(arg, ammoSnapshot, useSnapshot)
 local now2 = os.clock()
-arg:_ReconcilePendingShots(now2)
-if now2 < arg._nextLikelyShotRequestAt then
-return
+local reconciled = arg:_ReconcilePendingShots(now2, ammoSnapshot, useSnapshot == true)
+if reconciled ~= true then return end
+local expectedAmmoRaw = arg._expectedAmmoRaw
+if not pendingAmmoNumber(expectedAmmoRaw) then return end
+-- Match Doiyen's prediction semantics: requests sent inside the known weapon cooldown
+-- still increment ShotRequestCount, but are not assumed to consume ammo a second time.
+-- This is estimator-only; ShootEncoded itself is not gated here.
+local nextRequestAt = tonumber(arg._nextLikelyShotRequestAt) or 0
+if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then
+nextRequestAt = 0
 end
-local n = math.max(arg._expectedAmmoRaw - arg._outstandingAmmoSpend, 0)
-if n <= v86[186] then
-return
+if now2 < nextRequestAt then return end
+local outstanding = tonumber(arg._outstandingAmmoSpend) or 0
+if outstanding ~= outstanding or outstanding == math.huge or outstanding == -math.huge or outstanding < 0 then outstanding = 0 end
+local available = math.max(expectedAmmoRaw - outstanding, 0)
+if available <= 0 then return end
+local info = type(arg.Info) == "table" and arg.Info or {}
+local burstCount = tonumber(info.ShootBurst) or 1
+if burstCount ~= burstCount or burstCount == math.huge or burstCount == -math.huge or burstCount < 1 then burstCount = 1 end
+local predictedSpend = math.min(burstCount, available)
+local remoteDelay = 0
+local replicationDelay = 0
+local okRemoteDelay, estimatedRemoteDelay = pcall(v118.getEstimatedRemoteDelay)
+local okReplicationDelay, estimatedReplicationDelay = pcall(v118.getEstimatedReplicationDelay)
+if okRemoteDelay then remoteDelay = tonumber(estimatedRemoteDelay) or 0 end
+if okReplicationDelay then replicationDelay = tonumber(estimatedReplicationDelay) or 0 end
+if remoteDelay ~= remoteDelay or remoteDelay < 0 or remoteDelay == math.huge or remoteDelay == -math.huge then remoteDelay = 0 end
+if replicationDelay ~= replicationDelay or replicationDelay < 0 or replicationDelay == math.huge or replicationDelay == -math.huge then replicationDelay = 0 end
+local deadline = now2 + math.max(0.05, remoteDelay + replicationDelay)
+local pendingBatches = arg._pendingShotBatches
+if type(pendingBatches) ~= "table" then
+pendingBatches = {}
+arg._pendingShotBatches = pendingBatches
 end
-local n33 = math.max(arg.Info.ShootBurst or 1, 1)
-arg._outstandingAmmoSpend = arg._outstandingAmmoSpend + math.min(n33, n)
-arg._outstandingAmmoSpendDeadline = now2 + v118.getEstimatedRemoteDelay() + v118.getEstimatedReplicationDelay()
-local quickShotCooldown = arg:IsFanFired() and v102(arg.Info, "QuickShotCooldown") or nil
-if quickShotCooldown ~= nil then
+table.insert(pendingBatches, { spend = predictedSpend, deadline = deadline })
+syncPendingShotSummary(arg)
+local quickShotCooldown = arg:IsFanFired() and v102(info, "QuickShotCooldown") or nil
+if type(quickShotCooldown) == "number" and quickShotCooldown == quickShotCooldown and quickShotCooldown >= 0 and quickShotCooldown < math.huge then
 arg._nextLikelyShotRequestAt = now2 + quickShotCooldown
 return
 end
-local shootBurstCooldown = arg.Info.ShootBurstCooldown or 0
-arg._nextLikelyShotRequestAt = now2 + (n33 - 1) * shootBurstCooldown + math.max(arg.Info.ShootCooldown or 0, shootBurstCooldown)
+local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
+local shootCooldown = tonumber(info.ShootCooldown) or 0
+if burstCooldown ~= burstCooldown or burstCooldown < 0 or burstCooldown == math.huge or burstCooldown == -math.huge then burstCooldown = 0 end
+if shootCooldown ~= shootCooldown or shootCooldown < 0 or shootCooldown == math.huge or shootCooldown == -math.huge then shootCooldown = 0 end
+arg._nextLikelyShotRequestAt = now2 + (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
 end
 
 index2.Equip = function(arg)
@@ -27204,11 +27429,20 @@ arg:ShootEncoded(v115.encode(arg2), v115.encode(arg3), v122, v123)
 end
 
 index2.ShootEncoded = function(arg, arg2, arg3, arg4, arg5)
+local ammoSnapshot = nil
+local okAmmoSnapshot, snapshotValue = pcall(arg.GetAmmo, arg)
+if okAmmoSnapshot and pendingAmmoNumber(snapshotValue) then
+ammoSnapshot = snapshotValue
+end
 local tbl18 = { ["\0"] = arg2, ["\1"] = arg3, ["\2"] = arg4, ["\3"] = arg5, ["\4"] = arg:IsFanFired() or nil }
 local tbl19 = arg.IsRaycast and { ["\1"] = tbl18, ["\2"] = true } or { ["\1"] = tbl18 }
 fireServer(useItemRemote, arg.ObjectId, v116.encode("StartShooting"), tbl19, nil)
 arg.ShotRequestCount = arg.ShotRequestCount + 1
+if ammoSnapshot ~= nil then
+arg:_RecordPendingShot(ammoSnapshot, true)
+else
 arg:_RecordPendingShot()
+end
 end
 
 index2.IsFullyAiming = function(arg)
@@ -27245,8 +27479,25 @@ return v102(arg._data, "Ammo")
 end
 
 index2.GetExpectedAmmoAfterPendingShots = function(arg)
-arg:_ReconcilePendingShots(os.clock())
-return math.max(arg._expectedAmmoRaw - arg._outstandingAmmoSpend, 0)
+local reconciled = arg:_ReconcilePendingShots(os.clock())
+if reconciled ~= true then
+local okAmmo, currentAmmo = pcall(arg.GetAmmo, arg)
+if okAmmo and type(currentAmmo) == "number" and currentAmmo == currentAmmo and currentAmmo ~= math.huge and currentAmmo ~= -math.huge and currentAmmo >= 0 then
+return currentAmmo
+end
+return nil
+end
+local expectedAmmoRaw = arg._expectedAmmoRaw
+if type(expectedAmmoRaw) ~= "number" or expectedAmmoRaw ~= expectedAmmoRaw or expectedAmmoRaw == math.huge or expectedAmmoRaw == -math.huge or expectedAmmoRaw < 0 then
+local okAmmo, ammo = pcall(arg.GetAmmo, arg)
+if okAmmo and type(ammo) == "number" and ammo == ammo and ammo ~= math.huge and ammo ~= -math.huge and ammo >= 0 then
+return ammo
+end
+return nil
+end
+local outstanding = tonumber(arg._outstandingAmmoSpend) or 0
+if outstanding ~= outstanding or outstanding == math.huge or outstanding == -math.huge or outstanding < 0 then outstanding = 0 end
+return math.max(expectedAmmoRaw - outstanding, 0)
 end
 
 index2.GetAmmoReserve = function(arg)
@@ -29430,8 +29681,29 @@ end
 do 
 local function fn35()
 local cameraController = tbl17.aS().CameraController
-local getCameraCFrame = v102(v102(v111(cameraController), "__index"), "GetCameraCFrame")
-return function()return coroutine.wrap( getCameraCFrame )( cameraController );end
+local getCameraCFrame = nil
+local okCameraMethod, cameraMethod = pcall(function()
+local controllerMetatable = v111(cameraController)
+if type(controllerMetatable) ~= "table" then return nil end
+local controllerPrototype = rawget(controllerMetatable, "__index")
+if type(controllerPrototype) ~= "table" then return nil end
+return rawget(controllerPrototype, "GetCameraCFrame")
+end)
+if okCameraMethod and type(cameraMethod) == "function" then
+getCameraCFrame = cameraMethod
+end
+return function()
+if type(getCameraCFrame) == "function" then
+local okCameraCFrame, resultCameraCFrame = pcall(function()
+return coroutine.wrap(getCameraCFrame)(cameraController)
+end)
+if okCameraCFrame and typeof(resultCameraCFrame) == "CFrame" then
+return resultCameraCFrame
+end
+end
+local currentCamera = workspace.CurrentCamera
+return currentCamera and currentCamera.CFrame or CFrame.identity
+end
 end
 
 tbl17.db = function()
@@ -29501,9 +29773,84 @@ end
 
 index2.GetTargets = function(l)return l._enemyByPlayer;end
 index2.PreScan = function(I)I._shooterPosition= v117 ().Position;end
-index2.TargetMeetsConditions = function(I,W)if not W.Character.State.Alive then return false;end;local N=I._conditions;if N.Vulnerable and(W:IsInvincible())then return false;end;local P=I._innerContext;if P~=nil then local a=P.ItemBehaviors:GetEquipped();if a~=nil and( v115 .isShielded(a,W,I._shooterPosition,N.NotDeflecting,N.NotShielded))then return false;end;end;return true;end
-index2.HitboxMeetsConditions = function(l,I,W)return l._hitboxMeetsConditions(l._shooterPosition,I,W);end
-index2.ResolveHitboxes = function(l,I)local W=I.Character.State;local I_79,N,P=W.TargetPartsByName,W.Humanoid:GetState()==Enum.HumanoidStateType.Freefall and l._hitboxes.Air or l._hitboxes.Ground,l._resolvedHitboxes;table.clear(P);for l in N,nil,nil do table.insert(P,I_79[l]);end;return P;end
+-- Guard target state reads: characters can respawn or lose their Humanoid between scans.
+index2.TargetMeetsConditions = function(self, target)
+    if target == nil then return false end
+    local okState, state = pcall(function()
+        local character = target.Character
+        return character ~= nil and character.State or nil
+    end)
+    if not okState or type(state) ~= "table" or state.Alive ~= true then
+        return false
+    end
+
+    local conditions = self._conditions
+    if type(conditions) ~= "table" then return false end
+    if conditions.Vulnerable then
+        local okInvincible, invincible = pcall(function() return target:IsInvincible() end)
+        if not okInvincible or invincible then return false end
+    end
+
+    local inner = self._innerContext
+    if inner ~= nil and inner.ItemBehaviors ~= nil then
+        local okEquipped, equipped = pcall(function()
+            return inner.ItemBehaviors:GetEquipped()
+        end)
+        if not okEquipped then return false end
+        if equipped ~= nil then
+            local okShielded, shielded = pcall(function()
+                return v115.isShielded(equipped, target, self._shooterPosition,
+                    conditions.NotDeflecting, conditions.NotShielded)
+            end)
+            if not okShielded or shielded then return false end
+        end
+    end
+    return true
+end
+
+index2.HitboxMeetsConditions = function(self, hitbox, bypass)
+    if type(self._hitboxMeetsConditions) ~= "function" then return false end
+    local ok, result = pcall(self._hitboxMeetsConditions, self._shooterPosition, hitbox, bypass)
+    return ok and result == true
+end
+
+index2.ResolveHitboxes = function(self, target)
+    local resolved = self._resolvedHitboxes
+    if type(resolved) ~= "table" then
+        resolved = {}
+        self._resolvedHitboxes = resolved
+    else
+        table.clear(resolved)
+    end
+
+    local okState, state = pcall(function()
+        local character = target and target.Character
+        return character ~= nil and character.State or nil
+    end)
+    if not okState or type(state) ~= "table" then return resolved end
+
+    local partsByName = state.TargetPartsByName
+    local humanoid = state.Humanoid
+    if type(partsByName) ~= "table" or humanoid == nil then return resolved end
+
+    local okGetState, humanoidState = pcall(function()
+        local getter = humanoid.GetState
+        if type(getter) ~= "function" then return nil end
+        return getter(humanoid)
+    end)
+    if not okGetState or humanoidState == nil then return resolved end
+
+    local hitboxSet = self._hitboxes
+    if type(hitboxSet) ~= "table" then return resolved end
+    local requested = humanoidState == Enum.HumanoidStateType.Freefall and hitboxSet.Air or hitboxSet.Ground
+    if type(requested) ~= "table" then return resolved end
+
+    for _, name in ipairs(requested) do
+        local part = partsByName[name]
+        if part ~= nil then table.insert(resolved, part) end
+    end
+    return resolved
+end
 return index2
 end
 
@@ -29656,7 +30003,13 @@ local function fn38(I)local W= stateByPlayer [I.Player];return W~=nil and W.IsEn
 local v134 = v128.new()
 local aimbot = data.Aimbot
 local fov = aimbot.Fov
-local v135 = v126.new(arg2, arg, aimbot.TargetConditions, aimbot.TargetHitboxes[v129.DefaultProfile.Class], function(origin, part) return not data.Aimbot.TargetConditions.Visible or arg3:Check(origin, part, part.Parent) end)
+-- Head-only targeting: do not let persisted TargetHitboxes settings redirect camera aim to body parts.
+local headOnlyHitboxesByClass = {
+Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
+Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
+}
+local selectedHeadHitboxes = headOnlyHitboxesByClass[v129.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
+local v135 = v126.new(arg2, arg, aimbot.TargetConditions, selectedHeadHitboxes, function(origin, part) return not data.Aimbot.TargetConditions.Visible or arg3:Check(origin, part, part.Parent) end)
 local v136 = v127.new(v135, v116.buildMeasure(fov.Radius, aimbot.TargetConditions.WithinFov), v132)
 local followTarget = fov.Circle.FollowTarget
 local speed = followTarget.Speed
@@ -29703,7 +30056,7 @@ v134:Add(v122:ObserveEnabledKeybind({ "Aimbot" }, function(active)
 tbl18._active = active
 end))
 
-local v141 = v131(arg2, v134, "features.Aimbot", v135, function() return data.Aimbot.TargetHitboxes end)
+local v141 = v131(arg2, v134, "features.Aimbot", v135, function() return headOnlyHitboxesByClass end)
 local function fn39(selection) v136:SetHitboxSelectionMode(v116.buildHitboxSelectionMode(selection)) end
 v134:Connect(v120:GetPropertyChangedSignal({ "Aimbot", "HitboxPoint" }), function(point) tbl18._computeTargetPoint = v116.buildTargetPoint(point) end)
 v134:Connect(v120:GetPropertyChangedSignal({ "Aimbot", "Fov" }), function(f)
@@ -29821,245 +30174,536 @@ tbl17.cX()
 local v116 = tbl17.k()
 local cameraArbiter = tbl17.co()
 local riotStateKey = "__SilentCamTargetRotationExactReplication_v1"
-local riotGlobalEnv = (type(getgenv) == "function" and getgenv()) or _G
-local riotPreviousState = riotGlobalEnv[riotStateKey]
-if type(riotPreviousState) == "table" and type(riotPreviousState.stop) == "function" then
-pcall(riotPreviousState.stop)
+local riotGlobalEnv
+local function riotEnsureGlobalEnv()
+if type(riotGlobalEnv) == "table" then return riotGlobalEnv end
+local candidate = nil
+if type(getgenv) == "function" then
+local okEnv, valueEnv = pcall(getgenv)
+if okEnv and type(valueEnv) == "table" then candidate = valueEnv end
 end
-local riotState = { enabled = false, active = false, initializing = false, generation = 0, triggerDistance = 25, lastFireAt = 0, retryAfter = 0 }
-riotGlobalEnv[riotStateKey] = riotState
-local riotTwoPi = 2 * math.pi
-local riotMinTriggerDist = 25
-local riotMaxTriggerDist = 1000000000000
-local riotTriggerDist = riotMinTriggerDist
-local riotPlayers = game:GetService("Players")
-local riotLocalPlayer = riotPlayers.LocalPlayer
-local riotRunService = game:GetService("RunService")
-local riotSilentActive = false
-local riotLastEncoded = string.char(255) .. string.char(255)
-local function riotFinite(n)
-return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+if type(candidate) ~= "table" and type(_G) == "table" then candidate = _G end
+if type(candidate) ~= "table" then candidate = {} end
+riotGlobalEnv = candidate
+return candidate
 end
-local function riotEncodeByte(n)
-if not riotFinite(n) then return string.char(0) end
-local value = math.floor((n % (2 * math.pi)) / (2 * math.pi) * 256 + 0.5) % 256
-return string.char(value)
+local function riotStateGet(key)
+local env = riotEnsureGlobalEnv()
+local okValue, value = pcall(rawget, env, key)
+if okValue then return value end
+return nil
 end
-local function riotResolveRemote()
-local replicatedStorage = game:GetService("ReplicatedStorage")
-local remotes = replicatedStorage:FindFirstChild("Remotes") or replicatedStorage:WaitForChild("Remotes", 10)
-if not remotes then return nil, "Missing Remotes folder" end
-local replication = remotes:FindFirstChild("Replication") or remotes:WaitForChild("Replication", 10)
-if not replication then return nil, "Missing Replication folder" end
-local fighter = replication:FindFirstChild("Fighter") or replication:WaitForChild("Fighter", 10)
-if not fighter then return nil, "Missing Fighter folder" end
-local remote = fighter:FindFirstChild("UpdateCameraRotation") or fighter:WaitForChild("UpdateCameraRotation", 10)
-if not remote then return nil, "Missing UpdateCameraRotation remote" end
-return remote
-end
-local function riotInstallHook()
-if type(getgc) ~= "function" or type(debug) ~= "table" or type(debug.getupvalues) ~= "function" then
-return false, "Executor does not expose getgc/debug.getupvalues"
-end
-local okGc, objects = pcall(getgc, true)
-if not okGc or type(objects) ~= "table" then return false, "Could not enumerate runtime" end
-for _, object in ipairs(objects) do
-if type(object) == "table" then
-local idx = rawget(object, "__index")
-if type(idx) == "table" and rawget(idx, "_CameraReplicationLoop") ~= nil then
-local loop = rawget(idx, "_CameraReplicationLoop")
-if type(loop) ~= "function" then return false, "Camera replication loop is not a function" end
-local okUps, upvalues = pcall(debug.getupvalues, loop)
-if not okUps or type(upvalues) ~= "table" then return false, "Could not inspect camera replication loop" end
-for _, value in pairs(upvalues) do
-if type(value) == "table" then
-local mt = getmetatable(value)
-local valueIndex = type(mt) == "table" and rawget(mt, "__index") or nil
-if type(valueIndex) == "table" and rawget(valueIndex, "EncodeCameraRotation") then
-local original = rawget(valueIndex, "EncodeCameraRotation")
-if type(original) ~= "function" then return false, "Camera encoder is not a function" end
-local wrapper = function(...)
-if riotSilentActive and type(riotLastEncoded) == "string" then
-return riotLastEncoded
-end
-return original(...)
-end
-local okSet = pcall(rawset, valueIndex, "EncodeCameraRotation", wrapper)
-if not okSet or rawget(valueIndex, "EncodeCameraRotation") ~= wrapper then
-return false, "Could not replace EncodeCameraRotation"
-end
-riotState.originalEncoder = original
-riotState.utilityIndex = valueIndex
-riotState.wrapper = wrapper
-riotState.hooked = true
+local function riotStateSet(key, value)
+local env = riotEnsureGlobalEnv()
+local okSet = pcall(rawset, env, key, value)
+if okSet then return true end
+if type(_G) == "table" and env ~= _G then
+local fallbackOk = pcall(rawset, _G, key, value)
+if fallbackOk then
+riotGlobalEnv = _G
 return true
 end
 end
+return false
 end
+local riotPreviousState = riotStateGet(riotStateKey)
+if type(riotPreviousState) == "table" and type(riotPreviousState.stop) == "function" then
+pcall(riotPreviousState.stop)
 end
+local riotState = {
+enabled = false,
+active = false,
+initializing = false,
+generation = 0,
+lastFireAt = 0,
+retryAfter = 0,
+heartbeat = nil,
+targetCharacter = nil,
+lastEncoded = nil,
+payload = nil,
+lastAngleAt = 0,
+aimPart = nil,
+triggerDistance = 25,
+hookInstalled = false,
+hookTarget = nil,
+hookOriginal = nil,
+hookWrapper = nil,
+buildPayload = nil,
+stop = nil,
+}
+riotStateSet(riotStateKey, riotState)
+
+-- The user-supplied Riot implementation is kept intact for target selection,
+-- encoding, replication hook, and fire cadence. Only feature lifecycle and
+-- Ragebot-priority gates are added around its Heartbeat execution.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+local remote
+local nextRemoteResolveAt = 0
+local nextRemoteWarningAt = 0
+
+local function riotResolveRemote()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return nil end
+    local replication = remotes:FindFirstChild("Replication")
+    if not replication then return nil end
+    local fighter = replication:FindFirstChild("Fighter")
+    if not fighter then return nil end
+    local candidate = fighter:FindFirstChild("UpdateCameraRotation")
+    if candidate == nil then return nil end
+    local okFire, fireMethod = pcall(function()
+        if not candidate:IsA("RemoteEvent") then return nil end
+        return candidate.FireServer
+    end)
+    if not okFire or type(fireMethod) ~= "function" then return nil end
+    return candidate
 end
+
+local function riotEnsureRemote()
+    if remote ~= nil then
+        local ok, isValid = pcall(function()
+            return remote.Parent ~= nil and type(remote.FireServer) == "function"
+        end)
+        if ok and isValid then return true end
+        remote = nil
+    end
+    local now = os.clock()
+    if now < nextRemoteResolveAt then return false end
+    nextRemoteResolveAt = now + 2
+    local ok, candidate = pcall(riotResolveRemote)
+    if ok and candidate ~= nil then
+        remote = candidate
+        nextRemoteWarningAt = 0
+        return true
+    end
+    if now >= nextRemoteWarningAt then
+        nextRemoteWarningAt = now + 5
+        warn("[AlwaysBackstab.Riot] UpdateCameraRotation remote unavailable; retrying.")
+    end
+    return false
 end
-return false, "Camera encoder hook target not found"
+
+local function encodeByte(n)
+    if type(n) ~= "number" or n ~= n then return utf8.char(0) end
+    local v = math.floor(n % (2 * math.pi) / math.pi / 2 * 256 + 0.5)
+    return utf8.char(math.clamp(v, 0, 255))
 end
-local function riotFindNearest()
-local localPlayer = riotLocalPlayer
-local localCharacter = localPlayer and localPlayer.Character
-if not localCharacter then return nil end
-local localRoot = localCharacter:FindFirstChild("HumanoidRootPart")
-local localHumanoid = localCharacter:FindFirstChildOfClass("Humanoid")
-if not localRoot or not localHumanoid or localHumanoid.Health <= 0 then return nil end
-local localPosition = localRoot.Position
-local localTeam = localPlayer:GetAttribute("TeamID")
-local localEnvironment = localPlayer:GetAttribute("EnvironmentID")
-local bestCharacter, bestDistance = nil, math.huge
-for _, player in ipairs(riotPlayers:GetPlayers()) do
-if player == localPlayer then continue end
-if player:GetAttribute("EnvironmentID") ~= localEnvironment then continue end
-if localTeam ~= nil and player:GetAttribute("TeamID") == localTeam then continue end
-local character = player.Character
-if not character then continue end
-local root = character:FindFirstChild("HumanoidRootPart")
-local humanoid = character:FindFirstChildOfClass("Humanoid")
-if not root or not humanoid or humanoid.Health <= 0 then continue end
-local distance = (root.Position - localPosition).Magnitude
-if distance > riotTriggerDist then continue end
-if distance < bestDistance then
-bestDistance = distance
-bestCharacter = character
+
+local silentActive = false
+local lastEncoded = utf8.char(255) .. utf8.char(255)
+local hookTarget, hookOriginal, hookWrapper = nil, nil, nil
+local hookInstalled = false
+local nextHookRetryAt = 0
+local nextHookScanAt = 0
+local nextHookWarningAt = 0
+
+local nextHookRestoreWarningAt = 0
+local function restoreReplicationHook()
+    local target, wrapper, original = hookTarget, hookWrapper, hookOriginal
+    if target ~= nil and wrapper ~= nil and original ~= nil then
+        local okCurrent, current = pcall(rawget, target, "EncodeCameraRotation")
+        if not okCurrent then
+            hookInstalled = true
+            riotState.hookInstalled = true
+            return false
+        end
+        if current == wrapper then
+            local okWrite = pcall(rawset, target, "EncodeCameraRotation", original)
+            local okVerify, restored = pcall(rawget, target, "EncodeCameraRotation")
+            if not okWrite or not okVerify or restored ~= original then
+                -- Keep ownership references so a later Update can retry cleanup.
+                hookInstalled = true
+                riotState.hookInstalled = true
+                local now = os.clock()
+                if now >= nextHookRestoreWarningAt then
+                    nextHookRestoreWarningAt = now + 5
+                    warn("[AlwaysBackstab.Riot] Failed to restore camera encoder; cleanup will retry.")
+                end
+                return false
+            end
+        end
+        -- If another subsystem replaced the field, this wrapper is no longer the
+        -- directly installed function. Clear our references rather than clobbering
+        -- that subsystem's newer encoder.
+    end
+    hookTarget, hookOriginal, hookWrapper = nil, nil, nil
+    hookInstalled = false
+    riotState.hookTarget = nil
+    riotState.hookOriginal = nil
+    riotState.hookWrapper = nil
+    riotState.hookInstalled = false
+    return true
 end
+
+local function installReplicationHook()
+    if type(debug) ~= "table" or type(debug.getupvalues) ~= "function" then
+        return false
+    end
+
+    local bestTarget, bestOriginal, bestScore = nil, nil, -1
+    local function inspectLoop(loop, loopPriority)
+        if type(loop) ~= "function" then return end
+        local okUps, ups = pcall(debug.getupvalues, loop)
+        if not okUps or type(ups) ~= "table" then return end
+        local candidateTarget, candidateOriginal, candidateRank = nil, nil, 0
+        for _, val in pairs(ups) do
+            if type(val) == "table" then
+                local direct = rawget(val, "EncodeCameraRotation")
+                local okMeta, mt = pcall(getmetatable, val)
+                local inherited = okMeta and type(mt) == "table" and rawget(mt, "__index") or nil
+                local inheritedEncoder = type(inherited) == "table" and rawget(inherited, "EncodeCameraRotation") or nil
+                local thisTarget, thisOriginal, rank = nil, nil, 0
+                if type(direct) == "function" then
+                    thisTarget, thisOriginal = val, direct
+                    rank = type(inheritedEncoder) == "function" and 3 or 2
+                elseif type(inheritedEncoder) == "function" then
+                    thisTarget, thisOriginal, rank = inherited, inheritedEncoder, 1
+                end
+                if rank > candidateRank then
+                    candidateTarget, candidateOriginal, candidateRank = thisTarget, thisOriginal, rank
+                end
+            end
+        end
+        if candidateTarget ~= nil then
+            local score = (tonumber(loopPriority) or 0) + candidateRank
+            if score > bestScore then
+                bestTarget, bestOriginal, bestScore = candidateTarget, candidateOriginal, score
+            end
+        end
+    end
+
+    -- Prefer the exact FighterController instance already used by Kicia's
+    -- ViewAngleDriver. Only use getgc scanning as a fallback when its metatable
+    -- is not ready yet. This avoids patching a different class/prototype first.
+    local apiOk, api = pcall(function() return tbl17.aS() end)
+    local controllerOk, fighterController = pcall(function()
+        return apiOk and type(api) == "table" and api.FighterController or nil
+    end)
+    if not controllerOk then fighterController = nil end
+    if fighterController ~= nil then
+        local mtOk, mt = pcall(getmetatable, fighterController)
+        local idx = mtOk and type(mt) == "table" and rawget(mt, "__index") or nil
+        local exactLoop = type(idx) == "table" and rawget(idx, "_CameraReplicationLoop") or nil
+        inspectLoop(exactLoop, 100)
+    end
+
+    if bestTarget == nil and type(getgc) == "function" then
+        local okGc, gcObjects = pcall(getgc, true)
+        if okGc and type(gcObjects) == "table" then
+            for _, m in pairs(gcObjects) do
+                if type(m) == "table" then
+                    local okIndex, idx = pcall(rawget, m, "__index")
+                    if okIndex and type(idx) == "table" then
+                        inspectLoop(rawget(idx, "_CameraReplicationLoop"), 0)
+                    end
+                end
+            end
+        end
+    end
+
+    local target, original = bestTarget, bestOriginal
+    if target == nil or type(original) ~= "function" then return false end
+
+    if hookTarget == target and hookWrapper ~= nil then
+        local okCurrent, current = pcall(rawget, target, "EncodeCameraRotation")
+        if okCurrent and current == hookWrapper then
+            hookInstalled = true
+            riotState.hookInstalled = true
+            return true
+        end
+    end
+
+    if hookTarget ~= nil then
+        if not restoreReplicationHook() then return false end
+        -- Restore may have cleared a wrapper which was superseded by Kicia or
+        -- another camera module; `original` above belongs to the current target.
+    end
+
+    local wrapper = function(...)
+        if silentActive and type(lastEncoded) == "string" then
+            return lastEncoded
+        end
+        return original(...)
+    end
+    local okWrite = pcall(rawset, target, "EncodeCameraRotation", wrapper)
+    if not okWrite then return false end
+
+    -- Record ownership immediately after the write. If verification fails or a
+    -- second hook races this install, stop/update can still clean up our wrapper.
+    hookTarget, hookOriginal, hookWrapper = target, original, wrapper
+    hookInstalled = true
+    riotState.hookTarget = target
+    riotState.hookOriginal = original
+    riotState.hookWrapper = wrapper
+    riotState.hookInstalled = true
+
+    local okVerify, current = pcall(rawget, target, "EncodeCameraRotation")
+    if not okVerify or current ~= wrapper then
+        restoreReplicationHook()
+        return false
+    end
+    return true
 end
-return bestCharacter
+
+-- Install lazily when Riot mode is actually enabled. Failed discovery is retried
+-- while the feature is active, and no prototype is patched just because the file loaded.
+hookInstalled = false
+riotState.hookInstalled = false
+
+local DEFAULT_TRIGGER_DIST = 25
+local MIN_TRIGGER_DIST = 25
+local MAX_TRIGGER_DIST = 1000000000000
+local FIRE_INTERVAL = 1 / 67
+local lastFireAt = 0
+
+local function sanitizeTriggerDistance(value)
+    value = tonumber(value)
+    if value == nil or value ~= value or value == math.huge or value == -math.huge then
+        value = DEFAULT_TRIGGER_DIST
+    end
+    return math.clamp(value, MIN_TRIGGER_DIST, MAX_TRIGGER_DIST)
 end
+
+local function getConfiguredTriggerDistance()
+    local data = type(v115) == "table" and v115.Data or nil
+    local itemModifiers = type(data) == "table" and data.ItemModifiers or nil
+    local configured = type(itemModifiers) == "table" and itemModifiers.AlwaysBackstabTriggerDist or nil
+    return sanitizeTriggerDistance(configured)
+end
+
+local function findNearest(triggerDistance)
+    triggerDistance = sanitizeTriggerDistance(triggerDistance)
+    if lp == nil then return nil end
+    local myChar = lp.Character
+    if not myChar then return nil end
+    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    local myHum  = myChar:FindFirstChildOfClass("Humanoid")
+    if myRoot == nil or not myRoot:IsA("BasePart") or myRoot.Parent == nil or myHum == nil or myHum.Health <= 0 then return nil end
+
+    local myPos  = myRoot.Position
+    local myTeam = lp:GetAttribute("TeamID")
+    local myEnv  = lp:GetAttribute("EnvironmentID")
+
+    local best, bestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == lp then continue end
+        if p:GetAttribute("EnvironmentID") ~= myEnv then continue end
+        if myTeam ~= nil and p:GetAttribute("TeamID") == myTeam then continue end
+
+        local char = p.Character
+        if not char then continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum  = char:FindFirstChildOfClass("Humanoid")
+        if root == nil or not root:IsA("BasePart") or root.Parent == nil or hum == nil or hum.Health <= 0 then continue end
+
+        local dist = (root.Position - myPos).Magnitude
+        if dist ~= dist or dist == math.huge or dist < 0 then continue end
+        if dist > triggerDistance then continue end
+        if dist < bestDist then bestDist = dist; best = char end
+    end
+    return best
+end
+
+local RIOT_RAGEBOT_CONTROL_KEY = "__CrefyRagebotControlState"
+local function riotRagebotHasPriority()
+    local controlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
+    if type(controlState) == "table" then
+        -- The explicit enabled flag is authoritative. Do not allow a stale target
+        -- heartbeat to keep Riot blocked after Ragebot was turned off, and do not
+        -- let a delayed update make Riot run while Ragebot is still enabled.
+        local enabled = rawget(controlState, "enabled")
+        if enabled == true then return true end
+        if enabled == false then return false end
+    end
+    -- Compatibility fallback only for builds without the control-state publisher.
+    local targetState = riotStateGet("__CrefyRagebotTargetState")
+    if type(targetState) == "table" and rawget(targetState, "active") == true then
+        local updatedAt = tonumber(rawget(targetState, "updatedAt")) or 0
+        local now = os.clock()
+        local age = now - updatedAt
+        if age >= 0 and age <= 0.5 then return true end
+    end
+    return false
+end
+
+local function riotClearActiveTarget()
+    silentActive = false
+    riotState.active = false
+    riotState.targetCharacter = nil
+    riotState.lastEncoded = nil
+    riotState.payload = nil
+    riotState.aimPart = nil
+    riotState.lastAngleAt = 0
+end
+
+local function isLiveBasePart(part, expectedModel)
+    if typeof(part) ~= "Instance" then return false end
+    local ok, valid = pcall(function()
+        if not part:IsA("BasePart") or part.Parent == nil then return false end
+        if expectedModel ~= nil and not part:IsDescendantOf(expectedModel) then return false end
+        return true
+    end)
+    return ok and valid == true
+end
+
+local function riotHeartbeatStep()
+    -- Ragebot's explicit state is authoritative. Riot stays inert for every frame
+    -- Ragebot is enabled, and resumes on the first Heartbeat after it is disabled.
+    if not riotState.enabled or riotRagebotHasPriority() then
+        riotClearActiveTarget()
+        return
+    end
+
+    local now = os.clock()
+    if not hookInstalled and now >= nextHookRetryAt then
+        nextHookRetryAt = now + 1
+        nextHookScanAt = math.max(nextHookScanAt or 0, now + 1)
+        local okHook, resultHook = pcall(installReplicationHook)
+        hookInstalled = okHook and resultHook == true
+        riotState.hookInstalled = hookInstalled
+        if not hookInstalled and now >= nextHookWarningAt then
+            nextHookWarningAt = now + 5
+            warn("[AlwaysBackstab.Riot] Camera replication hook unavailable; retrying.")
+        end
+    end
+
+    if not riotEnsureRemote() then
+        riotClearActiveTarget()
+        return
+    end
+
+    riotState.triggerDistance = getConfiguredTriggerDistance()
+    local targetChar = findNearest(riotState.triggerDistance)
+
+    if not targetChar then
+        riotClearActiveTarget()
+        return
+    end
+
+    if typeof(targetChar) ~= "Instance" or not targetChar:IsA("Model") or targetChar.Parent == nil then
+        riotClearActiveTarget()
+        return
+    end
+    local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
+    if targetHumanoid == nil or targetHumanoid.Health <= 0 then
+        riotClearActiveTarget()
+        return
+    end
+    local head = targetChar:FindFirstChild("Head")
+    if not isLiveBasePart(head, targetChar) then
+        head = targetChar:FindFirstChild("HumanoidRootPart")
+    end
+    if not isLiveBasePart(head, targetChar) then
+        riotClearActiveTarget()
+        return
+    end
+
+    -- Keep the supplied Riot logic: encode the selected part's orientation.
+    -- This guard only rejects non-finite values; it does not alter the angles.
+    local pitch, yaw = head.CFrame:ToOrientation()
+    if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge or yaw == math.huge or yaw == -math.huge then
+        riotClearActiveTarget()
+        return
+    end
+    local encoded = encodeByte(pitch) .. encodeByte(yaw)
+
+    lastEncoded = encoded
+    silentActive = true
+    riotState.active = true
+    riotState.targetCharacter = targetChar
+    riotState.lastEncoded = encoded
+    riotState.payload = nil -- encoded byte string is not a ViewAngleDriver table
+    riotState.aimPart = head
+    riotState.lastAngleAt = os.clock()
+
+    local fireNow = os.clock()
+    if fireNow - lastFireAt < FIRE_INTERVAL then return end
+    lastFireAt = fireNow
+    riotState.lastFireAt = fireNow
+
+    local fireOk, fireError = pcall(function()
+        remote:FireServer(encoded, nil)
+    end)
+    if not fireOk and fireNow >= (riotState.nextFireWarningAt or 0) then
+        riotState.nextFireWarningAt = fireNow + 5
+        warn("[AlwaysBackstab.Riot] UpdateCameraRotation FireServer failed: " .. tostring(fireError))
+        remote = nil
+        nextRemoteResolveAt = 0
+    end
+end
+
 local function riotStop()
-riotState.enabled = false
-riotState.active = false
-riotState.targetCharacter = nil
-riotState.generation = riotState.generation + 1
-riotSilentActive = false
-if riotState.heartbeat then
-pcall(function() riotState.heartbeat:Disconnect() end)
-riotState.heartbeat = nil
-end
-local idx, wrapper, original = riotState.utilityIndex, riotState.wrapper, riotState.originalEncoder
-if type(idx) == "table" and type(wrapper) == "function" and type(original) == "function" and rawget(idx, "EncodeCameraRotation") == wrapper then
-pcall(rawset, idx, "EncodeCameraRotation", original)
-end
-riotState.hooked = false
-riotState.wrapper = nil
-riotState.originalEncoder = nil
-riotState.utilityIndex = nil
-riotState.remote = nil
-riotLastEncoded = string.char(255) .. string.char(255)
-riotState.lastEncoded = nil
-riotState.lastScanError = nil
-riotState.lastFireError = nil
-riotState.initializing = false
-riotState.lastFireAt = 0
+    riotState.enabled = false
+    riotState.generation = (tonumber(riotState.generation) or 0) + 1
+    if riotState.heartbeat then
+        pcall(function() riotState.heartbeat:Disconnect() end)
+        riotState.heartbeat = nil
+    end
+    silentActive = false
+    restoreReplicationHook()
+    riotState.active = false
+    riotState.targetCharacter = nil
+    riotState.lastEncoded = nil
+    riotState.payload = nil
+    riotState.lastAngleAt = 0
+    riotState.aimPart = nil
+    riotState.triggerDistance = DEFAULT_TRIGGER_DIST
+    riotState.initializing = false
+    riotState.lastFireAt = 0
+    lastFireAt = 0
+    nextHookRetryAt = 0
+    nextHookScanAt = 0
+    nextHookWarningAt = 0
+    riotState.retryAfter = 0
 end
 riotState.stop = riotStop
-local function riotStart(distance)
-local requestedDistance = tonumber(distance)
-if not riotFinite(requestedDistance) then
-requestedDistance = riotMinTriggerDist
+
+local function riotStart(distance, characterController, fighters)
+    riotState.triggerDistance = sanitizeTriggerDistance(distance)
+    riotState.fighters = fighters
+    local hookNow = os.clock()
+    if hookNow >= nextHookScanAt then
+        nextHookScanAt = hookNow + 1
+        local okHook, resultHook = pcall(installReplicationHook)
+        hookInstalled = okHook and resultHook == true
+        nextHookRetryAt = hookNow + 1
+    elseif not hookInstalled and hookNow >= nextHookRetryAt then
+        nextHookRetryAt = hookNow + 1
+        local okHook, resultHook = pcall(installReplicationHook)
+        hookInstalled = okHook and resultHook == true
+    end
+    riotState.hookInstalled = hookInstalled
+    riotState.enabled = true
+    if riotState.heartbeat ~= nil then return true end
+    local connectOk, connection = pcall(function()
+        return RunService.Heartbeat:Connect(function()
+            local okStep, stepError = pcall(riotHeartbeatStep)
+            if not okStep then
+                riotClearActiveTarget()
+                local warningNow = os.clock()
+                if warningNow >= (riotState.nextUpdateWarningAt or 0) then
+                    riotState.nextUpdateWarningAt = warningNow + 5
+                    warn("[AlwaysBackstab.Riot] Heartbeat failed: " .. tostring(stepError))
+                end
+            end
+        end)
+    end)
+    if not connectOk or connection == nil then
+        riotState.enabled = false
+        riotState.retryAfter = os.clock() + 5
+        warn("[AlwaysBackstab.Riot] Heartbeat setup failed: " .. tostring(connection))
+        return false
+    end
+    riotState.heartbeat = connection
+    riotState.initializing = false
+    return true
 end
-riotTriggerDist = math.clamp(requestedDistance, riotMinTriggerDist, riotMaxTriggerDist)
-riotState.triggerDistance = riotTriggerDist
-riotState.enabled = true
-if riotState.heartbeat or riotState.initializing then return end
-if os.clock() < (riotState.retryAfter or 0) then return end
-riotState.initializing = true
-local generation = riotState.generation
-task.spawn(function()
-local remoteCallOk, remote, remoteError = pcall(riotResolveRemote)
-if not remoteCallOk then remoteError = remote; remote = nil end
-if not riotState.enabled or riotState.generation ~= generation then
-if riotState.generation == generation then riotState.initializing = false end
-return
-end
-if not remote then
-riotState.initializing = false
-riotState.retryAfter = os.clock() + 5
-warn("[SilentCam] Setup failed: " .. tostring(remoteError))
-return
-end
-riotState.remote = remote
-local hookCallOk, hookOk, hookError = pcall(riotInstallHook)
-if not hookCallOk or not hookOk then
-warn("[SilentCam] Hook failed: " .. tostring(hookCallOk and hookError or hookOk))
-end
-if not riotState.enabled or riotState.generation ~= generation then
-if riotState.generation == generation then riotState.initializing = false end
-return
-end
-riotLastEncoded = string.char(255) .. string.char(255)
-riotState.lastEncoded = riotLastEncoded
-riotState.retryAfter = 0
-local connectOk, connection = pcall(function()
-return riotRunService.Heartbeat:Connect(function()
-if not riotState.enabled then
-riotSilentActive = false
-riotState.active = false
-riotState.targetCharacter = nil
-return
-end
-local scanOk, targetCharacter = pcall(riotFindNearest)
-if not scanOk then
-local errorText = tostring(targetCharacter)
-if riotState.lastScanError ~= errorText then warn("[SilentCam] Target scan failed: " .. errorText); riotState.lastScanError = errorText end
-riotSilentActive = false
-riotState.active = false
-riotState.targetCharacter = nil
-return
-end
-riotState.lastScanError = nil
-if not targetCharacter then
-riotSilentActive = false
-riotState.active = false
-riotState.targetCharacter = nil
-return
-end
-local head = targetCharacter:FindFirstChild("Head") or targetCharacter:FindFirstChild("HumanoidRootPart")
-if not head then
-riotSilentActive = false
-riotState.active = false
-riotState.targetCharacter = nil
-return
-end
-local orientationOk, pitch, yaw = pcall(function() return head.CFrame:ToOrientation() end)
-if not orientationOk then
-riotSilentActive = false
-riotState.active = false
-riotState.targetCharacter = nil
-return
-end
-local encoded = riotEncodeByte(pitch) .. riotEncodeByte(yaw)
-riotLastEncoded = encoded
-riotState.lastEncoded = encoded
-riotSilentActive = true
-riotState.active = true
-riotState.targetCharacter = targetCharacter
-riotState.lastFireAt = os.clock()
-local fireOk, fireError = pcall(function()
-riotState.remote:FireServer(encoded, nil)
-end)
-if not fireOk then
-local warningNow = os.clock()
-if warningNow >= (riotState.nextFireWarningAt or 0) then
-riotState.nextFireWarningAt = warningNow + 5
-warn("[SilentCam] Rotation remote failed: " .. tostring(fireError))
-end
-end
-end)
-end)
-if not connectOk or not connection then
-riotStop()
-riotState.retryAfter = os.clock() + 5
-warn("[SilentCam] Heartbeat setup failed: " .. tostring(connection))
-return
-end
-riotState.heartbeat = connection
-riotState.initializing = false
-end)
+
+local previousRagebotControlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
+if type(previousRagebotControlState) ~= "table" then
+    riotStateSet(RIOT_RAGEBOT_CONTROL_KEY, { enabled = false, updatedAt = os.clock() })
 end
 
 local index2 = {}
@@ -30133,14 +30777,26 @@ return closestRoot
 end
 
 index2._UpdateRiot = function(arg, innerContext, triggerDistance)
-if innerContext == nil then
+-- Hard gate at the feature controller as well as inside Heartbeat. If Ragebot is
+-- on, Riot disconnects its worker and restores its hook; it restarts automatically
+-- on the first update after Ragebot publishes disabled.
+if riotRagebotHasPriority() then
+if arg._anglePayloadApplied then
+arg:_ClearAnglePayload(innerContext ~= nil and innerContext.CharacterController or nil)
+end
+if riotState.enabled or riotState.heartbeat ~= nil or hookInstalled then
+riotStop()
+end
+return
+end
+if innerContext == nil or innerContext.CharacterController == nil then
 riotStop()
 return
 end
 if arg._anglePayloadApplied then
 arg:_ClearAnglePayload(innerContext.CharacterController)
 end
-riotStart(triggerDistance)
+riotStart(triggerDistance, innerContext.CharacterController, arg._fighters)
 end
 
 index2.Update = function(arg)
@@ -30191,7 +30847,10 @@ end
 
                                                                               
 local itemBehaviors = innerContext.ItemBehaviors
-if itemBehaviors == nil or itemBehaviors:FindMeleeByName("Knife") == nil then
+local okEquippedMelee, equippedMelee = pcall(function()
+return itemBehaviors ~= nil and itemBehaviors:EquippedItemAsMelee() or nil
+end)
+if not okEquippedMelee or equippedMelee == nil or equippedMelee.Name ~= "Knife" then
 arg:_ClearAnglePayload(characterController)
 return
 end
@@ -51529,40 +52188,102 @@ local random2 = math.random
 local cframe = CFrame.new(math.random(-100000, -10000), 100000, random2(-100000, 10000))
 
 local function fn36(arg, arg2)
-local v118 = getthreadidentity()
-setthreadidentity(8)
-local physicsRepRootRef, v119 = v107(v104, arg, "PhysicsRepRootRef", arg2)
-setthreadidentity(v118)
-
-if not physicsRepRootRef then
-error(v119, 0)
+local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
+local identitySetter = K.fn("setthreadidentity") or K.fn("setidentity")
+local oldIdentity = nil
+local restoreIdentity = false
+if identityGetter ~= nil and identitySetter ~= nil then
+local okIdentity, identityValue = pcall(identityGetter)
+if okIdentity and identityValue ~= nil then
+oldIdentity = identityValue
+restoreIdentity = true
+pcall(identitySetter, 8)
 end
+end
+
+-- Capture the previous hidden reference when the executor permits it, so a
+-- failed acquisition can undo a partial write instead of leaving a stale link.
+local previousReference, previousReferenceKnown = nil, false
+local hiddenGetter = K.fn("gethiddenproperty")
+if type(hiddenGetter) == "function" then
+    local readOk, value = pcall(hiddenGetter, arg, "PhysicsRepRootRef")
+    if readOk then previousReference, previousReferenceKnown = value, true end
+else
+    local readOk, value = pcall(v116, arg, "PhysicsRepRootRef")
+    if readOk and value ~= nil then previousReference, previousReferenceKnown = value, true end
+end
+
+local okSet, setError = false, "sethiddenproperty API unavailable"
+if type(v104) == "function" then
+local callOk, result = pcall(v104, arg, "PhysicsRepRootRef", arg2)
+if callOk and result ~= false then
+    okSet = true
+else
+    setError = callOk and "sethiddenproperty returned false" or result
+end
+end
+-- ThreePass's useful fallback: if the hidden setter is unavailable/blocked, try
+-- the guarded property/metamethod setter used elsewhere in this runtime.
+if not okSet and type(v117) == "function" then
+local fallbackOk, fallbackResult = pcall(v117, arg, "PhysicsRepRootRef", arg2)
+if fallbackOk and fallbackResult ~= false then
+okSet = true
+else
+setError = tostring(setError) .. "; property fallback failed: " .. tostring(fallbackOk and "setter returned false" or fallbackResult)
+end
+end
+if restoreIdentity then pcall(identitySetter, oldIdentity) end
+if not okSet then
+    if previousReferenceKnown then
+        local restored = false
+        if type(v104) == "function" then
+            local restoreOk, restoreResult = pcall(v104, arg, "PhysicsRepRootRef", previousReference)
+            restored = restoreOk and restoreResult ~= false
+        end
+        if not restored and type(v117) == "function" then
+            local restoreOk, restoreResult = pcall(v117, arg, "PhysicsRepRootRef", previousReference)
+            restored = restoreOk and restoreResult ~= false
+        end
+        if not restored then setError = tostring(setError) .. "; previous PhysicsRepRootRef restore also failed" end
+    end
+return false, setError
+end
+return true, nil, previousReference, previousReferenceKnown
 end
 
 local function fn37(arg, arg2)
+if arg == nil or type(arg2) ~= "table" then return false end
+local allRestored = true
 local originalCFrame = arg2.OriginalCFrame
 local originalPart1 = arg2.OriginalPart1
 local originalPart1ToTarget = arg2.OriginalPart1ToTarget
 
 if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
-originalCFrame = originalPart1.CFrame * originalPart1ToTarget
+local okOriginalCFrame, computedCFrame = pcall(function()
+return originalPart1.CFrame * originalPart1ToTarget
+end)
+if okOriginalCFrame then originalCFrame = computedCFrame end
 end
 
-if originalCFrame ~= nil then
-v117(arg, v86[127], originalCFrame)
+local function restoreProperty(instance, property, value)
+local ok, result = pcall(v117, instance, property, value)
+return ok and result ~= false
+end
+
+if originalCFrame ~= nil and not restoreProperty(arg, v86[127], originalCFrame) then
+allRestored = false
 end
 
 local weld = arg2.Weld
-
-if weld ~= nil and originalPart1 ~= nil then
-v117(weld, "Part1", originalPart1)
+if weld ~= nil and originalPart1 ~= nil and not restoreProperty(weld, "Part1", originalPart1) then
+allRestored = false
 end
 
 local originalAnchored = arg2.OriginalAnchored
-
-if originalAnchored ~= nil then
-v117(arg, "Anchored", originalAnchored)
+if originalAnchored ~= nil and not restoreProperty(arg, "Anchored", originalAnchored) then
+allRestored = false
 end
+return allRestored
 end
 
 local index2 = {}
@@ -51577,19 +52298,64 @@ end
 index2.Acquire = function(arg, arg2, arg3)
 local v118 = arg._glueInfoByTargetPart[arg3]
 local reference = v118 and v118.Reference or InstanceHandle.new(arg3)
-fn36(arg2, reference)
+local okReference, referenceError, previousReference, previousReferenceKnown = fn36(arg2, reference)
+if not okReference then
+local warningNow = os.clock()
+if warningNow >= (arg._nextAcquireWarningAt or 0) then
+arg._nextAcquireWarningAt = warningNow + 5
+warn("[PartGlue] Acquire skipped safely: " .. tostring(referenceError))
+end
+return nil
+end
+local function restoreSourceReference()
+    if not previousReferenceKnown then return false, "previous value unavailable" end
+    local restoreOk, restoreResult = false, nil
+    if type(v104) == "function" then
+        restoreOk, restoreResult = pcall(v104, arg2, "PhysicsRepRootRef", previousReference)
+        restoreOk = restoreOk and restoreResult ~= false
+    end
+    if not restoreOk and type(v117) == "function" then
+        local fallbackOk, fallbackResult = pcall(v117, arg2, "PhysicsRepRootRef", previousReference)
+        restoreOk = fallbackOk and fallbackResult ~= false
+        restoreResult = fallbackResult
+    end
+    return restoreOk, restoreResult
+end
 local v119 = arg._targetPartBySourcePart[arg2]
 
 if v119 ~= arg3 then
+local setupOk, setupError = pcall(arg._SetupGlue, arg, arg3, reference)
+if not setupOk then
+local restored, restoreError = restoreSourceReference()
+local warningNow = os.clock()
+if warningNow >= (arg._nextAcquireWarningAt or 0) then
+arg._nextAcquireWarningAt = warningNow + 5
+warn("[PartGlue] Glue setup rolled back/aborted: " .. tostring(setupError) ..
+    (restored and "; PhysicsRepRootRef restored" or ("; PhysicsRepRootRef restore unverified/failed: " .. tostring(restoreError))))
+end
+return nil
+end
+
+-- Keep the prior target attached until the replacement has been prepared.
 if v119 ~= nil then
 arg:_ReleaseGlue(v119)
 end
-
-arg:_SetupGlue(arg3, reference)
 arg._targetPartBySourcePart[arg2] = arg3
 end
 
-v117(arg3, "CFrame", CFrame.new(cframe.Position))
+local moveOk, moveError = pcall(v117, arg3, "CFrame", CFrame.new(cframe.Position))
+if not moveOk or moveError == false then
+arg._targetPartBySourcePart[arg2] = nil
+arg:_ReleaseGlue(arg3)
+local restored, restoreError = restoreSourceReference()
+local warningNow = os.clock()
+if warningNow >= (arg._nextAcquireWarningAt or 0) then
+arg._nextAcquireWarningAt = warningNow + 5
+warn("[PartGlue] Target CFrame write failed: " .. tostring(moveError) ..
+    (restored and "; PhysicsRepRootRef restored" or ("; PhysicsRepRootRef restore unverified/failed: " .. tostring(restoreError))))
+end
+return nil
+end
 return cframe
 end
 
@@ -51603,64 +52369,104 @@ arg:_ReleaseGlue(v118)
 end
 
 index2._SetupGlue = function(arg, arg2, arg3)
-local v118 = arg._glueInfoByTargetPart[arg2]
-if v118 ~= nil then
-v118.RefCount = v118.RefCount + 1
-return
+local existing = arg._glueInfoByTargetPart[arg2]
+if existing ~= nil then
+    if existing.RestorePending == true then
+        if not fn37(arg2, existing) then
+            error("previous PartGlue state still requires restoration", 2)
+        end
+        arg._glueInfoByTargetPart[arg2] = nil
+        existing = nil
+    else
+        existing.RefCount = existing.RefCount + 1
+        return true
+    end
 end
+
 local weldConstraint = v115(arg2, "WeldConstraint")
-local v119 = nil
-local v120 = nil
-local v121 = nil
-local v122 = nil
+local originalCFrame = nil
+local originalAnchored = nil
+local originalPart1 = nil
+local originalPart1ToTarget = nil
 
 if weldConstraint ~= nil then
-local cFrame = v116(arg2, "CFrame") or arg2.CFrame
-local anchored = v116(arg2, "Anchored")
-local v123 = v86[116]
+    local readCFrameOk, cFrameValue = pcall(v116, arg2, "CFrame")
+    if readCFrameOk then originalCFrame = cFrameValue end
+    if originalCFrame == nil then originalCFrame = arg2.CFrame end
 
-if typeof(anchored) ~= v123 then
-anchored = arg2.Anchored
+    local readAnchoredOk, anchoredValue = pcall(v116, arg2, "Anchored")
+    if readAnchoredOk then originalAnchored = anchoredValue end
+    if typeof(originalAnchored) ~= "boolean" then originalAnchored = arg2.Anchored end
+
+    local readPart1Ok, part1Value = pcall(v116, weldConstraint, "Part1")
+    if readPart1Ok then originalPart1 = part1Value end
+    if originalPart1 == nil then originalPart1 = weldConstraint.Part1 end
+
+    if originalPart1 ~= nil and originalCFrame ~= nil then
+        local okOffset, offset = pcall(function()
+            return originalPart1.CFrame:ToObjectSpace(originalCFrame)
+        end)
+        if not okOffset then error("could not snapshot original weld offset: " .. tostring(offset), 2) end
+        originalPart1ToTarget = offset
+    end
 end
 
-local part1 = v116(weldConstraint, "Part1") or weldConstraint.Part1
-local flag19 = part1 ~= nil and cFrame ~= nil
-local v124 = nil
-
-if flag19 then
-v124 = part1.CFrame:ToObjectSpace(cFrame)
-v117(weldConstraint, "Part1", nil)
-end
-
-v117(arg2, "Anchored", v86[34])
-v119 = anchored
-v120 = cFrame
-v121 = v124
-v122 = part1
-end
-
-arg._glueInfoByTargetPart[arg2] = {
-RefCount = 1,
-Reference = arg3,
-Weld = weldConstraint,
-OriginalPart1 = v122,
-OriginalPart1ToTarget = v121,
-OriginalCFrame = v120,
-OriginalAnchored = v119,
+local info = {
+    RefCount = 1,
+    Reference = arg3,
+    Weld = weldConstraint,
+    OriginalPart1 = originalPart1,
+    OriginalPart1ToTarget = originalPart1ToTarget,
+    OriginalCFrame = originalCFrame,
+    OriginalAnchored = originalAnchored,
+    RestorePending = false,
 }
+-- Store the complete rollback record before the first mutation.
+arg._glueInfoByTargetPart[arg2] = info
+
+if weldConstraint ~= nil then
+    local setupOk, setupError = pcall(function()
+        if originalPart1 ~= nil and originalCFrame ~= nil then
+            local okDetach, detachResult = pcall(v117, weldConstraint, "Part1", nil)
+            if not okDetach or detachResult == false then
+                error("failed detaching original weld: " .. tostring(detachResult), 0)
+            end
+        end
+        local okAnchor, anchorResult = pcall(v117, arg2, "Anchored", true)
+        if not okAnchor or anchorResult == false then
+            error("failed anchoring target: " .. tostring(anchorResult), 0)
+        end
+    end)
+
+    if not setupOk then
+        if fn37(arg2, info) then
+            arg._glueInfoByTargetPart[arg2] = nil
+        else
+            info.RefCount = 0
+            info.RestorePending = true
+            warn("[PartGlue] Setup failed and rollback is incomplete; retaining restore record: " .. tostring(setupError))
+        end
+        error(setupError, 2)
+    end
+end
+return true
 end
 
 index2._ReleaseGlue = function(arg, arg2)
 local v118 = arg._glueInfoByTargetPart[arg2]
-if v118 == nil then
-return
+if v118 == nil then return end
+v118.RefCount = math.max((tonumber(v118.RefCount) or 1) - 1, 0)
+if v118.RefCount > 0 then return end
+if fn37(arg2, v118) then
+    arg._glueInfoByTargetPart[arg2] = nil
+    return
 end
-v118.RefCount = v118.RefCount - 1
-if v118.RefCount > 0 then
-return
+v118.RestorePending = true
+local warningNow = os.clock()
+if warningNow >= (arg._nextRestoreWarningAt or 0) then
+    arg._nextRestoreWarningAt = warningNow + 5
+    warn("[PartGlue] Restore incomplete; retaining record for cleanup retry")
 end
-fn37(arg2, v118)
-arg._glueInfoByTargetPart[arg2] = nil
 end
 
 index2.FindAnchor = function(arg, arg2)
@@ -51668,11 +52474,15 @@ return arg._targetPartBySourcePart[arg2]
 end
 
 index2.Destroy = function(arg)
-for k, v118 in arg._glueInfoByTargetPart, nil, nil do
-fn37(k, v118)
+for target, info in pairs(arg._glueInfoByTargetPart) do
+    if fn37(target, info) then
+        arg._glueInfoByTargetPart[target] = nil
+    else
+        info.RestorePending = true
+        info.RefCount = 0
+        warn("[PartGlue] Destroy could not fully restore a target; manual/runtime verification may be needed")
+    end
 end
-
-table.clear(arg._glueInfoByTargetPart)
 table.clear(arg._targetPartBySourcePart)
 end
 
@@ -53474,7 +54284,13 @@ local silentAim = v126.new("silent_aim")
 local silentAim2 = data.SilentAim
 local fov = silentAim2.Fov
 local targetConditions = silentAim2.TargetConditions
-local v134 = silentAim2.TargetHitboxes[v127.DefaultProfile.Class]
+-- Head-only target provider. The UI/config may still contain old body selections,
+-- but the shot-redirection target list is deliberately restricted to head hitboxes.
+local headOnlyHitboxesByClass = {
+Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
+Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
+}
+local v134 = headOnlyHitboxesByClass[v127.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
 local manipulate = silentAim2.Manipulate
 local obj = setmetatable({}, { __mode = "k" })
 
@@ -53533,7 +54349,7 @@ arg4:SetHandler(function(arg6)
 tbl18:_HandleInput(arg6)
 end)
 
-local v138 = v129(arg2, silentAim, "features.SilentAim", v137, function() return data.SilentAim.TargetHitboxes end)
+local v138 = v129(arg2, silentAim, "features.SilentAim", v137, function() return headOnlyHitboxesByClass end)
 local function fn37(selection) tbl18._targetSelection:SetHitboxSelectionMode(v115.buildHitboxSelectionMode(selection)) end
 local function fn38(m)
 manipulate = m
@@ -54715,24 +55531,20 @@ if type(profile) ~= "table" then
 profile = defaultProfile
 end
 
-local hitboxSet = profile.HitboxSet
-if type(hitboxSet) ~= "table" then
-hitboxSet = defaultProfile.HitboxSet
-end
-obj._includedHitboxes = hitboxSet
-
-local targetHitboxes = triggerConfig.TargetHitboxes
 local class = profile.Class or defaultProfile.Class
-
-if type(targetHitboxes) == "table" then
-targetHitboxes = targetHitboxes[class]
+if class == "Small" then
+obj._includedHitboxes = { HitboxHeadSmall = true }
+obj._targetHitboxes = {
+Air = { HitboxHeadSmall = true },
+Ground = { HitboxHeadSmall = true },
+}
+else
+obj._includedHitboxes = { HitboxHead = true }
+obj._targetHitboxes = {
+Air = { HitboxHead = true },
+Ground = { HitboxHead = true },
+}
 end
-
-if type(targetHitboxes) ~= "table" and type(triggerConfig.TargetHitboxes) == "table" then
-targetHitboxes = triggerConfig.TargetHitboxes[defaultProfile.Class]
-end
-
-obj._targetHitboxes = type(targetHitboxes) == "table" and targetHitboxes or {}
 end
 
 local v124 = nil
@@ -63128,7 +63940,13 @@ end
 index2.new = function(arg, arg2, arg3)
 local flickbot = v123.new("flickbot")
 local aimbot = data.Aimbot
-local v129 = v121.new(arg2, arg, aimbot.TargetConditions, aimbot.TargetHitboxes[v124.DefaultProfile.Class], function(I,W)return( arg3 :Check(I,W,W.Parent));end)
+-- Flickbot shares Aimbot settings, so constrain its provider to head hitboxes as well.
+local headOnlyHitboxesByClass = {
+Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
+Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
+}
+local selectedHeadHitboxes = headOnlyHitboxesByClass[v124.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
+local v129 = v121.new(arg2, arg, aimbot.TargetConditions, selectedHeadHitboxes, function(I,W)return( arg3 :Check(I,W,W.Parent));end)
 
 local tbl18 = {
 _trove = flickbot,
@@ -63151,7 +63969,7 @@ flickbot:Add(v119:ObserveEnabledKeybind({ "Flickbot" }, function(arg4)
 tbl18:_OnKeybindChanged(arg4)
 end))
 
-local v130 = v125(arg2, flickbot, "features.Aimbot", v129, function() return data.Aimbot.TargetHitboxes end)
+local v130 = v125(arg2, flickbot, "features.Aimbot", v129, function() return headOnlyHitboxesByClass end)
 local function fn37(selection) tbl18._targetSelection:SetHitboxSelectionMode(v115.buildHitboxSelectionMode(selection)) end
 flickbot:Connect(v118:GetPropertyChangedSignal({ "Aimbot", "Fov" }), function(f) tbl18._targetSelection:SetMeasure(v115.buildMeasure(f.Radius, data.Aimbot.TargetConditions.WithinFov)) end)
 flickbot:Connect(v118:GetPropertyChangedSignal({ "Aimbot", "TargetConditions" }), function(c)
@@ -63444,18 +64262,20 @@ end
 index2.ShouldFire = function(arg, canFire, lockDuration)
 local now2 = os.clock()
 local lockedUntil = arg._lockedUntil
-if lockedUntil ~= nil and now2 < lockedUntil then
-return false
+local lockActive = type(lockedUntil) == "number"
+    and lockedUntil == lockedUntil
+    and lockedUntil ~= math.huge
+    and lockedUntil ~= -math.huge
+    and now2 < lockedUntil
+local canFireNow = canFire == true
+if canFireNow then
+    local duration = tonumber(lockDuration) or 0
+    if duration ~= duration or duration == math.huge or duration == -math.huge or duration < 0 then
+        duration = 0
+    end
+    arg._lockedUntil = now2 + duration
 end
-if not canFire then
-return false
-end
-lockDuration = tonumber(lockDuration) or 0
-if lockDuration < 0 then
-lockDuration = 0
-end
-arg._lockedUntil = now2 + lockDuration
-return true
+return lockActive or canFireNow
 end
 
 index2.Reset = function(arg)
@@ -63696,7 +64516,250 @@ local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
-local RAGE_MIN_FIRE_INTERVAL = 0.03
+local function ragebotSafeEstimatedDelay(callback)
+if type(callback) ~= "function" then return 0 end
+local ok, value = pcall(callback)
+value = ok and tonumber(value) or nil
+if value == nil or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+return 0
+end
+return math.min(value, 5)
+end
+local ragebotGlobalEnv
+if type(getgenv) == "function" then
+local envOk, envValue = pcall(getgenv)
+if envOk and type(envValue) == "table" then
+ragebotGlobalEnv = envValue
+end
+end
+if type(ragebotGlobalEnv) ~= "table" and type(_G) == "table" then
+ragebotGlobalEnv = _G
+end
+if type(ragebotGlobalEnv) ~= "table" then
+ragebotGlobalEnv = {}
+end
+local RAGEBOT_TARGET_STATE_KEY = "__CrefyRagebotTargetState"
+local function ragebotEnsureGlobalEnv()
+if type(ragebotGlobalEnv) == "table" then return ragebotGlobalEnv end
+local candidate = nil
+if type(getgenv) == "function" then
+local envOk, envValue = pcall(getgenv)
+if envOk and type(envValue) == "table" then candidate = envValue end
+end
+if type(candidate) ~= "table" and type(_G) == "table" then candidate = _G end
+if type(candidate) ~= "table" then candidate = {} end
+ragebotGlobalEnv = candidate
+return candidate
+end
+local function ragebotStateGet(key)
+local env = ragebotEnsureGlobalEnv()
+local ok, value = pcall(rawget, env, key)
+if ok then return value end
+return nil
+end
+local function ragebotStateSet(key, value)
+local env = ragebotEnsureGlobalEnv()
+local ok = pcall(rawset, env, key, value)
+if ok then return true end
+local fallback = type(_G) == "table" and _G or {}
+local fallbackOk = pcall(rawset, fallback, key, value)
+if fallbackOk then
+ragebotGlobalEnv = fallback
+return true
+end
+fallback = {}
+ragebotGlobalEnv = fallback
+return pcall(rawset, fallback, key, value)
+end
+local function ragebotPublishTargetState(owner, active, character)
+local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+if type(shared) ~= "table" then shared = {} end
+local updatedAt = os.clock()
+local okWrite = pcall(function()
+shared.owner = owner
+shared.active = active == true
+shared.character = character
+shared.updatedAt = updatedAt
+end)
+if not okWrite then
+shared = { owner = owner, active = active == true, character = character, updatedAt = updatedAt }
+end
+return ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, shared)
+end
+local function ragebotDeactivateTargetState(owner)
+local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+if type(shared) ~= "table" then return end
+local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+if not okOwner or sharedOwner ~= owner then return end
+local updatedAt = os.clock()
+local okWrite = pcall(function()
+shared.active = false
+shared.character = nil
+shared.updatedAt = updatedAt
+end)
+if not okWrite then
+ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, { owner = owner, active = false, character = nil, updatedAt = updatedAt })
+end
+end
+
+local function ragebotSafeDeactivateTargetState(owner)
+local deactivate = ragebotDeactivateTargetState
+if type(deactivate) == "function" then
+local ok = pcall(deactivate, owner)
+if ok then return end
+end
+local shared = type(ragebotStateGet) == "function" and ragebotStateGet(RAGEBOT_TARGET_STATE_KEY) or nil
+if type(shared) == "table" then
+local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+if okOwner and sharedOwner == owner then
+local okWrite = pcall(function()
+shared.active = false
+shared.character = nil
+shared.updatedAt = os.clock()
+end)
+if not okWrite and type(ragebotStateSet) == "function" then
+pcall(ragebotStateSet, RAGEBOT_TARGET_STATE_KEY, { owner = owner, active = false, character = nil, updatedAt = os.clock() })
+end
+end
+end
+end
+
+local function ragebotSafeClearReloadTransport(owner)
+if type(owner) ~= "table" then return end
+local clearFn
+local getOk = pcall(function() clearFn = owner._ClearReloadTransport end)
+if getOk and type(clearFn) == "function" then
+local clearOk = pcall(clearFn, owner)
+if clearOk then return end
+end
+owner._reloadGun = nil
+owner._reloadReadyAt = nil
+owner._reloadAcknowledgementDeadline = nil
+owner._pendingDepletionAmmo = nil
+owner._reloadReadFailureSince = nil
+owner._reloadReadRetryAt = nil
+owner._depletionHoldCFrame = nil
+owner._depletionHoldUntil = nil
+end
+
+local function ragebotSafeInvokeMethod(owner, methodName, ...)
+if type(owner) ~= "table" then return false end
+local method
+local getOk = pcall(function() method = owner[methodName] end)
+if not getOk or type(method) ~= "function" then return false end
+return pcall(method, owner, ...)
+end
+
+-- LuaHook-style dynamic head shot fields for the Ragebot hitscan path.
+-- Keep target selection, shoot-lock and ammo bookkeeping intact; only build a
+-- live eye CFrame, muzzle CFrame and bounded point within HitboxHead.
+local RAGEBOT_EYE_UP = 2.5
+local RAGEBOT_MUZZLE_SEPARATION = 0.07
+local function ragebotFiniteNumber(value)
+    return type(value) == "number" and value == value
+        and value ~= math.huge and value ~= -math.huge
+end
+local function ragebotBuildHeadShot(item, plannedCFrame, hitboxHead)
+    -- Build first, send second. If sending throws after a partial remote send,
+    -- the caller must not retry with the legacy payload and accidentally double-fire.
+    local okBuild, shot = pcall(function()
+        if item == nil or typeof(plannedCFrame) ~= "CFrame" or hitboxHead == nil then
+            return nil
+        end
+        if type(item.ShootAt) ~= "function" then
+            return nil
+        end
+        if not hitboxHead:IsA("BasePart") or not hitboxHead:IsDescendantOf(workspace) then
+            return nil
+        end
+
+        local headPosition = hitboxHead.Position
+        local headSize = hitboxHead.Size
+        local basePosition = plannedCFrame.Position
+        if typeof(headPosition) ~= "Vector3" or typeof(headSize) ~= "Vector3"
+            or typeof(basePosition) ~= "Vector3"
+            or not ragebotFiniteNumber(headPosition.X) or not ragebotFiniteNumber(headPosition.Y)
+            or not ragebotFiniteNumber(headPosition.Z)
+            or not ragebotFiniteNumber(basePosition.X) or not ragebotFiniteNumber(basePosition.Y)
+            or not ragebotFiniteNumber(basePosition.Z)
+            or not ragebotFiniteNumber(headSize.X) or not ragebotFiniteNumber(headSize.Y)
+            or not ragebotFiniteNumber(headSize.Z)
+            or headSize.X <= 0 or headSize.Y <= 0 or headSize.Z <= 0 then
+            return nil
+        end
+
+        -- Match LuaHook's eyeRise behavior: use the 2.5-stud rise unless a
+        -- ceiling is closer, ignoring the local and target characters.
+        local rise = RAGEBOT_EYE_UP
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.IgnoreWater = true
+        local ignore = { hitboxHead }
+        local players = game:GetService("Players")
+        local localPlayer = players and players.LocalPlayer or nil
+        local localCharacter = localPlayer and localPlayer.Character or nil
+        if localCharacter ~= nil then
+            ignore[#ignore + 1] = localCharacter
+        end
+        local targetCharacter = hitboxHead:FindFirstAncestorOfClass("Model")
+        if targetCharacter ~= nil and targetCharacter ~= localCharacter then
+            ignore[#ignore + 1] = targetCharacter
+        end
+        rayParams.FilterDescendantsInstances = ignore
+        local ceilingHit = workspace:Raycast(basePosition, Vector3.new(0, RAGEBOT_EYE_UP, 0), rayParams)
+        if ceilingHit ~= nil then
+            local availableRoom = (ceilingHit.Position.Y - basePosition.Y) - 0.25
+            if availableRoom < rise then
+                rise = math.max(availableRoom, 0.15)
+            end
+        end
+
+        -- Re-read the moving head right before packet construction.
+        headPosition = hitboxHead.Position
+        if not ragebotFiniteNumber(headPosition.X) or not ragebotFiniteNumber(headPosition.Y)
+            or not ragebotFiniteNumber(headPosition.Z) then
+            return nil
+        end
+        local eyePosition = basePosition + Vector3.new(0, rise, 0)
+        local direction = headPosition - eyePosition
+        if direction.Magnitude < 1e-4 then
+            return nil
+        end
+        local up = Vector3.new(0, 1, 0)
+        if math.abs(direction.Unit.Y) > 0.999 then
+            up = Vector3.new(0, 0, 1)
+        end
+        local eyeCFrame = CFrame.lookAt(eyePosition, headPosition, up)
+        local muzzlePosition = eyePosition + eyeCFrame.RightVector * 0.2
+            - Vector3.new(0, RAGEBOT_MUZZLE_SEPARATION, 0)
+        local muzzleCFrame = CFrame.lookAt(muzzlePosition, headPosition, up)
+
+        -- Same bounded sampling as LuaHook's clampFrac=0.30 / jitterFrac=1.0:
+        -- each local hit coordinate stays within +/-15% of the head's size.
+        local localHitPoint = Vector3.new(
+            (math.random() - 0.5) * headSize.X * 0.30,
+            (math.random() - 0.5) * headSize.Y * 0.30,
+            (math.random() - 0.5) * headSize.Z * 0.30
+        )
+        if math.abs(localHitPoint.X) + math.abs(localHitPoint.Y) + math.abs(localHitPoint.Z) < 1e-6 then
+            localHitPoint = Vector3.new(headSize.X * 0.05, 0, 0)
+        end
+
+        return {
+            EyeCFrame = eyeCFrame,
+            MuzzleCFrame = muzzleCFrame,
+            HitInfo = { Part = hitboxHead, ObjectSpace = localHitPoint },
+        }
+    end)
+    if not okBuild or type(shot) ~= "table" then
+        return false, false
+    end
+
+    local okSend = pcall(function()
+        item:ShootAt(shot.EyeCFrame, shot.MuzzleCFrame, shot.HitInfo)
+    end)
+    return okSend, true
+end
 
 local tbl18 = {
 ["\0"] = -9e37,
@@ -63739,18 +64802,38 @@ local index2 = {}
 index2.__index = index2
 
 index2.new = function(arg)
-return setmetatable({ _partGlue = arg, _shootLock = v116.new(), _lastShotAt = -math.huge }, index2)
+return setmetatable({ _partGlue = arg, _shootLock = v116.new() }, index2)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6)
-local hitboxHead = arg3.AliveState.HitboxHead
-if hitboxHead == nil or hitboxHead.Parent == nil then
+local aliveState = arg3 ~= nil and arg3.AliveState or nil
+local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
+local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
+local okTarget, targetPartsValid = pcall(function()
+return arg3 ~= nil and aliveState ~= nil and arg3.AliveState == aliveState and aliveState.Alive == true
+and hitboxHead ~= nil and targetRoot ~= nil
+and hitboxHead:IsA("BasePart") and targetRoot:IsA("BasePart")
+and hitboxHead:IsDescendantOf(workspace) and targetRoot:IsDescendantOf(workspace)
+and hitboxHead.Parent ~= nil and targetRoot.Parent ~= nil
+end)
+if not okTarget or not targetPartsValid then
+arg:ClearTeleport()
+arg._shootLock:Reset()
 return arg5 and arg5.CFrame or nil, nil
 end
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
+if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
+arg:ClearTeleport()
+end
 local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
+if typeof(v120) ~= "CFrame" then
+arg:ClearTeleport()
+arg._shootLock:Reset()
+return arg5 and arg5.CFrame or nil, nil
+end
+arg._gluedPart = arg5
 local n
 
 if flag19 then
@@ -63762,6 +64845,10 @@ end
 local v121 = (flag19 and { tbl18 } or { tbl20 })[1]
 local v122 = (flag19 and { tbl19 } or { tbl21 })[v86[63]]
 local shootFrames = tonumber(ragebot.ShootFrames) or 1
+if shootFrames ~= shootFrames or shootFrames == math.huge or shootFrames == -math.huge then
+shootFrames = 1
+end
+shootFrames = math.clamp(shootFrames, 1, 5)
 local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
@@ -63772,67 +64859,46 @@ end
 
 return n, function()
 if hitboxHead == nil or hitboxHead.Parent == nil then
+arg._shootLock:Reset()
 return false
 end
-
-local now2 = os.clock()
-local info = type(arg4) == "table" and rawget(arg4, "Info") or nil
-local configuredCooldown = type(info) == "table" and rawget(info, "ShootCooldown") or nil
-if type(configuredCooldown) ~= "number" or configuredCooldown ~= configuredCooldown
-or configuredCooldown == math.huge or configuredCooldown == -math.huge then
-configuredCooldown = RAGE_MIN_FIRE_INTERVAL
+local dynamicShotSent, dynamicShotAttempted = ragebotBuildHeadShot(arg4, n, hitboxHead)
+if dynamicShotSent then
+return true
 end
-local minInterval = math.max(RAGE_MIN_FIRE_INTERVAL, configuredCooldown)
-local lastShotAt = tonumber(arg._lastShotAt) or -math.huge
-if now2 - lastShotAt < minInterval then
+if dynamicShotAttempted then
+-- Do not retry a potentially partially-sent remote with a second payload.
+arg._shootLock:Reset()
 return false
 end
-
-local okReload, isReloading = pcall(function()
-return arg4:IsReloading()
-end)
-if okReload and isReloading == true then
-return false
-end
-local okAmmo, ammo = pcall(function()
-return arg4:GetAmmo()
-end)
-if okAmmo and type(ammo) == "number" and ammo == ammo and ammo <= 0 then
-return false
-end
-
-local inner = rawget(arg4, "Inner")
-local innerData = type(inner) == "table" and rawget(inner, "Data") or nil
-local objectId = rawget(arg4, "ObjectId")
-local runtimeCooldown = type(inner) == "table" and rawget(inner, "_shoot_cooldown") or nil
-if type(runtimeCooldown) == "number" and runtimeCooldown == runtimeCooldown and runtimeCooldown > tick() then
-return false
-end
-
-pcall(function()
-if type(inner) == "table" and type(innerData) == "table" and rawget(innerData, "ObjectID") == objectId then
-rawset(inner, "_shoot_cooldown", 0)
-rawset(inner, "_shoot_cooldown_no_ammo", 0)
-rawset(inner, "_last_shot", tick() - 1)
-end
-end)
+-- Fall back only when dynamic payload construction was impossible before send;
+-- this legacy payload also names HitboxHead explicitly.
 local okSend = pcall(function()
 arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
 end)
 if okSend then
-arg._lastShotAt = os.clock()
 return true
 end
+arg._shootLock:Reset()
 return false
 end
 end
 
-index2.ResetState = function(arg, resetShotTime)
+index2.ClearTeleport = function(arg)
+local gluedPart = arg._gluedPart
+arg._gluedPart = nil
+if gluedPart == nil then return end
+local partGlue = arg._partGlue
+local free = type(partGlue) == "table" and partGlue.Free or nil
+if type(free) == "function" then
+pcall(free, partGlue, gluedPart)
+end
+end
+
+index2.ResetState = function(arg)
+arg:ClearTeleport()
 if arg._shootLock ~= nil then
 arg._shootLock:Reset()
-end
-if resetShotTime == true then
-arg._lastShotAt = -math.huge
 end
 end
 
@@ -63955,12 +65021,28 @@ return math.clamp(interval, 0.08, 3)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, gluedOurPart, arg5)
-local aliveState = arg3.AliveState
-local hitboxHead = aliveState.HitboxHead
+local aliveState = arg3 ~= nil and arg3.AliveState or nil
+local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
+local rootPart = aliveState ~= nil and aliveState.RootPart or nil
+local okTargetParts, targetPartsValid = pcall(function()
+return arg3 ~= nil and aliveState ~= nil and arg3.AliveState == aliveState and aliveState.Alive == true
+and hitboxHead ~= nil and rootPart ~= nil
+and hitboxHead:IsA("BasePart") and rootPart:IsA("BasePart")
+and hitboxHead:IsDescendantOf(workspace) and rootPart:IsDescendantOf(workspace)
+and hitboxHead.Parent ~= nil and rootPart.Parent ~= nil
+end)
+if not okTargetParts or not targetPartsValid or arg4 == nil then
+arg:ResetState()
+return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
+end
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
+if typeof(v120) ~= "CFrame" then
+arg:ResetState()
+return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
+end
 arg._gluedOurPart = gluedOurPart
 local n
 
@@ -64055,7 +65137,16 @@ elseif now2 >= arg._hitboxWindowUntil then
 arg._hitboxWindowTarget = nil
 end
 
-if not arg._shootLock:ShouldFire(arg5, arg2 * ragebot.ShootFrames) then
+local meleeDt = tonumber(arg2) or 0
+if meleeDt ~= meleeDt or meleeDt == math.huge or meleeDt == -math.huge or meleeDt < 0 then
+    meleeDt = 0
+end
+local meleeShootFrames = tonumber(ragebot.ShootFrames) or 1
+if meleeShootFrames ~= meleeShootFrames or meleeShootFrames == math.huge or meleeShootFrames == -math.huge then
+    meleeShootFrames = 1
+end
+meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
+if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
 return fn36(), nil, nil
 end
 
@@ -65017,6 +66108,41 @@ local enabled = v115.Data.Ragebot.Weapons.Enabled
 return type(enabled) == "table" and enabled[arg] == true
 end
 
+local function readAmmoState(item)
+local okAmmoBased, ammoBased = pcall(function() return item:IsAmmoBased() end)
+if not okAmmoBased or type(ammoBased) ~= "boolean" then
+local okFallback, fallbackBased = pcall(function()
+local data = item._data
+if type(data) ~= "table" then return nil end
+return rawget(data, "Ammo") ~= nil
+end)
+-- Conservative behavior from ThreePass: if neither the API nor raw data can
+-- determine whether this is an ammo-based weapon, skip this item rather than
+-- accidentally treating an unreadable gun as ammo-free.
+if not okFallback or type(fallbackBased) ~= "boolean" then return false end
+if fallbackBased == false then return false end
+ammoBased = fallbackBased
+end
+
+local okAmmo, ammo = pcall(function() return item:GetAmmo() end)
+if not okAmmo then
+local okFallback, fallbackAmmo = pcall(function()
+local data = item._data
+if type(data) == "table" then return rawget(data, "Ammo") end
+return nil
+end)
+if okFallback and fallbackAmmo ~= nil then
+okAmmo = true
+ammo = fallbackAmmo
+end
+end
+if not okAmmo then return false end
+if ammoBased and (type(ammo) ~= "number" or ammo ~= ammo or ammo == math.huge or ammo == -math.huge or ammo < 0) then
+return false
+end
+return true, ammoBased, ammo
+end
+
 return { getAction = function(arg)
 local weapons = v115.Data.Ragebot.Weapons
 local onEmpty = weapons.OnEmpty
@@ -65041,14 +66167,16 @@ flag19 = v86[34]
 local huge3 = table.find(priority, v119) or math.huge
 
 local ammoValue = nil
+local ammoBased = false
 if v118.__type == "Gun" then
-local okAmmo, readAmmo = pcall(v118.GetAmmo, v118)
-if not okAmmo then
+local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
+if not okAmmoState then
 continue
 end
+ammoBased = readAmmoBased
 ammoValue = readAmmo
 end
-if v118.__type == "Gun" and ammoValue == 0 then
+if v118.__type == "Gun" and ammoBased and ammoValue == 0 then
 local okReserve, reserve = pcall(v118.GetAmmoReserve, v118)
 if not okReserve or type(reserve) ~= "number" or reserve ~= reserve or reserve == -math.huge or reserve < 0 then
 continue
@@ -65076,11 +66204,15 @@ return nil
 end
 
 if v116 ~= nil then
-local flag20 = v116.__type == "Gun"
-
-if flag20 then
-local v118 = v86[186]
-flag20 = v116:GetAmmo() == v118
+local flag20 = false
+if v116.__type == "Gun" then
+local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
+if not okAmmoState then
+return nil
+end
+if ammoBased then
+flag20 = currentAmmo == v86[186]
+end
 end
 
 if v116:IsEquipped() then
@@ -65171,6 +66303,191 @@ local v128 = tbl17.jM()
 local v129 = tbl17.jN()
 local fallenPartsDestroyHeight = workspace.FallenPartsDestroyHeight
 
+-- These helpers must live in this Ragebot module's lexical scope.
+-- The similarly named helpers in the earlier module are local to a different
+-- closure and are therefore not visible here (which caused the nil-call at
+-- _Initialize when ObserveContext first delivered the current context).
+local function ragebotSafeEstimatedDelay(callback)
+    if type(callback) ~= "function" then return 0 end
+    local ok, value = pcall(callback)
+    value = ok and tonumber(value) or nil
+    if value == nil or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+        return 0
+    end
+    return math.min(value, 5)
+end
+
+local ragebotGlobalEnv
+if type(getgenv) == "function" then
+    local envOk, envValue = pcall(getgenv)
+    if envOk and type(envValue) == "table" then ragebotGlobalEnv = envValue end
+end
+if type(ragebotGlobalEnv) ~= "table" and type(_G) == "table" then
+    ragebotGlobalEnv = _G
+end
+if type(ragebotGlobalEnv) ~= "table" then ragebotGlobalEnv = {} end
+local RAGEBOT_TARGET_STATE_KEY = "__CrefyRagebotTargetState"
+
+local function ragebotEnsureGlobalEnv()
+    if type(ragebotGlobalEnv) == "table" then return ragebotGlobalEnv end
+    local candidate
+    if type(getgenv) == "function" then
+        local envOk, envValue = pcall(getgenv)
+        if envOk and type(envValue) == "table" then candidate = envValue end
+    end
+    if type(candidate) ~= "table" and type(_G) == "table" then candidate = _G end
+    if type(candidate) ~= "table" then candidate = {} end
+    ragebotGlobalEnv = candidate
+    return candidate
+end
+
+local function ragebotStateGet(key)
+    local env = ragebotEnsureGlobalEnv()
+    local ok, value = pcall(rawget, env, key)
+    if ok then return value end
+    return nil
+end
+
+local function ragebotStateSet(key, value)
+    local env = ragebotEnsureGlobalEnv()
+    local ok = pcall(rawset, env, key, value)
+    if ok then return true end
+    local fallback = type(_G) == "table" and _G or {}
+    local fallbackOk = pcall(rawset, fallback, key, value)
+    if fallbackOk then
+        ragebotGlobalEnv = fallback
+        return true
+    end
+    fallback = {}
+    ragebotGlobalEnv = fallback
+    return pcall(rawset, fallback, key, value)
+end
+
+local function ragebotPublishControlState(enabled)
+    local key = "__CrefyRagebotControlState"
+    local state = ragebotStateGet(key)
+    if type(state) ~= "table" then state = {} end
+    local okWrite = pcall(function()
+        state.enabled = enabled == true
+        state.updatedAt = os.clock()
+    end)
+    if not okWrite then
+        state = { enabled = enabled == true, updatedAt = os.clock() }
+    end
+    return ragebotStateSet(key, state)
+end
+
+local function ragebotPublishTargetState(owner, active, character)
+    local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+    if type(shared) ~= "table" then shared = {} end
+    local updatedAt = os.clock()
+    local okWrite = pcall(function()
+        shared.owner = owner
+        shared.active = active == true
+        shared.character = character
+        shared.updatedAt = updatedAt
+    end)
+    if not okWrite then
+        shared = { owner = owner, active = active == true, character = character, updatedAt = updatedAt }
+    end
+    return ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, shared)
+end
+
+local function ragebotDeactivateTargetState(owner)
+    local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+    if type(shared) ~= "table" then return end
+    local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+    if not okOwner or sharedOwner ~= owner then return end
+    local updatedAt = os.clock()
+    local okWrite = pcall(function()
+        shared.active = false
+        shared.character = nil
+        shared.updatedAt = updatedAt
+    end)
+    if not okWrite then
+        ragebotStateSet(RAGEBOT_TARGET_STATE_KEY, {
+            owner = owner, active = false, character = nil, updatedAt = updatedAt
+        })
+    end
+end
+
+local function ragebotSafeDeactivateTargetState(owner)
+    local ok = pcall(ragebotDeactivateTargetState, owner)
+    if ok then return end
+    local shared = ragebotStateGet(RAGEBOT_TARGET_STATE_KEY)
+    if type(shared) ~= "table" then return end
+    local okOwner, sharedOwner = pcall(rawget, shared, "owner")
+    if not okOwner or sharedOwner ~= owner then return end
+    local okWrite = pcall(function()
+        shared.active = false
+        shared.character = nil
+        shared.updatedAt = os.clock()
+    end)
+    if not okWrite then
+        pcall(ragebotStateSet, RAGEBOT_TARGET_STATE_KEY, {
+            owner = owner, active = false, character = nil, updatedAt = os.clock()
+        })
+    end
+end
+
+local function ragebotSafeClearReloadTransport(owner)
+    if type(owner) ~= "table" then return end
+    local clearFn
+    local getOk = pcall(function() clearFn = owner._ClearReloadTransport end)
+    if getOk and type(clearFn) == "function" then
+        local clearOk = pcall(clearFn, owner)
+        if clearOk then return end
+    end
+    -- Defensive field cleanup is deliberately best-effort so one bad field
+    -- cannot prevent the rest of the transient reload state from being reset.
+    for _, field in ipairs({
+        "_reloadGun", "_reloadReadyAt", "_reloadAcknowledgementDeadline",
+        "_pendingDepletionAmmo", "_reloadReadFailureSince", "_reloadReadRetryAt",
+        "_depletionHoldCFrame", "_depletionHoldUntil"
+    }) do
+        pcall(function() owner[field] = nil end)
+    end
+end
+
+local function ragebotSafeInvokeMethod(owner, methodName, ...)
+    if type(owner) ~= "table" then return false end
+    local method
+    local getOk = pcall(function() method = owner[methodName] end)
+    if not getOk or type(method) ~= "function" then return false end
+    return pcall(method, owner, ...)
+end
+
+local function ragebotTrySetInstanceProperty(instance, property, value)
+    local lastError = "no compatible property setter is available"
+    local function attempt(setter, ...)
+        local ok, result = pcall(setter, ...)
+        if ok and result ~= false then return true end
+        if ok then return false, "setter explicitly returned false" end
+        return false, result
+    end
+
+    if type(v112) == "function" then
+        local ok, err = attempt(v112, instance, property, value)
+        if ok then return true end
+        lastError = err
+    end
+    if type(v104) == "function" then
+        local ok, err = attempt(v104, instance, property, value)
+        if ok then return true end
+        lastError = err
+    end
+    if type(_sethiddenproperty) == "function" then
+        local ok, err = attempt(_sethiddenproperty, instance, property, value)
+        if ok then return true end
+        lastError = err
+    end
+    local ok, err = pcall(function()
+        instance[property] = value
+    end)
+    if ok then return true end
+    return false, tostring(lastError) .. "; direct write failed: " .. tostring(err)
+end
+
 local function fn36()
 return { CFrame = v127.getImmune(), ShouldSkipDefense = true }
 end
@@ -65185,6 +66502,8 @@ local v130 = ragebot:Add(v123.new(arg))
 local tbl18 = {
 _trove = ragebot,
 _enabled = false,
+_destroyHeightOverrideActive = false,
+_destroyHeightRestorePending = false,
 _lastTargetWorld = nil,
 _lastDefensiveViewAngles = nil,
 _cameraArbiter = cameraArbiter,
@@ -65219,7 +66538,7 @@ if not flag2 then
 return
 end
 arg._innerContext = innerContext
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 end))
 
 arg._trove:Connect(arg._playerContext.ContextRemoved, function()
@@ -65228,8 +66547,29 @@ arg._innerContext = nil
 end)
 
 arg._trove:Add(v118:ObserveEnabledKeybind({ "Ragebot" }, function(arg2)
-arg:SetEnabled(arg2)
-arg:_Reset()
+local desiredEnabled = arg2 == true
+local wasEnabled = arg._enabled == true
+if desiredEnabled == wasEnabled then
+    return
+end
+local setEnabled = arg.SetEnabled
+if type(setEnabled) == "function" then
+    local okEnabled, enabledError = pcall(setEnabled, arg, desiredEnabled)
+    if not okEnabled and os.clock() >= (arg._nextResetWarningAt or 0) then
+        arg._nextResetWarningAt = os.clock() + 5
+        warn("[Ragebot] SetEnabled callback failed: " .. tostring(enabledError))
+    end
+end
+if not desiredEnabled then
+    local reset = arg._Reset
+    if type(reset) == "function" then
+        local okReset, resetError = pcall(reset, arg)
+        if not okReset and os.clock() >= (arg._nextResetWarningAt or 0) then
+            arg._nextResetWarningAt = os.clock() + 5
+            warn("[Ragebot] Reset callback failed: " .. tostring(resetError))
+        end
+    end
+end
 end))
 end
 
@@ -65238,33 +66578,105 @@ locked = locked == true
 if arg._knifeCameraLocked == locked then
 return
 end
-arg._knifeCameraLocked = locked
+local arbiter = arg._cameraArbiter
+if type(arbiter) ~= "table" then
+arg._knifeCameraLocked = nil
+return
+end
+local okCall = false
 if locked then
-                                                                   
-                                                                     
-arg._cameraArbiter.claim("Ragebot.Knife", math.huge)
+if type(arbiter.claim) == "function" then
+okCall = pcall(arbiter.claim, "Ragebot.Knife", 20)
+end
 else
-arg._cameraArbiter.release("Ragebot.Knife")
+if type(arbiter.release) == "function" then
+okCall = pcall(arbiter.release, "Ragebot.Knife")
+end
+end
+-- Retry on a later update if the arbiter is temporarily unavailable.
+if okCall then
+arg._knifeCameraLocked = locked
+else
+arg._knifeCameraLocked = nil
 end
 end
 
 index2.SetEnabled = function(arg, enabled)
-if arg._enabled == enabled then
-return
-end
-arg._enabled = enabled
-v112(workspace, "FallenPartsDestroyHeight", enabled and (0/0) or fallenPartsDestroyHeight)
+enabled = enabled == true
+local wasEnabled = arg._enabled == true
+local overrideActive = arg._destroyHeightOverrideActive == true
+local restorePending = arg._destroyHeightRestorePending == true
 
-if not enabled then
-arg:_ClearReloadTransport()
-local undergroundController = rawget(_G, "__CrefyUndergroundController")
-if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
-pcall(undergroundController.SetRagebotIntegration, false)
-end
+if enabled then
+    if wasEnabled and overrideActive and not restorePending then
+        ragebotPublishControlState(arg._enabled == true)
+        return
+    end
+
+    local targetDestroyHeight = 0 / 0
+    local heightSetOk, heightWriteError = ragebotTrySetInstanceProperty(
+        workspace,
+        "FallenPartsDestroyHeight",
+        targetDestroyHeight
+    )
+    if heightSetOk then
+        arg._enabled = true
+        arg._destroyHeightOverrideActive = true
+        arg._destroyHeightRestorePending = false
+        ragebotPublishControlState(true)
+    else
+        -- A setter may fail after a partial side effect. Attempt restoration now,
+        -- and keep an independent retry flag if restoring also fails.
+        arg._enabled = false
+        ragebotPublishControlState(false)
+        local restoreOk, restoreError = ragebotTrySetInstanceProperty(
+            workspace,
+            "FallenPartsDestroyHeight",
+            fallenPartsDestroyHeight
+        )
+        arg._destroyHeightOverrideActive = not restoreOk and (overrideActive or wasEnabled)
+        arg._destroyHeightRestorePending = not restoreOk
+        if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
+            arg._nextDestroyHeightWarningAt = os.clock() + 5
+            warn("[Ragebot] FallenPartsDestroyHeight update failed; integration disabled: " ..
+                tostring(heightWriteError) .. (restoreOk and "" or ("; restore failed: " .. tostring(restoreError))))
+        end
+    end
+else
+    -- Keep enabled-state and property-restoration state separate. A failed restore
+    -- must not be hidden by _enabled=false or skipped by a later Unload/Destroy.
+    arg._enabled = false
+    ragebotPublishControlState(false)
+    local mustRestore = wasEnabled or overrideActive or restorePending
+    if mustRestore then
+        local restoreOk, restoreError = ragebotTrySetInstanceProperty(
+            workspace,
+            "FallenPartsDestroyHeight",
+            fallenPartsDestroyHeight
+        )
+        if restoreOk then
+            arg._destroyHeightOverrideActive = false
+            arg._destroyHeightRestorePending = false
+        else
+            arg._destroyHeightOverrideActive = overrideActive or wasEnabled
+            arg._destroyHeightRestorePending = true
+            if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
+                arg._nextDestroyHeightWarningAt = os.clock() + 5
+                warn("[Ragebot] Failed to restore FallenPartsDestroyHeight; will retry during cleanup: " .. tostring(restoreError))
+            end
+        end
+    end
+
+    ragebotSafeClearReloadTransport(arg)
+    local undergroundController = rawget(_G, "__CrefyUndergroundController")
+    if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
+        pcall(undergroundController.SetRagebotIntegration, false)
+    end
 end
 end
 
 index2.Update = function(arg, arg2)
+ragebotPublishControlState(arg._enabled == true)
 local undergroundController = rawget(_G, "__CrefyUndergroundController")
 if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
 pcall(undergroundController.SetRagebotIntegration, arg._enabled == true and arg._innerContext ~= nil)
@@ -65345,15 +66757,37 @@ warn("[Ragebot] Target selection failed: " .. tostring(resultTarget))
 end
 end
 
-if target ~= nil and target.AliveState ~= nil
-and target.AliveState.RootPart ~= nil and target.AliveState.RootPart.Parent ~= nil
-and target.AliveState.HitboxHead ~= nil and target.AliveState.HitboxHead.Parent ~= nil then
-arg._lastTargetWorld = target.AliveState.RootPart.Position
-else
-if target ~= nil then
-target = nil
+local targetPartsValid = false
+local candidateModel = nil
+local targetWorldPosition = nil
+if target ~= nil and target.AliveState ~= nil then
+local candidateRoot = target.AliveState.RootPart
+local candidateHitbox = target.AliveState.HitboxHead
+local okParts, validatedModel, validatedPosition = pcall(function()
+if target.AliveState.Alive ~= true or candidateRoot == nil or candidateHitbox == nil then return nil, nil end
+if not candidateRoot:IsA("BasePart") or not candidateHitbox:IsA("BasePart") then return nil, nil end
+local model = candidateRoot:FindFirstAncestorOfClass("Model")
+if model == nil or not candidateRoot:IsDescendantOf(model) or not candidateHitbox:IsDescendantOf(model) then return nil, nil end
+if not candidateRoot:IsDescendantOf(workspace) or not candidateHitbox:IsDescendantOf(workspace) then return nil, nil end
+local position = candidateRoot.Position
+if typeof(position) ~= "Vector3" or position.X ~= position.X or position.Y ~= position.Y or position.Z ~= position.Z
+or position.X == math.huge or position.X == -math.huge or position.Y == math.huge or position.Y == -math.huge
+or position.Z == math.huge or position.Z == -math.huge then return nil, nil end
+return model, position
+end)
+targetPartsValid = okParts and validatedModel ~= nil and typeof(validatedPosition) == "Vector3"
+if targetPartsValid then
+candidateModel = validatedModel
+targetWorldPosition = validatedPosition
 end
+end
+if targetPartsValid then
+arg._lastTargetWorld = targetWorldPosition
+ragebotPublishTargetState(arg, arg._enabled == true, candidateModel)
+else
+if target ~= nil then target = nil end
 arg._lastTargetWorld = nil
+ragebotSafeDeactivateTargetState(arg)
 end
 
 local safeDt = tonumber(arg2) or 0
@@ -65384,37 +66818,84 @@ end
 local reloadGun = arg._reloadGun
 
 if reloadGun ~= nil and arg._reloadReadyAt == nil and arg._pendingDepletionAmmo == nil then
-local okReloading, isReloading = pcall(reloadGun.IsReloading, reloadGun)
-if not okReloading then
-arg:_ClearReloadTransport()
-elseif not isReloading then
-arg._reloadReadyAt = os.clock() + v122.getEstimatedReplicationDelay()
+local nowReloadCheck = os.clock()
+if arg._reloadReadRetryAt == nil or nowReloadCheck >= arg._reloadReadRetryAt then
+local okReloading, isReloading = pcall(function() return reloadGun:IsReloading() end)
+if not okReloading or type(isReloading) ~= "boolean" then
+if arg._reloadReadFailureSince == nil then arg._reloadReadFailureSince = nowReloadCheck end
+arg._reloadReadRetryAt = nowReloadCheck + 0.1
+if nowReloadCheck >= (arg._nextReloadReadWarningAt or 0) then
+arg._nextReloadReadWarningAt = nowReloadCheck + 5
+warn("[Ragebot] Reload status read failed temporarily: " .. tostring(isReloading))
+end
+if nowReloadCheck - arg._reloadReadFailureSince > 2 then
+ragebotSafeClearReloadTransport(arg)
+end
+elseif isReloading then
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nowReloadCheck + 0.1
+else
+arg._reloadReadFailureSince = nil
+arg._reloadReadRetryAt = nil
+arg._reloadReadyAt = nowReloadCheck + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
+end
 end
 end
 
 arg:_ApplyForcedCrouch(v131.ShouldForceCrouch == true)
-local v132 = innerContext.ItemBehaviors:EquippedItemAsGun()
-local ammo = v132 ~= nil and v132:GetAmmo() or 0
-local shotRequestCount = v132 ~= nil and v132.ShotRequestCount or 0
+local v132 = nil
+local okEquippedGun, equippedGun = pcall(function()
+return innerContext.ItemBehaviors:EquippedItemAsGun()
+end)
+if okEquippedGun then
+v132 = equippedGun
+elseif os.clock() >= (arg._nextEquippedGunWarningAt or 0) then
+arg._nextEquippedGunWarningAt = os.clock() + 5
+warn("[Ragebot] Equipped gun lookup failed: " .. tostring(equippedGun))
+end
+local shotRequestCount = nil
+if v132 ~= nil then
+local okCountRead, countValue = pcall(function() return v132.ShotRequestCount end)
+if okCountRead and type(countValue) == "number" and countValue == countValue and countValue ~= math.huge and countValue ~= -math.huge and countValue >= 0 then
+shotRequestCount = countValue
+end
+end
 local weaponAction = v131.WeaponAction
 
 if weaponAction ~= nil then
-weaponAction()
+if type(weaponAction) == "function" then
+local actionOk, actionError = pcall(weaponAction)
+if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
+arg._nextWeaponActionWarningAt = os.clock() + 5
+warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
+end
 
-if v132 ~= nil and (v132.ShotRequestCount - shotRequestCount) > 0 then
-local okExpected, expectedAmmo = pcall(v132.GetExpectedAmmoAfterPendingShots, v132)
-if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 then
+if actionOk and v132 ~= nil and shotRequestCount ~= nil then
+local okCountAfter, countAfter = pcall(function() return v132.ShotRequestCount end)
+if okCountAfter and type(countAfter) == "number" and countAfter == countAfter and countAfter ~= math.huge and countAfter ~= -math.huge and countAfter > shotRequestCount then
+local okExpected, expectedAmmo = pcall(function() return v132:GetExpectedAmmoAfterPendingShots() end)
+local okAmmoAfter, ammoAfter = pcall(function() return v132:GetAmmo() end)
+local observedEmpty = okAmmoAfter and type(ammoAfter) == "number" and ammoAfter == ammoAfter
+and ammoAfter ~= math.huge and ammoAfter ~= -math.huge and ammoAfter <= 0
+if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 and observedEmpty then
+-- Confirm depletion from a fresh post-request ammo read, not the pre-shot snapshot.
+-- A pending-shot estimate alone must not suppress a firing plan while ammo is still observed.
 local now2 = os.clock()
 arg._reloadGun = v132
-arg._reloadReadyAt = now2 + v122.getEstimatedReplicationDelay()
-arg._pendingDepletionAmmo = ammo
-local remoteDelay = tonumber(v122.getEstimatedRemoteDelay()) or 0
-local replicationDelay = tonumber(v122.getEstimatedReplicationDelay()) or 0
-if remoteDelay ~= remoteDelay or remoteDelay < 0 or remoteDelay == math.huge then remoteDelay = 0 end
-if replicationDelay ~= replicationDelay or replicationDelay < 0 or replicationDelay == math.huge then replicationDelay = 0 end
+arg._reloadReadyAt = now2 + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
+arg._pendingDepletionAmmo = ammoAfter
+local remoteDelay = ragebotSafeEstimatedDelay(v122.getEstimatedRemoteDelay)
+local replicationDelay = ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 arg._reloadAcknowledgementDeadline = now2 + remoteDelay + replicationDelay
 arg._depletionHoldCFrame = typeof(arg._lastAimServerCFrame) == "CFrame" and arg._lastAimServerCFrame or nil
 arg._depletionHoldUntil = now2 + math.max(0.05, remoteDelay + replicationDelay)
+end
+end
+end
+else
+if os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
+arg._nextWeaponActionWarningAt = os.clock() + 5
+warn("[Ragebot] Ignored non-function WeaponAction callback")
 end
 end
 end
@@ -65482,7 +66963,16 @@ local item = arg3.Item
 
 if item.__type == "Gun" then
 arg._meleeStrategy:InvalidateKnifeState()
-if item:IsReloading() then
+local okItemReloading, itemReloading = pcall(function() return item:IsReloading() end)
+if not okItemReloading or type(itemReloading) ~= "boolean" then
+arg._hitscanStrategy:ResetState()
+if os.clock() >= (arg._nextItemReloadWarningAt or 0) then
+arg._nextItemReloadWarningAt = os.clock() + 5
+warn("[Ragebot] Gun reload state unavailable; waiting before firing: " .. tostring(itemReloading))
+end
+return fn36()
+end
+if itemReloading then
 arg._hitscanStrategy:ResetState()
 return fn36()
 end
@@ -65553,7 +67043,7 @@ end
 if now2 - arg._reloadReadFailureSince <= 2 then
 return pendingShotHoldPlan()
 end
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 
@@ -65573,7 +67063,7 @@ if equippedGun == nil then
 return transientReadFailure("equipped gun", "no equipped gun reported during a pending reload")
 end
 if equippedGun ~= reloadGun or arg2 ~= nil and (arg2.Type == "Swap" or arg2.Type == "Attack") and arg2.Item ~= reloadGun then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 
@@ -65614,7 +67104,7 @@ timedOut = expected > 0
 end
 
 if timedOut then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 return pendingShotHoldPlan()
@@ -65629,13 +67119,13 @@ end
 arg._reloadReadFailureSince = nil
 arg._reloadReadRetryAt = nil
 if ammo > 0 or reserve <= 0 then
-arg:_ClearReloadTransport()
+ragebotSafeClearReloadTransport(arg)
 return nil
 end
 local reloadReadyAt = arg._reloadReadyAt
 
 if reloadReadyAt == nil then
-reloadReadyAt = now2 + v122.getEstimatedReplicationDelay()
+reloadReadyAt = now2 + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 arg._reloadReadyAt = reloadReadyAt
 end
 
@@ -65645,7 +67135,7 @@ if now2 >= reloadReadyAt and (reloadAcknowledgementDeadline == nil or now2 >= re
 plan.WeaponAction = function()
 local okReload, started = pcall(reloadGun.Reload, reloadGun)
 if okReload and started == true then
-arg._reloadAcknowledgementDeadline = os.clock() + v122.getEstimatedRemoteDelay() + v122.getEstimatedReplicationDelay()
+arg._reloadAcknowledgementDeadline = os.clock() + ragebotSafeEstimatedDelay(v122.getEstimatedRemoteDelay) + ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay)
 else
 arg._reloadReadyAt = os.clock() + 0.25
 end
@@ -65735,7 +67225,8 @@ arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterSta
 end
 
 local viewAngleSlot = arg._knifeCameraLocked and 20 or v86[9]
-characterController:SendViewAngles(viewAngleSlot, arg2.ViewAngles or arg._lastDefensiveViewAngles)
+local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
+characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
 end
 
 index2.GetLastTargetWorld = function(arg)
@@ -65751,42 +67242,56 @@ end
 end
 
 index2._Reset = function(arg)
-pcall(arg._SetKnifeCameraLock, arg, false)
-arg:_ClearReloadTransport()
+if type(arg) ~= "table" then return end
+ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
+ragebotSafeDeactivateTargetState(arg)
+ragebotSafeClearReloadTransport(arg)
 arg._lastTargetWorld = nil
 arg._lastDefensiveViewAngles = nil
 arg._lastAimServerCFrame = nil
 arg._depletionHoldCFrame = nil
 arg._depletionHoldUntil = nil
-pcall(arg._ApplyForcedCrouch, arg, false)
-if arg._meleeStrategy ~= nil then
-pcall(arg._meleeStrategy.ResetState, arg._meleeStrategy)
+ragebotSafeInvokeMethod(arg, "_ApplyForcedCrouch", false)
+local meleeStrategy = arg._meleeStrategy
+if type(meleeStrategy) == "table" then
+local reset = meleeStrategy.ResetState
+if type(reset) == "function" then pcall(reset, meleeStrategy) end
 end
-if arg._hitscanStrategy ~= nil then
-pcall(arg._hitscanStrategy.ResetState, arg._hitscanStrategy, true)
+local hitscanStrategy = arg._hitscanStrategy
+if type(hitscanStrategy) == "table" then
+local reset = hitscanStrategy.ResetState
+if type(reset) == "function" then pcall(reset, hitscanStrategy, true) end
 end
-if arg._projectileBreakerTeleport ~= nil then
-pcall(arg._projectileBreakerTeleport.ResetState, arg._projectileBreakerTeleport)
+local breaker = arg._projectileBreakerTeleport
+if type(breaker) == "table" then
+local reset = breaker.ResetState
+if type(reset) == "function" then pcall(reset, breaker) end
 end
 local innerContext = arg._innerContext
-if innerContext == nil then
-return
-end
+if innerContext == nil then return end
 local characterController = innerContext.CharacterController
-if characterController == nil then
-return
-end
-pcall(function() characterController:SetServerCFrame(nil) end)
-pcall(function() characterController:SendViewAngles(20, nil) end)
+if characterController == nil then return end
+pcall(function()
+if type(characterController.SetServerCFrame) == "function" then characterController:SetServerCFrame(nil) end
+end)
+pcall(function()
+if type(characterController.SendViewAngles) == "function" then characterController:SendViewAngles(20, nil) end
+end)
 end
 
 index2.Destroy = function(arg)
-                                                                            
-                                                                          
-if arg._enabled then
+-- Always call SetEnabled(false): it also retries a pending workspace-property restore.
 pcall(function() arg:SetEnabled(false) end)
-end
 pcall(function() arg:_Reset() end)
+if arg._destroyHeightRestorePending == true then
+    local okRestore, restoreError = ragebotTrySetInstanceProperty(workspace, "FallenPartsDestroyHeight", fallenPartsDestroyHeight)
+    if okRestore then
+        arg._destroyHeightOverrideActive = false
+        arg._destroyHeightRestorePending = false
+    else
+        warn("[Ragebot] Unload could not restore FallenPartsDestroyHeight: " .. tostring(restoreError))
+    end
+end
 arg._trove:Destroy()
 end
 
