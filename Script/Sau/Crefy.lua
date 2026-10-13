@@ -19848,7 +19848,7 @@ return bd.c
 end
 end
 do 
-local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
+local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},AntiAim={Enabled=false,PitchMode="Random",YawMode="Random",CustomPitch=0,CustomYaw=0,SpinSpeed=180,Interval=0.1},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
 local be = tbl17.cache.be
@@ -30292,12 +30292,35 @@ local function encodeByte(n)
 end
 
 local silentActive = false
+local antiAimReplicationActive = false
+local antiAimEncoded = nil
 local lastEncoded = utf8.char(255) .. utf8.char(255)
 local hookTarget, hookOriginal, hookWrapper = nil, nil, nil
 local hookInstalled = false
 local nextHookRetryAt = 0
 local nextHookScanAt = 0
 local nextHookWarningAt = 0
+
+-- Ragebot must own replicated camera rotation whenever it is enabled. This helper
+-- is declared before the encoder wrapper so the wrapper itself can enforce priority
+-- rather than relying only on the later Heartbeat update.
+local function ragebotOwnsCameraRotation()
+    local controlState = riotStateGet("__CrefyRagebotControlState")
+    if type(controlState) == "table" then
+        local enabled = rawget(controlState, "enabled")
+        if enabled == true then return true end
+        if enabled == false then return false end
+    end
+
+    -- Compatibility fallback for builds that have not published the explicit state.
+    local targetState = riotStateGet("__CrefyRagebotTargetState")
+    if type(targetState) == "table" and rawget(targetState, "active") == true then
+        local updatedAt = tonumber(rawget(targetState, "updatedAt")) or 0
+        local age = os.clock() - updatedAt
+        if age >= 0 and age <= 0.5 then return true end
+    end
+    return false
+end
 
 local nextHookRestoreWarningAt = 0
 local function restoreReplicationHook()
@@ -30422,8 +30445,16 @@ local function installReplicationHook()
     end
 
     local wrapper = function(...)
+        -- Priority is strict: Ragebot > Always Backstab Riot > Character Anti Aim.
+        -- When Ragebot owns the camera, never substitute stale Riot/Anti Aim bytes.
+        if ragebotOwnsCameraRotation() then
+            return original(...)
+        end
         if silentActive and type(lastEncoded) == "string" then
             return lastEncoded
+        end
+        if antiAimReplicationActive and type(antiAimEncoded) == "string" then
+            return antiAimEncoded
         end
         return original(...)
     end
@@ -30507,6 +30538,60 @@ local function findNearest(triggerDistance)
 end
 
 local RIOT_RAGEBOT_CONTROL_KEY = "__CrefyRagebotControlState"
+local function findNearestFromFighters(triggerDistance)
+    local fighters = riotState.fighters
+    local enemies = type(fighters) == "table" and fighters.EnemyByPlayer or nil
+    if type(enemies) ~= "table" or next(enemies) == nil then
+        return nil, false
+    end
+
+    -- Kicia's EnemyByPlayer collection is the authoritative enemy filter. This
+    -- avoids false negatives when a Player's team/environment attributes update late.
+    local myChar = lp ~= nil and lp.Character or nil
+    local myRoot = myChar ~= nil and myChar:FindFirstChild("HumanoidRootPart") or nil
+    if myRoot == nil or not myRoot:IsA("BasePart") or myRoot.Parent == nil then
+        return nil, true
+    end
+
+    local bestModel, bestDistance = nil, math.huge
+    for _, fighter in pairs(enemies) do
+        local okEntry, model, root, alive = pcall(function()
+            if type(fighter) ~= "table" then return nil, nil, false end
+            local character = fighter.Character
+            local state = character ~= nil and character.State or nil
+            if state == nil or state.Alive ~= true then return nil, nil, false end
+            local stateRoot = state.RootPart
+            if stateRoot == nil or not stateRoot:IsA("BasePart") or stateRoot.Parent == nil then
+                return nil, nil, false
+            end
+            local stateModel = state.Model
+            if typeof(stateModel) ~= "Instance" or not stateModel:IsA("Model") or stateModel.Parent == nil then
+                stateModel = stateRoot:FindFirstAncestorOfClass("Model")
+            end
+            if stateModel == nil or not stateModel:IsA("Model") or stateModel.Parent == nil then
+                return nil, nil, false
+            end
+            return stateModel, stateRoot, true
+        end)
+        if okEntry and alive and model ~= nil and root ~= nil then
+            local distance = (root.Position - myRoot.Position).Magnitude
+            if distance == distance and distance ~= math.huge and distance <= triggerDistance and distance < bestDistance then
+                bestModel, bestDistance = model, distance
+            end
+        end
+    end
+    return bestModel, true
+end
+
+local function findRiotTarget(triggerDistance)
+    local nativeTarget, nativeRegistryAvailable = findNearestFromFighters(triggerDistance)
+    if nativeRegistryAvailable then
+        return nativeTarget
+    end
+    -- Keep the user-supplied Players/attributes logic as a startup fallback.
+    return findNearest(triggerDistance)
+end
+
 local function riotRagebotHasPriority()
     local controlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
     if type(controlState) == "table" then
@@ -30526,6 +30611,158 @@ local function riotRagebotHasPriority()
         if age >= 0 and age <= 0.5 then return true end
     end
     return false
+end
+
+local antiAimLastSendAt = 0
+local antiAimNextHookAt = 0
+local antiAimNextWarningAt = 0
+local antiAimLastIntervalIndex = nil
+local antiAimLastPitchIntervalIndex = nil
+local antiAimRandomPitch = 0
+local antiAimRandomYaw = 0
+local antiAimErrorWarningAt = 0
+
+local function antiAimGetConfig()
+    local data = type(v115) == "table" and v115.Data or nil
+    local config = type(data) == "table" and data.AntiAim or nil
+    return type(config) == "table" and config or nil
+end
+
+local function antiAimStep()
+    -- Hard gate Anti Aim while Ragebot is on. Do this before config/hook work so
+    -- the direct remote path also stops immediately; the encoder wrapper has the
+    -- same gate to cover ordering/race windows between Heartbeats.
+    if ragebotOwnsCameraRotation() then
+        antiAimReplicationActive = false
+        antiAimEncoded = nil
+        antiAimLastIntervalIndex = nil
+        antiAimLastPitchIntervalIndex = nil
+        return
+    end
+
+    -- Riot has priority over Anti Aim too, but only after Ragebot is ruled out.
+    if riotState.enabled then
+        antiAimReplicationActive = false
+        antiAimEncoded = nil
+        return
+    end
+
+    local config = antiAimGetConfig()
+    if config == nil or config.Enabled ~= true then
+        antiAimReplicationActive = false
+        antiAimEncoded = nil
+        antiAimLastIntervalIndex = nil
+        antiAimLastPitchIntervalIndex = nil
+        -- If neither AntiAim nor Riot owns the camera override, never leave a stale wrapper installed.
+        if not riotState.enabled and hookInstalled then
+            restoreReplicationHook()
+        end
+        return
+    end
+
+
+    local now = os.clock()
+    local interval = tonumber(config.Interval) or 0.1
+    if interval ~= interval or interval == math.huge or interval == -math.huge then interval = 0.1 end
+    interval = math.clamp(interval, 0.05, 1)
+    local intervalIndex = math.floor(now / interval)
+
+    -- Re-discover the hook if Kicia or another module replaced our wrapper.
+    if hookInstalled and hookTarget ~= nil and hookWrapper ~= nil then
+        local okCurrent, current = pcall(rawget, hookTarget, "EncodeCameraRotation")
+        if not okCurrent or current ~= hookWrapper then
+            hookInstalled = false
+            riotState.hookInstalled = false
+        end
+    end
+    if not hookInstalled and now >= antiAimNextHookAt then
+        antiAimNextHookAt = now + 1
+        local okHook, resultHook = pcall(installReplicationHook)
+        hookInstalled = okHook and resultHook == true
+        riotState.hookInstalled = hookInstalled
+    end
+    if not hookInstalled then
+        antiAimReplicationActive = false
+        antiAimEncoded = nil
+        if now >= antiAimNextWarningAt then
+            antiAimNextWarningAt = now + 5
+            warn("[AntiAim] Camera replication hook unavailable; retrying.")
+        end
+        return
+    end
+
+    local pitchMode = config.PitchMode
+    local pitch
+    if pitchMode == "Up" then
+        pitch = math.rad(89.9)
+    elseif pitchMode == "Down" then
+        pitch = math.rad(-89.9)
+    elseif pitchMode == "Custom" then
+        local value = tonumber(config.CustomPitch) or 0
+        if value ~= value or value == math.huge or value == -math.huge then value = 0 end
+        pitch = math.rad(math.clamp(value, -89.9, 89.9))
+    elseif pitchMode == "Random" then
+        -- UE's visible config defaults pitch to "random"; refresh per configured interval.
+        if antiAimLastPitchIntervalIndex ~= intervalIndex then
+            antiAimRandomPitch = math.rad((math.random() * 2 - 1) * 89.9)
+            antiAimLastPitchIntervalIndex = intervalIndex
+        end
+        pitch = antiAimRandomPitch
+    else -- Jitter: alternate the server pitch between +89.9 and -89.9 degrees.
+        pitch = (intervalIndex % 2 == 0) and math.rad(89.9) or math.rad(-89.9)
+    end
+
+    local yawMode = config.YawMode
+    local yaw
+    if yawMode == "Spin" then
+        local speed = tonumber(config.SpinSpeed) or 180
+        if speed ~= speed or speed == math.huge or speed == -math.huge then speed = 180 end
+        speed = math.clamp(speed, 30, 720)
+        yaw = (now * math.rad(speed)) % (2 * math.pi)
+    elseif yawMode == "Jitter" then
+        yaw = (intervalIndex % 2 == 0) and 0 or math.pi
+    elseif yawMode == "Backward" then
+        local camera = workspace.CurrentCamera
+        if camera ~= nil then
+            local _, cameraYaw = camera.CFrame:ToOrientation()
+            yaw = (cameraYaw + math.pi) % (2 * math.pi)
+        else
+            yaw = math.pi
+        end
+    elseif yawMode == "Custom" then
+        local value = tonumber(config.CustomYaw) or 0
+        if value ~= value or value == math.huge or value == -math.huge then value = 0 end
+        yaw = math.rad(math.clamp(value, -180, 180))
+    else -- Random: refresh only once per selected interval, not on every frame.
+        if antiAimLastIntervalIndex ~= intervalIndex then
+            antiAimRandomYaw = (math.random() * 2 - 1) * math.pi
+            antiAimLastIntervalIndex = intervalIndex
+        end
+        yaw = antiAimRandomYaw
+    end
+
+    local encoded = encodeByte(pitch) .. encodeByte(yaw)
+    antiAimEncoded = encoded
+    antiAimReplicationActive = true
+
+    if now - antiAimLastSendAt >= (1 / 67) then
+        if not riotEnsureRemote() then return end
+        local fireOk, fireError = pcall(function()
+            remote:FireServer(encoded, nil)
+        end)
+        if fireOk then
+            antiAimLastSendAt = now
+        else
+            remote = nil
+            nextRemoteResolveAt = 0
+            antiAimReplicationActive = false
+            antiAimEncoded = nil
+            if now >= antiAimErrorWarningAt then
+                antiAimErrorWarningAt = now + 5
+                warn("[AntiAim] UpdateCameraRotation failed: " .. tostring(fireError))
+            end
+        end
+    end
 end
 
 local function riotClearActiveTarget()
@@ -30575,7 +30812,7 @@ local function riotHeartbeatStep()
     end
 
     riotState.triggerDistance = getConfiguredTriggerDistance()
-    local targetChar = findNearest(riotState.triggerDistance)
+    local targetChar = findRiotTarget(riotState.triggerDistance)
 
     if not targetChar then
         riotClearActiveTarget()
@@ -30587,7 +30824,7 @@ local function riotHeartbeatStep()
         return
     end
     local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    if targetHumanoid == nil or targetHumanoid.Health <= 0 then
+    if targetHumanoid ~= nil and targetHumanoid.Health <= 0 then
         riotClearActiveTarget()
         return
     end
@@ -30626,11 +30863,15 @@ local function riotHeartbeatStep()
     local fireOk, fireError = pcall(function()
         remote:FireServer(encoded, nil)
     end)
-    if not fireOk and fireNow >= (riotState.nextFireWarningAt or 0) then
-        riotState.nextFireWarningAt = fireNow + 5
-        warn("[AlwaysBackstab.Riot] UpdateCameraRotation FireServer failed: " .. tostring(fireError))
+    if not fireOk then
         remote = nil
         nextRemoteResolveAt = 0
+        -- Never keep a stale encoded angle overriding the camera after remote failure.
+        riotClearActiveTarget()
+        if fireNow >= (riotState.nextFireWarningAt or 0) then
+            riotState.nextFireWarningAt = fireNow + 5
+            warn("[AlwaysBackstab.Riot] UpdateCameraRotation FireServer failed: " .. tostring(fireError))
+        end
     end
 end
 
@@ -30642,7 +30883,9 @@ local function riotStop()
         riotState.heartbeat = nil
     end
     silentActive = false
-    restoreReplicationHook()
+    if not antiAimReplicationActive then
+        restoreReplicationHook()
+    end
     riotState.active = false
     riotState.targetCharacter = nil
     riotState.lastEncoded = nil
@@ -30699,6 +30942,38 @@ local function riotStart(distance, characterController, fighters)
     riotState.heartbeat = connection
     riotState.initializing = false
     return true
+end
+
+local antiAimHeartbeatConnection
+local antiAimConnectionOk, antiAimConnectionResult = pcall(function()
+    return RunService.Heartbeat:Connect(function()
+        local okStep, stepError = pcall(antiAimStep)
+        if not okStep then
+            antiAimReplicationActive = false
+            antiAimEncoded = nil
+            local now = os.clock()
+            if now >= antiAimErrorWarningAt then
+                antiAimErrorWarningAt = now + 5
+                warn("[AntiAim] Heartbeat failed: " .. tostring(stepError))
+            end
+        end
+    end)
+end)
+if antiAimConnectionOk then
+    antiAimHeartbeatConnection = antiAimConnectionResult
+end
+if type(K) == "table" and type(K.onUnload) == "function" then
+    K.onUnload(function()
+        if antiAimHeartbeatConnection ~= nil then
+            pcall(function() antiAimHeartbeatConnection:Disconnect() end)
+            antiAimHeartbeatConnection = nil
+        end
+        antiAimReplicationActive = false
+        antiAimEncoded = nil
+        if not riotState.enabled then
+            restoreReplicationHook()
+        end
+    end)
 end
 
 local previousRagebotControlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
@@ -60243,7 +60518,17 @@ return ie.c
 end
 end
 do 
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));elseif enabled and result==false then warn("[Underground] Startup pending; waiting for character/root to become ready.");end;end});end;return function(W)l(W:AddSection({Title="Activation",Side="left"}));I_150(W:AddSection({Title="Weapon Strategy",Side="left"}));N(W:AddSection({Title="Evasion",Side="right"}));end;end
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Attack controls the minimum interval between shots; Hide controls how long the server CFrame stays in the void after a shot.",Config={"Ragebot","VoidSpam","Enabled"}})
+local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
+voidSpamGroup:AddSlider({Label="Attack",Tooltip="Delay between shots. Range: 0.1–1 second.",Min=0.1,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
+voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the void phase after a shot. Default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));elseif enabled and result==false then warn("[Underground] Startup pending; waiting for character/root to become ready.");end;end});end;return function(W)
+local activation=W:AddSection({Title="Activation",Side="left"})
+l(activation)
+I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
+N(W:AddSection({Title="Evasion",Side="right"}))
+end;end
 
 tbl17.ih = function()
 local ih = tbl17.cache.ih
@@ -61045,7 +61330,17 @@ return iq.c
 end
 end
 do 
-local function fn35()local I= tbl17 .a8(); tbl17 .aE();return function(l)local W=l:AddSection({Title="Character Appearance",Side="right"});l=W:AddToggle({Label="Enable Character Chams",Config={"Chams","Character","Enabled"}});W:AddColor({Row=l.Row,Alpha=true,Config={"Chams","Character","Color"},Transparency={"Chams","Character","Transparency"},Animatable=true});local N=W:AddGroup({Source=l});N:AddDropdown({Label="Character Chams Material",Options=I.List,Config={"Chams","Character","Material"}});N:AddToggle({Label="Strip Character Chams Textures",Config={"Chams","Character","StripTextures"}});end;end
+local function fn35()local I= tbl17 .a8(); tbl17 .aE();return function(l)local characterGrid=l;local W=characterGrid:AddSection({Title="Character Appearance",Side="right"});local chamsToggle=W:AddToggle({Label="Enable Character Chams",Config={"Chams","Character","Enabled"}});W:AddColor({Row=chamsToggle.Row,Alpha=true,Config={"Chams","Character","Color"},Transparency={"Chams","Character","Transparency"},Animatable=true});local N=W:AddGroup({Source=chamsToggle});N:AddDropdown({Label="Character Chams Material",Options=I.List,Config={"Chams","Character","Material"}});N:AddToggle({Label="Strip Character Chams Textures",Config={"Chams","Character","StripTextures"}})
+local antiAim=characterGrid:AddSection({Title="Anti Aim",Side="left"})
+local antiAimToggle=antiAim:AddToggle({Label="Enable Anti Aim",Tooltip="Spoofs replicated camera rotation while leaving the local camera view unchanged.",Config={"AntiAim","Enabled"}})
+local antiAimGroup=antiAim:AddGroup({Source=antiAimToggle})
+antiAimGroup:AddDropdown({Label="Pitch Mode",Options={"Random","Jitter","Up","Down","Custom"},Config={"AntiAim","PitchMode"}})
+antiAimGroup:AddSlider({Label="Custom Pitch (degrees)",Min=-89.9,Max=89.9,Step=0.1,Config={"AntiAim","CustomPitch"}})
+antiAimGroup:AddDropdown({Label="Yaw Mode",Options={"Random","Spin","Jitter","Backward","Custom"},Config={"AntiAim","YawMode"}})
+antiAimGroup:AddSlider({Label="Custom Yaw (degrees)",Min=-180,Max=180,Step=1,Config={"AntiAim","CustomYaw"}})
+antiAimGroup:AddSlider({Label="Spin Speed (degrees/s)",Min=30,Max=720,Step=5,Config={"AntiAim","SpinSpeed"}})
+antiAimGroup:AddSlider({Label="Jitter / Random Interval (s)",Min=0.05,Max=1,Step=0.05,Config={"AntiAim","Interval"}})
+end;end
 
 tbl17.ir = function()
 local ir = tbl17.cache.ir
@@ -64805,6 +65100,63 @@ index2.new = function(arg)
 return setmetatable({ _partGlue = arg, _shootLock = v116.new() }, index2)
 end
 
+-- Declare Void Spam helpers in this module's lexical scope. Keeping them here is
+-- important: index2.Plan is defined before a later module's locals and cannot see
+-- those locals by forward lookup.
+local RAGEBOT_VOID_SPAM_STATE_KEY = "__CrefyRagebotVoidSpamState"
+local function ragebotVoidSpamState()
+    local state = rawget(_G, RAGEBOT_VOID_SPAM_STATE_KEY)
+    if type(state) ~= "table" then
+        state = { activeUntil = 0, nextAttackAt = 0, lastShotAt = 0, phase = "attack" }
+        pcall(rawset, _G, RAGEBOT_VOID_SPAM_STATE_KEY, state)
+    end
+    if type(state.activeUntil) ~= "number" then state.activeUntil = 0 end
+    if type(state.nextAttackAt) ~= "number" then state.nextAttackAt = 0 end
+    if type(state.lastShotAt) ~= "number" then state.lastShotAt = 0 end
+    if state.phase ~= "hide" then state.phase = "attack" end
+    return state
+end
+
+local function ragebotVoidSpamReset(state)
+    if type(state) ~= "table" then state = ragebotVoidSpamState() end
+    state.activeUntil = 0
+    state.nextAttackAt = 0
+    state.lastShotAt = 0
+    state.phase = "attack"
+end
+
+local function ragebotVoidSpamConfig()
+    local data = type(v115) == "table" and v115.Data or nil
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    local config = type(ragebot) == "table" and ragebot.VoidSpam or nil
+    if type(config) ~= "table" or config.Enabled ~= true then
+        return false, 0.1, 0.25
+    end
+    local attack = tonumber(config.Attack) or 0.1
+    if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
+    attack = math.clamp(attack, 0.1, 1)
+    -- Normalize saved profiles that still contain the former 0.01 default so
+    -- the UI value and runtime gate cannot disagree about the slider minimum.
+    if config.Attack ~= attack then
+        pcall(function() config.Attack = attack end)
+    end
+    local hide = tonumber(config.Hide) or 0.25
+    if hide ~= hide or hide == math.huge or hide == -math.huge then hide = 0.25 end
+    hide = math.clamp(hide, 0.01, 1)
+    return true, attack, hide
+end
+
+local function ragebotVoidSpamMarkShot()
+    local enabled, attack, hide = ragebotVoidSpamConfig()
+    if not enabled then return end
+    local now = os.clock()
+    local state = ragebotVoidSpamState()
+    state.lastShotAt = now
+    state.phase = "hide"
+    state.activeUntil = now + hide
+    state.nextAttackAt = now + attack
+end
+
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6)
 local aliveState = arg3 ~= nil and arg3.AliveState or nil
 local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
@@ -64853,8 +65205,37 @@ local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
 end
-if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
-return n, nil
+local voidSpamEnabled = ragebotVoidSpamConfig()
+if voidSpamEnabled then
+    local state = ragebotVoidSpamState()
+    local now = os.clock()
+    if state.phase == "hide" then
+        local activeUntil = tonumber(state.activeUntil) or 0
+        if activeUntil ~= activeUntil or activeUntil == math.huge or activeUntil == -math.huge then
+            activeUntil = 0
+            state.activeUntil = 0
+        end
+        if now < activeUntil then
+            return n, nil
+        end
+        -- Hide window ended. Attack remains the minimum interval between shots.
+        state.phase = "attack"
+        state.activeUntil = 0
+    end
+    local nextAttackAt = tonumber(state.nextAttackAt) or 0
+    if nextAttackAt ~= nextAttackAt or nextAttackAt == math.huge or nextAttackAt == -math.huge then
+        nextAttackAt = 0
+        state.nextAttackAt = 0
+    end
+    if now < nextAttackAt then
+        return n, nil
+    end
+else
+    local state = ragebotVoidSpamState()
+    ragebotVoidSpamReset(state)
+    if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
+        return n, nil
+    end
 end
 
 return n, function()
@@ -64864,6 +65245,7 @@ return false
 end
 local dynamicShotSent, dynamicShotAttempted = ragebotBuildHeadShot(arg4, n, hitboxHead)
 if dynamicShotSent then
+ragebotVoidSpamMarkShot()
 return true
 end
 if dynamicShotAttempted then
@@ -64877,6 +65259,7 @@ local okSend = pcall(function()
 arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
 end)
 if okSend then
+ragebotVoidSpamMarkShot()
 return true
 end
 arg._shootLock:Reset()
@@ -66647,6 +67030,13 @@ else
     -- must not be hidden by _enabled=false or skipped by a later Unload/Destroy.
     arg._enabled = false
     ragebotPublishControlState(false)
+    local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
+    if type(voidSpamState) == "table" then
+        voidSpamState.activeUntil = 0
+        voidSpamState.nextAttackAt = 0
+        voidSpamState.lastShotAt = 0
+        voidSpamState.phase = "attack"
+    end
     local mustRestore = wasEnabled or overrideActive or restorePending
     if mustRestore then
         local restoreOk, restoreError = ragebotTrySetInstanceProperty(
@@ -67170,6 +67560,26 @@ index2._ApplyUndergroundOffset = function(arg, cframe, characterController)
 if not arg._enabled or typeof(cframe) ~= "CFrame" then
 return cframe
 end
+local ragebotData = type(v115) == "table" and v115.Data and v115.Data.Ragebot or nil
+local voidSpamConfig = type(ragebotData) == "table" and ragebotData.VoidSpam or nil
+local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
+if type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true and type(voidSpamState) == "table" then
+    local activeUntil = tonumber(voidSpamState.activeUntil) or 0
+    local now = os.clock()
+    local activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
+    if voidSpamState.phase == "hide" and activeUntilValid and now < activeUntil then
+        -- Use the existing Ragebot server-CFrame channel; no local character transform is changed.
+        cframe = cframe + Vector3.new(0, -1000, 0)
+    elseif voidSpamState.phase == "hide" and activeUntilValid and now >= activeUntil then
+        voidSpamState.phase = "attack"
+        voidSpamState.activeUntil = 0
+    end
+elseif type(voidSpamState) == "table" then
+    voidSpamState.activeUntil = 0
+    voidSpamState.nextAttackAt = 0
+    voidSpamState.lastShotAt = 0
+    voidSpamState.phase = "attack"
+end
 local controller = rawget(_G, "__CrefyUndergroundController")
 if type(controller) ~= "table" or type(controller.ApplyToRagebotCFrame) ~= "function" then
 return cframe
@@ -67243,6 +67653,13 @@ end
 
 index2._Reset = function(arg)
 if type(arg) ~= "table" then return end
+local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
+if type(voidSpamState) == "table" then
+    voidSpamState.activeUntil = 0
+    voidSpamState.nextAttackAt = 0
+    voidSpamState.lastShotAt = 0
+    voidSpamState.phase = "attack"
+end
 ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 ragebotSafeDeactivateTargetState(arg)
 ragebotSafeClearReloadTransport(arg)
