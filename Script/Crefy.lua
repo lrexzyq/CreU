@@ -30322,6 +30322,31 @@ local function riotInstallFireServerHook()
 end
 
 local function riotResolveRemote()
+    -- Prefer the exact remote instance already resolved by Crefy's core loader.
+    -- The core uses WaitForChild while building its remote table; the old Riot
+    -- resolver used FindFirstChild only and could report "unavailable" despite
+    -- the game's canonical UpdateCameraRotationRemote already being available.
+    local coreRemote
+    local okCore, core = pcall(function()
+        if type(tbl17.aS) == "function" then
+            return tbl17.aS()
+        end
+        return nil
+    end)
+    if okCore and type(core) == "table" then
+        coreRemote = rawget(core, "UpdateCameraRotationRemote")
+        local okValid, valid = pcall(function()
+            return typeof(coreRemote) == "Instance"
+                and coreRemote:IsA("RemoteEvent")
+                and coreRemote.Parent ~= nil
+                and type(coreRemote.FireServer) == "function"
+        end)
+        if okValid and valid then
+            return coreRemote
+        end
+    end
+
+    -- Fallback for startup/reload races where the core cache is not yet ready.
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then return nil end
     local replication = remotes:FindFirstChild("Replication")
@@ -65309,11 +65334,12 @@ local function ragebotVoidSpamCancelShot()
     end
 end
 
--- Build Kicia-native shot data from the live server head origin, the actual
--- client-root frame used by ViewModel muzzle coordinates, and a bounded point
--- inside the selected head hitbox. Do not approximate Kicia's server origin with
--- a fixed 2.5-stud rise: standing and crouching use different offsets.
-local RAGE_FALLBACK_CROUCH_ORIGIN_RISE = 0.25
+-- Preserve the empirically working VOld gun-shot origin/muzzle geometry,
+-- while aiming the encoded shot at the same bounded point that is sent as ObjectSpace.
+-- The newer GetServerHeadOrigin + ViewModel/root remapping changed both shot frames
+-- and regressed hit registration in the user's comparison. This path mirrors the old
+-- planned-root + eye-rise + small muzzle offset and keeps head-point and payload aligned.
+local RAGEBOT_EYE_UP = 2.5
 local RAGE_MUZZLE_SEPARATION = 0.07
 local RAGE_HEAD_CLAMP_FRAC = 0.30
 
@@ -65337,82 +65363,78 @@ local function ragebotLookCFrame(fromPos, toPos)
     return nil
 end
 
-local function ragebotBuildHeadShot(item, headPart, finalServerRootCFrame, clientRootReferenceCFrame, serverHeadOriginCFrame)
-    if item == nil or headPart == nil then return nil end
+local function ragebotBuildHeadShot(item, headPart, plannedCFrame)
+    if item == nil or headPart == nil or typeof(plannedCFrame) ~= "CFrame" then return nil end
+    local okShootAt, shootAt = pcall(function() return item.ShootAt end)
+    if not okShootAt or type(shootAt) ~= "function" then return nil end
     local okHead, headCFrame, headSize = pcall(function()
-        if not headPart:IsA("BasePart") then return nil, nil end
+        if not headPart:IsA("BasePart") or not headPart:IsDescendantOf(workspace) then
+            return nil, nil
+        end
         return headPart.CFrame, headPart.Size
     end)
-    if not okHead or typeof(headCFrame) ~= "CFrame" or typeof(headSize) ~= "Vector3" then return nil end
+    if not okHead or typeof(headCFrame) ~= "CFrame" or not ragebotFiniteVector3(headCFrame.Position)
+        or typeof(headSize) ~= "Vector3" or not ragebotFiniteVector3(headSize)
+        or headSize.X <= 0 or headSize.Y <= 0 or headSize.Z <= 0 then
+        return nil
+    end
 
-    -- LuaHook uses a central, clamped hit point with bounded jitter.
+    -- ObjectSpace uses the same central hit point that the Eye/Muzzle frames aim at.
+    -- +/-15% of each head dimension stays safely inside the head hitbox while avoiding
+    -- the old mismatch where the frames aimed at the center but the payload named a
+    -- different random location.
     local half = headSize * RAGE_HEAD_CLAMP_FRAC
     local localPoint = Vector3.new(
-        math.clamp((math.random() - 0.5) * half.X, -half.X, half.X),
-        math.clamp((math.random() - 0.5) * half.Y, -half.Y, half.Y),
-        math.clamp((math.random() - 0.5) * half.Z, -half.Z, half.Z)
+        (math.random() - 0.5) * half.X,
+        (math.random() - 0.5) * half.Y,
+        (math.random() - 0.5) * half.Z
     )
     if localPoint.Magnitude < 1e-6 then
-        localPoint = Vector3.new(math.min(math.max(half.X * 0.01, 1e-4), math.max(headSize.X * 0.15, 1e-4)), 0, 0)
+        localPoint = Vector3.new(math.max(headSize.X * 0.01, 1e-4), 0, 0)
     end
     local aimWorldPos = headCFrame:PointToWorldSpace(localPoint)
     if not ragebotFiniteVector3(aimWorldPos) then return nil end
 
-    -- Prefer Kicia's exact server-origin API. Update() calls this after applying
-    -- the final server CFrame and forced-crouch state, so this origin includes the
-    -- correct Underground position and Kicia's crouch-dependent origin offset.
-    local basePos = nil
-    if typeof(finalServerRootCFrame) == "CFrame" then basePos = finalServerRootCFrame.Position end
-    if not ragebotFiniteVector3(basePos) then
-        local camera = workspace.CurrentCamera
-        if camera ~= nil then
-            local okCamera, cameraPos = pcall(function() return camera.CFrame.Position end)
-            if okCamera and ragebotFiniteVector3(cameraPos) then basePos = cameraPos end
-        end
+    -- Regression fix: use the same planned CFrame position and 2.5-stud eye rise
+    -- that were used by the older working version, not a crouch-dependent server
+    -- head-origin offset that changed the shot's vertical origin by over 2 studs.
+    local basePosition = plannedCFrame.Position
+    if not ragebotFiniteVector3(basePosition) then return nil end
+    local rise = RAGEBOT_EYE_UP
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.IgnoreWater = true
+    local ignore = { headPart }
+    local players = game:GetService("Players")
+    local localPlayer = players and players.LocalPlayer or nil
+    local localCharacter = localPlayer and localPlayer.Character or nil
+    if localCharacter ~= nil then ignore[#ignore + 1] = localCharacter end
+    local targetCharacter = headPart:FindFirstAncestorOfClass("Model")
+    if targetCharacter ~= nil and targetCharacter ~= localCharacter then
+        ignore[#ignore + 1] = targetCharacter
     end
-    if not ragebotFiniteVector3(basePos) then return nil end
+    rayParams.FilterDescendantsInstances = ignore
+    local ceilingHit = workspace:Raycast(basePosition, Vector3.new(0, RAGEBOT_EYE_UP, 0), rayParams)
+    if ceilingHit ~= nil then
+        local availableRoom = (ceilingHit.Position.Y - basePosition.Y) - 0.25
+        if availableRoom < rise then rise = math.max(availableRoom, 0.15) end
+    end
 
-    local eyePos = nil
-    if typeof(serverHeadOriginCFrame) == "CFrame" and ragebotFiniteVector3(serverHeadOriginCFrame.Position) then
-        eyePos = serverHeadOriginCFrame.Position
-    else
-        -- Gun plans force crouch. This is a fallback only; prefer GetServerHeadOrigin.
-        eyePos = basePos + Vector3.new(0, RAGE_FALLBACK_CROUCH_ORIGIN_RISE, 0)
-    end
+    -- Re-read the target pose immediately before creating the outgoing frames.
+    local okLiveHead, liveHeadCFrame = pcall(function() return headPart.CFrame end)
+    if not okLiveHead or typeof(liveHeadCFrame) ~= "CFrame" then return nil end
+    aimWorldPos = liveHeadCFrame:PointToWorldSpace(localPoint)
+    if not ragebotFiniteVector3(aimWorldPos) then return nil end
+
+    local eyePos = basePosition + Vector3.new(0, rise, 0)
     local eyeCF = ragebotLookCFrame(eyePos, aimWorldPos)
     if eyeCF == nil then return nil end
 
-    -- GetMuzzlePosition() is in the rendered/client world frame. Express it in the
-    -- actual client-root basis first, then map that offset onto the final server
-    -- root. Using the target-facing plan frame as the source basis rotates the
-    -- camera/viewmodel offset around the character and can move the muzzle off-axis.
-    local viewModel = nil
-    pcall(function()
-        local inner = item and item.Inner
-        viewModel = inner and inner.ViewModel or nil
-    end)
-    local muzzlePos = nil
-    local referenceRoot = typeof(clientRootReferenceCFrame) == "CFrame" and clientRootReferenceCFrame or finalServerRootCFrame
-    if viewModel ~= nil and typeof(referenceRoot) == "CFrame" and typeof(finalServerRootCFrame) == "CFrame" then
-        local getMuzzle = nil
-        pcall(function() getMuzzle = viewModel.GetMuzzlePosition end)
-        if type(getMuzzle) == "function" then
-            local okMuzzle, candidate = pcall(getMuzzle, viewModel)
-            local referenceEye = referenceRoot.Position + Vector3.new(0, RAGE_FALLBACK_CROUCH_ORIGIN_RISE, 0)
-            if okMuzzle and ragebotFiniteVector3(candidate) and (candidate - referenceEye).Magnitude <= 8 then
-                local okTransform, transformed = pcall(function()
-                    return finalServerRootCFrame:PointToWorldSpace(referenceRoot:PointToObjectSpace(candidate))
-                end)
-                if okTransform and ragebotFiniteVector3(transformed) and (transformed - eyePos).Magnitude <= 8 then
-                    muzzlePos = transformed
-                end
-            end
-        end
-    end
-    if muzzlePos == nil then
-        -- Safe deterministic fallback based on the final server eye frame.
-        muzzlePos = eyePos + eyeCF.RightVector * 0.2 - Vector3.new(0, RAGE_MUZZLE_SEPARATION, 0)
-    end
+    -- Match the old working muzzle construction. Do not rotate a rendered ViewModel
+    -- position from client-root space into the planned/server-root basis; those frames
+    -- may have different yaw/Underground offsets and shift the outgoing muzzle origin.
+    local muzzlePos = eyePos + eyeCF.RightVector * 0.2
+        - Vector3.new(0, RAGE_MUZZLE_SEPARATION, 0)
     local muzzleCF = ragebotLookCFrame(muzzlePos, aimWorldPos)
     if muzzleCF == nil then return nil end
 
@@ -65540,26 +65562,20 @@ local okSend, sendError = pcall(function()
         end
         requestedAmmoBefore = ammoBefore
     end
-    -- _ApplyPlan has already applied the final server CFrame. Use the actual client
-    -- root as the ViewModel coordinate basis, not n (the target-facing planned pose).
-    local finalShotRoot = typeof(arg._lastAimServerCFrame) == "CFrame" and arg._lastAimServerCFrame or n
-    local clientRootReference = typeof(arg._clientShotReferenceCFrame) == "CFrame" and arg._clientShotReferenceCFrame or nil
-    if clientRootReference == nil then
-        local okClientRootReference = pcall(function() clientRootReference = arg5.CFrame end)
-        if not okClientRootReference or typeof(clientRootReference) ~= "CFrame" then
-            clientRootReference = n
-        end
+    -- Use the same planned root pose as the older version that still registered shots.
+    -- The point is now sampled in head-local space and shared by orientation + payload.
+    local eyeCF, muzzleCF, hitData = ragebotBuildHeadShot(arg4, hitboxHead, n)
+    if eyeCF ~= nil and muzzleCF ~= nil and type(hitData) == "table" then
+        -- Kicia's native path encodes eye, muzzle, target part and matching local hit point.
+        arg4:ShootAt(eyeCF, muzzleCF, hitData)
+    else
+        -- Safe fallback only when construction failed before invoking ShootAt.
+        -- Keep the older legacy path available instead of silently dropping the shot.
+        arg4:ShootEncoded(v121, v122, hitboxHead, tbl22)
     end
-    local serverHeadOrigin = typeof(arg._serverShotOriginCFrame) == "CFrame" and arg._serverShotOriginCFrame or nil
-    local eyeCF, muzzleCF, hitData = ragebotBuildHeadShot(arg4, hitboxHead, finalShotRoot, clientRootReference, serverHeadOrigin)
-    if eyeCF == nil or muzzleCF == nil or type(hitData) ~= "table" then
-        error("could not build valid eye/muzzle/head shot fields")
-    end
-    -- Kicia's native path encodes eye, muzzle, target part and its local hit point.
-    arg4:ShootAt(eyeCF, muzzleCF, hitData)
     local afterCount = arg4.ShotRequestCount
     if not ragebotFiniteNumber(afterCount) or afterCount <= beforeCount then
-        error("ShootAt returned without incrementing Kicia ShotRequestCount")
+        error("Kicia shot request returned without incrementing ShotRequestCount")
     end
 end)
 if okSend then
@@ -67634,25 +67650,9 @@ local weaponAction = v131.WeaponAction
 
 if weaponAction ~= nil then
 if type(weaponAction) == "function" then
--- The fire callback runs after _ApplyPlan and SetServerCFrame. Read Kicia's
--- authoritative local server-origin CFrame here, at the last responsible moment,
--- then expose it only for the duration of this weapon action.
-local hitscanStrategy = arg._hitscanStrategy
-if v131.IsAimPose == true and type(hitscanStrategy) == "table" then
-    hitscanStrategy._serverShotOriginCFrame = nil
-    hitscanStrategy._clientShotReferenceCFrame = typeof(clientCFrame) == "CFrame" and clientCFrame or nil
-    local okServerOrigin, serverOrigin = pcall(function()
-        return characterController:GetServerHeadOrigin()
-    end)
-    if okServerOrigin and typeof(serverOrigin) == "CFrame" then
-        hitscanStrategy._serverShotOriginCFrame = serverOrigin
-    end
-end
+-- The fire callback intentionally uses the planned pose captured by HitscanStrategy.
+-- Avoid converting ViewModel muzzle coordinates between client/server root bases here.
 local actionOk, actionError = pcall(weaponAction)
-if type(hitscanStrategy) == "table" then
-    hitscanStrategy._serverShotOriginCFrame = nil
-    hitscanStrategy._clientShotReferenceCFrame = nil
-end
 if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
