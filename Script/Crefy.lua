@@ -65309,9 +65309,11 @@ local function ragebotVoidSpamCancelShot()
     end
 end
 
--- Build Kicia-native shot data from real eye/muzzle CFrames plus a bounded
--- point inside the selected head hitbox, following LuaHook's shot-field layout.
-local RAGE_EYE_RISE = 2.5
+-- Build Kicia-native shot data from the live server head origin, the actual
+-- client-root frame used by ViewModel muzzle coordinates, and a bounded point
+-- inside the selected head hitbox. Do not approximate Kicia's server origin with
+-- a fixed 2.5-stud rise: standing and crouching use different offsets.
+local RAGE_FALLBACK_CROUCH_ORIGIN_RISE = 0.25
 local RAGE_MUZZLE_SEPARATION = 0.07
 local RAGE_HEAD_CLAMP_FRAC = 0.30
 
@@ -65335,7 +65337,7 @@ local function ragebotLookCFrame(fromPos, toPos)
     return nil
 end
 
-local function ragebotBuildHeadShot(item, headPart, plannedRootCFrame, referenceRootCFrame)
+local function ragebotBuildHeadShot(item, headPart, finalServerRootCFrame, clientRootReferenceCFrame, serverHeadOriginCFrame)
     if item == nil or headPart == nil then return nil end
     local okHead, headCFrame, headSize = pcall(function()
         if not headPart:IsA("BasePart") then return nil, nil end
@@ -65356,10 +65358,11 @@ local function ragebotBuildHeadShot(item, headPart, plannedRootCFrame, reference
     local aimWorldPos = headCFrame:PointToWorldSpace(localPoint)
     if not ragebotFiniteVector3(aimWorldPos) then return nil end
 
-    -- Kicia has no named/public EyePos API. Plan's desired root CFrame is the
-    -- firing base analogous to LuaHook's firePark; add its 2.5-stud eye rise.
+    -- Prefer Kicia's exact server-origin API. Update() calls this after applying
+    -- the final server CFrame and forced-crouch state, so this origin includes the
+    -- correct Underground position and Kicia's crouch-dependent origin offset.
     local basePos = nil
-    if typeof(plannedRootCFrame) == "CFrame" then basePos = plannedRootCFrame.Position end
+    if typeof(finalServerRootCFrame) == "CFrame" then basePos = finalServerRootCFrame.Position end
     if not ragebotFiniteVector3(basePos) then
         local camera = workspace.CurrentCamera
         if camera ~= nil then
@@ -65368,29 +65371,37 @@ local function ragebotBuildHeadShot(item, headPart, plannedRootCFrame, reference
         end
     end
     if not ragebotFiniteVector3(basePos) then return nil end
-    local eyePos = basePos + Vector3.new(0, RAGE_EYE_RISE, 0)
+
+    local eyePos = nil
+    if typeof(serverHeadOriginCFrame) == "CFrame" and ragebotFiniteVector3(serverHeadOriginCFrame.Position) then
+        eyePos = serverHeadOriginCFrame.Position
+    else
+        -- Gun plans force crouch. This is a fallback only; prefer GetServerHeadOrigin.
+        eyePos = basePos + Vector3.new(0, RAGE_FALLBACK_CROUCH_ORIGIN_RISE, 0)
+    end
     local eyeCF = ragebotLookCFrame(eyePos, aimWorldPos)
     if eyeCF == nil then return nil end
 
-    -- ViewModel muzzle coordinates belong to the rendered/client frame. Transform
-    -- that point through the same planned->final server-root change (defensive
-    -- rotation plus Underground offset) before encoding it for the shot.
+    -- GetMuzzlePosition() is in the rendered/client world frame. Express it in the
+    -- actual client-root basis first, then map that offset onto the final server
+    -- root. Using the target-facing plan frame as the source basis rotates the
+    -- camera/viewmodel offset around the character and can move the muzzle off-axis.
     local viewModel = nil
     pcall(function()
         local inner = item and item.Inner
         viewModel = inner and inner.ViewModel or nil
     end)
     local muzzlePos = nil
-    local referenceRoot = typeof(referenceRootCFrame) == "CFrame" and referenceRootCFrame or plannedRootCFrame
-    if viewModel ~= nil and typeof(referenceRoot) == "CFrame" and typeof(plannedRootCFrame) == "CFrame" then
+    local referenceRoot = typeof(clientRootReferenceCFrame) == "CFrame" and clientRootReferenceCFrame or finalServerRootCFrame
+    if viewModel ~= nil and typeof(referenceRoot) == "CFrame" and typeof(finalServerRootCFrame) == "CFrame" then
         local getMuzzle = nil
         pcall(function() getMuzzle = viewModel.GetMuzzlePosition end)
         if type(getMuzzle) == "function" then
             local okMuzzle, candidate = pcall(getMuzzle, viewModel)
-            local referenceEye = referenceRoot.Position + Vector3.new(0, RAGE_EYE_RISE, 0)
+            local referenceEye = referenceRoot.Position + Vector3.new(0, RAGE_FALLBACK_CROUCH_ORIGIN_RISE, 0)
             if okMuzzle and ragebotFiniteVector3(candidate) and (candidate - referenceEye).Magnitude <= 8 then
                 local okTransform, transformed = pcall(function()
-                    return plannedRootCFrame:PointToWorldSpace(referenceRoot:PointToObjectSpace(candidate))
+                    return finalServerRootCFrame:PointToWorldSpace(referenceRoot:PointToObjectSpace(candidate))
                 end)
                 if okTransform and ragebotFiniteVector3(transformed) and (transformed - eyePos).Magnitude <= 8 then
                     muzzlePos = transformed
@@ -65497,10 +65508,23 @@ else
 end
 
 return n, function()
-if hitboxHead == nil or hitboxHead.Parent == nil then
-arg._shootLock:Reset()
-ragebotVoidSpamCancelShot()
-return false
+local targetStillValid = false
+local targetReadOk = pcall(function()
+    targetStillValid = arg3 ~= nil
+        and aliveState ~= nil
+        and arg3.AliveState == aliveState
+        and aliveState.Alive == true
+        and aliveState.HitboxHead == hitboxHead
+        and aliveState.RootPart == targetRoot
+        and hitboxHead ~= nil and hitboxHead:IsA("BasePart")
+        and hitboxHead.Parent ~= nil and hitboxHead:IsDescendantOf(workspace)
+        and targetRoot ~= nil and targetRoot:IsA("BasePart")
+        and targetRoot.Parent ~= nil and targetRoot:IsDescendantOf(workspace)
+end)
+if not targetReadOk or targetStillValid ~= true then
+    arg._shootLock:Reset()
+    ragebotVoidSpamCancelShot()
+    return false
 end
 local requestedAmmoBefore = nil
 local okSend, sendError = pcall(function()
@@ -65516,10 +65540,18 @@ local okSend, sendError = pcall(function()
         end
         requestedAmmoBefore = ammoBefore
     end
-    -- _ApplyPlan has already applied defensive rotation and Underground offset;
-    -- use that final frame for EyeCF/MuzzleCF while retaining n as the transform origin.
+    -- _ApplyPlan has already applied the final server CFrame. Use the actual client
+    -- root as the ViewModel coordinate basis, not n (the target-facing planned pose).
     local finalShotRoot = typeof(arg._lastAimServerCFrame) == "CFrame" and arg._lastAimServerCFrame or n
-    local eyeCF, muzzleCF, hitData = ragebotBuildHeadShot(arg4, hitboxHead, finalShotRoot, n)
+    local clientRootReference = typeof(arg._clientShotReferenceCFrame) == "CFrame" and arg._clientShotReferenceCFrame or nil
+    if clientRootReference == nil then
+        local okClientRootReference = pcall(function() clientRootReference = arg5.CFrame end)
+        if not okClientRootReference or typeof(clientRootReference) ~= "CFrame" then
+            clientRootReference = n
+        end
+    end
+    local serverHeadOrigin = typeof(arg._serverShotOriginCFrame) == "CFrame" and arg._serverShotOriginCFrame or nil
+    local eyeCF, muzzleCF, hitData = ragebotBuildHeadShot(arg4, hitboxHead, finalShotRoot, clientRootReference, serverHeadOrigin)
     if eyeCF == nil or muzzleCF == nil or type(hitData) ~= "table" then
         error("could not build valid eye/muzzle/head shot fields")
     end
@@ -67448,6 +67480,19 @@ end
 end
 
 if mode == "Translocate" and arg._reloadGun == nil and (v130 == nil or v130.Type ~= "Reload") then
+-- Translocate bypasses _Plan, so release any Knife camera claim here and clear
+-- Ragebot's previous slot before returning. Otherwise a prior Knife plan can own
+-- the arbiter and keep a stale camera payload while no attack plan is running.
+ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
+arg._knifeActionExpected = false
+local clearAnglesOk, clearAnglesError = pcall(function()
+    characterController:SendViewAngles(20, nil)
+    characterController:FlushViewAngles()
+end)
+if not clearAnglesOk and os.clock() >= (arg._nextTranslocateAngleClearWarningAt or 0) then
+    arg._nextTranslocateAngleClearWarningAt = os.clock() + 5
+    warn("[Ragebot] Could not clear stale Knife camera angles before Translocate: " .. tostring(clearAnglesError))
+end
 arg:_ApplyForcedCrouch(v86[153])
 local okTranslocate, translocateError = pcall(function()
 local destination = v125.compute(clientCFrame, arg._targetSelection:HasTargets())
@@ -67589,7 +67634,25 @@ local weaponAction = v131.WeaponAction
 
 if weaponAction ~= nil then
 if type(weaponAction) == "function" then
+-- The fire callback runs after _ApplyPlan and SetServerCFrame. Read Kicia's
+-- authoritative local server-origin CFrame here, at the last responsible moment,
+-- then expose it only for the duration of this weapon action.
+local hitscanStrategy = arg._hitscanStrategy
+if v131.IsAimPose == true and type(hitscanStrategy) == "table" then
+    hitscanStrategy._serverShotOriginCFrame = nil
+    hitscanStrategy._clientShotReferenceCFrame = typeof(clientCFrame) == "CFrame" and clientCFrame or nil
+    local okServerOrigin, serverOrigin = pcall(function()
+        return characterController:GetServerHeadOrigin()
+    end)
+    if okServerOrigin and typeof(serverOrigin) == "CFrame" then
+        hitscanStrategy._serverShotOriginCFrame = serverOrigin
+    end
+end
 local actionOk, actionError = pcall(weaponAction)
+if type(hitscanStrategy) == "table" then
+    hitscanStrategy._serverShotOriginCFrame = nil
+    hitscanStrategy._clientShotReferenceCFrame = nil
+end
 if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
@@ -67624,6 +67687,73 @@ warn("[Ragebot] Ignored non-function WeaponAction callback")
 end
 end
 end
+end
+
+-- When Always Backstab is in Riot mode, use the same target-part orientation
+-- that the standalone Riot updater uses, but route it through Ragebot's own
+-- ViewAngleDriver slot. The standalone Riot worker is intentionally gated while
+-- Ragebot is enabled, so without this bridge the knife attack and camera angle
+-- would be controlled by different paths.
+local function ragebotShouldUseRiotKnifeRotation(item)
+    if item == nil or item.Name ~= "Knife" then return false end
+    local data = type(v115) == "table" and v115.Data or nil
+    local modifiers = type(data) == "table" and data.ItemModifiers or nil
+    return type(modifiers) == "table"
+        and rawget(modifiers, "AlwaysBackstab") == true
+        and rawget(modifiers, "AlwaysBackstabMode") == "Riot"
+end
+
+local function ragebotBuildRiotKnifeViewAngles(target)
+    local aliveState = target ~= nil and target.AliveState or nil
+    local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
+    if hitbox == nil then return nil end
+
+    -- Match the standalone Riot lookup exactly: direct Head first, then the
+    -- character's HumanoidRootPart. A recursive Head search can accidentally
+    -- select a same-named part inside an accessory or nested model.
+    local model = aliveState ~= nil and aliveState.Model or nil
+    local anglePart = nil
+    local okPart, candidatePart = pcall(function()
+        if model == nil or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+            return nil
+        end
+        local head = model:FindFirstChild("Head")
+        if head ~= nil and head:IsA("BasePart") and head:IsDescendantOf(workspace) then
+            return head
+        end
+        local root = model:FindFirstChild("HumanoidRootPart")
+        if root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace) then
+            return root
+        end
+        return nil
+    end)
+    if okPart and candidatePart ~= nil then anglePart = candidatePart end
+
+    -- Safe fallback only if the character's visible Head/root is temporarily
+    -- unavailable but the actual target hitbox is still live.
+    if anglePart == nil then
+        local okHitbox, validHitbox = pcall(function()
+            return hitbox:IsA("BasePart") and hitbox:IsDescendantOf(workspace)
+        end)
+        if not okHitbox or not validHitbox then return nil end
+        anglePart = hitbox
+    end
+
+    local okAngles, pitch, yaw = pcall(function()
+        return anglePart.CFrame:ToOrientation()
+    end)
+    if not okAngles or type(pitch) ~= "number" or type(yaw) ~= "number"
+        or pitch ~= pitch or yaw ~= yaw
+        or pitch == math.huge or pitch == -math.huge
+        or yaw == math.huge or yaw == -math.huge then
+        return nil
+    end
+
+    return {
+        Kind = "Normalized",
+        Pitch = math.deg(pitch),
+        Yaw = math.deg(yaw),
+    }
 end
 
 index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
@@ -67712,6 +67842,14 @@ end
 if item.__type == "Melee" then
 arg._hitscanStrategy:ResetState()
 local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
+
+-- The Always Backstab Riot worker yields while Ragebot is enabled. Keep the
+-- expected Riot head orientation in Ragebot's winning angle payload so Knife
+-- attacks cannot proceed using only the target root's orientation.
+if ragebotShouldUseRiotKnifeRotation(item) then
+    local riotViewAngles = ragebotBuildRiotKnifeViewAngles(arg4)
+    if riotViewAngles ~= nil then v132 = riotViewAngles end
+end
 
 return {
 CFrame = v131,
@@ -67977,6 +68115,14 @@ local cFrame = arg2 ~= nil and arg2.CFrame or nil
 if cFrame == nil or arg3 == nil or arg2.ShouldSkipDefense then
 characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(cFrame, characterController))
 characterController:SendViewAngles(20, arg2.ViewAngles)
+-- HeavyAttackEncoded runs later in this same Update, before the central
+-- Heartbeat flush. Send Ragebot's Knife rotation first, on the same execution
+-- path, rather than leaving it queued until the end of the frame.
+if arg._knifeActionExpected == true
+    and type(arg2.WeaponAction) == "function"
+    and arg2.ViewAngles ~= nil then
+    characterController:FlushViewAngles()
+end
 return
 end
 
@@ -67993,9 +68139,14 @@ if arg2.IsAimPose or arg2.ShouldDefendInPlace then
 arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterState)
 end
 
-local viewAngleSlot = arg._knifeCameraLocked and 20 or v86[9]
+local viewAngleSlot = (arg._knifeCameraLocked == true or arg._knifeActionExpected == true) and 20 or v86[9]
 local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
 characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
+if arg._knifeActionExpected == true
+    and type(arg2.WeaponAction) == "function"
+    and viewAnglePayload ~= nil then
+    characterController:FlushViewAngles()
+end
 end
 
 index2.GetLastTargetWorld = function(arg)
@@ -68048,7 +68199,6 @@ if not sameReset then
         voidSpamState.pendingShotAmmo = nil
         voidSpamState.pendingShotDeadline = 0
     end
-    ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
     arg._knifeActionExpected = false
     ragebotSafeDeactivateTargetState(arg)
     ragebotSafeClearReloadTransport(arg)
@@ -68073,6 +68223,12 @@ if not sameReset then
         local reset = breaker.ResetState
         if type(reset) == "function" then pcall(reset, breaker) end
     end
+end
+
+-- Do not put this inside the one-shot Reset block: the arbiter may reject a
+-- release without throwing, and that state must be retried on subsequent Updates.
+if rawget(arg, "_knifeCameraLocked") ~= false then
+    ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 end
 
 if resetController == nil then return end
