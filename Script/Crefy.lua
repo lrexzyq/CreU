@@ -65303,6 +65303,10 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore)
     local enabled, attack = ragebotVoidSpamConfig()
     local state = ragebotVoidSpamState()
     local now = os.clock()
+    local activeUntil = tonumber(state.activeUntil) or 0
+    local preserveHide = state.phase == "hide"
+        and ragebotFiniteNumber(activeUntil)
+        and activeUntil > now
     state.lastShotAt = now
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
@@ -65311,8 +65315,10 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore)
         return
     end
 
-    state.phase = "attack"
-    state.activeUntil = 0
+    if not preserveHide then
+        state.phase = "attack"
+        state.activeUntil = 0
+    end
     state.awaitingShotAck = true
     state.pendingShotItem = item
     state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
@@ -65320,32 +65326,36 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore)
     state.nextAttackAt = state.pendingShotDeadline
 end
 
+local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
+    local activeUntil = tonumber(state.activeUntil) or 0
+    local preserveHide = state.phase == "hide"
+        and ragebotFiniteNumber(activeUntil)
+        and activeUntil > now
+    ragebotVoidSpamClearPendingAck(state)
+    state.attackWindowPending = false
+    state.attackWindowExpiresAt = 0
+    if not preserveHide then
+        state.phase = "attack"
+        state.activeUntil = 0
+    end
+    state.nextAttackAt = now + attack
+    return result
+end
+
 local function ragebotVoidSpamPollShotAck(state, item, now, attack)
     if type(state) ~= "table" or state.awaitingShotAck ~= true then return "none" end
     local ammoBefore = state.pendingShotAmmo
     local deadline = tonumber(state.pendingShotDeadline) or 0
     if state.pendingShotItem ~= item or not ragebotFiniteNumber(ammoBefore) then
-        ragebotVoidSpamClearPendingAck(state)
-        state.phase = "attack"
-        state.activeUntil = 0
-        state.attackWindowPending = false
-        state.attackWindowExpiresAt = 0
-        state.nextAttackAt = now + attack
-        return "failed"
+        return ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, "failed")
+    end
+    if now >= deadline then
+        return ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, "timeout")
     end
     local okAmmo, currentAmmo = pcall(function() return item:GetAmmo() end)
     if okAmmo and ragebotFiniteNumber(currentAmmo) and currentAmmo >= 0 and currentAmmo < ammoBefore then
         ragebotVoidSpamConfirmShot()
         return "confirmed"
-    end
-    if now >= deadline then
-        ragebotVoidSpamClearPendingAck(state)
-        state.phase = "attack"
-        state.activeUntil = 0
-        state.attackWindowPending = false
-        state.attackWindowExpiresAt = 0
-        state.nextAttackAt = now + attack
-        return "timeout"
     end
     return "pending"
 end
