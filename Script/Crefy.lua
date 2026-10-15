@@ -65370,65 +65370,50 @@ end
 
 
 
-local RAGE_CROUCH_ORIGIN_RISE = 0.25
-local RAGE_MUZZLE_SEPARATION = 0.07
-
 ragebotFiniteNumber = function(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
-local function ragebotFiniteVector3(value)
-    if typeof(value) ~= "Vector3" then return false end
-    return ragebotFiniteNumber(value.X) and ragebotFiniteNumber(value.Y) and ragebotFiniteNumber(value.Z)
-end
-
-local function ragebotLookCFrame(fromPos, toPos)
-    if not ragebotFiniteVector3(fromPos) or not ragebotFiniteVector3(toPos) then return nil end
-    local direction = toPos - fromPos
-    if direction.Magnitude < 1e-4 then return nil end
-    local up = Vector3.new(0, 1, 0)
-    if math.abs(direction.Unit.Y) > 0.999 then up = Vector3.new(0, 0, 1) end
-    local ok, result = pcall(CFrame.lookAt, fromPos, toPos, up)
-    if ok and typeof(result) == "CFrame" then return result end
-    return nil
-end
-
-local function ragebotBuildHeadShot(item, headPart, gluedHeadCFrame, plannedCFrame)
-    if item == nil or headPart == nil then return nil end
-    if typeof(gluedHeadCFrame) ~= "CFrame" or typeof(plannedCFrame) ~= "CFrame" then return nil end
-    if not ragebotFiniteVector3(gluedHeadCFrame.Position)
-        or not ragebotFiniteVector3(plannedCFrame.Position) then return nil end
-    if type(item.ShootAt) ~= "function" then return nil end
-
-    local okHead, validHead = pcall(function()
-        return headPart:IsA("BasePart") and headPart:IsDescendantOf(workspace)
-    end)
-    if not okHead or validHead ~= true then return nil end
-
-
-
-
-
-    local aimWorldPos = gluedHeadCFrame.Position
-    local localPoint = Vector3.zero
-
-
-
-
-    local eyePos = plannedCFrame.Position + Vector3.new(0, RAGE_CROUCH_ORIGIN_RISE, 0)
-    local eyeCF = ragebotLookCFrame(eyePos, aimWorldPos)
-    if eyeCF == nil then return nil end
-
-
-
-
-    local muzzlePos = eyePos + eyeCF.RightVector * 0.2
-        - Vector3.new(0, RAGE_MUZZLE_SEPARATION, 0)
-    local muzzleCF = ragebotLookCFrame(muzzlePos, aimWorldPos)
-    if muzzleCF == nil then return nil end
-
-    return eyeCF, muzzleCF, { Part = headPart, ObjectSpace = localPoint }
-end
+local RAGE_SHOT_ORIGIN_ABOVE = {
+    ["\0"] = -9e37,
+    ["\1"] = 0,
+    ["\2"] = 0,
+    ["\3"] = -1.5707963267948966,
+    ["\4"] = 3.1415926535897931,
+    ["\5"] = 3.1415926535897931,
+}
+local RAGE_SHOT_DIRECTION_ABOVE = {
+    ["\0"] = 0,
+    ["\1"] = -90000000,
+    ["\2"] = 0,
+    ["\3"] = -1.5707963267948966,
+    ["\4"] = 3.1415926535897931,
+    ["\5"] = 3.1415926535897931,
+}
+local RAGE_SHOT_ORIGIN_BELOW = {
+    ["\0"] = -9e37,
+    ["\1"] = 0,
+    ["\2"] = 0,
+    ["\3"] = 1.5707963267948966,
+    ["\4"] = 3.1415926535897931,
+    ["\5"] = 3.1415926535897931,
+}
+local RAGE_SHOT_DIRECTION_BELOW = {
+    ["\0"] = 0,
+    ["\1"] = 90000000,
+    ["\2"] = 0,
+    ["\3"] = 1.5707963267948966,
+    ["\4"] = 3.1415926535897931,
+    ["\5"] = 3.1415926535897931,
+}
+local RAGE_SHOT_HITPOINT = {
+    ["\0"] = 0,
+    ["\1"] = 1,
+    ["\2"] = 0,
+    ["\3"] = 0,
+    ["\4"] = 0,
+    ["\5"] = 0,
+}
 
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6)
 local aliveState = arg3 ~= nil and arg3.AliveState or nil
@@ -65474,7 +65459,6 @@ local shootFrames = tonumber(ragebot.ShootFrames) or 1
 if shootFrames ~= shootFrames or shootFrames == math.huge or shootFrames == -math.huge then
 shootFrames = 1
 end
-shootFrames = math.clamp(shootFrames, 1, 5)
 local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
@@ -65516,8 +65500,13 @@ if voidSpamEnabled then
 else
     local state = ragebotVoidSpamState()
     ragebotVoidSpamReset(state)
-    if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
-        return n, nil
+    if not arg._shootLock:ShouldFire(arg6, safeDt * shootFrames) then
+        local random2 = math.random
+        return CFrame.new(
+            math.random(-1000000, 1000000),
+            math.random(5000, 10000),
+            random2(-1000000, 1000000)
+        ), nil
     end
 end
 
@@ -65557,19 +65546,9 @@ local okSend, sendError = pcall(function()
 
 
 
-    local shotRootCFrame = typeof(arg._serverShotOriginCFrame) == "CFrame"
-        and arg._serverShotOriginCFrame or n
-    local eyeCF, muzzleCF, hitData = ragebotBuildHeadShot(
-        arg4,
-        hitboxHead,
-        v120,
-        shotRootCFrame
-    )
-    if eyeCF == nil or muzzleCF == nil or type(hitData) ~= "table" then
-        error("could not build valid eye/muzzle/head shot fields")
-    end
-
-    arg4:ShootAt(eyeCF, muzzleCF, hitData)
+    local encodedShotOrigin = flag19 and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
+    local encodedShotDirection = flag19 and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
+    arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, RAGE_SHOT_HITPOINT)
     local afterCount = arg4.ShotRequestCount
     if not ragebotFiniteNumber(afterCount) or afterCount <= beforeCount then
         error("ShootAt returned without incrementing Kicia ShotRequestCount")
@@ -67650,15 +67629,7 @@ if type(weaponAction) == "function" then
 
 
 
-local hitscanStrategy = arg._hitscanStrategy
-if v131.IsAimPose == true and type(hitscanStrategy) == "table" then
-    hitscanStrategy._serverShotOriginCFrame =
-        typeof(arg._lastAimServerCFrame) == "CFrame" and arg._lastAimServerCFrame or nil
-end
 local actionOk, actionError = pcall(weaponAction)
-if type(hitscanStrategy) == "table" then
-    hitscanStrategy._serverShotOriginCFrame = nil
-end
 if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
