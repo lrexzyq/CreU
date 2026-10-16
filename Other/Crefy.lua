@@ -66586,6 +66586,21 @@ arg._shootLock:Reset()
 end
 end
 
+-- Publish the VoidSpam helpers for the separate Ragebot controller factory.
+-- Lua local functions do not cross the factory's lexical scope, so the controller
+-- must resolve these through this explicit shared API instead of calling nil globals.
+local voidSpamApi = {
+    State = ragebotVoidSpamState,
+    Config = ragebotVoidSpamConfig,
+    PollShotAck = ragebotVoidSpamPollShotAck,
+    ResolveUnconfirmedShot = ragebotVoidSpamResolveUnconfirmedShot,
+    FiniteNumber = ragebotFiniteNumber,
+}
+local apiPublished, apiPublishError = pcall(rawset, _G, "__CrefyRagebotVoidSpamApi", voidSpamApi)
+if not apiPublished then
+    warn("[Ragebot] Could not publish VoidSpam helper API: " .. tostring(apiPublishError))
+end
+
 return index2
 end
 
@@ -67992,6 +68007,105 @@ local v116 = tbl17.jz()
 local cameraArbiter = tbl17.co()
 tbl17.cF()
 local v117 = tbl17.jD()
+-- This controller is created by a different Lua factory than the hitscan planner.
+-- Bind safe local wrappers to the explicit API published by tbl17.jD(); never rely
+-- on the planner's lexical locals being visible here.
+local function ragebotGetVoidSpamApiFunction(name)
+    local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
+    if type(api) ~= "table" then return nil end
+    local candidate
+    local okRead = pcall(function() candidate = api[name] end)
+    if okRead and type(candidate) == "function" then return candidate end
+    return nil
+end
+
+local function ragebotVoidSpamState()
+    local fn = ragebotGetVoidSpamApiFunction("State")
+    if fn ~= nil then
+        local okCall, state = pcall(fn)
+        if okCall and type(state) == "table" then return state end
+    end
+    local key = "__CrefyRagebotVoidSpamState"
+    local state = rawget(_G, key)
+    if type(state) ~= "table" then
+        state = {
+            activeUntil = 0, nextAttackAt = 0, lastShotAt = 0, phase = "attack",
+            attackWindowPending = false, attackWindowExpiresAt = 0,
+            awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil,
+            pendingShotRequestCount = nil, pendingShotDeadline = 0,
+        }
+        pcall(rawset, _G, key, state)
+    end
+    return state
+end
+
+local function ragebotVoidSpamConfig()
+    local fn = ragebotGetVoidSpamApiFunction("Config")
+    if fn ~= nil then
+        local okCall, enabled, attack, hide = pcall(fn)
+        if okCall then return enabled, attack, hide end
+    end
+    local data = type(v115) == "table" and v115.Data or nil
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    local config = type(ragebot) == "table" and ragebot.VoidSpam or nil
+    if type(config) ~= "table" or config.Enabled ~= true then return false, 0.1, 0.25 end
+    local attack = tonumber(config.Attack) or 0.1
+    if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
+    attack = math.clamp(attack, 0.1, 1)
+    local hide = tonumber(config.Hide) or 0.25
+    if hide ~= hide or hide == math.huge or hide == -math.huge then hide = 0.25 end
+    hide = math.clamp(hide, 0.01, 1)
+    return true, attack, hide
+end
+
+local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
+    local fn = ragebotGetVoidSpamApiFunction("ResolveUnconfirmedShot")
+    if fn ~= nil then
+        local okCall, resolved = pcall(fn, state, now, attack, result)
+        if okCall then return resolved end
+    end
+    if type(state) == "table" then
+        state.awaitingShotAck = false
+        state.pendingShotItem = nil
+        state.pendingShotAmmo = nil
+        state.pendingShotRequestCount = nil
+        state.pendingShotDeadline = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        state.phase = "attack"
+        state.activeUntil = 0
+        state.fakePositionActive = false
+        state.fakePositionOffsetX = nil
+        state.fakePositionOffsetZ = nil
+        local shotAt = tonumber(state.lastShotAt) or now
+        if type(shotAt) ~= "number" or shotAt ~= shotAt or shotAt == math.huge or shotAt == -math.huge then shotAt = now end
+        if type(attack) ~= "number" or attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
+        state.nextAttackAt = math.max(shotAt + attack, now)
+    end
+    return result or "failed"
+end
+
+local function ragebotVoidSpamPollShotAck(state, item, now, attack)
+    local fn = ragebotGetVoidSpamApiFunction("PollShotAck")
+    if fn ~= nil then
+        local okCall, result = pcall(fn, state, item, now, attack)
+        if okCall then return result end
+    end
+    if type(state) == "table" and state.awaitingShotAck == true then
+        return ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, "api-unavailable")
+    end
+    return "none"
+end
+
+local function ragebotFiniteNumber(value)
+    local fn = ragebotGetVoidSpamApiFunction("FiniteNumber")
+    if fn ~= nil then
+        local okCall, result = pcall(fn, value)
+        if okCall and type(result) == "boolean" then return result end
+    end
+    return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
 tbl17.cU()
 local v118 = tbl17.c4()
 local v119 = tbl17.jE()
