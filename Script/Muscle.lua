@@ -1,3 +1,4 @@
+local __FGRoot = {}
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -9764,26 +9765,26 @@ end
 
 local Pages = {}
 local TabButtons = {}
-local pageOrders = {}
-local MotionPageCache = Instance.new("Folder")
-MotionPageCache.Name = "0x"
-MotionPageCache.Parent = ScreenGui
-local MotionPageHomes = {}
+__FGRoot.pageOrders = {}
+__FGRoot.MotionPageCache = Instance.new("Folder")
+__FGRoot.MotionPageCache.Name = "0x"
+__FGRoot.MotionPageCache.Parent = ScreenGui
+__FGRoot.MotionPageHomes = {}
 
 -- Crefy window adapter. The feature pages keep their existing controller objects so
 -- their callbacks, live panels and profile restoration continue to work.
-local CrefyLibrary = nil
-local CrefyBootstrapLibrary = nil
-local CrefyThemeManager = nil
-local CrefySaveManager = nil
-local CrefyWindow = nil
-local CrefyTabs = {}
-local CrefyEnabled = false
-local CrefyGroups = {}
-local CrefyCurrentGroups = {}
-local CrefyControlSerial = 0
-local CrefyCallbackSuppressed = {}
-local CrefyGroupProxies = setmetatable({}, { __mode = "k" })
+__FGRoot.CrefyLibrary = nil
+__FGRoot.CrefyBootstrapLibrary = nil
+__FGRoot.CrefyThemeManager = nil
+__FGRoot.CrefySaveManager = nil
+__FGRoot.CrefyWindow = nil
+__FGRoot.CrefyTabs = {}
+__FGRoot.CrefyEnabled = false
+__FGRoot.CrefyGroups = {}
+__FGRoot.CrefyCurrentGroups = {}
+__FGRoot.CrefyControlSerial = 0
+__FGRoot.CrefyCallbackSuppressed = {}
+__FGRoot.CrefyGroupProxies = setmetatable({}, { __mode = "k" })
 -- The old visual tree is retained only as an invisible compatibility model for
 -- specialized dashboard logic. Every exposed input control is rendered by Crefy.
 -- Declared before Crefy callbacks so its Unload button can stop the script too.
@@ -9822,8 +9823,8 @@ end
 
 
 local function nextOrder(page)
-	pageOrders[page] = (pageOrders[page] or 0) + 1
-	return pageOrders[page]
+	__FGRoot.pageOrders[page] = (__FGRoot.pageOrders[page] or 0) + 1
+	return __FGRoot.pageOrders[page]
 end
 
 
@@ -9838,10 +9839,10 @@ local function refreshTabs(active)
     if Pages[active] then
         Pages[active].Visible = true
     end
-    local nativeTab = CrefyTabs[active]
-    if CrefyEnabled and nativeTab then
+    local nativeTab = __FGRoot.CrefyTabs[active]
+    if __FGRoot.CrefyEnabled and nativeTab then
         pcall(function()
-            if CrefyLibrary.ActiveTab ~= nativeTab then nativeTab:Show() end
+            if __FGRoot.CrefyLibrary.ActiveTab ~= nativeTab then nativeTab:Show() end
         end)
     end
     if active == "Fast Farm" and FastFarm.ShowPackWelcome then
@@ -9858,7 +9859,7 @@ do
     local repo = "https://raw.githubusercontent.com/lrexzyq/Crefy/main/"
     local ok, result = pcall(function()
         local library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-        CrefyBootstrapLibrary = library
+        __FGRoot.CrefyBootstrapLibrary = library
         assert(type(library) == "table", "Crefy Library.lua did not return a table")
         assert(type(library.CreateWindow) == "function", "Crefy Library is missing CreateWindow")
         local themeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
@@ -9896,14 +9897,14 @@ do
         return { Library = library, ThemeManager = themeManager, SaveManager = saveManager, Window = window }
     end)
     if ok and type(result) == "table" and result.Window then
-        CrefyLibrary = result.Library
-        CrefyThemeManager = result.ThemeManager
-        CrefySaveManager = result.SaveManager
-        CrefyWindow = result.Window
-        CrefyEnabled = true
+        __FGRoot.CrefyLibrary = result.Library
+        __FGRoot.CrefyThemeManager = result.ThemeManager
+        __FGRoot.CrefySaveManager = result.SaveManager
+        __FGRoot.CrefyWindow = result.Window
+        __FGRoot.CrefyEnabled = true
         addCleanup(function()
-            if CrefyLibrary and not CrefyLibrary.Unloaded then
-                pcall(function() CrefyLibrary:Unload() end)
+            if __FGRoot.CrefyLibrary and not __FGRoot.CrefyLibrary.Unloaded then
+                pcall(function() __FGRoot.CrefyLibrary:Unload() end)
             end
         end)
     else
@@ -9911,10 +9912,10 @@ do
     end
 end
 
-if not CrefyEnabled then
+if not __FGRoot.CrefyEnabled then
 	State.running = false
-	if type(CrefyBootstrapLibrary) == "table" and type(CrefyBootstrapLibrary.Unload) == "function" then
-		pcall(CrefyBootstrapLibrary.Unload, CrefyBootstrapLibrary)
+	if type(__FGRoot.CrefyBootstrapLibrary) == "table" and type(__FGRoot.CrefyBootstrapLibrary.Unload) == "function" then
+		pcall(__FGRoot.CrefyBootstrapLibrary.Unload, __FGRoot.CrefyBootstrapLibrary)
 	end
 	for _, cleanup in ipairs(cleanupActions) do pcall(cleanup) end
 	disconnectAll()
@@ -9924,7 +9925,7 @@ if not CrefyEnabled then
 	return
 end
 
-local CrefyIconByTab = {
+__FGRoot.CrefyIconByTab = {
     ["Dios Te ama ❤"] = "heart",
     ["Info"] = "info",
     ["Main"] = "house",
@@ -9952,17 +9953,17 @@ local CrefyIconByTab = {
 
 
 local function addTab(text, width, order)
-    assert(CrefyEnabled and CrefyWindow, "Crefy must load before feature tabs are built")
+    assert(__FGRoot.CrefyEnabled and __FGRoot.CrefyWindow, "Crefy must load before feature tabs are built")
     local ok, nativeTab = pcall(function()
-        return CrefyWindow:AddTab({
+        return __FGRoot.CrefyWindow:AddTab({
             Name = text,
-            Icon = CrefyIconByTab[text] or "layout-grid",
+            Icon = __FGRoot.CrefyIconByTab[text] or "layout-grid",
             Layout = "Single",
             Order = order,
         })
     end)
     assert(ok and nativeTab, "Could not create Crefy tab " .. tostring(text) .. ": " .. tostring(nativeTab))
-    CrefyTabs[text] = nativeTab
+    __FGRoot.CrefyTabs[text] = nativeTab
     if nativeTab.Button then
         track(nativeTab.Button.MouseButton1Click:Connect(function()
             task.defer(function()
@@ -9984,7 +9985,7 @@ local function addTab(text, width, order)
     page.ZIndex = 1
     page.Parent = Content
     Pages[text] = page
-    MotionPageHomes[page] = Content
+    __FGRoot.MotionPageHomes[page] = Content
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -10006,14 +10007,14 @@ for index, tab in ipairs(CONFIG.Tabs) do
 	addTab(tab[1], tab[2], index)
 end
 
-if CrefyEnabled then
+if __FGRoot.CrefyEnabled then
     local settingsTab
     local settingsOk, settingsValue = pcall(function()
-        return CrefyWindow:AddTab({ Name = "UI Settings", Icon = "settings", Order = #CONFIG.Tabs + 1 })
+        return __FGRoot.CrefyWindow:AddTab({ Name = "UI Settings", Icon = "settings", Order = #CONFIG.Tabs + 1 })
     end)
     if settingsOk then
         settingsTab = settingsValue
-        CrefyTabs["UI Settings"] = settingsTab
+        __FGRoot.CrefyTabs["UI Settings"] = settingsTab
         if settingsTab and settingsTab.Button then
             track(settingsTab.Button.MouseButton1Click:Connect(function()
                 task.defer(function()
@@ -10030,26 +10031,26 @@ if CrefyEnabled then
             local menuGroup = settingsTab:AddGroupbox({ Side = "Left", Name = "Menu", IconName = "wrench" })
             menuGroup:AddToggle("FG100_KeybindMenuOpen", {
                 Text = "Open Keybind Menu",
-                Default = CrefyLibrary.KeybindFrame and CrefyLibrary.KeybindFrame.Visible or false,
+                Default = __FGRoot.CrefyLibrary.KeybindFrame and __FGRoot.CrefyLibrary.KeybindFrame.Visible or false,
                 Callback = function(value)
-                    if CrefyLibrary.KeybindFrame then CrefyLibrary.KeybindFrame.Visible = value end
+                    if __FGRoot.CrefyLibrary.KeybindFrame then __FGRoot.CrefyLibrary.KeybindFrame.Visible = value end
                 end,
             })
             menuGroup:AddToggle("FG100_ShowCustomCursor", {
                 Text = "Custom Cursor",
-                Default = CrefyLibrary.ShowCustomCursor,
-                Callback = function(value) CrefyLibrary.ShowCustomCursor = value end,
+                Default = __FGRoot.CrefyLibrary.ShowCustomCursor,
+                Callback = function(value) __FGRoot.CrefyLibrary.ShowCustomCursor = value end,
             })
             menuGroup:AddToggle("FG100_AlwaysOnTop", {
                 Text = "Always On Top",
-                Default = CrefyWindow.AlwaysOnTop,
-                Callback = function(value) CrefyWindow:SetAlwaysOnTop(value) end,
+                Default = __FGRoot.CrefyWindow.AlwaysOnTop,
+                Callback = function(value) __FGRoot.CrefyWindow:SetAlwaysOnTop(value) end,
             })
             menuGroup:AddDropdown("FG100_NotificationSide", {
                 Values = { "Left", "Right" },
                 Default = "Right",
                 Text = "Notification Side",
-                Callback = function(value) CrefyLibrary:SetNotifySide(value) end,
+                Callback = function(value) __FGRoot.CrefyLibrary:SetNotifySide(value) end,
             })
             menuGroup:AddDropdown("FG100_DPI", {
                 Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" },
@@ -10057,16 +10058,16 @@ if CrefyEnabled then
                 Text = "DPI Scale",
                 Callback = function(value)
                     local dpi = tonumber(tostring(value):gsub("%%", ""))
-                    if dpi then CrefyLibrary:SetDPIScale(dpi) end
+                    if dpi then __FGRoot.CrefyLibrary:SetDPIScale(dpi) end
                 end,
             })
             menuGroup:AddSlider("FG100_CornerRadius", {
                 Text = "Corner Radius",
-                Default = CrefyLibrary.CornerRadius or 4,
+                Default = __FGRoot.CrefyLibrary.CornerRadius or 4,
                 Min = 0,
                 Max = 20,
                 Rounding = 0,
-                Callback = function(value) CrefyWindow:SetCornerRadius(value) end,
+                Callback = function(value) __FGRoot.CrefyWindow:SetCornerRadius(value) end,
             })
             menuGroup:AddDivider()
             menuGroup:AddLabel("Menu bind"):AddKeyPicker("FG100_MenuKeybind", {
@@ -10074,28 +10075,28 @@ if CrefyEnabled then
                 NoUI = true,
                 Text = "Menu keybind",
             })
-            CrefyLibrary.ToggleKeybind = CrefyLibrary.Options.FG100_MenuKeybind
+            __FGRoot.CrefyLibrary.ToggleKeybind = __FGRoot.CrefyLibrary.Options.FG100_MenuKeybind
             menuGroup:AddButton({ Text = "Unload", Func = function()
                 if type(shutdown) == "function" then
                     shutdown(false)
                 else
                     -- Covers an unusually early click during script initialization.
                     State.shutdownRequested = true
-                    if CrefyLibrary and not CrefyLibrary.Unloaded then
-                        pcall(function() CrefyLibrary:Unload() end)
+                    if __FGRoot.CrefyLibrary and not __FGRoot.CrefyLibrary.Unloaded then
+                        pcall(function() __FGRoot.CrefyLibrary:Unload() end)
                     end
                 end
             end })
 
-            CrefyThemeManager:SetLibrary(CrefyLibrary)
-            CrefySaveManager:SetLibrary(CrefyLibrary)
-            CrefySaveManager:IgnoreThemeSettings()
-            CrefySaveManager:SetIgnoreIndexes({ "FG100_MenuKeybind" })
-            CrefyThemeManager:SetFolder("Young0xHub/FG100")
-            CrefySaveManager:SetFolder("Young0xHub/FG100/MuscleLegends")
-            CrefySaveManager:SetSubFolder(tostring(game.PlaceId))
-            CrefySaveManager:BuildConfigSection(settingsTab)
-            CrefyThemeManager:ApplyToTab(settingsTab)
+            __FGRoot.CrefyThemeManager:SetLibrary(__FGRoot.CrefyLibrary)
+            __FGRoot.CrefySaveManager:SetLibrary(__FGRoot.CrefyLibrary)
+            __FGRoot.CrefySaveManager:IgnoreThemeSettings()
+            __FGRoot.CrefySaveManager:SetIgnoreIndexes({ "FG100_MenuKeybind" })
+            __FGRoot.CrefyThemeManager:SetFolder("Young0xHub/FG100")
+            __FGRoot.CrefySaveManager:SetFolder("Young0xHub/FG100/MuscleLegends")
+            __FGRoot.CrefySaveManager:SetSubFolder(tostring(game.PlaceId))
+            __FGRoot.CrefySaveManager:BuildConfigSection(settingsTab)
+            __FGRoot.CrefyThemeManager:ApplyToTab(settingsTab)
         end)
         if not addonSetupOk then
             warn("[FG100] Crefy Settings/addon setup failed: " .. tostring(addonSetupError))
@@ -10254,7 +10255,7 @@ do
 end
 
 
-local CrefyUI = (function()
+__FGRoot.CrefyUI = (function()
 local function nativePageName(page)
     if type(page) == "table" then return tostring(page.Name or "Main") end
     local ok, name = pcall(function() return page.Name end)
@@ -10351,21 +10352,21 @@ local function makeGroupProxy(group, name)
             end
         end,
     })
-    CrefyGroupProxies[group] = proxy
+    __FGRoot.CrefyGroupProxies[group] = proxy
     return proxy
 end
 
 local function getCrefyGroup(page)
-    assert(CrefyEnabled and CrefyLibrary, "Crefy library is not initialized")
+    assert(__FGRoot.CrefyEnabled and __FGRoot.CrefyLibrary, "Crefy library is not initialized")
     local pageName = nativePageName(page)
-    local group = CrefyCurrentGroups[pageName]
+    local group = __FGRoot.CrefyCurrentGroups[pageName]
     if group and not group.Destroyed then return group end
-    local tab = CrefyTabs[pageName]
+    local tab = __FGRoot.CrefyTabs[pageName]
     assert(tab, "No Crefy tab mapped for page " .. pageName)
     group = tab:AddGroupbox({ Side = "Left", Name = pageName .. " Controls", IconName = "sliders-horizontal" })
-    CrefyGroups[pageName] = CrefyGroups[pageName] or {}
-    table.insert(CrefyGroups[pageName], group)
-    CrefyCurrentGroups[pageName] = group
+    __FGRoot.CrefyGroups[pageName] = __FGRoot.CrefyGroups[pageName] or {}
+    table.insert(__FGRoot.CrefyGroups[pageName], group)
+    __FGRoot.CrefyCurrentGroups[pageName] = group
     return group
 end
 
@@ -10457,16 +10458,16 @@ end
 
 local function uiAddSection(page, text)
     local tabName = nativePageName(page)
-    local tab = CrefyTabs[tabName]
+    local tab = __FGRoot.CrefyTabs[tabName]
     assert(tab, "Missing Crefy tab for section " .. tostring(text))
     local group = tab:AddGroupbox({
         Side = "Left",
         Name = tostring(text or (tabName .. " Controls")),
-        IconName = (CrefyIconByTab and CrefyIconByTab[tabName]) or "sliders-horizontal",
+        IconName = (__FGRoot.CrefyIconByTab and __FGRoot.CrefyIconByTab[tabName]) or "sliders-horizontal",
     })
-    CrefyGroups[tabName] = CrefyGroups[tabName] or {}
-    table.insert(CrefyGroups[tabName], group)
-    CrefyCurrentGroups[tabName] = group
+    __FGRoot.CrefyGroups[tabName] = __FGRoot.CrefyGroups[tabName] or {}
+    table.insert(__FGRoot.CrefyGroups[tabName], group)
+    __FGRoot.CrefyCurrentGroups[tabName] = group
     nextOrder(page)
     return makeSectionProxy(group, tostring(text or ""))
 end
@@ -10544,7 +10545,7 @@ local function uiAddInfoRow(page, labelText, valueText, color, showIndicator, sh
             if key == "SetText" then return function(_, newValue) value = tostring(newValue or ""); render() end end
             if key == "SetVisible" then return function(_, newVisible) visible = newVisible == true; render() end end
             if key == "Visible" then return visible end
-            if key == "Parent" then return CrefyGroupProxies[group] or makeGroupProxy(group, tostring(group.Name or "Groupbox")) end
+            if key == "Parent" then return __FGRoot.CrefyGroupProxies[group] or makeGroupProxy(group, tostring(group.Name or "Groupbox")) end
             if key == "Name" then return tostring(label):gsub("[^%w]+", "") .. "Value" end
             return nil
         end,
@@ -10573,7 +10574,7 @@ local function uiAddInfoRow(page, labelText, valueText, color, showIndicator, sh
             if key == "Visible" then return visible end
             if key == "LayoutOrder" then return rowAttrs.LayoutOrder end
             if key == "Name" then return tostring(label):gsub("[^%w]+", "") .. "Row" end
-            if key == "Parent" then return CrefyGroupProxies[group] or makeGroupProxy(group, tostring(group.Name or "Groupbox")) end
+            if key == "Parent" then return __FGRoot.CrefyGroupProxies[group] or makeGroupProxy(group, tostring(group.Name or "Groupbox")) end
             if key == "FindFirstChild" then return function(_, name) if name == "StatusDot" and showIndicator then return indicatorProxy end return nil end end
             if key == "FindFirstChildOfClass" or key == "FindFirstChildWhichIsA" then return function() return nil end end
             if key == "GetDescendants" or key == "GetChildren" then return function() return {} end end
@@ -10662,16 +10663,16 @@ local function uiAddToggle(page, text, callback)
     local frozen = false
     local control
     local function callCallback(value)
-        if CrefyCallbackSuppressed[id] then
+        if __FGRoot.CrefyCallbackSuppressed[id] then
             current = value == true
             return true
         end
         local previous = current
         local ok, accepted = pcall(callback or function() end, value == true)
         if not ok or accepted == false then
-            CrefyCallbackSuppressed[id] = true
+            __FGRoot.CrefyCallbackSuppressed[id] = true
             if control then pcall(function() control:SetValue(previous) end) end
-            CrefyCallbackSuppressed[id] = nil
+            __FGRoot.CrefyCallbackSuppressed[id] = nil
             current = previous
             State.pushOutput("ERROR", "Acción rechazada: " .. tostring(text))
             return false
@@ -10695,9 +10696,9 @@ local function uiAddToggle(page, text, callback)
         value = value == true
         if locked and value then return false end
         if current == value then return current end
-        CrefyCallbackSuppressed[id] = silent == true
+        __FGRoot.CrefyCallbackSuppressed[id] = silent == true
         local ok = pcall(function() control:SetValue(value) end)
-        CrefyCallbackSuppressed[id] = nil
+        __FGRoot.CrefyCallbackSuppressed[id] = nil
         if not ok then return current end
         if silent then current = control.Value == true end
         return current
@@ -10809,7 +10810,7 @@ local function uiAddSelector(page, titleText, values, callback, openCallback, pl
         Text = tostring(titleText or "Select"),
         Callback = function(key)
             selectedKey = key
-            if suppress or CrefyCallbackSuppressed[id] then return end
+            if suppress or __FGRoot.CrefyCallbackSuppressed[id] then return end
             local selected = keyToValue[key]
             local ok, err = pcall(callback or function() end, selected)
             if not ok then State.pushOutput("ERROR", tostring(titleText) .. ": " .. tostring(err):sub(1, 240)) end
@@ -10833,7 +10834,7 @@ local function uiAddSelector(page, titleText, values, callback, openCallback, pl
         local old = preserve and getSelected() or nil
         rebuild(newValues)
         suppress = true
-        CrefyCallbackSuppressed[id] = true
+        __FGRoot.CrefyCallbackSuppressed[id] = true
         pcall(function() control:SetValues(dictionary) end)
         local targetKey
         if old ~= nil then
@@ -10852,7 +10853,7 @@ local function uiAddSelector(page, titleText, values, callback, openCallback, pl
             pcall(function() control:SetValue(nil) end)
         end
         selectedKey = targetKey
-        CrefyCallbackSuppressed[id] = nil
+        __FGRoot.CrefyCallbackSuppressed[id] = nil
         suppress = false
     end
     function data:SetIndex(index)
@@ -10861,14 +10862,14 @@ local function uiAddSelector(page, titleText, values, callback, openCallback, pl
         local selectedValue = index >= 1 and sourceValues[index] or nil
         local key = selectedValue ~= nil and valueToKey[selectedValue] or nil
         if key then
-            suppress = true; CrefyCallbackSuppressed[id] = true
+            suppress = true; __FGRoot.CrefyCallbackSuppressed[id] = true
             pcall(function() control:SetValue(key) end)
-            CrefyCallbackSuppressed[id] = nil; suppress = false
+            __FGRoot.CrefyCallbackSuppressed[id] = nil; suppress = false
             selectedKey = key
         elseif placeholder then
-            suppress = true; CrefyCallbackSuppressed[id] = true
+            suppress = true; __FGRoot.CrefyCallbackSuppressed[id] = true
             pcall(function() control:SetValue("__placeholder") end)
-            CrefyCallbackSuppressed[id] = nil; suppress = false
+            __FGRoot.CrefyCallbackSuppressed[id] = nil; suppress = false
             selectedKey = "__placeholder"
         end
         return getSelected()
@@ -11073,21 +11074,21 @@ end)()
 
 do
 local infoPage = Pages.Info
-CrefyUI.uiAddSection(infoPage, "👤 Info Player 👤")
-CrefyUI.uiAddInfoRow(infoPage, "User:", LP.DisplayName, C.white)
-local fpsValue, fpsRow = CrefyUI.uiAddInfoRow(infoPage, "FPS:", "0", C.green, true)
+__FGRoot.CrefyUI.uiAddSection(infoPage, "👤 Info Player 👤")
+__FGRoot.CrefyUI.uiAddInfoRow(infoPage, "User:", LP.DisplayName, C.white)
+local fpsValue, fpsRow = __FGRoot.CrefyUI.uiAddInfoRow(infoPage, "FPS:", "0", C.green, true)
 local fpsIndicator = fpsRow:FindFirstChild("StatusDot")
 local initialPing = getPing()
 local initialPingColor = State.pingStatusColor(initialPing)
-local pingValue, pingRow = CrefyUI.uiAddInfoRow(infoPage, "Ping:", tostring(initialPing) .. " ms", initialPingColor, true)
+local pingValue, pingRow = __FGRoot.CrefyUI.uiAddInfoRow(infoPage, "Ping:", tostring(initialPing) .. " ms", initialPingColor, true)
 local pingIndicator = pingRow:FindFirstChild("StatusDot")
-CrefyUI.uiAddSection(infoPage, "🌐 Info Server 🌐")
-CrefyUI.uiAddInfoRow(infoPage, "Juego:", "Muscle Legends", C.cyan)
-local serverPlayersValue = CrefyUI.uiAddInfoRow(infoPage, "Server Players:", "0/0", C.white)
-CrefyUI.uiAddSection(infoPage, "⚡ Info Young0x Hub ⚡")
-CrefyUI.uiAddInfoRow(infoPage, "Script:", "Fast Glitch 100%", C.cyan)
-CrefyUI.uiAddInfoRow(infoPage, "Autor:", "Young0x", C.white)
-CrefyUI.uiAddButton(infoPage, "Discord", function(button)
+__FGRoot.CrefyUI.uiAddSection(infoPage, "🌐 Info Server 🌐")
+__FGRoot.CrefyUI.uiAddInfoRow(infoPage, "Juego:", "Muscle Legends", C.cyan)
+local serverPlayersValue = __FGRoot.CrefyUI.uiAddInfoRow(infoPage, "Server Players:", "0/0", C.white)
+__FGRoot.CrefyUI.uiAddSection(infoPage, "⚡ Info Young0x Hub ⚡")
+__FGRoot.CrefyUI.uiAddInfoRow(infoPage, "Script:", "Fast Glitch 100%", C.cyan)
+__FGRoot.CrefyUI.uiAddInfoRow(infoPage, "Autor:", "Young0x", C.white)
+__FGRoot.CrefyUI.uiAddButton(infoPage, "Discord", function(button)
 	local original = button.Text
 	button.Text = copyText(CONFIG.Reach[1]) and "Link copiado" or original
 	task.delay(1.1, function()
@@ -11096,7 +11097,7 @@ CrefyUI.uiAddButton(infoPage, "Discord", function(button)
 		end
 	end)
 end)
-CrefyUI.uiAddButton(infoPage, "YouTube", function(button)
+__FGRoot.CrefyUI.uiAddButton(infoPage, "YouTube", function(button)
 	local original = button.Text
 	button.Text = copyText(CONFIG.Reach[2]) and "Link copiado" or original
 	task.delay(1.1, function()
@@ -11148,7 +11149,7 @@ end
 
 (function()
 local mainPage = Pages.Main
-CrefyUI.uiAddSection(mainPage, "Main")
+__FGRoot.CrefyUI.uiAddSection(mainPage, "Main")
 
 local sizeInput
 local speedInput
@@ -11188,12 +11189,12 @@ local function requestMainSize()
 	end)
 end
 
-sizeInput = CrefyUI.uiAddInput(mainPage, "Set Size (Máximo 100)", "Ejemplo: 2", function()
+sizeInput = __FGRoot.CrefyUI.uiAddInput(mainPage, "Set Size (Máximo 100)", "Ejemplo: 2", function()
 	readMainSize()
 	if State.mainAutoSize then requestMainSize() end
 end)
 sizeInput.Text = "2"
-CrefyUI.uiAddToggle(mainPage, "Auto Set Size", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(mainPage, "Auto Set Size", function(enabled)
 	readMainSize()
 	State.mainAutoSize = enabled == true
 	stopThread("mainAutoSize")
@@ -11271,12 +11272,12 @@ local function unbindMainSpeed()
 	end
 end
 
-speedInput = CrefyUI.uiAddInput(mainPage, "Set Speed", "Ejemplo: 800", function()
+speedInput = __FGRoot.CrefyUI.uiAddInput(mainPage, "Set Speed", "Ejemplo: 800", function()
 	readMainSpeed()
 	if State.mainAutoSpeed then applyMainSpeed() end
 end)
 speedInput.Text = "800"
-CrefyUI.uiAddToggle(mainPage, "Auto Set Speed", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(mainPage, "Auto Set Speed", function(enabled)
 	readMainSpeed()
 	State.mainAutoSpeed = enabled == true
 	stopThread("mainAutoSpeed")
@@ -11294,7 +11295,7 @@ CrefyUI.uiAddToggle(mainPage, "Auto Set Speed", function(enabled)
 	return true
 end)
 
-CrefyUI.uiAddSelector(mainPage, "Set Time", { "Day", "Night" }, function(value)
+__FGRoot.CrefyUI.uiAddSelector(mainPage, "Set Time", { "Day", "Night" }, function(value)
 	if State.setDayNight then State.setDayNight(value) end
 end, function(row)
 	RunService.Heartbeat:Wait()
@@ -11305,7 +11306,7 @@ end, function(row)
 		CanvasPosition = Vector2.new(0, math.clamp(rowTop, 0, bottom)),
 	}):Play()
 end)
-CrefyUI.uiAddToggle(mainPage, "Infinite Jump", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(mainPage, "Infinite Jump", function(enabled)
 	State.infiniteJump = enabled == true
 	return true
 end)
@@ -11316,7 +11317,7 @@ track(UserInputService.JumpRequest:Connect(function()
 	end
 end))
 
-CrefyUI.uiAddSection(mainPage, "Estadísticas visuales")
+__FGRoot.CrefyUI.uiAddSection(mainPage, "Estadísticas visuales")
 local visualStatDefinitions = {
 	{ key = "Strength", label = "Strength (visual)", names = { "Strength", "Fuerza" } },
 	{ key = "Gems", label = "Gems (visual)", names = { "Gems", "Gemas" } },
@@ -11572,7 +11573,7 @@ end
 
 for _, definition in ipairs(visualStatDefinitions) do
 	local visualDefinition = definition
-	local input = CrefyUI.uiAddInput(mainPage, visualDefinition.label, "Ejemplo: 1.000", function(value)
+	local input = __FGRoot.CrefyUI.uiAddInput(mainPage, visualDefinition.label, "Ejemplo: 1.000", function(value)
 		applyVisualStat(visualDefinition, value)
 	end, true)
 	visualStatInputs[visualDefinition.key] = input
@@ -11587,7 +11588,7 @@ end
 State.restoreVisualStats = restoreVisualStats
 addCleanup(function() restoreVisualStats(true) end)
 
-CrefyUI.uiAddSection(mainPage, "Códigos")
+__FGRoot.CrefyUI.uiAddSection(mainPage, "Códigos")
 local codeSessionProcessed = {}
 local officialCodeFallback = {
 	"bossstrike", "bossguard",
@@ -11701,7 +11702,7 @@ local redeemAllButton
 State.redeemProgressText = function(index, total)
 	return string.format("Canjeando %d/%d", math.max(0, tonumber(index) or 0), math.max(0, tonumber(total) or 0))
 end
-redeemAllButton = CrefyUI.uiAddButton(mainPage, "Canjear todos los códigos", function(button)
+redeemAllButton = __FGRoot.CrefyUI.uiAddButton(mainPage, "Canjear todos los códigos", function(button)
 	if State.redeemingAllCodes then return end
 	if codesMarkedDone() then
 		State.setButtonDisabled(button, true)
@@ -11783,13 +11784,13 @@ end)()
 
 do
 local fastPage = Pages["Fast Glitch 100%"]
-CrefyUI.uiAddSection(fastPage, "Fast Glitch 100%")
+__FGRoot.CrefyUI.uiAddSection(fastPage, "Fast Glitch 100%")
 local rockToggles = {}
 local rockSync = false
 FastFarm.RockToggles = {}
 FastFarm.RockDefinitions = {}
 local fastPunchToggle
-fastPunchToggle = CrefyUI.uiAddToggle(fastPage, "Fast Punch ", function(enabled)
+fastPunchToggle = __FGRoot.CrefyUI.uiAddToggle(fastPage, "Fast Punch ", function(enabled)
 	local momentum = FastFarm.PetMomentum
     if momentum and momentum.mode == "running" and not momentum.syncingDurability then
         if enabled then
@@ -11814,14 +11815,14 @@ fastPunchToggle = CrefyUI.uiAddToggle(fastPage, "Fast Punch ", function(enabled)
     end
 end)
 FastFarm.FastPunchToggle = fastPunchToggle
-CrefyUI.uiAddToggle(fastPage, "Ocultar Durabilidad", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(fastPage, "Ocultar Durabilidad", function(enabled)
 	setHideDurability(enabled)
 end)
 
 local petsBugMemorial = Instance.new("Frame")
 petsBugMemorial.LayoutOrder = nextOrder(fastPage)
 petsBugMemorial.Parent = fastPage
-CrefyUI.styleRow(petsBugMemorial, 48)
+__FGRoot.CrefyUI.styleRow(petsBugMemorial, 48)
 local memorialAccent = Instance.new("Frame")
 memorialAccent.Size = UDim2.fromOffset(3, 28)
 memorialAccent.Position = UDim2.new(0, 8, 0.5, -14)
@@ -11846,11 +11847,11 @@ memorialText.ZIndex = 12
 	memorialText:SetAttribute("KeepTextStyle", true)
 memorialText.Parent = petsBugMemorial
 
-CrefyUI.uiAddSection(fastPage, "Rocks")
+__FGRoot.CrefyUI.uiAddSection(fastPage, "Rocks")
 for _, definition in ipairs(CONFIG.Rocks) do
 	local rockDefinition = definition
 	local toggle
-	toggle = CrefyUI.uiAddToggle(fastPage, rockDefinition.label or rockDefinition.name, function(enabled)
+	toggle = __FGRoot.CrefyUI.uiAddToggle(fastPage, rockDefinition.label or rockDefinition.name, function(enabled)
 		if rockSync then
 			return
 		end
@@ -12468,10 +12469,10 @@ do
     end
 
     local page = Pages.Boss
-    CrefyUI.uiAddSection(page, "Boss")
-    BossFarm.StatusValue = CrefyUI.uiAddInfoRow(page, "Estado:", "Sin boss activo", C.dim)
-    BossFarm.HealthValue = CrefyUI.uiAddInfoRow(page, "Vida del boss:", "—", C.cyan)
-    BossFarm.Toggle = CrefyUI.uiAddToggle(page, "Atacar al boss", function(enabled)
+    __FGRoot.CrefyUI.uiAddSection(page, "Boss")
+    BossFarm.StatusValue = __FGRoot.CrefyUI.uiAddInfoRow(page, "Estado:", "Sin boss activo", C.dim)
+    BossFarm.HealthValue = __FGRoot.CrefyUI.uiAddInfoRow(page, "Vida del boss:", "—", C.cyan)
+    BossFarm.Toggle = __FGRoot.CrefyUI.uiAddToggle(page, "Atacar al boss", function(enabled)
         local accepted = BossFarm:Set(enabled)
         if accepted == false and BossFarm.Toggle then BossFarm.Toggle:Set(false, true) end
         return accepted
@@ -12490,8 +12491,8 @@ do
 end
 
 local autoFarmPage = Pages["Auto Farm"]
-CrefyUI.uiAddSection(autoFarmPage, "Auto Farm")
-FastFarm.AutoFarmModeSelector = CrefyUI.uiAddSelector(autoFarmPage, "Modo", { "Chill Rep", "Fast Rep", "Super Fast Rep" }, function(value)
+__FGRoot.CrefyUI.uiAddSection(autoFarmPage, "Auto Farm")
+FastFarm.AutoFarmModeSelector = __FGRoot.CrefyUI.uiAddSelector(autoFarmPage, "Modo", { "Chill Rep", "Fast Rep", "Super Fast Rep" }, function(value)
 	if value == "Super Fast Rep" then
 		State.autoFarmMode = "Super Fast Rep"
 	elseif value == "Fast Rep" then
@@ -12501,7 +12502,7 @@ FastFarm.AutoFarmModeSelector = CrefyUI.uiAddSelector(autoFarmPage, "Modo", { "C
 	end
 end)
 local autoLiftGamepassToggle
-autoLiftGamepassToggle = CrefyUI.uiAddToggle(autoFarmPage, "🍀 Auto Lift GAMEPASS 🍀", function(enabled)
+autoLiftGamepassToggle = __FGRoot.CrefyUI.uiAddToggle(autoFarmPage, "🍀 Auto Lift GAMEPASS 🍀", function(enabled)
 	if not enabled then
 		return false
 	end
@@ -12519,7 +12520,7 @@ local repToggles = {}
 
 local function addExclusiveRep(label, key, tools, interval)
 	local toggle
-	toggle = CrefyUI.uiAddToggle(autoFarmPage, label, function(enabled)
+	toggle = __FGRoot.CrefyUI.uiAddToggle(autoFarmPage, label, function(enabled)
 		if enabled then
 			FastFarm.StopFastModesForManualFarm()
 			FastFarm.StopMachineForExercise()
@@ -12538,10 +12539,10 @@ addExclusiveRep("🤸 Auto Handstands 🤸", "autoHandstands", { "Handstands", "
 addExclusiveRep("💪 Auto Pushups 💪", "autoLift", { "Pushup", "Pushups" }, 0.01)
 addExclusiveRep("🧘 Auto Situps 🧘", "autoSitups", { "Situps", "Situp" }, 0.01)
 	FastFarm.RepToggles = repToggles
-CrefyUI.uiAddToggle(autoFarmPage, "🥚 Auto Egg (30mins) 🥚", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(autoFarmPage, "🥚 Auto Egg (30mins) 🥚", function(enabled)
 	State.setAutoEgg(enabled)
 end)
-	FastFarm.HideFramesToggle = CrefyUI.uiAddToggle(autoFarmPage, "🙈 Ocultar Frames 🙈", function(enabled)
+	FastFarm.HideFramesToggle = __FGRoot.CrefyUI.uiAddToggle(autoFarmPage, "🙈 Ocultar Frames 🙈", function(enabled)
 		setHideFrames(enabled)
 	end)
 	track(LP:GetAttributeChangedSignal("ShowPopups"):Connect(function()
@@ -12560,12 +12561,12 @@ for _, definition in ipairs(CONFIG.Machines) do
 	local toggle
 	if machineDefinition.section ~= currentMachineSection then
 		currentMachineSection = machineDefinition.section
-		CrefyUI.uiAddSection(autoFarmPage, currentMachineSection)
+		__FGRoot.CrefyUI.uiAddSection(autoFarmPage, currentMachineSection)
 		if currentMachineSection == "Muscle King Machines" then
-			CrefyUI.uiAddInfoRow(autoFarmPage, "Requisito:", "Muscle King actual", C.yellow)
+			__FGRoot.CrefyUI.uiAddInfoRow(autoFarmPage, "Requisito:", "Muscle King actual", C.yellow)
 		end
 	end
-	toggle = CrefyUI.uiAddToggle(autoFarmPage, machineDefinition.label, function(enabled)
+	toggle = __FGRoot.CrefyUI.uiAddToggle(autoFarmPage, machineDefinition.label, function(enabled)
 		if FastFarm.machineToggleSync then
 			return
 		end
@@ -12585,8 +12586,8 @@ end
 do
 local fullTrainPage = Pages["Full Train"]
 fullTrainPage:SetAttribute("TightCanvas", true)
-CrefyUI.uiAddSection(fullTrainPage, "Full Train")
-FastFarm.FullTrainModeSelector = CrefyUI.uiAddSelector(fullTrainPage, "Modo", { "Chill Rep", "Fast Rep" }, function(value)
+__FGRoot.CrefyUI.uiAddSection(fullTrainPage, "Full Train")
+FastFarm.FullTrainModeSelector = __FGRoot.CrefyUI.uiAddSelector(fullTrainPage, "Modo", { "Chill Rep", "Fast Rep" }, function(value)
 	State.fullTrainMode = value == "Fast Rep" and "Fast Rep" or "Chill Rep"
 end)
 local fullTrainToggles = {}
@@ -12605,13 +12606,13 @@ local function addFullTrainMachineControls()
 			machineDefinition.repInterval = 0.01
 			if not createdFullTrainSections[machineDefinition.section] then
 				createdFullTrainSections[machineDefinition.section] = true
-				CrefyUI.uiAddSection(fullTrainPage, machineDefinition.section)
+				__FGRoot.CrefyUI.uiAddSection(fullTrainPage, machineDefinition.section)
 				if machineDefinition.section == "Muscle King" then
-					CrefyUI.uiAddInfoRow(fullTrainPage, "Requisito:", "Muscle King actual", C.yellow)
+					__FGRoot.CrefyUI.uiAddInfoRow(fullTrainPage, "Requisito:", "Muscle King actual", C.yellow)
 				end
 			end
 			local toggle
-			toggle = CrefyUI.uiAddToggle(fullTrainPage, machineDefinition.label, function(enabled)
+			toggle = __FGRoot.CrefyUI.uiAddToggle(fullTrainPage, machineDefinition.label, function(enabled)
 				if FastFarm.machineToggleSync then
 					return
 				elseif State.machine == machineDefinition then
@@ -12640,7 +12641,7 @@ local function rescanFullTrainMachines()
 		end
 	else
 		if not scanStatus then
-			scanStatus = CrefyUI.uiAddInfoRow(fullTrainPage, "Machine scan", "No machinesFolder found yet. Press Rescan after the map loads.", C.yellow)
+			scanStatus = __FGRoot.CrefyUI.uiAddInfoRow(fullTrainPage, "Machine scan", "No machinesFolder found yet. Press Rescan after the map loads.", C.yellow)
 		else
 			scanStatus:SetText("No machinesFolder found yet. Press Rescan after the map loads.")
 			scanStatus:SetVisible(true)
@@ -12650,7 +12651,7 @@ local function rescanFullTrainMachines()
 end
 
 rescanFullTrainMachines()
-CrefyUI.uiAddButton(fullTrainPage, "Rescan machines", rescanFullTrainMachines, C.cyan)
+__FGRoot.CrefyUI.uiAddButton(fullTrainPage, "Rescan machines", rescanFullTrainMachines, C.cyan)
 end
 
 State.ThemePresets = {
@@ -12679,14 +12680,14 @@ State.applyTheme = function(name, quiet)
 		if object:IsA("UIStroke") then local role = old[themeColorKey(object.Color)]; if role and preset[role] then object.Color = preset[role] end end
 	end
 	for role, color in pairs(preset) do if role ~= "art" then C[role] = color end end
-    if CrefyLibrary and CrefyLibrary.Scheme then
+    if __FGRoot.CrefyLibrary and __FGRoot.CrefyLibrary.Scheme then
         pcall(function()
-            CrefyLibrary.Scheme.BackgroundColor = C.base
-            CrefyLibrary.Scheme.MainColor = C.panel
-            CrefyLibrary.Scheme.AccentColor = C.cyan
-            CrefyLibrary.Scheme.OutlineColor = C.blue
-            CrefyLibrary.Scheme.FontColor = C.white
-            CrefyLibrary:UpdateColorsUsingRegistry()
+            __FGRoot.CrefyLibrary.Scheme.BackgroundColor = C.base
+            __FGRoot.CrefyLibrary.Scheme.MainColor = C.panel
+            __FGRoot.CrefyLibrary.Scheme.AccentColor = C.cyan
+            __FGRoot.CrefyLibrary.Scheme.OutlineColor = C.blue
+            __FGRoot.CrefyLibrary.Scheme.FontColor = C.white
+            __FGRoot.CrefyLibrary:UpdateColorsUsingRegistry()
         end)
     end
 	MainFrame.BackgroundColor3 = C.base
@@ -12713,7 +12714,7 @@ local fastFarmPage = Pages["Fast Farm"]
 fastFarmPage:SetAttribute("TightCanvas", true)
 fastFarmPage.ScrollingEnabled = false
 fastFarmPage.ScrollBarThickness = 0
-local fastFarmSection = CrefyUI.uiAddSection(fastFarmPage, "Fast Farm")
+local fastFarmSection = __FGRoot.CrefyUI.uiAddSection(fastFarmPage, "Fast Farm")
 fastFarmSection.Parent.Size = UDim2.new(1, 0, 0, 10)
 fastFarmSection.Size = UDim2.fromOffset(0, 10)
 
@@ -12731,7 +12732,7 @@ local function startMode(toggle, otherToggle, mode)
 	return started
 end
 
-strengthToggle = CrefyUI.uiAddToggle(fastFarmPage, "Fuerza rápida", function(enabled)
+strengthToggle = __FGRoot.CrefyUI.uiAddToggle(fastFarmPage, "Fuerza rápida", function(enabled)
 	if enabled then
 		return startMode(strengthToggle, rebirthToggle, "strength")
 	elseif FastFarm.mode == "strength" then
@@ -12742,7 +12743,7 @@ end)
 strengthToggle.Button.Size = UDim2.new(1, 0, 0, 30)
 FastFarm.StrengthToggle = strengthToggle
 
-rebirthToggle = CrefyUI.uiAddToggle(fastFarmPage, "Rebirths rápidos", function(enabled)
+rebirthToggle = __FGRoot.CrefyUI.uiAddToggle(fastFarmPage, "Rebirths rápidos", function(enabled)
 	if enabled then
 		return startMode(rebirthToggle, strengthToggle, "rebirth")
 	elseif FastFarm.mode == "rebirth" then
@@ -12788,12 +12789,12 @@ end)
 
 FastFarm.UpdateStrengthFramesControl = function() end
 
-local timeValue, timeRow, timeLabel = CrefyUI.uiAddInfoRow(fastFarmPage, "Tiempo:", "0d 0h 0m 0s", C.white)
+local timeValue, timeRow, timeLabel = __FGRoot.CrefyUI.uiAddInfoRow(fastFarmPage, "Tiempo:", "0d 0h 0m 0s", C.white)
 timeRow.Size = UDim2.new(1, 0, 0, 23)
 timeLabel.TextColor3 = C.white
 timeLabel.TextSize = 11
 timeValue.TextSize = 11
-local calculatorValue, calculatorRow, calculatorLabel = CrefyUI.uiAddInfoRow(fastFarmPage, "Calculadora:", "0/h  •  0/d  •  0/w", C.white)
+local calculatorValue, calculatorRow, calculatorLabel = __FGRoot.CrefyUI.uiAddInfoRow(fastFarmPage, "Calculadora:", "0/h  •  0/d  •  0/w", C.white)
 calculatorRow.Size = UDim2.new(1, 0, 0, 23)
 calculatorRow.BackgroundTransparency = 0.02
 calculatorLabel.TextColor3 = C.white
@@ -12806,11 +12807,11 @@ if calculatorStroke then
 	calculatorStroke.Color = C.cyan
 	calculatorStroke.Transparency = 0.28
 end
-local counterRow = CrefyUI.uiAddSection(fastFarmPage, "Resultados")
+local counterRow = __FGRoot.CrefyUI.uiAddSection(fastFarmPage, "Resultados")
 
 local function addFarmCounterColumn(titleText)
-    local value, _, label = CrefyUI.uiAddInfoRow(fastFarmPage, titleText, "0", C.white)
-    local gain = CrefyUI.uiAddInfoRow(fastFarmPage, titleText .. " ganancia", "", C.green)
+    local value, _, label = __FGRoot.CrefyUI.uiAddInfoRow(fastFarmPage, titleText, "0", C.white)
+    local gain = __FGRoot.CrefyUI.uiAddInfoRow(fastFarmPage, titleText .. " ganancia", "", C.green)
     gain.Visible = false
     return { Value = value, Gain = gain, Title = label }
 end
@@ -13058,7 +13059,7 @@ do
         { name = "Señores del Caos", label = "Señores del Caos", profileValue = "chaos" },
         { name = "Ultra Titanes", label = "Ultra Titanes", profileValue = "ultra" },
     }
-    local packSelector = CrefyUI.uiAddSelector(fastFarmPage, "Pack de farmeo", packOptions, function(selected)
+    local packSelector = __FGRoot.CrefyUI.uiAddSelector(fastFarmPage, "Pack de farmeo", packOptions, function(selected)
         local key = type(selected) == "table" and selected.profileValue or selected
         if not CONFIG.FastFarm.Packs[key] then return false end
         local modes = FastFarm:GetModes(true)
@@ -13649,8 +13650,8 @@ local function scriptureText(index)
 end
 
 -- Native Crefy content for the former custom Scripture card.
-CrefyUI.uiAddSection(biblePage, "Versículo diario")
-local bibleNativeGroup = CrefyUI.getCrefyGroup(biblePage)
+__FGRoot.CrefyUI.uiAddSection(biblePage, "Versículo diario")
+local bibleNativeGroup = __FGRoot.CrefyUI.getCrefyGroup(biblePage)
 local bibleNativeVerse = bibleNativeGroup:AddLabel({ Text = "", DoesWrap = true, Size = 17 })
 local bibleNativeReference = bibleNativeGroup:AddLabel({ Text = "", DoesWrap = true, Size = 13 })
 local bibleNativeMeaning = bibleNativeGroup:AddLabel({ Text = "", DoesWrap = true, Size = 12 })
@@ -13716,8 +13717,8 @@ local function moveScripture(step)
 		if State.running and verseRef.Parent then TweenService:Create(verseRef, TweenInfo.new(0.22), { TextColor3 = Color3.fromRGB(190, 150, 255) }):Play() end
 	end)
 end
-CrefyUI.uiAddButton(biblePage, "← Versículo anterior", function() moveScripture(-1) end)
-CrefyUI.uiAddButton(biblePage, "Siguiente versículo →", function() moveScripture(1) end)
+__FGRoot.CrefyUI.uiAddButton(biblePage, "← Versículo anterior", function() moveScripture(-1) end)
+__FGRoot.CrefyUI.uiAddButton(biblePage, "Siguiente versículo →", function() moveScripture(1) end)
 local bibleLanguageOff = State.onLanguageChanged(function()
 	drawScripture(bibleIndex, 0)
 end)
@@ -13747,7 +13748,7 @@ State.bibleNext = function() moveScripture(1) end
 State.biblePrevious = function() moveScripture(-1) end
 startThread("bibleWord", function()
 	while State.running do
-		if biblePage.Visible and biblePage.Parent ~= MotionPageCache then
+		if biblePage.Visible and biblePage.Parent ~= __FGRoot.MotionPageCache then
 			if os.clock() >= bibleNextAt then moveScripture(1) end
 		else
 			bibleNextAt = os.clock() + math.random(15, 20)
@@ -13763,10 +13764,10 @@ pageSetup = function()
 local momentumPage = Pages["Pet Momentum"]
 local PetMomentum = FastFarm.PetMomentum
 momentumPage:SetAttribute("TightCanvas", true)
-CrefyUI.uiAddSection(momentumPage, "Pet Momentum")
+__FGRoot.CrefyUI.uiAddSection(momentumPage, "Pet Momentum")
 
 local momentumToggle
-momentumToggle = CrefyUI.uiAddToggle(momentumPage, "Farmear Pet Momentum", function(enabled)
+momentumToggle = __FGRoot.CrefyUI.uiAddToggle(momentumPage, "Farmear Pet Momentum", function(enabled)
 	if enabled then
 		local accepted = PetMomentum:Start()
 		if accepted == false then hubNotify(PetMomentum.lastError or "No se pudo iniciar Pet Momentum") end
@@ -13787,7 +13788,7 @@ local progressCard = Instance.new("Frame")
 progressCard.Name = "MomentumProgress"
 progressCard.LayoutOrder = nextOrder(momentumPage)
 progressCard.Parent = momentumPage
-CrefyUI.styleRow(progressCard, 64)
+__FGRoot.CrefyUI.styleRow(progressCard, 64)
 
 local progressCaption = Instance.new("TextLabel")
 progressCaption.Size = UDim2.new(1, -100, 0, 22)
@@ -13875,10 +13876,10 @@ pageSetup()
 
 pageSetup = function()
 local teleportsPage = Pages.Teleports
-CrefyUI.uiAddSection(teleportsPage, "Teleports")
+__FGRoot.CrefyUI.uiAddSection(teleportsPage, "Teleports")
 for _, location in ipairs(CONFIG.Teleports) do
 	local data = location
-	CrefyUI.uiAddButton(teleportsPage, data[1], function()
+	__FGRoot.CrefyUI.uiAddButton(teleportsPage, data[1], function()
 		local root = getRoot()
 		if root then
 			root.CFrame = data.lookAt and CFrame.lookAt(data[2], data.lookAt) or CFrame.new(data[2])
@@ -13966,12 +13967,12 @@ local function rebirthMedian(values)
 	return (sorted[middle] + sorted[middle + 1]) / 2
 end
 
-CrefyUI.uiAddSection(rebirthPage, "Rebirths")
+__FGRoot.CrefyUI.uiAddSection(rebirthPage, "Rebirths")
 do
 local summaryRow = Instance.new("Frame")
 summaryRow.LayoutOrder = nextOrder(rebirthPage)
 summaryRow.Parent = rebirthPage
-CrefyUI.styleRow(summaryRow, 62)
+__FGRoot.CrefyUI.styleRow(summaryRow, 62)
 
 local summaryTitle = Instance.new("TextLabel")
 summaryTitle.Size = UDim2.new(1, -20, 0, 22)
@@ -14217,7 +14218,7 @@ local function runPushupRep()
 	end)
 end
 
-CrefyUI.uiAddSection(rebirthPage, "Herramientas")
+__FGRoot.CrefyUI.uiAddSection(rebirthPage, "Herramientas")
 local starterCode = "epicmuscle20"
 
 local function starterCodeWasRedeemed()
@@ -14268,7 +14269,7 @@ State.redeemStarterCode = redeemStarterCode
 
 local starterCodeButton
 if not starterCodeWasRedeemed() then
-	starterCodeButton = CrefyUI.uiAddButton(rebirthPage, "Canjear 2K de Fuerza", redeemStarterCode)
+	starterCodeButton = __FGRoot.CrefyUI.uiAddButton(rebirthPage, "Canjear 2K de Fuerza", redeemStarterCode)
 	starterCodeButton.Name = "StarterCode"
 	startThread("starterCodeStatus", function()
 		for _ = 1, 40 do
@@ -14280,7 +14281,7 @@ if not starterCodeWasRedeemed() then
 		end
 	end)
 end
-CrefyUI.uiAddToggle(rebirthPage, "Set Size 1", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Set Size 1", function(enabled)
 	State.rebirth.sizeOne = enabled == true
 	stopThread("rebirthSizeOne")
 	if State.rebirth.sizeOne then
@@ -14295,13 +14296,13 @@ CrefyUI.uiAddToggle(rebirthPage, "Set Size 1", function(enabled)
 	return true
 end)
 
-rebirthWeightToggle = CrefyUI.uiAddToggle(rebirthPage, "Pesa rápida", function(enabled)
+rebirthWeightToggle = __FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Pesa rápida", function(enabled)
 	State.rebirth.fastWeight = enabled == true
 	setAutoRep("rebirthFastWeight", State.rebirth.fastWeight, { "Weight", "Heavy Weight" }, 0.005, true)
 	return true
 end)
 
-CrefyUI.uiAddToggle(rebirthPage, "Auto Pushups", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Auto Pushups", function(enabled)
 	State.rebirth.autoLift = enabled == true
 	stopThread("rebirthAutoLift")
 	if State.rebirth.autoLift then
@@ -14329,7 +14330,7 @@ CrefyUI.uiAddToggle(rebirthPage, "Auto Pushups", function(enabled)
 	return true
 end)
 
-CrefyUI.uiAddToggle(rebirthPage, "King", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(rebirthPage, "King", function(enabled)
 	State.rebirth.king = enabled == true
 	stopThread("rebirthKing")
 	if State.rebirth.king then
@@ -14363,7 +14364,7 @@ CrefyUI.uiAddToggle(rebirthPage, "King", function(enabled)
 	return true
 end)
 
-CrefyUI.uiAddToggle(rebirthPage, "Lock Position", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Lock Position", function(enabled)
 	State.rebirth.lockPosition = enabled == true
 	local root = getRoot()
 	State.rebirth.lockCFrame = State.rebirth.lockPosition and root and root.CFrame or nil
@@ -14384,12 +14385,12 @@ CrefyUI.uiAddToggle(rebirthPage, "Lock Position", function(enabled)
 	return true
 end)
 
-CrefyUI.uiAddToggle(rebirthPage, "Egg cada 30 minutos", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Egg cada 30 minutos", function(enabled)
 	State.setAutoEgg(enabled, "rebirth")
 	return true
 end)
 
-targetInput = CrefyUI.uiAddInput(rebirthPage, "Objetivo de renacimientos", "Ejemplo: 18,980", function(value)
+targetInput = __FGRoot.CrefyUI.uiAddInput(rebirthPage, "Objetivo de renacimientos", "Ejemplo: 18,980", function(value)
 	local parsed = parseRebirthNumber(value)
 	if parsed and parsed > 0 then
 		State.rebirth.target = parsed
@@ -14459,10 +14460,10 @@ local function setRebirthMode(mode, enabled)
 	return true
 end
 
-targetToggle = CrefyUI.uiAddToggle(rebirthPage, "Renacer hasta el objetivo", function(enabled)
+targetToggle = __FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Renacer hasta el objetivo", function(enabled)
 	return setRebirthMode("target", enabled)
 end)
-infiniteToggle = CrefyUI.uiAddToggle(rebirthPage, "Renacimientos infinitos", function(enabled)
+infiniteToggle = __FGRoot.CrefyUI.uiAddToggle(rebirthPage, "Renacimientos infinitos", function(enabled)
 	return setRebirthMode("infinite", enabled)
 end)
 
@@ -14568,7 +14569,7 @@ local ULTIMATES = {
 	{ name = "x2 Quest Rewards", max = 3 },
 }
 
-CrefyUI.uiAddSection(rebirthPage, "Ultimates")
+__FGRoot.CrefyUI.uiAddSection(rebirthPage, "Ultimates")
 local ultimateOptions = {}
 for _, ultimate in ipairs(ULTIMATES) do
 	ultimateOptions[#ultimateOptions + 1] = { label = ultimate.name, name = ultimate.name, data = ultimate }
@@ -14652,7 +14653,7 @@ local function refreshUltimateControls()
 	lastUltimateLevel = level
 end
 
-ultimateSelector = CrefyUI.uiAddSelector(rebirthPage, "Seleccionar Ultimate", ultimateOptions, function()
+ultimateSelector = __FGRoot.CrefyUI.uiAddSelector(rebirthPage, "Seleccionar Ultimate", ultimateOptions, function()
 	if ultimateAmountSelector then
 		refreshUltimateControls()
 		if not State.rebirth.ultimateRunning then
@@ -14667,7 +14668,7 @@ end, function(row)
 	rebirthPage.CanvasPosition = Vector2.new(0, math.clamp(rowTop, 0, bottom))
 end)
 
-ultimateAmountSelector = CrefyUI.uiAddSelector(rebirthPage, "Cantidad a comprar", { 1, 2, 3 }, function(value)
+ultimateAmountSelector = __FGRoot.CrefyUI.uiAddSelector(rebirthPage, "Cantidad a comprar", { 1, 2, 3 }, function(value)
 	if refreshingUltimateAmount then return end
 	if not State.rebirth.ultimateRunning then
 		local amount = type(value) == "table" and value.amount or tonumber(value)
@@ -14676,11 +14677,11 @@ ultimateAmountSelector = CrefyUI.uiAddSelector(rebirthPage, "Cantidad a comprar"
 		end
 	end
 end)
-ultimateLevelValue = CrefyUI.uiAddInfoRow(rebirthPage, "Nivel seleccionado", "0 / 0", C.cyan)
-ultimateStatus = CrefyUI.uiAddStatusRow(rebirthPage, "Esperando selección")
+ultimateLevelValue = __FGRoot.CrefyUI.uiAddInfoRow(rebirthPage, "Nivel seleccionado", "0 / 0", C.cyan)
+ultimateStatus = __FGRoot.CrefyUI.uiAddStatusRow(rebirthPage, "Esperando selección")
 refreshUltimateControls()
 
-CrefyUI.uiAddButton(rebirthPage, "Comprar Ultimate", function(button)
+__FGRoot.CrefyUI.uiAddButton(rebirthPage, "Comprar Ultimate", function(button)
 	if State.rebirth.ultimateRunning then
 		State.rebirth.ultimateRunning = false
 		stopThread("ultimateBuyer")
@@ -14767,15 +14768,15 @@ pageSetup()
 
 pageSetup = function()
 local killsPage = Pages.Kills
-CrefyUI.uiAddSection(killsPage, "Kills")
-local killCounterValue, killCounterRow, killCounterLabel = CrefyUI.uiAddInfoRow(killsPage, "Kills:", "0", C.cyan)
+__FGRoot.CrefyUI.uiAddSection(killsPage, "Kills")
+local killCounterValue, killCounterRow, killCounterLabel = __FGRoot.CrefyUI.uiAddInfoRow(killsPage, "Kills:", "0", C.cyan)
 killCounterValue.Font = C.fontBold
 killCounterValue.TextSize = 17
 killCounterLabel.Font = C.fontBold
 killCounterLabel.TextSize = 15
 killCounterLabel.TextColor3 = C.soft
 killCounterRow.Size = UDim2.new(1, 0, 0, 38)
-local brawlValue,brawlRow,brawlLabel=CrefyUI.uiAddInfoRow(killsPage,"Brawls","—",C.blue)
+local brawlValue,brawlRow,brawlLabel=__FGRoot.CrefyUI.uiAddInfoRow(killsPage,"Brawls","—",C.blue)
 brawlValue.Font=C.fontBold; brawlValue.TextSize=15; brawlLabel.Font=C.fontBold; brawlLabel.TextSize=13
 local killSummaryCard=Instance.new("Frame")
 killSummaryCard.Name="KillSummaryCard"; killSummaryCard.Size=UDim2.new(1,0,0,40); killSummaryCard.BackgroundColor3=Color3.fromRGB(11,14,28); killSummaryCard.BackgroundTransparency=.08; killSummaryCard.BorderSizePixel=0; killSummaryCard.LayoutOrder=killCounterRow.LayoutOrder; killSummaryCard.ZIndex=10; killSummaryCard.ClipsDescendants=true; killSummaryCard.Parent=killsPage
@@ -14955,14 +14956,14 @@ local function disableOtherKillModes(activeToggle)
 		end
 	end
 end
-autoKillToggle = CrefyUI.uiAddToggle(killsPage, "Auto Kill", function(enabled)
+autoKillToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "Auto Kill", function(enabled)
 	if enabled then
 		disableOtherKillModes(autoKillToggle)
 	end
 	return State.setAutoKill(enabled)
 end)
 State.kill.serverHopInterval = CONFIG.ServerHop.Interval
-serverHopToggle = CrefyUI.uiAddToggle(killsPage, "Server Hop inteligente", function(enabled)
+serverHopToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "Server Hop inteligente", function(enabled)
 	if enabled and targetKillToggle and targetKillToggle:Get() then
 		return false
 	end
@@ -14970,30 +14971,30 @@ serverHopToggle = CrefyUI.uiAddToggle(killsPage, "Server Hop inteligente", funct
 	if accepted ~= false and State.serverHopPageToggle then State.serverHopPageToggle:Set(enabled, true) end
 	return accepted
 end)
-autoWinBrawlToggle = CrefyUI.uiAddToggle(killsPage, "Auto Win Brawl", function(enabled)
+autoWinBrawlToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "Auto Win Brawl", function(enabled)
 	return State.setAutoWinBrawl(enabled)
 end)
-protectFriendsToggle = CrefyUI.uiAddToggle(killsPage, "No matar a mis amigos", function(enabled)
+protectFriendsToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "No matar a mis amigos", function(enabled)
 	return State.setProtectFriends(enabled)
 end)
 
 State.kill.updateHopStatus = function() end
-evilKarmaToggle = CrefyUI.uiAddToggle(killsPage, "Evil Karma", function(enabled)
+evilKarmaToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "Evil Karma", function(enabled)
 	if enabled then
 		disableOtherKillModes(evilKarmaToggle)
 	end
 	return State.setKarmaKill("evil", enabled)
 end)
-goodKarmaToggle = CrefyUI.uiAddToggle(killsPage, "Good Karma", function(enabled)
+goodKarmaToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "Good Karma", function(enabled)
 	if enabled then
 		disableOtherKillModes(goodKarmaToggle)
 	end
 	return State.setKarmaKill("good", enabled)
 end)
-local killSelector = CrefyUI.uiAddSelector(killsPage, "Seleccionar jugador", playerOptions(), function(value)
+local killSelector = __FGRoot.CrefyUI.uiAddSelector(killsPage, "Seleccionar jugador", playerOptions(), function(value)
 	State.kill.target = type(value) == "table" and value.name or value
 end, revealKillsSelector)
-targetKillToggle = CrefyUI.uiAddToggle(killsPage, "Matar jugador", function(enabled)
+targetKillToggle = __FGRoot.CrefyUI.uiAddToggle(killsPage, "Matar jugador", function(enabled)
 	if enabled then
 		disableOtherKillModes(targetKillToggle)
 		if serverHopToggle and serverHopToggle:Get() then
@@ -15067,17 +15068,17 @@ local layout = Instance.new("UIGridLayout", grid)
 layout.CellSize = UDim2.new(0.5, -5, 0, 76)
 layout.CellPadding = UDim2.fromOffset(10, 10)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
-local status,statusRow,statusTitle = CrefyUI.uiAddInfoRow(afkPage, "", "Elegí tu modo", C.dim, false, false)
+local status,statusRow,statusTitle = __FGRoot.CrefyUI.uiAddInfoRow(afkPage, "", "Elegí tu modo", C.dim, false, false)
 statusRow.BackgroundTransparency=1; statusRow.Size=UDim2.new(1,0,0,0); statusRow.LayoutOrder=6; statusRow.Visible=false
 statusTitle.Visible=false; status.Size=UDim2.fromScale(1,1); status.Position=UDim2.new()
 status.TextXAlignment=Enum.TextXAlignment.Center; status:SetAttribute("KeepTextStyle",true); status.TextSize=11
 for _,o in ipairs(statusRow:GetDescendants()) do if o:IsA("UIStroke") then o.Transparency=1 end end
-local timer,timerRow = CrefyUI.uiAddInfoRow(afkPage, "Tiempo:", "00:00:00", C.soft)
+local timer,timerRow = __FGRoot.CrefyUI.uiAddInfoRow(afkPage, "Tiempo:", "00:00:00", C.soft)
 timerRow.Size=UDim2.new(1,0,0,24); timerRow.LayoutOrder=4
-local counterRow = CrefyUI.uiAddSection(afkPage, "Resultados")
+local counterRow = __FGRoot.CrefyUI.uiAddSection(afkPage, "Resultados")
 local function meter(titleText)
-    local value, _, title = CrefyUI.uiAddInfoRow(afkPage, titleText, "0", C.white)
-    local gain = CrefyUI.uiAddInfoRow(afkPage, titleText .. " ganancia", "+0", C.green)
+    local value, _, title = __FGRoot.CrefyUI.uiAddInfoRow(afkPage, titleText, "0", C.white)
+    local gain = __FGRoot.CrefyUI.uiAddInfoRow(afkPage, titleText .. " ganancia", "+0", C.green)
     gain.Visible = false
     return { Title = title, Value = value, Gain = gain }
 end
@@ -15584,21 +15585,21 @@ local function start()
     return true
 end
 State.startAfk = start
-selector = CrefyUI.uiAddSelector(afkPage, "Modo AFK", modes, function(value)
+selector = __FGRoot.CrefyUI.uiAddSelector(afkPage, "Modo AFK", modes, function(value)
     local active = State.afk.active
     if active then stop() end
     State.afk.mode = value or modes[1]
     show(true)
     if toggle then toggle:Set(true) end
 end)
-back = CrefyUI.uiAddButton(afkPage, "‹ Elegir otro modo", function() if State.afk.active then stop() end; show(false) end)
+back = __FGRoot.CrefyUI.uiAddButton(afkPage, "‹ Elegir otro modo", function() if State.afk.active then stop() end; show(false) end)
 back.Name="AfkBack"; back.Text="‹"; back.Size=UDim2.fromOffset(30,28); back.Position=UDim2.fromOffset(0,0)
 back.Parent=header; back.BackgroundTransparency=1; back.TextSize=27; back.TextColor3=C.soft
 back:SetAttribute("KeepTextStyle",true); back:SetAttribute("NoTranslate",true)
 for _,o in ipairs(back:GetDescendants()) do
     if o:IsA("UIStroke") then o.Transparency=1 elseif o:IsA("UITextSizeConstraint") then o.MaxTextSize=27 end
 end
-toggle = CrefyUI.uiAddToggle(afkPage, "Iniciar modo AFK", function(enabled)
+toggle = __FGRoot.CrefyUI.uiAddToggle(afkPage, "Iniciar modo AFK", function(enabled)
     if not enabled then stop(); return true end
     local ok, message = start()
     if not ok then State.afk.phase = message; State.pushOutput("ERROR", message) end
@@ -15734,7 +15735,7 @@ end
 
 sectionTitle("Automatizaciones")
 State.kill.hopOnDeath=false
-State.serverHopDeathToggle=compact(CrefyUI.uiAddToggle(serverPage,"Cambiar de server si me matan",function(value)
+State.serverHopDeathToggle=compact(__FGRoot.CrefyUI.uiAddToggle(serverPage,"Cambiar de server si me matan",function(value)
     State.kill.hopOnDeath=value==true
     return true
 end))
@@ -15773,7 +15774,7 @@ local names={
 }
 local modeNames={"Con mucha gente","Equilibrado","Casi vacío","Mejor conexión"}
 local drawCandidate
-local selector=CrefyUI.uiAddSelector(serverPage,"Destino",modeNames,function(value)
+local selector=__FGRoot.CrefyUI.uiAddSelector(serverPage,"Destino",modeNames,function(value)
     State.kill.serverHopMode=names[value] or "full"
     State.kill.serverCandidate=nil
     State.kill.serverError=nil
@@ -15783,7 +15784,7 @@ selector.Row.Size=UDim2.new(1,0,0,38)
 State.serverHopModeSelector=selector
 
 local analyze
-analyze=CrefyUI.uiAddButton(serverPage,"Buscar servidor",function()
+analyze=__FGRoot.CrefyUI.uiAddButton(serverPage,"Buscar servidor",function()
     if State.serverPreviewBusy or State.kill.hopInProgress then return end
     State.serverPreviewBusy=true
     State.setButtonDisabled(analyze,true)
@@ -15843,7 +15844,7 @@ detail.Position=UDim2.fromOffset(111,32)
 detail.TextWrapped=true
 
 local join
-join=CrefyUI.uiAddButton(serverPage,"Entrar ahora  ›",function()
+join=__FGRoot.CrefyUI.uiAddButton(serverPage,"Entrar ahora  ›",function()
     if State.serverPreviewBusy or not State.kill.serverCandidate then return end
     status.Text="Preparando cambio..."
     State.setButtonDisabled(join,true)
@@ -15914,7 +15915,7 @@ pageSetup()
 pageSetup=function()
 local tradePage = Pages["Fast Trade"]
 tradePage:SetAttribute("TightCanvas", true)
-CrefyUI.uiAddSection(tradePage, "Fast Trade")
+__FGRoot.CrefyUI.uiAddSection(tradePage, "Fast Trade")
 
 
 local function revealTradeSelector(row)
@@ -16230,19 +16231,19 @@ local function cancelFastTrade(message)
 end
 
 local refreshingTradeSelectors = false
-local playerSelector = CrefyUI.uiAddSelector(tradePage, "Seleccionar jugador", playerOptions(), function(value)
+local playerSelector = __FGRoot.CrefyUI.uiAddSelector(tradePage, "Seleccionar jugador", playerOptions(), function(value)
 	local name = type(value) == "table" and value.name or value
 	if not refreshingTradeSelectors and State.trade.busy and State.trade.activePlayer and name ~= State.trade.activePlayer then
 		cancelFastTrade("Cancelado: cambió el jugador")
 	end
 end, revealTradeSelector)
-local petSelector = CrefyUI.uiAddSelector(tradePage, "Seleccionar pet", ownedPetOptions(), function(value)
+local petSelector = __FGRoot.CrefyUI.uiAddSelector(tradePage, "Seleccionar pet", ownedPetOptions(), function(value)
 	local name = type(value) == "table" and value.name or value
 	if not refreshingTradeSelectors and State.trade.busy and State.trade.activePet and name ~= State.trade.activePet then
 		cancelFastTrade("Cancelado: cambió la pet")
 	end
 end, revealTradeSelector)
-local amountSelector = CrefyUI.uiAddSelector(tradePage, "Pets por trade", { 6, 5, 4, 3, 2, 1 }, function(value)
+local amountSelector = __FGRoot.CrefyUI.uiAddSelector(tradePage, "Pets por trade", { 6, 5, 4, 3, 2, 1 }, function(value)
 	selectedAmount = math.clamp(math.floor(tonumber(value) or 6), 1, 6)
 end, revealTradeSelector)
 
@@ -16276,7 +16277,7 @@ local function waitForTrade(remote, target, generation)
 	return nil
 end
 
-tradeButton = CrefyUI.uiAddButton(tradePage, "Iniciar Fast Trade", function(button)
+tradeButton = __FGRoot.CrefyUI.uiAddButton(tradePage, "Iniciar Fast Trade", function(button)
 	if State.trade.busy then
 		cancelFastTrade("Cancelado por el usuario")
 		return
@@ -16467,17 +16468,17 @@ pageSetup()
 
 pageSetup = function()
 local giftPage = Pages.Gifts
-CrefyUI.uiAddSection(giftPage, "Regalos")
-local eggCountValue = CrefyUI.uiAddInfoRow(giftPage, "Eggs", "0", C.cyan)
-local shakeCountValue = CrefyUI.uiAddInfoRow(giftPage, "Tropical Shakes", "0", C.cyan)
-CrefyUI.uiAddSection(giftPage, "Enviar Regalos")
-local giftTargetSelector = CrefyUI.uiAddSelector(giftPage, "Jugador", playerOptions(), function() end)
+__FGRoot.CrefyUI.uiAddSection(giftPage, "Regalos")
+local eggCountValue = __FGRoot.CrefyUI.uiAddInfoRow(giftPage, "Eggs", "0", C.cyan)
+local shakeCountValue = __FGRoot.CrefyUI.uiAddInfoRow(giftPage, "Tropical Shakes", "0", C.cyan)
+__FGRoot.CrefyUI.uiAddSection(giftPage, "Enviar Regalos")
+local giftTargetSelector = __FGRoot.CrefyUI.uiAddSelector(giftPage, "Jugador", playerOptions(), function() end)
 State.giftTargetSelector = giftTargetSelector
 local eggAmount = 1
 local shakeAmount = 1
 local eggSendButton = nil
 local shakeSendButton = nil
-CrefyUI.uiAddInput(giftPage, "Cantidad de Eggs", "1", function(value)
+__FGRoot.CrefyUI.uiAddInput(giftPage, "Cantidad de Eggs", "1", function(value)
 	eggAmount = math.clamp(math.floor(tonumber(value) or 1), 1, 9999)
 	if eggSendButton then
 		eggSendButton.Text = "🥚 Enviar " .. eggAmount .. " Protein Egg" .. (eggAmount == 1 and "" or "s") .. " 🥚"
@@ -16638,16 +16639,16 @@ local function sendGift(itemNames, displayName, amount, button, icon, baseDelay)
 	end)
 end
 
-eggSendButton = CrefyUI.uiAddButton(giftPage, "🥚 Enviar 1 Protein Egg 🥚", function(button)
+eggSendButton = __FGRoot.CrefyUI.uiAddButton(giftPage, "🥚 Enviar 1 Protein Egg 🥚", function(button)
 	sendGift(CONFIG.AutoEgg.Names, "Protein Egg", eggAmount, button, "🥚", 0.16)
 end)
-CrefyUI.uiAddInput(giftPage, "Cantidad de Shakes", "1", function(value)
+__FGRoot.CrefyUI.uiAddInput(giftPage, "Cantidad de Shakes", "1", function(value)
 	shakeAmount = math.clamp(math.floor(tonumber(value) or 1), 1, 9999)
 	if shakeSendButton then
 		shakeSendButton.Text = "🥤 Enviar " .. shakeAmount .. " Tropical Shake" .. (shakeAmount == 1 and "" or "s") .. " 🥤"
 	end
 end)
-shakeSendButton = CrefyUI.uiAddButton(giftPage, "🥤 Enviar 1 Tropical Shake 🥤", function(button)
+shakeSendButton = __FGRoot.CrefyUI.uiAddButton(giftPage, "🥤 Enviar 1 Tropical Shake 🥤", function(button)
 	sendGift("Tropical Shake", "Tropical Shake", shakeAmount, button, "🥤", 0.16)
 end)
 
@@ -16765,13 +16766,13 @@ local function updateShopInfo(selection, priceLabel)
 	priceLabel.Text = formatExact(price) .. " " .. tostring(priceType or "-")
 end
 
-CrefyUI.uiAddSection(petPage, "🐾 Pets 🐾")
+__FGRoot.CrefyUI.uiAddSection(petPage, "🐾 Pets 🐾")
 local petPriceValue
-local petSelector = CrefyUI.uiAddSelector(petPage, "Seleccionar Pet", petNames, function(selection)
+local petSelector = __FGRoot.CrefyUI.uiAddSelector(petPage, "Seleccionar Pet", petNames, function(selection)
 	if petPriceValue then updateShopInfo(selection, petPriceValue) end
 end)
 State.petShopPetSelector = petSelector
-petPriceValue = CrefyUI.uiAddInfoRow(petPage, "Precio:", "-", C.yellow)
+petPriceValue = __FGRoot.CrefyUI.uiAddInfoRow(petPage, "Precio:", "-", C.yellow)
 updateShopInfo(petSelector:Get(), petPriceValue)
 
 
@@ -16797,10 +16798,10 @@ local function buyShopItem(selection)
 	return ok and result == true
 end
 
-CrefyUI.uiAddButton(petPage, "🐾 Comprar Pets 🐾", function()
+__FGRoot.CrefyUI.uiAddButton(petPage, "🐾 Comprar Pets 🐾", function()
 	buyShopItem(petSelector:Get())
 end)
-CrefyUI.uiAddToggle(petPage, "🔁 Auto Comprar Pet 🔁", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(petPage, "🔁 Auto Comprar Pet 🔁", function(enabled)
 	State.autoPet = enabled
 	if not enabled then
 		stopThread("autoPet")
@@ -16820,18 +16821,18 @@ CrefyUI.uiAddToggle(petPage, "🔁 Auto Comprar Pet 🔁", function(enabled)
 	end)
 end)
 
-CrefyUI.uiAddSection(petPage, "🌌 Auras 🌌")
+__FGRoot.CrefyUI.uiAddSection(petPage, "🌌 Auras 🌌")
 local auraPriceValue
-local auraSelector = CrefyUI.uiAddSelector(petPage, "Seleccionar Aura", auraNames, function(selection)
+local auraSelector = __FGRoot.CrefyUI.uiAddSelector(petPage, "Seleccionar Aura", auraNames, function(selection)
 	if auraPriceValue then updateShopInfo(selection, auraPriceValue) end
 end)
 State.petShopAuraSelector = auraSelector
-auraPriceValue = CrefyUI.uiAddInfoRow(petPage, "Precio:", "-", C.yellow)
+auraPriceValue = __FGRoot.CrefyUI.uiAddInfoRow(petPage, "Precio:", "-", C.yellow)
 updateShopInfo(auraSelector:Get(), auraPriceValue)
-CrefyUI.uiAddButton(petPage, "🌌 Comprar Aura 🌌", function()
+__FGRoot.CrefyUI.uiAddButton(petPage, "🌌 Comprar Aura 🌌", function()
 	buyShopItem(auraSelector:Get())
 end)
-CrefyUI.uiAddToggle(petPage, "🔁 Auto Comprar Aura 🔁", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(petPage, "🔁 Auto Comprar Aura 🔁", function(enabled)
 	State.autoAura = enabled
 	if not enabled then
 		stopThread("autoAura")
@@ -17172,12 +17173,12 @@ function Inventory:EquipBest()
 end
 
 inventoryPage:SetAttribute("TightCanvas", true)
-CrefyUI.uiAddSection(inventoryPage, "Pet Lab")
-State.inventoryLab.selector = CrefyUI.uiAddSelector(inventoryPage, "Optimizar pets para", { "Fuerza", "Durabilidad", "Daño" }, function()
+__FGRoot.CrefyUI.uiAddSection(inventoryPage, "Pet Lab")
+State.inventoryLab.selector = __FGRoot.CrefyUI.uiAddSelector(inventoryPage, "Optimizar pets para", { "Fuerza", "Durabilidad", "Daño" }, function()
 	Inventory:RefreshLab()
 end)
-State.inventoryLab.result = CrefyUI.uiAddInfoRow(inventoryPage, "Mejor combinación:", "Analizando...", C.cyan, false, true)
-State.inventoryLab.equipButton = CrefyUI.uiAddButton(inventoryPage, "Equipar mejor combinación", function(button)
+State.inventoryLab.result = __FGRoot.CrefyUI.uiAddInfoRow(inventoryPage, "Mejor combinación:", "Analizando...", C.cyan, false, true)
+State.inventoryLab.equipButton = __FGRoot.CrefyUI.uiAddButton(inventoryPage, "Equipar mejor combinación", function(button)
 	State.setButtonDisabled(button, true)
 	startThread("inventoryPetLab", function()
 		local ok, message = Inventory:EquipBest()
@@ -17191,22 +17192,22 @@ State.inventoryLab.equipButton = CrefyUI.uiAddButton(inventoryPage, "Equipar mej
 		State.setButtonDisabled(button, false)
 	end)
 end, C.tabOn, C.rowHover)
-CrefyUI.uiAddSection(inventoryPage, "Inventario")
-inventorySelector = CrefyUI.uiAddSelector(inventoryPage, "Pet", {}, function(selection)
+__FGRoot.CrefyUI.uiAddSection(inventoryPage, "Inventario")
+inventorySelector = __FGRoot.CrefyUI.uiAddSelector(inventoryPage, "Pet", {}, function(selection)
 	Inventory:UpdateInfo(selection)
 end, nil, "Sin pets")
 Inventory.Selector = inventorySelector
-inventoryEvolvedValue, inventoryEvolvedRow, inventoryEvolvedLabel = CrefyUI.uiAddInfoRow(
+inventoryEvolvedValue, inventoryEvolvedRow, inventoryEvolvedLabel = __FGRoot.CrefyUI.uiAddInfoRow(
 	inventoryPage, "Evolucionadas:", "0", C.cyan, false, true
 )
-inventoryUnevolvedValue, inventoryUnevolvedRow, inventoryUnevolvedLabel = CrefyUI.uiAddInfoRow(
+inventoryUnevolvedValue, inventoryUnevolvedRow, inventoryUnevolvedLabel = __FGRoot.CrefyUI.uiAddInfoRow(
 	inventoryPage, "No evolucionadas:", "0", C.white, false, true
 )
 for _, label in ipairs({ inventoryEvolvedLabel, inventoryUnevolvedLabel }) do
 	label.Position = UDim2.fromOffset(16, 0)
 	label.Size = UDim2.new(0.42, -6, 1, 0)
 end
-local inventoryAutoEvolveToggle = CrefyUI.uiAddToggle(inventoryPage, "Auto evolucionar pet seleccionada", function(enabled)
+local inventoryAutoEvolveToggle = __FGRoot.CrefyUI.uiAddToggle(inventoryPage, "Auto evolucionar pet seleccionada", function(enabled)
     Inventory.autoEvolve = enabled == true
     State.inventoryAutoEvolve = Inventory.autoEvolve
     if not enabled then
@@ -17552,18 +17553,18 @@ function Profiles:CancelDeleteConfirmation()
 	end
 end
 
-CrefyUI.uiAddSection(profilesPage, "Perfil seleccionado")
-profileSelector = CrefyUI.uiAddSelector(profilesPage, "Perfil", {}, function(value)
+__FGRoot.CrefyUI.uiAddSection(profilesPage, "Perfil seleccionado")
+profileSelector = __FGRoot.CrefyUI.uiAddSelector(profilesPage, "Perfil", {}, function(value)
 	if Profiles.selected ~= value then Profiles:CancelDeleteConfirmation() end
 	Profiles.selected = value
 	updateProfileControls()
 end, nil, "No tenés perfiles")
 Profiles.Selector = profileSelector
-profileLoadButton = CrefyUI.uiAddButton(profilesPage, "Cargar perfil", function()
+profileLoadButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Cargar perfil", function()
 	if not Profiles.selected then return end
 	Profiles:Load(Profiles.selected)
 end)
-profileUpdateButton = CrefyUI.uiAddButton(profilesPage, "Guardar cambios", function()
+profileUpdateButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Guardar cambios", function()
 	if not Profiles.selected then return end
 	local ok, name = Profiles:Write(Profiles.selected, true)
 	if ok then
@@ -17572,22 +17573,22 @@ profileUpdateButton = CrefyUI.uiAddButton(profilesPage, "Guardar cambios", funct
 	end
 end)
 
-CrefyUI.uiAddSection(profilesPage, "Nuevo perfil")
+__FGRoot.CrefyUI.uiAddSection(profilesPage, "Nuevo perfil")
 
 State.hideProfileCreate = function()
 	profileNameInput.Parent.Visible = false
 	State.profileCreateSaveButton.Visible = false
 	State.profileCreateCancelButton.Visible = false
 end
-CrefyUI.uiAddButton(profilesPage, "Crear perfil", function()
+__FGRoot.CrefyUI.uiAddButton(profilesPage, "Crear perfil", function()
 	if State.hideProfileRename then State.hideProfileRename() end
 	profileNameInput.Parent.Visible = true
 	State.profileCreateSaveButton.Visible = true
 	State.profileCreateCancelButton.Visible = true
 	profileNameInput:CaptureFocus()
 end)
-profileNameInput = CrefyUI.uiAddInput(profilesPage, "Nombre", "Mi perfil", function() end)
-State.profileCreateSaveButton = CrefyUI.uiAddButton(profilesPage, "Guardar", function()
+profileNameInput = __FGRoot.CrefyUI.uiAddInput(profilesPage, "Nombre", "Mi perfil", function() end)
+State.profileCreateSaveButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Guardar", function()
 	local ok, name, reason, duplicate = Profiles:Write(profileNameInput.Text, false)
 	if ok then
 		Profiles:Refresh()
@@ -17599,20 +17600,20 @@ State.profileCreateSaveButton = CrefyUI.uiAddButton(profilesPage, "Guardar", fun
 		profileButtonFeedback(State.profileCreateSaveButton, "Ingresá un nombre", nil, "Guardar")
 	end
 end)
-State.profileCreateCancelButton = CrefyUI.uiAddButton(profilesPage, "Cancelar", function()
+State.profileCreateCancelButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Cancelar", function()
 	State.hideProfileCreate()
 end)
 profileNameInput.Parent.Visible = false
 State.profileCreateSaveButton.Visible = false
 State.profileCreateCancelButton.Visible = false
-CrefyUI.uiAddSection(profilesPage, "Administrar")
+__FGRoot.CrefyUI.uiAddSection(profilesPage, "Administrar")
 
 State.hideProfileRename = function()
 	profileRenameInput.Parent.Visible = false
 	State.profileRenameConfirmButton.Visible = false
 	State.profileRenameCancelButton.Visible = false
 end
-profileRenameButton = CrefyUI.uiAddButton(profilesPage, "Renombrar perfil", function()
+profileRenameButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Renombrar perfil", function()
 	if not Profiles.selected then return end
 	State.hideProfileCreate()
 	profileRenameInput.Parent.Visible = true
@@ -17620,8 +17621,8 @@ profileRenameButton = CrefyUI.uiAddButton(profilesPage, "Renombrar perfil", func
 	State.profileRenameCancelButton.Visible = true
 	profileRenameInput:CaptureFocus()
 end)
-profileRenameInput = CrefyUI.uiAddInput(profilesPage, "Nuevo nombre", "Nombre nuevo", function() end)
-State.profileRenameConfirmButton = CrefyUI.uiAddButton(profilesPage, "Confirmar", function()
+profileRenameInput = __FGRoot.CrefyUI.uiAddInput(profilesPage, "Nuevo nombre", "Nombre nuevo", function() end)
+State.profileRenameConfirmButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Confirmar", function()
 	local ok, newName, reason, duplicate = Profiles:Rename(Profiles.selected, profileRenameInput.Text)
 	if ok then
 		Profiles:Refresh()
@@ -17635,13 +17636,13 @@ State.profileRenameConfirmButton = CrefyUI.uiAddButton(profilesPage, "Confirmar"
 		profileButtonFeedback(State.profileRenameConfirmButton, "Ingresá un nombre", nil, "Confirmar")
 	end
 end)
-State.profileRenameCancelButton = CrefyUI.uiAddButton(profilesPage, "Cancelar", function()
+State.profileRenameCancelButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Cancelar", function()
 	State.hideProfileRename()
 end)
 profileRenameInput.Parent.Visible = false
 State.profileRenameConfirmButton.Visible = false
 State.profileRenameCancelButton.Visible = false
-profileDeleteButton = CrefyUI.uiAddButton(profilesPage, "Eliminar perfil", function(button)
+profileDeleteButton = __FGRoot.CrefyUI.uiAddButton(profilesPage, "Eliminar perfil", function(button)
 	if not Profiles.selected then return end
 	local path, name = Profiles:Path(Profiles.selected)
 	if not path or type(delfile) ~= "function" or not isfile(path) then
@@ -17875,13 +17876,13 @@ local function formatChance(value)
 	return string.format("%.2f%%", value)
 end
 
-CrefyUI.uiAddSection(fusePage, "Fuse Optimizer")
+__FGRoot.CrefyUI.uiAddSection(fusePage, "Fuse Optimizer")
 
 local selectedRecipe = fuseRecipes[1]
 local refreshFuseOptimizer
 local refreshFuseProcess
 local fuseConfirmationExpires = 0
-local fuseSelector, fuseSelectorValue = CrefyUI.uiAddSelector(fusePage, "Pet que querés", fuseRecipes, function(value)
+local fuseSelector, fuseSelectorValue = __FGRoot.CrefyUI.uiAddSelector(fusePage, "Pet que querés", fuseRecipes, function(value)
 	selectedRecipe = type(value) == "table" and value or fuseRecipes[1]
 	fuseConfirmationExpires = 0
 	if refreshFuseOptimizer then
@@ -17900,11 +17901,11 @@ for index, child in ipairs(fuseSelectorValue.Parent.Parent:GetDescendants()) do
 	end
 end
 
-local chanceValue = CrefyUI.uiAddInfoRow(fusePage, "Probabilidad máxima", "-", C.green, false, true)
+local chanceValue = __FGRoot.CrefyUI.uiAddInfoRow(fusePage, "Probabilidad máxima", "-", C.green, false, true)
 local recipeCard = Instance.new("Frame")
 recipeCard.LayoutOrder = nextOrder(fusePage)
 recipeCard.Parent = fusePage
-CrefyUI.styleRow(recipeCard, 48)
+__FGRoot.CrefyUI.styleRow(recipeCard, 48)
 
 local recipeTitle = Instance.new("TextLabel")
 recipeTitle.Size = UDim2.new(1, -22, 0, 18)
@@ -17967,7 +17968,7 @@ end
 local notice = Instance.new("Frame")
 notice.LayoutOrder = nextOrder(fusePage)
 notice.Parent = fusePage
-CrefyUI.styleRow(notice, 48)
+__FGRoot.CrefyUI.styleRow(notice, 48)
 local noticeAccent = Instance.new("Frame")
 noticeAccent.Size = UDim2.fromOffset(3, 28)
 noticeAccent.Position = UDim2.new(0, 8, 0.5, -14)
@@ -17998,7 +17999,7 @@ noticeTextLimit.MaxTextSize = 11
 
 	chanceValue:SetAttribute("KeepTextStyle", true)
 
-local activeSectionLabel = CrefyUI.uiAddSection(fusePage, "Fusión activa")
+local activeSectionLabel = __FGRoot.CrefyUI.uiAddSection(fusePage, "Fusión activa")
 local activeSection = activeSectionLabel.Parent
 activeSection.Visible = false
 
@@ -18007,7 +18008,7 @@ processCard.Name = "FuseProcessCard"
 processCard.LayoutOrder = nextOrder(fusePage)
 processCard.Parent = fusePage
 processCard.Visible = false
-CrefyUI.styleRow(processCard, 46)
+__FGRoot.CrefyUI.styleRow(processCard, 46)
 
 local processAccent = Instance.new("Frame")
 processAccent.Name = "ProcessAccent"
@@ -18371,7 +18372,7 @@ end
 
 
 local function addFuseActionButton(text, callback)
-    local button = CrefyUI.uiAddButton(fusePage, text, function(proxy)
+    local button = __FGRoot.CrefyUI.uiAddButton(fusePage, text, function(proxy)
         if proxy and proxy:GetAttribute("FuseEnabled") == true then
             pcall(callback, proxy)
         end
@@ -18580,7 +18581,7 @@ feedbackRow.Name = "FuseFeedbackRow"
 feedbackRow.LayoutOrder = nextOrder(fusePage)
 feedbackRow.Parent = fusePage
 feedbackRow.Visible = false
-CrefyUI.styleRow(feedbackRow, 32)
+__FGRoot.CrefyUI.styleRow(feedbackRow, 32)
 feedbackAccent = Instance.new("Frame")
 feedbackAccent.Size = UDim2.fromOffset(3, 18)
 feedbackAccent.Position = UDim2.new(0, 8, 0.5, -9)
@@ -18644,7 +18645,7 @@ pageSetup()
 
 pageSetup = function()
 local statsPage = Pages.Stats
-CrefyUI.uiAddSection(statsPage, "Estadísticas")
+__FGRoot.CrefyUI.uiAddSection(statsPage, "Estadísticas")
 
 State.statsTargetUserId = LP.UserId
 
@@ -18677,7 +18678,7 @@ local playerCard = Instance.new("Frame")
 playerCard.Name = "PlayerCard"
 playerCard.LayoutOrder = nextOrder(statsPage)
 playerCard.Parent = statsPage
-CrefyUI.styleRow(playerCard, 112)
+__FGRoot.CrefyUI.styleRow(playerCard, 112)
 
 local playerAccent = Instance.new("Frame")
 playerAccent.Size = UDim2.fromOffset(3, 84)
@@ -18869,7 +18870,7 @@ State.setStatsPrivateRowsVisible = function(visible)
 	pingValue.Visible = visible
 	uptimeValue.Visible = visible
 end
-State.statsPlayerSelector = CrefyUI.uiAddSelector(statsPage, "Ver estadísticas de", State.statsTargetOptions(), function(value)
+State.statsPlayerSelector = __FGRoot.CrefyUI.uiAddSelector(statsPage, "Ver estadísticas de", State.statsTargetOptions(), function(value)
 	State.statsTargetUserId = type(value) == "table" and value.userId or LP.UserId
 	State.setStatsPrivateRowsVisible(State.statsTargetUserId == LP.UserId)
 	local requestedUserId = State.statsTargetUserId
@@ -18938,10 +18939,10 @@ pageSetup = function()
 end
 pageSetup()
 
-local setMinimized = nil
-local minimizeKey = Enum.KeyCode.RightShift
-local waitingForMinimizeKey = false
-local minimizeKeyButton = nil
+__FGRoot.setMinimized = nil
+__FGRoot.minimizeKey = Enum.KeyCode.RightShift
+__FGRoot.waitingForMinimizeKey = false
+__FGRoot.minimizeKeyButton = nil
 
 State.minimizeKeyConfigFolder = "Young0xHub/FG100"
 State.minimizeKeyConfigPath = State.minimizeKeyConfigFolder
@@ -18968,7 +18969,7 @@ State.loadMinimizeKey = function()
 		if keyCode.Name == storedName
 			and keyCode ~= Enum.KeyCode.Escape
 			and keyCode ~= Enum.KeyCode.Unknown then
-			minimizeKey = keyCode
+			__FGRoot.minimizeKey = keyCode
 			return true
 		end
 	end
@@ -18991,7 +18992,7 @@ end
 State.loadMinimizeKey()
 
 
-local function minimizeKeyName(keyCode)
+__FGRoot.minimizeKeyName = function(keyCode)
 	local localizedNames = {
 		[Enum.KeyCode.RightShift] = "Shift derecho",
 		[Enum.KeyCode.LeftShift] = "Shift izquierdo",
@@ -19022,8 +19023,8 @@ local function minimizeKeyName(keyCode)
 end
 
 
-local function minimizeKeyText()
-	return "Keybind: " .. minimizeKeyName(minimizeKey)
+__FGRoot.minimizeKeyText = function()
+	return "Keybind: " .. __FGRoot.minimizeKeyName(__FGRoot.minimizeKey)
 end
 
 do
@@ -19522,7 +19523,7 @@ do
 			if guiOk then
 				for _, guiObject in ipairs(guiObjects) do
 					local inLegacyHub = guiObject:IsDescendantOf(ScreenGui)
-					local inCrefyHub = CrefyLibrary and CrefyLibrary.ScreenGui and guiObject:IsDescendantOf(CrefyLibrary.ScreenGui)
+					local inCrefyHub = __FGRoot.CrefyLibrary and __FGRoot.CrefyLibrary.ScreenGui and guiObject:IsDescendantOf(__FGRoot.CrefyLibrary.ScreenGui)
 					if inLegacyHub or inCrefyHub then
 						overHub = true
 						break
@@ -21415,137 +21416,137 @@ end
 
 do
 local miscPage = Pages.Misc
-local languageHeading=CrefyUI.uiAddSection(miscPage,"Idiomas: Español · English · Português · العربية")
+local languageHeading=__FGRoot.CrefyUI.uiAddSection(miscPage,"Idiomas: Español · English · Português · العربية")
 languageHeading:SetAttribute("NoTranslate",true)
 languageHeading.TextSize=11
-State.languageSelector = CrefyUI.uiAddSelector(miscPage, "Idioma", { "Español", "English", "Português", "العربية" }, function(value)
+State.languageSelector = __FGRoot.CrefyUI.uiAddSelector(miscPage, "Idioma", { "Español", "English", "Português", "العربية" }, function(value)
 	State.setLanguage(({English="en",["Português"]="pt",["العربية"]="ar"})[value] or "es")
 end)
 for _,label in ipairs(State.languageSelector.Row:GetDescendants()) do if label:IsA("TextLabel") or label:IsA("TextButton") then label:SetAttribute("NoTranslate",true) end end
-CrefyUI.uiAddSection(miscPage, "🖥️ Rendimiento 🖥️")
-CrefyUI.uiAddToggle(miscPage, "Anti Lag 100%", function(enabled)
+__FGRoot.CrefyUI.uiAddSection(miscPage, "🖥️ Rendimiento 🖥️")
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "Anti Lag 100%", function(enabled)
 	setAntiLag(enabled)
 end)
-local antiLagStatus = CrefyUI.uiAddStatusRow(miscPage, "Desactivado")
+local antiLagStatus = __FGRoot.CrefyUI.uiAddStatusRow(miscPage, "Desactivado")
 
 antiLagStatusUpdater = function(text)
 	if antiLagStatus and antiLagStatus.Parent then
 		antiLagStatus.Text = text
 	end
 end
-CrefyUI.uiAddSection(miscPage, "🚀 Fly 🚀")
-CrefyUI.uiAddToggle(miscPage, " Fly ", function(enabled)
+__FGRoot.CrefyUI.uiAddSection(miscPage, "🚀 Fly 🚀")
+__FGRoot.CrefyUI.uiAddToggle(miscPage, " Fly ", function(enabled)
 	setFly(enabled)
 end)
-CrefyUI.uiAddSlider(miscPage, "Velocidad del Fly", 1, 30, State.flyLevel, function(value)
+__FGRoot.CrefyUI.uiAddSlider(miscPage, "Velocidad del Fly", 1, 30, State.flyLevel, function(value)
 	State.flyLevel = value
 end)
-CrefyUI.uiAddSection(miscPage, "🎨 Temas 🎨")
+__FGRoot.CrefyUI.uiAddSection(miscPage, "🎨 Temas 🎨")
 local themeInitializing = true
-State.themeSelector = CrefyUI.uiAddSelector(miscPage, "Tema visual", { "Galaxia", "Violeta", "Carmesí", "Esmeralda" }, function(value)
+State.themeSelector = __FGRoot.CrefyUI.uiAddSelector(miscPage, "Tema visual", { "Galaxia", "Violeta", "Carmesí", "Esmeralda" }, function(value)
 	State.applyTheme(tostring(value or "Galaxia"), themeInitializing)
 end)
 State.themeSelector:SetValue(State.themeName)
 themeInitializing = false
-CrefyUI.uiAddSection(miscPage, "👁️ ESP y tracers 👁️")
+__FGRoot.CrefyUI.uiAddSection(miscPage, "👁️ ESP y tracers 👁️")
 State.miscVisualToggles = {
-	boxes = CrefyUI.uiAddToggle(miscPage, "ESP", function(enabled)
+	boxes = __FGRoot.CrefyUI.uiAddToggle(miscPage, "ESP", function(enabled)
 		return State.setMiscVisualFlag("boxes", enabled)
 	end),
-	names = CrefyUI.uiAddToggle(miscPage, "ESP: Nombres", function(enabled)
+	names = __FGRoot.CrefyUI.uiAddToggle(miscPage, "ESP: Nombres", function(enabled)
 		return State.setMiscVisualFlag("names", enabled)
 	end),
-	tracers = CrefyUI.uiAddToggle(miscPage, "Tracers", function(enabled)
+	tracers = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Tracers", function(enabled)
 		return State.setMiscVisualFlag("tracers", enabled)
 	end),
-	distance = CrefyUI.uiAddToggle(miscPage, "ESP: Distancia", function(enabled)
+	distance = __FGRoot.CrefyUI.uiAddToggle(miscPage, "ESP: Distancia", function(enabled)
 		return State.setMiscVisualFlag("distance", enabled)
 	end),
-	durability = CrefyUI.uiAddToggle(miscPage, "ESP: Durabilidad", function(enabled)
+	durability = __FGRoot.CrefyUI.uiAddToggle(miscPage, "ESP: Durabilidad", function(enabled)
 		return State.setMiscVisualFlag("durability", enabled)
 	end),
 }
-CrefyUI.uiAddSection(miscPage, "🧭 Jugadores 🧭")
-State.miscPlayerSelector = CrefyUI.uiAddSelector(miscPage, "Objetivo", State.miscTargetOptions(), function(value)
+__FGRoot.CrefyUI.uiAddSection(miscPage, "🧭 Jugadores 🧭")
+State.miscPlayerSelector = __FGRoot.CrefyUI.uiAddSelector(miscPage, "Objetivo", State.miscTargetOptions(), function(value)
 	State.miscTarget = type(value) == "table" and value.name or value
 	State.spyTarget = State.miscTarget
 end, nil, "Sin jugadores disponibles")
 if #State.miscTargetOptions() > 0 then
 	State.miscPlayerSelector:SetIndex(1)
 end
-CrefyUI.uiAddButton(miscPage, "Teletransportarse al jugador", function()
+__FGRoot.CrefyUI.uiAddButton(miscPage, "Teletransportarse al jugador", function()
 	State.teleportToMiscPlayer()
 end)
-State.miscFollowToggle = CrefyUI.uiAddToggle(miscPage, "Tracker: Seguir jugador", function(enabled)
+State.miscFollowToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Tracker: Seguir jugador", function(enabled)
 	return State.setMiscFollow(enabled)
 end)
-CrefyUI.uiAddSlider(miscPage, "Distancia seguimiento", 2, 30, State.miscFollowDistance, function(value)
+__FGRoot.CrefyUI.uiAddSlider(miscPage, "Distancia seguimiento", 2, 30, State.miscFollowDistance, function(value)
 	State.miscFollowDistance = value
 end)
-State.miscOrbitToggle = CrefyUI.uiAddToggle(miscPage, "Orbitar alrededor del objetivo", function(enabled)
+State.miscOrbitToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Orbitar alrededor del objetivo", function(enabled)
 	return State.setMiscOrbit(enabled)
 end)
-CrefyUI.uiAddSlider(miscPage, "Radio de órbita", 10, 24, State.miscOrbitRadius, function(value)
+__FGRoot.CrefyUI.uiAddSlider(miscPage, "Radio de órbita", 10, 24, State.miscOrbitRadius, function(value)
 	State.miscOrbitRadius = value
 end)
-CrefyUI.uiAddSlider(miscPage, "Velocidad de órbita", 1, 15, State.miscOrbitSpeed, function(value)
+__FGRoot.CrefyUI.uiAddSlider(miscPage, "Velocidad de órbita", 1, 15, State.miscOrbitSpeed, function(value)
 	State.miscOrbitSpeed = value
 end)
-State.spyToggle = CrefyUI.uiAddToggle(miscPage, "Spy: Mirar jugador", function(enabled)
+State.spyToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Spy: Mirar jugador", function(enabled)
 	local target = State.selectedMiscPlayer()
 	if enabled and not target then return false end
 	if target then State.spyTarget = target.Name end
 	setSpy(enabled)
 	return true
 end)
-CrefyUI.uiAddToggle(miscPage, "Ocultar jugadores", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "Ocultar jugadores", function(enabled)
 	return State.setMiscHidePlayers(enabled)
 end)
-CrefyUI.uiAddToggle(miscPage, "Minimapa", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "Minimapa", function(enabled)
 	return State.setMiscMinimap(enabled)
 end)
-CrefyUI.uiAddSection(miscPage, "🌎 Mundo y cámara 🌎")
-CrefyUI.uiAddToggle(miscPage, "FullBright", function(enabled)
+__FGRoot.CrefyUI.uiAddSection(miscPage, "🌎 Mundo y cámara 🌎")
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "FullBright", function(enabled)
 	return State.setMiscFullBright(enabled)
 end)
-CrefyUI.uiAddToggle(miscPage, "Quitar niebla", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "Quitar niebla", function(enabled)
 	return State.setMiscNoFog(enabled)
 end)
-State.miscFovToggle = CrefyUI.uiAddToggle(miscPage, "FOV personalizado", function(enabled)
+State.miscFovToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "FOV personalizado", function(enabled)
 	return State.setMiscFov(enabled)
 end)
-CrefyUI.uiAddSlider(miscPage, "Campo de visión", 50, 150, State.miscFov, function(value)
+__FGRoot.CrefyUI.uiAddSlider(miscPage, "Campo de visión", 50, 150, State.miscFov, function(value)
 	State.miscFov = value
 	if State.miscFovEnabled and workspace.CurrentCamera then
 		State.applyMiscFov(workspace.CurrentCamera)
 	end
 end)
-CrefyUI.uiAddToggle(miscPage, "Zoom extendido", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "Zoom extendido", function(enabled)
 	return State.setMiscZoom(enabled)
 end)
-State.miscFreecamToggle = CrefyUI.uiAddToggle(miscPage, "Freecam", function(enabled)
+State.miscFreecamToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Freecam", function(enabled)
 	return State.setMiscFreecam(enabled)
 end)
-CrefyUI.uiAddSlider(miscPage, "Velocidad Freecam", 20, 250, State.miscFreecamSpeed, function(value)
+__FGRoot.CrefyUI.uiAddSlider(miscPage, "Velocidad Freecam", 20, 250, State.miscFreecamSpeed, function(value)
 	State.miscFreecamSpeed = value
 end)
-CrefyUI.uiAddToggle(miscPage, "Ocultar interfaz del juego", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "Ocultar interfaz del juego", function(enabled)
 	return State.setMiscHideGameUi(enabled)
 end)
-CrefyUI.uiAddSection(miscPage, "🧰 Utilidades 🧰")
-State.miscClickTpToggle = CrefyUI.uiAddToggle(miscPage, "Click TP", function(enabled)
+__FGRoot.CrefyUI.uiAddSection(miscPage, "🧰 Utilidades 🧰")
+State.miscClickTpToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Click TP", function(enabled)
 	return State.setMiscClickTp(enabled)
 end)
-State.miscHidePetsToggle = CrefyUI.uiAddToggle(miscPage, "Ocultar pets", function(enabled)
+State.miscHidePetsToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Ocultar pets", function(enabled)
 	return State.setMiscHidePets(enabled)
 end)
-State.miscFpsUnlockToggle = CrefyUI.uiAddToggle(miscPage, "FPS Unlock", function(enabled)
+State.miscFpsUnlockToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "FPS Unlock", function(enabled)
 	return State.setMiscFpsUnlock(enabled)
 end)
-State.miscHeadlessToggle = CrefyUI.uiAddToggle(miscPage, "Headless", function(enabled)
+State.miscHeadlessToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "Headless", function(enabled)
 	return State.setMiscHeadless(enabled)
 end)
-CrefyUI.uiAddSection(miscPage, "⚙️ Misc ⚙️")
+__FGRoot.CrefyUI.uiAddSection(miscPage, "⚙️ Misc ⚙️")
 if UserInputService.TouchEnabled and viewportSize().X < 1100 then
 	local mobileKeybind = Instance.new("TextLabel")
 	mobileKeybind.LayoutOrder = nextOrder(miscPage)
@@ -21555,50 +21556,50 @@ if UserInputService.TouchEnabled and viewportSize().X < 1100 then
 	mobileKeybind.TextSize = 12
 	mobileKeybind.TextXAlignment = Enum.TextXAlignment.Left
 	mobileKeybind.Parent = miscPage
-	CrefyUI.styleRow(mobileKeybind, 38)
+	__FGRoot.CrefyUI.styleRow(mobileKeybind, 38)
 	local keyPadding = Instance.new("UIPadding")
 	keyPadding.PaddingLeft = UDim.new(0, 20)
 	keyPadding.Parent = mobileKeybind
 elseif UserInputService.KeyboardEnabled then
-	minimizeKeyButton = CrefyUI.uiAddButton(miscPage, minimizeKeyText(), function(button)
-		waitingForMinimizeKey = true
+	__FGRoot.minimizeKeyButton = __FGRoot.CrefyUI.uiAddButton(miscPage, __FGRoot.minimizeKeyText(), function(button)
+		__FGRoot.waitingForMinimizeKey = true
 		button.Text = "Elegí una tecla"
 	end)
-	minimizeKeyButton.TextXAlignment = Enum.TextXAlignment.Left
+	__FGRoot.minimizeKeyButton.TextXAlignment = Enum.TextXAlignment.Left
 	local keyPadding = Instance.new("UIPadding")
 	keyPadding.PaddingLeft = UDim.new(0, 20)
-	keyPadding.Parent = minimizeKeyButton
+	keyPadding.Parent = __FGRoot.minimizeKeyButton
 end
-CrefyUI.uiAddToggle(miscPage, "🛡️ Anti Crash 🛡️", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "🛡️ Anti Crash 🛡️", function(enabled)
 	AntiCrash.set(enabled)
 end)
-local pingReducerToggle = CrefyUI.uiAddToggle(miscPage, "📶 Ping Reducer 📶", function(enabled)
+local pingReducerToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "📶 Ping Reducer 📶", function(enabled)
 	FastFarm:SetPingReducer(enabled)
 	return true
 end)
 pingReducerToggle:Set(FastFarm.pingReducer, true)
 FastFarm.PingReducerToggle = pingReducerToggle
-CrefyUI.uiAddToggle(miscPage, "🌀 Spin 🌀", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "🌀 Spin 🌀", function(enabled)
 	setSpin(enabled)
 end)
-CrefyUI.uiAddToggle(miscPage, "⚡ Fast Speed ⚡", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "⚡ Fast Speed ⚡", function(enabled)
 	setFastSpeed(enabled)
 end)
-CrefyUI.uiAddToggle(miscPage, "🌊 Walk on Water 🌊", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "🌊 Walk on Water 🌊", function(enabled)
 	startThread("walkWater", function()
 		setWalkWater(enabled)
 	end)
 end)
-CrefyUI.uiAddToggle(miscPage, "👻 No Clip 👻", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "👻 No Clip 👻", function(enabled)
 	setNoclip(enabled)
 end)
-CrefyUI.uiAddToggle(miscPage, "🛡️ Anti Knockback 🛡️", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "🛡️ Anti Knockback 🛡️", function(enabled)
 	State.setAntiKnockback(enabled)
 end)
-local autoSpinToggle = CrefyUI.uiAddToggle(miscPage, "🎡 Auto Spin Fortune Wheel 🎡", function(enabled)
+local autoSpinToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "🎡 Auto Spin Fortune Wheel 🎡", function(enabled)
 	return setAutoSpinWheel(enabled)
 end)
-local autoClaimToggle = CrefyUI.uiAddToggle(miscPage, "🎁 Auto Claim Chests 🎁", function(enabled)
+local autoClaimToggle = __FGRoot.CrefyUI.uiAddToggle(miscPage, "🎁 Auto Claim Chests 🎁", function(enabled)
 	return setAutoClaimChests(enabled)
 end)
 State.autoSpinToggle = autoSpinToggle
@@ -21621,14 +21622,14 @@ startThread("miscAvailability", function()
 		task.wait(0.5)
 	end
 end)
-CrefyUI.uiAddToggle(miscPage, "🚫 Remove AD Portal 🚫", function(enabled)
+__FGRoot.CrefyUI.uiAddToggle(miscPage, "🚫 Remove AD Portal 🚫", function(enabled)
 	setRemovePortals(enabled)
 end)
-local emergencyButton = CrefyUI.uiAddButton(miscPage, "EMERGENCY STOP", function()
+local emergencyButton = __FGRoot.CrefyUI.uiAddButton(miscPage, "EMERGENCY STOP", function()
 	State.miscEmergencyStop()
 end, C.row, Color3.fromRGB(62, 17, 25))
 emergencyButton.TextColor3 = Color3.fromRGB(255, 70, 90)
-CrefyUI.uiAddButton(miscPage, "❌ Cerrar Script ❌", function()
+__FGRoot.CrefyUI.uiAddButton(miscPage, "❌ Cerrar Script ❌", function()
 	if shutdown then
 		shutdown(false)
 	end
@@ -21636,7 +21637,7 @@ end, C.row, Color3.fromRGB(72, 34, 52))
 end
 
 
-local function refreshPlayerSelectors()
+__FGRoot.refreshPlayerSelectors = function()
 	local options = playerOptions()
 	local previousKillTarget = State.kill.target
 	if State.giftTargetSelector then
@@ -21685,11 +21686,11 @@ local function refreshPlayerSelectors()
 end
 track(Players.PlayerAdded:Connect(function(player)
 	State.clearKillFriend(player)
-	refreshPlayerSelectors()
+	__FGRoot.refreshPlayerSelectors()
 end))
 track(Players.PlayerRemoving:Connect(function(player)
 	State.clearKillFriend(player)
-	task.defer(refreshPlayerSelectors)
+	task.defer(__FGRoot.refreshPlayerSelectors)
 end))
 
 -- Native Crefy replacement for the old floating mobile fly buttons.
@@ -21698,8 +21699,8 @@ end))
 do
     local mobileFlyUpControl
     local mobileFlyDownControl
-    CrefyUI.uiAddSection(Pages.Misc, "Mobile Fly Controls")
-    mobileFlyUpControl = CrefyUI.uiAddToggle(Pages.Misc, "Fly Up (Mobile)", function(enabled)
+    __FGRoot.CrefyUI.uiAddSection(Pages.Misc, "Mobile Fly Controls")
+    mobileFlyUpControl = __FGRoot.CrefyUI.uiAddToggle(Pages.Misc, "Fly Up (Mobile)", function(enabled)
         if enabled and not State.fly then return false end
         mobileFlyUp = enabled == true
         if mobileFlyUp and mobileFlyDown then
@@ -21708,7 +21709,7 @@ do
         end
         return true
     end)
-    mobileFlyDownControl = CrefyUI.uiAddToggle(Pages.Misc, "Fly Down (Mobile)", function(enabled)
+    mobileFlyDownControl = __FGRoot.CrefyUI.uiAddToggle(Pages.Misc, "Fly Down (Mobile)", function(enabled)
         if enabled and not State.fly then return false end
         mobileFlyDown = enabled == true
         if mobileFlyDown and mobileFlyUp then
@@ -21854,7 +21855,7 @@ track(RunService.Heartbeat:Connect(function()
 	end
 end))
 
-local function restoreAfterDeath(character)
+__FGRoot.restoreAfterDeath = function(character)
 	local snapshot = State.deathResumeSnapshot
 	if not snapshot or snapshot.character == character then return end
 	State.deathResumeSnapshot = nil
@@ -21887,7 +21888,7 @@ local function restoreAfterDeath(character)
 			if not State.running or LP.Character ~= character or humanoid.Health <= 0 then break end
 			local pageName = tostring(saved.key):match("^([^|]+)|") or ""
 			local control = State.profileControls and State.profileControls[saved.key]
-			local restartSafe = CrefyUI.RESPAWN_RESTART_SAFE_PAGES[pageName] == true
+			local restartSafe = __FGRoot.CrefyUI.RESPAWN_RESTART_SAFE_PAGES[pageName] == true
 			if control and control.ProfileKind == "toggle" and restartSafe
 				and not (exclusiveMode and farmPages[pageName]) then
 				local okGet, enabled = pcall(control.Get, control)
@@ -21945,7 +21946,7 @@ track(LP.CharacterAdded:Connect(function(character)
 	if not State.spy then
 		resetCamera()
 	end
-	restoreAfterDeath(character)
+	__FGRoot.restoreAfterDeath(character)
 end))
 
 do
@@ -21982,7 +21983,7 @@ for _, object in ipairs(getHubUIDescendants()) do
 	styleHubText(object)
 end
 
-local UiMotion = {
+__FGRoot.UiMotion = {
 	minimized = false,
 	dragging = false,
 	dragTarget = nil,
@@ -21999,7 +22000,7 @@ local UiMotion = {
 }
 
 
-local function floatMiniIcon(position)
+__FGRoot.floatMiniIcon = function(position)
 	if not MiniIcon or not MiniIcon.Parent then return end
 	MiniIcon.Parent = ScreenGui
 	MiniIcon.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -22012,7 +22013,7 @@ local function floatMiniIcon(position)
 end
 
 
-local function dockMiniIcon()
+__FGRoot.dockMiniIcon = function()
 	if not MiniIcon then return end
 	MiniIcon.Parent = MiniBubble
 	MiniIcon.AnchorPoint = Vector2.zero
@@ -22022,7 +22023,7 @@ local function dockMiniIcon()
 end
 
 
-local function cancelTweenList(list)
+__FGRoot.cancelTweenList = function(list)
 	for index, tween in ipairs(list) do
 		pcall(tween.Cancel, tween)
 		list[index] = nil
@@ -22030,17 +22031,17 @@ local function cancelTweenList(list)
 end
 
 
-local function moveHub(position)
+__FGRoot.moveHub = function(position)
 	AnimationRoot.Position = position
 end
 
 
-local function moveBubble(position)
+__FGRoot.moveBubble = function(position)
 	MiniBubble.Position = position
 end
 
 
-local function clampUiPosition(centerX, centerY, width, height)
+__FGRoot.clampUiPosition = function(centerX, centerY, width, height)
 	local viewport = viewportSize()
 	local halfWidth = math.min(width * 0.5, viewport.X * 0.5)
 	local halfHeight = math.min(height * 0.5, viewport.Y * 0.5)
@@ -22052,7 +22053,7 @@ local function clampUiPosition(centerX, centerY, width, height)
 end
 
 
-local function freeBubblePosition(startPosition, delta)
+__FGRoot.freeBubblePosition = function(startPosition, delta)
 	return UDim2.new(
 		startPosition.X.Scale,
 		startPosition.X.Offset + delta.X,
@@ -22064,22 +22065,22 @@ end
 
 State.rememberMiniBubblePosition = function()
 	if MiniBubble and MiniBubble.Parent then
-		UiMotion.bubblePosition = MiniBubble.Position
+		__FGRoot.UiMotion.bubblePosition = MiniBubble.Position
 	end
 end
 
 
-setMinimized = function() end
+__FGRoot.setMinimized = function() end
 
 do
 	local actionService = game:GetService("ContextActionService")
 	pcall(actionService.UnbindAction, actionService, "FG_Freecam")
 	actionService:BindActionAtPriority("FG_Freecam", function(_, inputState)
-		if inputState == Enum.UserInputState.Begin and not waitingForMinimizeKey
+		if inputState == Enum.UserInputState.Begin and not __FGRoot.waitingForMinimizeKey
 			and not UserInputService:GetFocusedTextBox() and State.miscFreecamToggle then
 			State.miscFreecamToggle:Set(not State.miscFreecamToggle:Get())
 		end
-		if waitingForMinimizeKey or UserInputService:GetFocusedTextBox() then
+		if __FGRoot.waitingForMinimizeKey or UserInputService:GetFocusedTextBox() then
 			return Enum.ContextActionResult.Pass
 		end
 		return Enum.ContextActionResult.Sink
@@ -22093,105 +22094,105 @@ track(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not UserInputService.KeyboardEnabled or input.UserInputType ~= Enum.UserInputType.Keyboard then
 		return
 	end
-	if waitingForMinimizeKey then
-		waitingForMinimizeKey = false
+	if __FGRoot.waitingForMinimizeKey then
+		__FGRoot.waitingForMinimizeKey = false
 		if input.KeyCode ~= Enum.KeyCode.Escape and input.KeyCode ~= Enum.KeyCode.Unknown then
-			minimizeKey = input.KeyCode
-			State.saveMinimizeKey(minimizeKey)
+			__FGRoot.minimizeKey = input.KeyCode
+			State.saveMinimizeKey(__FGRoot.minimizeKey)
 		end
-		if minimizeKeyButton and minimizeKeyButton.Parent then
-			minimizeKeyButton.Text = minimizeKeyText()
+		if __FGRoot.minimizeKeyButton and __FGRoot.minimizeKeyButton.Parent then
+			__FGRoot.minimizeKeyButton.Text = __FGRoot.minimizeKeyText()
 		end
 		return
 	end
 	if gameProcessed or UserInputService:GetFocusedTextBox() then
 		return
 	end
-	if input.KeyCode == minimizeKey then
-		setMinimized(not UiMotion.minimized)
+	if input.KeyCode == __FGRoot.minimizeKey then
+		__FGRoot.setMinimized(not __FGRoot.UiMotion.minimized)
 	end
 end))
 
 track(DragHandle.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		UiMotion.dragging = true
-		UiMotion.dragTarget = "main"
-		UiMotion.dragStart = input.Position
-		UiMotion.startPosition = AnimationRoot.Position
-		UiMotion.dragDistance = 0
+		__FGRoot.UiMotion.dragging = true
+		__FGRoot.UiMotion.dragTarget = "main"
+		__FGRoot.UiMotion.dragStart = input.Position
+		__FGRoot.UiMotion.startPosition = AnimationRoot.Position
+		__FGRoot.UiMotion.dragDistance = 0
 	end
 end))
 
 track(MiniDragHandle.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		UiMotion.dragging = true
-		UiMotion.dragTarget = "bubble"
-		UiMotion.dragStart = input.Position
-		UiMotion.startPosition = MiniBubble.Position
-		UiMotion.dragDistance = 0
+		__FGRoot.UiMotion.dragging = true
+		__FGRoot.UiMotion.dragTarget = "bubble"
+		__FGRoot.UiMotion.dragStart = input.Position
+		__FGRoot.UiMotion.startPosition = MiniBubble.Position
+		__FGRoot.UiMotion.dragDistance = 0
 	end
 end))
 
 track(UserInputService.InputChanged:Connect(function(input)
-	if not UiMotion.dragging or not UiMotion.dragStart or not UiMotion.startPosition then
+	if not __FGRoot.UiMotion.dragging or not __FGRoot.UiMotion.dragStart or not __FGRoot.UiMotion.startPosition then
 		return
 	end
 	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
 		return
 	end
-	local delta = input.Position - UiMotion.dragStart
-	UiMotion.dragDistance = delta.Magnitude
-	if UiMotion.dragTarget == "bubble" then
-		moveBubble(freeBubblePosition(UiMotion.startPosition, delta))
+	local delta = input.Position - __FGRoot.UiMotion.dragStart
+	__FGRoot.UiMotion.dragDistance = delta.Magnitude
+	if __FGRoot.UiMotion.dragTarget == "bubble" then
+		__FGRoot.moveBubble(__FGRoot.freeBubblePosition(__FGRoot.UiMotion.startPosition, delta))
 	else
 		local viewport = viewportSize()
-		local centerX = viewport.X * UiMotion.startPosition.X.Scale + UiMotion.startPosition.X.Offset + delta.X
-		local centerY = viewport.Y * UiMotion.startPosition.Y.Scale + UiMotion.startPosition.Y.Offset + delta.Y
-		moveHub(clampUiPosition(centerX, centerY, hubWidth, hubHeight))
+		local centerX = viewport.X * __FGRoot.UiMotion.startPosition.X.Scale + __FGRoot.UiMotion.startPosition.X.Offset + delta.X
+		local centerY = viewport.Y * __FGRoot.UiMotion.startPosition.Y.Scale + __FGRoot.UiMotion.startPosition.Y.Offset + delta.Y
+		__FGRoot.moveHub(__FGRoot.clampUiPosition(centerX, centerY, hubWidth, hubHeight))
 	end
 end))
 
 track(UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		if UiMotion.dragging and UiMotion.dragDistance >= 8 then
-			if UiMotion.dragTarget == "bubble" then
+		if __FGRoot.UiMotion.dragging and __FGRoot.UiMotion.dragDistance >= 8 then
+			if __FGRoot.UiMotion.dragTarget == "bubble" then
 				State.rememberMiniBubblePosition()
 			else
-				UiMotion.expandedPosition = AnimationRoot.Position
+				__FGRoot.UiMotion.expandedPosition = AnimationRoot.Position
 			end
 		end
-		UiMotion.dragging = false
-		UiMotion.dragTarget = nil
-		UiMotion.dragStart = nil
-		UiMotion.startPosition = nil
+		__FGRoot.UiMotion.dragging = false
+		__FGRoot.UiMotion.dragTarget = nil
+		__FGRoot.UiMotion.dragStart = nil
+		__FGRoot.UiMotion.startPosition = nil
 	end
 end))
 
 track(DragHandle.Activated:Connect(function()
-	if UiMotion.dragDistance < 8 then
-		setMinimized(true)
+	if __FGRoot.UiMotion.dragDistance < 8 then
+		__FGRoot.setMinimized(true)
 	end
 end))
 
 track(MiniDragHandle.Activated:Connect(function()
-	if UiMotion.dragDistance < 8 then
-		setMinimized(not UiMotion.minimized)
+	if __FGRoot.UiMotion.dragDistance < 8 then
+		__FGRoot.setMinimized(not __FGRoot.UiMotion.minimized)
 	end
 end))
 
 
 shutdown = function(immediate, guiDestroying)
-	if UiMotion.shuttingDown then
+	if __FGRoot.UiMotion.shuttingDown then
 		return
 	end
-	UiMotion.shuttingDown = true
+	__FGRoot.UiMotion.shuttingDown = true
 	State.shuttingDown = true
-	if UiMotion.entranceRootTween then
-		pcall(UiMotion.entranceRootTween.Cancel, UiMotion.entranceRootTween)
-		UiMotion.entranceRootTween = nil
+	if __FGRoot.UiMotion.entranceRootTween then
+		pcall(__FGRoot.UiMotion.entranceRootTween.Cancel, __FGRoot.UiMotion.entranceRootTween)
+		__FGRoot.UiMotion.entranceRootTween = nil
 	end
-	cancelTweenList(UiMotion.entranceFrameTweens)
-	cancelTweenList(UiMotion.minimizeTweens)
+	__FGRoot.cancelTweenList(__FGRoot.UiMotion.entranceFrameTweens)
+	__FGRoot.cancelTweenList(__FGRoot.UiMotion.minimizeTweens)
 	State.running = false
 	for _, callback in ipairs(cleanupActions) do
 		pcall(callback)
@@ -22200,7 +22201,7 @@ shutdown = function(immediate, guiDestroying)
 	if Env.Young0xFG100 == Controller then
 		Env.Young0xFG100 = nil
 	end
-	if immediate or CrefyEnabled then
+	if immediate or __FGRoot.CrefyEnabled then
 		if not guiDestroying and ScreenGui and ScreenGui.Parent then
 			ScreenGui:Destroy()
 		end
@@ -22264,12 +22265,12 @@ State.refreshResponsiveLayout = function()
 	local viewport = viewportSize()
 	local centerX = viewport.X * AnimationRoot.Position.X.Scale + AnimationRoot.Position.X.Offset
 	local centerY = viewport.Y * AnimationRoot.Position.Y.Scale + AnimationRoot.Position.Y.Offset
-	UiMotion.expandedPosition = clampUiPosition(centerX, centerY, hubWidth, hubHeight)
-	if not UiMotion.minimized then AnimationRoot.Position = UiMotion.expandedPosition end
+	__FGRoot.UiMotion.expandedPosition = __FGRoot.clampUiPosition(centerX, centerY, hubWidth, hubHeight)
+	if not __FGRoot.UiMotion.minimized then AnimationRoot.Position = __FGRoot.UiMotion.expandedPosition end
 	local bubbleX = viewport.X * MiniBubble.Position.X.Scale + MiniBubble.Position.X.Offset
 	local bubbleY = viewport.Y * MiniBubble.Position.Y.Scale + MiniBubble.Position.Y.Offset
-	MiniBubble.Position = clampUiPosition(bubbleX, bubbleY, MiniBubble.AbsoluteSize.X, MiniBubble.AbsoluteSize.Y)
-	UiMotion.bubblePosition = MiniBubble.Position
+	MiniBubble.Position = __FGRoot.clampUiPosition(bubbleX, bubbleY, MiniBubble.AbsoluteSize.X, MiniBubble.AbsoluteSize.Y)
+	__FGRoot.UiMotion.bubblePosition = MiniBubble.Position
 	return true
 end
 State.responsiveSerial = 0
@@ -22286,7 +22287,7 @@ State.bindResponsiveCamera = function()
 end
 State.bindResponsiveCamera()
 track(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(State.bindResponsiveCamera))
-Controller.SetMinimized = setMinimized
+Controller.SetMinimized = __FGRoot.setMinimized
 Controller.SetHideFrames = setHideFrames
 Controller.SetFastPunch = setFastPunch
 Controller.SetAutoWinBrawl = State.setAutoWinBrawl
@@ -22303,7 +22304,7 @@ Controller.Inventory = State.Inventory
 Controller.Profiles = State.Profiles
 Controller.BossFarm = State.bossFarm
 Controller.SetTab = function(name)
-	if not Pages[name] and not CrefyTabs[name] then return false end
+	if not Pages[name] and not __FGRoot.CrefyTabs[name] then return false end
 	refreshTabs(name)
 	return true
 end
@@ -22391,7 +22392,7 @@ Controller.SetFastFarm = function(mode)
 	FastFarm:Stop(true)
 	return true
 end
-Controller.MinimizeKeyName = minimizeKeyName
+Controller.MinimizeKeyName = __FGRoot.minimizeKeyName
 Controller.UnlockAutoLift = unlockNativeAutoLift
 pageSetup = function()
 do
@@ -22404,28 +22405,28 @@ do
     local shellStroke=State.motionShellStroke
     if art then art.Size=UDim2.fromScale(1,1); art.Position=UDim2.new() end
     local function restoreSavedNavigation()
-        local savedTab=UiMotion.savedTab
+        local savedTab=__FGRoot.UiMotion.savedTab
         if not savedTab or not Pages[savedTab] then return end
         local page=Pages[savedTab]
-        local pagePosition=UiMotion.savedTabScroll or Vector2.zero
+        local pagePosition=__FGRoot.UiMotion.savedTabScroll or Vector2.zero
         State.pageScrollPositions=State.pageScrollPositions or {}
         State.pageScrollPositions[savedTab]=pagePosition
         State.currentTab=savedTab
         for name,other in pairs(Pages) do
             if name==savedTab then
-                if other.Parent==MotionPageCache then other.Parent=MotionPageHomes[other] or Content end
+                if other.Parent==__FGRoot.MotionPageCache then other.Parent=__FGRoot.MotionPageHomes[other] or Content end
                 other.Position=UDim2.fromOffset(0,0)
                 other.Visible=true
             else
                 other.Visible=false
-                if other.Parent~=MotionPageCache then
-                    MotionPageHomes[other]=other.Parent
-                    other.Parent=MotionPageCache
+                if other.Parent~=__FGRoot.MotionPageCache then
+                    __FGRoot.MotionPageHomes[other]=other.Parent
+                    other.Parent=__FGRoot.MotionPageCache
                 end
             end
         end
         page.CanvasPosition=pagePosition
-        TabBar.CanvasPosition=UiMotion.savedTabBarScroll or TabBar.CanvasPosition
+        TabBar.CanvasPosition=__FGRoot.UiMotion.savedTabBarScroll or TabBar.CanvasPosition
     end
     local function shellStyle(position,size,radius,transparency)
         if not shell then return end
@@ -22437,41 +22438,41 @@ do
         if shellArtCorner then shellArtCorner.CornerRadius=UDim.new(0,radius) end
         if shellStroke then shellStroke.Thickness=1.4; shellStroke.Transparency=.14 end
     end
-    setMinimized=function(value)
+    __FGRoot.setMinimized=function(value)
         value=value==true
-        if CrefyEnabled and CrefyWindow then
-            if CrefyWindow.SetMinimized then
-                pcall(function() CrefyWindow:SetMinimized(value) end)
+        if __FGRoot.CrefyEnabled and __FGRoot.CrefyWindow then
+            if __FGRoot.CrefyWindow.SetMinimized then
+                pcall(function() __FGRoot.CrefyWindow:SetMinimized(value) end)
             end
-            UiMotion.minimized=value
+            __FGRoot.UiMotion.minimized=value
             State.uiMoving=false
             return
         end
-        if UiMotion.minimized==value or UiMotion.shuttingDown then return end
+        if __FGRoot.UiMotion.minimized==value or __FGRoot.UiMotion.shuttingDown then return end
         if value then
-            UiMotion.savedTab=State.currentTab
-            UiMotion.savedTabScroll=State.currentTab and Pages[State.currentTab] and Pages[State.currentTab].CanvasPosition or Vector2.zero
-            UiMotion.savedTabBarScroll=TabBar.CanvasPosition
-            UiMotion.savedExpandedPosition=AnimationRoot.Position
-            UiMotion.expandedPosition=AnimationRoot.Position
-        elseif UiMotion.savedTab and Pages[UiMotion.savedTab] then
+            __FGRoot.UiMotion.savedTab=State.currentTab
+            __FGRoot.UiMotion.savedTabScroll=State.currentTab and Pages[State.currentTab] and Pages[State.currentTab].CanvasPosition or Vector2.zero
+            __FGRoot.UiMotion.savedTabBarScroll=TabBar.CanvasPosition
+            __FGRoot.UiMotion.savedExpandedPosition=AnimationRoot.Position
+            __FGRoot.UiMotion.expandedPosition=AnimationRoot.Position
+        elseif __FGRoot.UiMotion.savedTab and Pages[__FGRoot.UiMotion.savedTab] then
             restoreSavedNavigation()
         end
-        if not UiMotion.minimized and not State.uiMoving then UiMotion.expandedPosition=AnimationRoot.Position end
-        UiMotion.transitionId=UiMotion.transitionId+1
-        local id=UiMotion.transitionId
-        UiMotion.minimized=value
+        if not __FGRoot.UiMotion.minimized and not State.uiMoving then __FGRoot.UiMotion.expandedPosition=AnimationRoot.Position end
+        __FGRoot.UiMotion.transitionId=__FGRoot.UiMotion.transitionId+1
+        local id=__FGRoot.UiMotion.transitionId
+        __FGRoot.UiMotion.minimized=value
         State.uiMoving=true
-        if UiMotion.entranceRootTween then UiMotion.entranceRootTween:Cancel() end
-        cancelTweenList(UiMotion.entranceFrameTweens)
-        cancelTweenList(UiMotion.minimizeTweens)
+        if __FGRoot.UiMotion.entranceRootTween then __FGRoot.UiMotion.entranceRootTween:Cancel() end
+        __FGRoot.cancelTweenList(__FGRoot.UiMotion.entranceFrameTweens)
+        __FGRoot.cancelTweenList(__FGRoot.UiMotion.minimizeTweens)
         local shellWasVisible=shell and shell.Visible==true
         local origin=ScreenGui.AbsolutePosition
         local center=MiniBubble.AbsolutePosition+MiniBubble.AbsoluteSize*.5-origin
         local bubbleTarget=UDim2.fromOffset(center.X,center.Y)
         local bubbleSize=UDim2.fromOffset(math.max(20,MiniBubble.AbsoluteSize.X-8),math.max(20,MiniBubble.AbsoluteSize.Y-8))
         local bubbleRadius=math.max(10,math.floor((MiniBubble.AbsoluteSize.Y-8)*.5))
-        local expandedTarget=UiMotion.savedExpandedPosition or UiMotion.expandedPosition
+        local expandedTarget=__FGRoot.UiMotion.savedExpandedPosition or __FGRoot.UiMotion.expandedPosition
         local expandedSize=UDim2.fromOffset(hubWidth,hubHeight)
         AnimationRoot.Position=expandedTarget
         scale.Scale=1
@@ -22484,13 +22485,13 @@ do
                 if veil then veil.Visible=false end
                 local reverseInfo=TweenInfo.new(.22,Enum.EasingStyle.Quint,Enum.EasingDirection.InOut)
                 local reverse=TweenService:Create(shell,reverseInfo,{Position=bubbleTarget,Size=bubbleSize,BackgroundTransparency=.08})
-                UiMotion.minimizeTweens={reverse}
+                __FGRoot.UiMotion.minimizeTweens={reverse}
                 reverse:Play()
-                if shellCorner then local t=TweenService:Create(shellCorner,reverseInfo,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(UiMotion.minimizeTweens,t); t:Play() end
-                if shellArtCorner then local t=TweenService:Create(shellArtCorner,reverseInfo,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(UiMotion.minimizeTweens,t); t:Play() end
+                if shellCorner then local t=TweenService:Create(shellCorner,reverseInfo,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(__FGRoot.UiMotion.minimizeTweens,t); t:Play() end
+                if shellArtCorner then local t=TweenService:Create(shellArtCorner,reverseInfo,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(__FGRoot.UiMotion.minimizeTweens,t); t:Play() end
                 local reversed; reversed=reverse.Completed:Connect(function(state)
                     reversed:Disconnect()
-                    if state~=Enum.PlaybackState.Completed or id~=UiMotion.transitionId then return end
+                    if state~=Enum.PlaybackState.Completed or id~=__FGRoot.UiMotion.transitionId then return end
                     shell.Visible=false
                     State.uiMoving=false
                 end)
@@ -22504,11 +22505,11 @@ do
             local coverInfo=TweenInfo.new(.065,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
             local cover=veil and TweenService:Create(veil,coverInfo,{BackgroundTransparency=.02})
             local coverArt=art and TweenService:Create(art,coverInfo,{ImageTransparency=.50})
-            UiMotion.minimizeTweens={cover,coverArt}
+            __FGRoot.UiMotion.minimizeTweens={cover,coverArt}
             if cover then cover:Play() end
             if coverArt then coverArt:Play() end
             task.delay(.06,function()
-                if id~=UiMotion.transitionId or not UiMotion.minimized or not State.running then return end
+                if id~=__FGRoot.UiMotion.transitionId or not __FGRoot.UiMotion.minimized or not State.running then return end
                 if not shell then AnimationRoot.Visible=false; State.uiMoving=false; return end
                 shellStyle(expandedTarget,expandedSize,12,.02)
                 shell.Visible=true
@@ -22516,13 +22517,13 @@ do
                 if veil then veil.Visible=false end
                 local info=TweenInfo.new(.27,Enum.EasingStyle.Quint,Enum.EasingDirection.InOut)
                 local movement=TweenService:Create(shell,info,{Position=bubbleTarget,Size=bubbleSize,BackgroundTransparency=.08})
-                UiMotion.minimizeTweens={movement}
+                __FGRoot.UiMotion.minimizeTweens={movement}
                 movement:Play()
-                if shellCorner then local t=TweenService:Create(shellCorner,info,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(UiMotion.minimizeTweens,t); t:Play() end
-                if shellArtCorner then local t=TweenService:Create(shellArtCorner,info,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(UiMotion.minimizeTweens,t); t:Play() end
+                if shellCorner then local t=TweenService:Create(shellCorner,info,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(__FGRoot.UiMotion.minimizeTweens,t); t:Play() end
+                if shellArtCorner then local t=TweenService:Create(shellArtCorner,info,{CornerRadius=UDim.new(0,bubbleRadius)}); table.insert(__FGRoot.UiMotion.minimizeTweens,t); t:Play() end
                 local done; done=movement.Completed:Connect(function(state)
                     done:Disconnect()
-                    if state~=Enum.PlaybackState.Completed or id~=UiMotion.transitionId then return end
+                    if state~=Enum.PlaybackState.Completed or id~=__FGRoot.UiMotion.transitionId then return end
                     shell.Visible=false
                     State.uiMoving=false
                 end)
@@ -22535,16 +22536,16 @@ do
                 if veil then
                     veil.Visible=true
                     local reveal=TweenService:Create(veil,TweenInfo.new(.08,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{BackgroundTransparency=1})
-                    UiMotion.minimizeTweens={reveal}
+                    __FGRoot.UiMotion.minimizeTweens={reveal}
                     reveal:Play()
                 end
                 if art then
                     local revealArt=TweenService:Create(art,TweenInfo.new(.08,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{ImageTransparency=1})
-                    table.insert(UiMotion.minimizeTweens,revealArt)
+                    table.insert(__FGRoot.UiMotion.minimizeTweens,revealArt)
                     revealArt:Play()
                 end
                 task.delay(.085,function()
-                    if id~=UiMotion.transitionId or UiMotion.minimized then return end
+                    if id~=__FGRoot.UiMotion.transitionId or __FGRoot.UiMotion.minimized then return end
                     if veil then veil.Visible=false end
                     State.uiMoving=false
                 end)
@@ -22564,18 +22565,18 @@ do
             shell.Visible=true
             local info=TweenInfo.new(.30,Enum.EasingStyle.Quint,Enum.EasingDirection.Out)
             local movement=TweenService:Create(shell,info,{Position=expandedTarget,Size=expandedSize,BackgroundTransparency=.02})
-            UiMotion.minimizeTweens={movement}
+            __FGRoot.UiMotion.minimizeTweens={movement}
             movement:Play()
-            if shellCorner then local t=TweenService:Create(shellCorner,info,{CornerRadius=UDim.new(0,12)}); table.insert(UiMotion.minimizeTweens,t); t:Play() end
-            if shellArtCorner then local t=TweenService:Create(shellArtCorner,info,{CornerRadius=UDim.new(0,12)}); table.insert(UiMotion.minimizeTweens,t); t:Play() end
+            if shellCorner then local t=TweenService:Create(shellCorner,info,{CornerRadius=UDim.new(0,12)}); table.insert(__FGRoot.UiMotion.minimizeTweens,t); t:Play() end
+            if shellArtCorner then local t=TweenService:Create(shellArtCorner,info,{CornerRadius=UDim.new(0,12)}); table.insert(__FGRoot.UiMotion.minimizeTweens,t); t:Play() end
             local done; done=movement.Completed:Connect(function(state)
                 done:Disconnect()
-                if state~=Enum.PlaybackState.Completed or id~=UiMotion.transitionId or not State.running then return end
+                if state~=Enum.PlaybackState.Completed or id~=__FGRoot.UiMotion.transitionId or not State.running then return end
                 task.defer(function()
-                    if id~=UiMotion.transitionId or UiMotion.minimized then return end
+                    if id~=__FGRoot.UiMotion.transitionId or __FGRoot.UiMotion.minimized then return end
                     restoreSavedNavigation()
                     RunService.RenderStepped:Wait()
-                    if id~=UiMotion.transitionId or UiMotion.minimized then return end
+                    if id~=__FGRoot.UiMotion.transitionId or __FGRoot.UiMotion.minimized then return end
                     restoreSavedNavigation()
                     AnimationRoot.Position=expandedTarget
                     AnimationRoot.Visible=true
@@ -22583,11 +22584,11 @@ do
                     local revealInfo=TweenInfo.new(.11,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
                     local reveal=veil and TweenService:Create(veil,revealInfo,{BackgroundTransparency=1})
                     local revealArt=art and TweenService:Create(art,revealInfo,{ImageTransparency=1})
-                    UiMotion.minimizeTweens={reveal,revealArt}
+                    __FGRoot.UiMotion.minimizeTweens={reveal,revealArt}
                     if reveal then reveal:Play() end
                     if revealArt then revealArt:Play() end
                     task.delay(.115,function()
-                        if id~=UiMotion.transitionId or UiMotion.minimized then return end
+                        if id~=__FGRoot.UiMotion.transitionId or __FGRoot.UiMotion.minimized then return end
                         if veil then veil.Visible=false end
                         State.uiMoving=false
                     end)
@@ -22595,15 +22596,15 @@ do
             end)
         end
     end
-    Controller.SetMinimized=setMinimized
-    Controller.IsMinimized=function() return UiMotion.minimized end
+    Controller.SetMinimized=__FGRoot.setMinimized
+    Controller.IsMinimized=function() return __FGRoot.UiMotion.minimized end
 end
 
 do
     local rows={}
     local PetMomentum=FastFarm.PetMomentum
     local page=Pages["Pet Momentum"]
-    CrefyUI.uiAddSection(page,"Mascotas equipadas")
+    __FGRoot.CrefyUI.uiAddSection(page,"Mascotas equipadas")
     local holder=Instance.new("Frame")
     holder.Name="MomentumPetGrid"
     holder.BackgroundTransparency=1
@@ -22626,7 +22627,7 @@ do
         card.LayoutOrder=i
         card.Visible=false
         card.Parent=holder
-        CrefyUI.styleRow(card,44)
+        __FGRoot.CrefyUI.styleRow(card,44)
         local title=Instance.new("TextLabel")
         title.BackgroundTransparency=1
         title.BorderSizePixel=0
@@ -22821,7 +22822,7 @@ AnimationRoot.Position=UDim2.fromScale(.5,.5)
 MainFrame.Size=UDim2.fromOffset(hubWidth-2,hubHeight-2)
 Border.Size=UDim2.fromOffset(hubWidth,hubHeight)
 Shadow.Size=UDim2.fromOffset(hubWidth,hubHeight)
-UiMotion.expandedPosition=AnimationRoot.Position
+__FGRoot.UiMotion.expandedPosition=AnimationRoot.Position
 
 RunService.Heartbeat:Wait()
 TabBar.CanvasSize = UDim2.fromOffset(tabLayout.AbsoluteContentSize.X + 14, 0)
@@ -22866,15 +22867,15 @@ State.resume = nil
 State.setLanguage(State.initialLanguage or "es")
 State.languageSelector:SetValue(({es="Español",en="English",pt="Português",ar="العربية"})[State.language] or "Español")
 
-if CrefyEnabled then
+if __FGRoot.CrefyEnabled then
     -- The former custom UI is now only a hidden compatibility model. All user-facing
     -- tabs and controls live in Crefy, so no legacy ScreenGui is rendered.
     pcall(function() ScreenGui.Enabled = false end)
     refreshTabs((State.currentTab and Pages[State.currentTab]) and State.currentTab or "Dios Te ama ❤")
-    if CrefySaveManager and not State.resumeApplied then
+    if __FGRoot.CrefySaveManager and not State.resumeApplied then
         task.defer(function()
-            if State.running and CrefySaveManager and not State.resumeApplied then
-                local ok, err = pcall(function() CrefySaveManager:LoadAutoloadConfig() end)
+            if State.running and __FGRoot.CrefySaveManager and not State.resumeApplied then
+                local ok, err = pcall(function() __FGRoot.CrefySaveManager:LoadAutoloadConfig() end)
                 if not ok then warn("[FG100] Crefy autoload config failed: " .. tostring(err)) end
             end
         end)
