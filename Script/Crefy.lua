@@ -62281,10 +62281,10 @@ end
 end
 do
 local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
-local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Attack controls the minimum interval between shots; Hide controls how long the server CFrame stays in the void after a shot.",Config={"Ragebot","VoidSpam","Enabled"}})
+local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"}})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
-voidSpamGroup:AddSlider({Label="Attack",Tooltip="Delay between shots. Range: 0.1–1 second.",Min=0.1,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
-voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the void phase after a shot. Default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
+voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.1–1 second.",Min=0.1,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
+voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
 local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
@@ -67072,6 +67072,7 @@ local function ragebotVoidSpamState()
     if type(state) ~= "table" then
         state = {
             activeUntil = 0, nextAttackAt = 0, lastShotAt = 0, phase = "attack",
+            cycleModelVersion = 2, cycleInitialized = false, phaseStartedAt = 0,
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil, pendingShotRequestCount = nil, pendingShotDeadline = 0,
         }
@@ -67093,6 +67094,28 @@ local function ragebotVoidSpamState()
     sanitizeClock("lastShotAt", 5)
     sanitizeClock("attackWindowExpiresAt", 5)
     if state.phase ~= "hide" then state.phase = "attack" end
+    if state.cycleModelVersion ~= 2 then
+        -- Old versions interpreted Attack as a per-shot cooldown and entered Hide
+        -- after every request. Start a fresh, unambiguous phase cycle on upgrade.
+        state.cycleModelVersion = 2
+        state.cycleInitialized = false
+        state.phaseStartedAt = 0
+        state.phase = "attack"
+        state.activeUntil = 0
+        state.nextAttackAt = 0
+        state.awaitingShotAck = false
+        state.pendingShotItem = nil
+        state.pendingShotAmmo = nil
+        state.pendingShotRequestCount = nil
+        state.pendingShotDeadline = 0
+        state.fakePositionActive = false
+        state.fakePositionOffsetX = nil
+        state.fakePositionOffsetZ = nil
+    end
+    if type(state.cycleInitialized) ~= "boolean" then state.cycleInitialized = false end
+    if not isFiniteClock(state.activeUntil) or state.activeUntil <= 0 then
+        state.cycleInitialized = false
+    end
     if type(state.attackWindowPending) ~= "boolean" then state.attackWindowPending = false end
     if type(state.awaitingShotAck) ~= "boolean" then state.awaitingShotAck = false end
     if not isFiniteClock(state.pendingShotDeadline)
@@ -67119,6 +67142,9 @@ local function ragebotVoidSpamReset(state)
     state.nextAttackAt = 0
     state.lastShotAt = 0
     state.phase = "attack"
+    state.cycleModelVersion = 2
+    state.cycleInitialized = false
+    state.phaseStartedAt = 0
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
     state.fakePositionActive = false
@@ -67150,18 +67176,69 @@ end
 
 local ragebotFiniteNumber
 
-local function ragebotVoidSpamConfirmShot()
-    local enabled, attack, hide = ragebotVoidSpamConfig()
-    local state = ragebotVoidSpamState()
-    local now = os.clock()
-    local activeUntil = tonumber(state.activeUntil) or 0
-    local shotAt = tonumber(state.lastShotAt)
-    if not ragebotFiniteNumber(shotAt) then shotAt = now end
-    local wasHidePhase = state.phase == "hide"
-    local keepCurrentHide = wasHidePhase
-        and ragebotFiniteNumber(activeUntil)
-        and activeUntil > now
+-- Attack is a continuous phase window, not the delay between individual shots.
+-- Hide is a separate phase window; actual shot cadence remains controlled by
+-- the weapon/ShootLock. ACK tracking is informational and never changes phases.
+local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
+    if type(state) ~= "table" then state = ragebotVoidSpamState() end
+    if not ragebotFiniteNumber(now) then now = os.clock() end
+    if not ragebotFiniteNumber(attack) then attack = 0.1 end
+    if not ragebotFiniteNumber(hide) then hide = 0.25 end
+    attack = math.clamp(attack, 0.1, 1)
+    hide = math.clamp(hide, 0.01, 1)
 
+    if state.cycleModelVersion ~= 2 then
+        state.cycleModelVersion = 2
+        state.cycleInitialized = false
+        state.phase = "attack"
+        state.activeUntil = 0
+        state.nextAttackAt = 0
+        state.awaitingShotAck = false
+        state.pendingShotItem = nil
+        state.pendingShotAmmo = nil
+        state.pendingShotRequestCount = nil
+        state.pendingShotDeadline = 0
+    end
+
+    local phaseEnd = tonumber(state.activeUntil)
+    if state.cycleInitialized ~= true or not ragebotFiniteNumber(phaseEnd) or phaseEnd <= 0 then
+        state.phase = "attack"
+        state.cycleInitialized = true
+        state.phaseStartedAt = now
+        state.activeUntil = now + attack
+        state.nextAttackAt = 0
+        state.fakePositionActive = false
+        state.fakePositionOffsetX = nil
+        state.fakePositionOffsetZ = nil
+        return state.phase
+    end
+
+    if now >= phaseEnd then
+        -- Start the newly observed phase from this update's clock. This ensures
+        -- even a very short Hide window is actually applied for its full duration
+        -- instead of being skipped when the update arrives a few milliseconds late.
+        state.phaseStartedAt = now
+        if state.phase == "attack" then
+            state.phase = "hide"
+            state.activeUntil = now + hide
+            state.fakePositionActive = true
+            state.fakePositionOffsetX = (math.random() - 0.5) * 6
+            state.fakePositionOffsetZ = 0
+        else
+            state.phase = "attack"
+            state.activeUntil = now + attack
+            state.fakePositionActive = false
+            state.fakePositionOffsetX = nil
+            state.fakePositionOffsetZ = nil
+        end
+    end
+    state.nextAttackAt = 0 -- legacy field; no longer a shot-rate gate
+    return state.phase
+end
+
+local function ragebotVoidSpamConfirmShot()
+    local enabled = ragebotVoidSpamConfig()
+    local state = ragebotVoidSpamState()
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
@@ -67169,28 +67246,12 @@ local function ragebotVoidSpamConfirmShot()
         ragebotVoidSpamReset(state)
         return
     end
-
-    -- New versions start Hide at request time. If this ACK belongs to a
-    -- pending request left by an older version, safely start Hide now.
-    if keepCurrentHide then
-        state.phase = "hide"
-        state.activeUntil = activeUntil
-    elseif not wasHidePhase then
-        state.phase = "hide"
-        state.activeUntil = now + hide
-    else
-        state.phase = "attack"
-        state.activeUntil = 0
-        state.fakePositionActive = false
-        state.fakePositionOffsetX = nil
-        state.fakePositionOffsetZ = nil
-    end
-    -- Attack is measured from request time, not from delayed ammo replication.
-    state.nextAttackAt = math.max(shotAt + attack, now)
+    -- ACK only confirms request/ammo progress. It must not end Attack early or
+    -- start Hide after a single shot; the phase scheduler owns both transitions.
 end
 
 local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfter)
-    local enabled, attack, hide = ragebotVoidSpamConfig()
+    local enabled = ragebotVoidSpamConfig()
     local state = ragebotVoidSpamState()
     local now = os.clock()
     state.lastShotAt = now
@@ -67201,41 +67262,23 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfte
         return
     end
 
-    -- Enter Hide immediately after ShootEncoded queued a request. Waiting for
-    -- replicated ammo here left the player in the attack CFrame for up to 0.8s.
-    state.phase = "hide"
-    state.activeUntil = now + hide
-    state.fakePositionActive = true
-    state.fakePositionOffsetX = (math.random() - 0.5) * 6
-    state.fakePositionOffsetZ = 0
+    -- Keep only the latest bounded ACK record. It is not allowed to gate later
+    -- shots or make the server position enter Hide during the Attack phase.
     state.awaitingShotAck = true
     state.pendingShotItem = item
     state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
     state.pendingShotRequestCount = ragebotFiniteNumber(requestCountAfter) and requestCountAfter or nil
     state.pendingShotDeadline = now + 0.8
-    state.nextAttackAt = now + attack
+    state.nextAttackAt = 0
 end
 
 local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
-    local activeUntil = tonumber(state.activeUntil) or 0
-    local shotAt = tonumber(state.lastShotAt)
-    if not ragebotFiniteNumber(shotAt) then shotAt = now end
-    local preserveHide = state.phase == "hide"
-        and ragebotFiniteNumber(activeUntil)
-        and activeUntil > now
+    if type(state) ~= "table" then state = ragebotVoidSpamState() end
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
-    if not preserveHide then
-        state.phase = "attack"
-        state.activeUntil = 0
-        state.fakePositionActive = false
-        state.fakePositionOffsetX = nil
-        state.fakePositionOffsetZ = nil
-    end
-    -- The minimum attack interval has already elapsed if ACK was delayed;
-    -- do not add another Attack delay on top of the ACK timeout.
-    state.nextAttackAt = math.max(shotAt + attack, now)
+    state.nextAttackAt = 0 -- legacy field; not used as a firing interval
+    -- Keep phase/activeUntil unchanged: an ACK timeout is not a phase change.
     return result
 end
 
@@ -67291,32 +67334,18 @@ local function ragebotVoidSpamPollShotAck(state, item, now, attack)
 end
 
 local function ragebotVoidSpamCancelShot()
-    local enabled, attack = ragebotVoidSpamConfig()
+    local enabled = ragebotVoidSpamConfig()
     local state = ragebotVoidSpamState()
-    local now = os.clock()
-    local activeUntil = tonumber(state.activeUntil) or 0
-    local preserveHide = state.phase == "hide"
-        and ragebotFiniteNumber(activeUntil)
-        and activeUntil > now
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
-    if enabled then
-        if preserveHide then
-            state.phase = "hide"
-            state.activeUntil = activeUntil
-        else
-            state.phase = "attack"
-            state.activeUntil = 0
-            state.fakePositionActive = false
-            state.fakePositionOffsetX = nil
-            state.fakePositionOffsetZ = nil
-        end
-        state.nextAttackAt = now + attack
+    state.nextAttackAt = 0
+    if not enabled then
+        ragebotVoidSpamReset(state)
     end
+    -- A failed request clears its ACK bookkeeping, but cannot manufacture a
+    -- Hide window or reset the remaining Attack window.
 end
-
-
 
 
 
@@ -67329,140 +67358,6 @@ end
 -- Reconstruct the real target head pose before PartGlue moves the local hitbox.
 -- The weak-key cache belongs to the HitboxHead instance and is only used while it
 -- remains under the same character model.
-local RAGEBOT_HEAD_ROOT_TRANSFORMS = setmetatable({}, { __mode = "k" })
-
-local function ragebotFiniteVector3(value)
-    return typeof(value) == "Vector3"
-        and type(value.X) == "number" and value.X == value.X and math.abs(value.X) < math.huge
-        and type(value.Y) == "number" and value.Y == value.Y and math.abs(value.Y) < math.huge
-        and type(value.Z) == "number" and value.Z == value.Z and math.abs(value.Z) < math.huge
-end
-
-local function ragebotResolveLiveHeadCFrame(head, root, partGlue)
-    local readOk, rootCFrame, headCFrame, headSize = pcall(function()
-        return root.CFrame, head.CFrame, head.Size
-    end)
-    if not readOk or typeof(rootCFrame) ~= "CFrame" or typeof(headCFrame) ~= "CFrame"
-        or not ragebotFiniteVector3(headSize) then
-        return nil
-    end
-
-    local modelOk, rootModel, headModel = pcall(function()
-        return root:FindFirstAncestorOfClass("Model"), head:FindFirstAncestorOfClass("Model")
-    end)
-    if not modelOk or rootModel == nil or headModel == nil or rootModel ~= headModel then
-        -- Never reconstruct a hitpoint by combining parts from different characters.
-        return nil
-    end
-
-    local glueInfo = nil
-    pcall(function()
-        local map = type(partGlue) == "table" and partGlue._glueInfoByTargetPart or nil
-        glueInfo = type(map) == "table" and map[head] or nil
-    end)
-
-    -- Prefer the original weld-relative transform when PartGlue captured it.
-    if type(glueInfo) == "table" and glueInfo.OriginalPart1 ~= nil
-        and typeof(glueInfo.OriginalPart1ToTarget) == "CFrame" then
-        local weldOk, weldPose = pcall(function()
-            return glueInfo.OriginalPart1.CFrame * glueInfo.OriginalPart1ToTarget
-        end)
-        if weldOk and typeof(weldPose) == "CFrame"
-            and (weldPose.Position - rootCFrame.Position).Magnitude <= 32 then
-            local cacheOk, rootToHead = pcall(function() return rootCFrame:ToObjectSpace(weldPose) end)
-            if cacheOk and typeof(rootToHead) == "CFrame" then
-                RAGEBOT_HEAD_ROOT_TRANSFORMS[head] = { Model = headModel, RootModel = rootModel, RootToHead = rootToHead }
-            end
-            return weldPose
-        end
-    end
-
-    local cached = RAGEBOT_HEAD_ROOT_TRANSFORMS[head]
-    if type(cached) == "table" and cached.Model == headModel and cached.RootModel == rootModel
-        and typeof(cached.RootToHead) == "CFrame" then
-        local cachedOk, cachedPose = pcall(function() return rootCFrame * cached.RootToHead end)
-        if cachedOk and typeof(cachedPose) == "CFrame"
-            and (cachedPose.Position - rootCFrame.Position).Magnitude <= 32 then
-            return cachedPose
-        end
-    end
-
-    -- If the hitbox is already at PartGlue's synthetic anchor, use the original
-    -- snapshot only when it still plausibly belongs to the current RootPart.
-    local candidate = headCFrame
-    if (candidate.Position - rootCFrame.Position).Magnitude > 32
-        and type(glueInfo) == "table" and typeof(glueInfo.OriginalCFrame) == "CFrame"
-        and (glueInfo.OriginalCFrame.Position - rootCFrame.Position).Magnitude <= 32 then
-        candidate = glueInfo.OriginalCFrame
-    end
-    if (candidate.Position - rootCFrame.Position).Magnitude > 32 then
-        return nil
-    end
-
-    local offsetOk, rootToHead = pcall(function() return rootCFrame:ToObjectSpace(candidate) end)
-    if not offsetOk or typeof(rootToHead) ~= "CFrame" or rootToHead.Position.Magnitude > 32 then
-        return nil
-    end
-    RAGEBOT_HEAD_ROOT_TRANSFORMS[head] = { Model = headModel, RootModel = rootModel, RootToHead = rootToHead }
-    local poseOk, livePose = pcall(function() return rootCFrame * rootToHead end)
-    return poseOk and typeof(livePose) == "CFrame" and livePose or nil
-end
-
-local function ragebotCaptureClientShotOrigin(sourceRoot, weapon, clientRootSnapshot)
-    local rootCFrame = typeof(clientRootSnapshot) == "CFrame" and clientRootSnapshot or nil
-    if rootCFrame == nil then
-        pcall(function()
-            if sourceRoot ~= nil and sourceRoot:IsA("BasePart") then rootCFrame = sourceRoot.CFrame end
-        end)
-    end
-    local cameraCFrame = nil
-    pcall(function()
-        local camera = workspace.CurrentCamera
-        if camera ~= nil then cameraCFrame = camera.CFrame end
-    end)
-    if typeof(rootCFrame) ~= "CFrame" and typeof(cameraCFrame) ~= "CFrame" then
-        return nil, nil
-    end
-
-    local basePosition = typeof(rootCFrame) == "CFrame" and rootCFrame.Position or cameraCFrame.Position
-    -- Match the game's crouched eye-origin offset documented by the earlier
-    -- stable shot-origin path; 1.25 studs placed the ray too high for this rig.
-    local eyePosition = typeof(rootCFrame) == "CFrame"
-        and (rootCFrame.Position + Vector3.new(0, 0.25, 0))
-        or basePosition
-    local rotation = typeof(cameraCFrame) == "CFrame" and cameraCFrame.Rotation
-        or (typeof(rootCFrame) == "CFrame" and rootCFrame.Rotation or CFrame.new().Rotation)
-    local eyeCFrame = CFrame.new(eyePosition) * rotation
-
-    local muzzlePosition = nil
-    local muzzleOk, muzzleResult = pcall(function()
-        local inner = weapon and weapon.Inner
-        local viewModel = inner and inner.ViewModel
-        if viewModel ~= nil and type(viewModel.GetMuzzlePosition) == "function" then
-            return viewModel:GetMuzzlePosition()
-        end
-        return nil
-    end)
-    if muzzleOk and ragebotFiniteVector3(muzzleResult)
-        and (muzzleResult - basePosition).Magnitude <= 64 then
-        muzzlePosition = muzzleResult
-    end
-    if muzzlePosition == nil then muzzlePosition = eyePosition end
-    return eyeCFrame, muzzlePosition
-end
-
-local function ragebotGetHeadAimLocalPoint(headSize)
-    if not ragebotFiniteVector3(headSize) or headSize.X <= 0 or headSize.Y <= 0 or headSize.Z <= 0 then
-        return nil
-    end
-    -- Aim just above the hitbox center rather than at its lower face. This is
-    -- especially important when the shooter is below the target (Underground):
-    -- a near-side intersection can otherwise land at the neck/body boundary.
-    local yOffset = math.min(headSize.Y * 0.12, headSize.Y * 0.30)
-    if yOffset <= 1e-4 then return nil end
-    return Vector3.new(0, yOffset, 0)
-end
-
 local RAGE_SHOT_ORIGIN_ABOVE = {
     ["\0"] = -9e37,
     ["\1"] = 0,
@@ -67554,14 +67449,12 @@ if desyncRecentlyDetected then
     local lastRefresh = type(track) == "table" and tonumber(track.lastHitscanGlueRefreshAt) or -math.huge
     if not ragebotFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
     local state = ragebotVoidSpamState()
-    local shotPending = ragebotVoidSpamConfig() and state.awaitingShotAck == true
-    if not shotPending and nowForGlue - lastRefresh >= 0.20 then
+    local hidePhaseActive = ragebotVoidSpamConfig() and state.phase == "hide"
+    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
         arg:ClearTeleport()
         if type(track) == "table" then track.lastHitscanGlueRefreshAt = nowForGlue end
     end
 end
-local liveHeadCFrameBeforeGlue = ragebotResolveLiveHeadCFrame(hitboxHead, targetRoot, arg._partGlue)
-local shotOriginCFrameBeforePlan, muzzlePositionBeforePlan = ragebotCaptureClientShotOrigin(arg5, arg4, arg7)
 local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
 if typeof(v120) ~= "CFrame" then
 ragebotVoidSpamReleasePendingForUnavailableTarget()
@@ -67586,54 +67479,21 @@ local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
 end
-local voidSpamEnabled = ragebotVoidSpamConfig()
+local voidSpamEnabled, voidSpamAttack, voidSpamHide = ragebotVoidSpamConfig()
 if voidSpamEnabled then
     local state = ragebotVoidSpamState()
     local now = os.clock()
-    local _, attack = ragebotVoidSpamConfig()
-    local ackStatus = ragebotVoidSpamPollShotAck(state, arg4, now, attack)
-    if ackStatus == "pending" then
-        return n, nil
-    end
-    -- Timeout/failure already clears the pending ACK. Continue through the
-    -- Hide and Attack clocks in this same planning pass: otherwise one extra
-    -- visible no-shot frame can appear between Hide and the retry.
-    if state.phase == "hide" then
-        local activeUntil = tonumber(state.activeUntil) or 0
-        if activeUntil ~= activeUntil or activeUntil == math.huge or activeUntil == -math.huge then
-            activeUntil = 0
-            state.activeUntil = 0
-        end
-        if now >= activeUntil then
-            state.phase = "attack"
-            state.activeUntil = 0
-        else
-            state.attackWindowPending = false
-            state.attackWindowExpiresAt = 0
-            return n, nil
-        end
-    end
-    local nextAttackAt = tonumber(state.nextAttackAt) or 0
-    if nextAttackAt ~= nextAttackAt or nextAttackAt == math.huge or nextAttackAt == -math.huge then
-        nextAttackAt = 0
-        state.nextAttackAt = 0
-    end
-    if now < nextAttackAt then
-        -- Do not expose the player if Hide expires before the Attack interval.
-        state.phase = "hide"
-        state.activeUntil = math.max(tonumber(state.activeUntil) or 0, nextAttackAt)
+    -- Polling an ACK must never pause the continuous Attack window.
+    ragebotVoidSpamPollShotAck(state, arg4, now, voidSpamAttack)
+    ragebotVoidSpamAdvancePhase(state, now, voidSpamAttack, voidSpamHide)
+    if state.phase == "hide" and now < (tonumber(state.activeUntil) or 0) then
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
         return n, nil
     end
-    -- The original Hooker shoot-lock is also a spatial/fire-window gate. Void
-    -- Spam must not bypass it just because its own timer has elapsed.
+    -- Attack defines a phase duration, not a minimum interval between shots.
+    -- The weapon's own cadence and ShootLock decide when another shot is legal.
     if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
-        local _, _, hide = ragebotVoidSpamConfig()
-        state.phase = "hide"
-        state.activeUntil = math.max(tonumber(state.activeUntil) or 0, now + hide)
-        state.attackWindowPending = false
-        state.attackWindowExpiresAt = 0
         return n, nil
     end
 else
@@ -67693,19 +67553,16 @@ if not targetReadOk or targetStillValid ~= true then
     ragebotVoidSpamCancelShot()
     return false
 end
-local voidSpamEnabledNow = ragebotVoidSpamConfig()
+local voidSpamEnabledNow, callbackAttack, callbackHide = ragebotVoidSpamConfig()
 if voidSpamEnabledNow then
     local state = ragebotVoidSpamState()
     local callbackNow = os.clock()
+    ragebotVoidSpamAdvancePhase(state, callbackNow, callbackAttack, callbackHide)
     local activeUntil = tonumber(state.activeUntil) or 0
-    local nextAttackAt = tonumber(state.nextAttackAt) or 0
     if not ragebotFiniteNumber(activeUntil) then activeUntil = 0 end
-    if not ragebotFiniteNumber(nextAttackAt) then nextAttackAt = 0 end
-    if state.awaitingShotAck == true
-        or (state.phase == "hide" and callbackNow < activeUntil)
-        or callbackNow < nextAttackAt then
-        -- The plan can be applied later than it was calculated. Never fire
-        -- a stale callback inside Hide or while a previous shot is pending.
+    if state.phase == "hide" and callbackNow < activeUntil then
+        -- Reject stale attack plans only when the scheduled Hide window is active.
+        -- A delayed ammo ACK alone must not pause the Attack phase.
         return false
     end
 end
@@ -67742,54 +67599,19 @@ local okSend, sendError = pcall(function()
 
 
     local okCurrentShieldState, currentShieldAimState = pcall(v117, arg3.FighterState)
-    local useShieldPayloadNow = okCurrentShieldState
-        and (currentShieldAimState == "Above" or currentShieldAimState == "Below")
-    if not okCurrentShieldState then
-        currentShieldAimState = shieldAimState
-        useShieldPayloadNow = useShieldCounterShot
-    end
-    if useShieldPayloadNow then
-        -- Keep the special encoded vertical payload only for a confirmed Riot
-        -- Shield counter. Ordinary guns, including while VoidSpam's timing state
-        -- is active, need a live head-directed shot instead of a vertical ray.
-        local useAbovePayload = currentShieldAimState ~= "Below"
-        local encodedShotOrigin = useAbovePayload and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
-        local encodedShotDirection = useAbovePayload and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
-        local shotHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
-        arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, shotHitpoint)
-    else
-        -- PartGlue may have moved HitboxHead to a synthetic anchor. Reconstruct
-        -- its real pose from RootPart/weld metadata and use the client origin
-        -- captured before _ApplyPlan changed the server-facing CFrame.
-        if typeof(shotOriginCFrameBeforePlan) ~= "CFrame"
-            or not ragebotFiniteVector3(muzzlePositionBeforePlan) then
-            error("client shot origin/muzzle snapshot is unavailable")
-        end
-        local liveHeadCFrame = ragebotResolveLiveHeadCFrame(hitboxHead, targetRoot, arg._partGlue)
-            or liveHeadCFrameBeforeGlue
-        if typeof(liveHeadCFrame) ~= "CFrame" then
-            error("live target Head pose could not be reconstructed safely")
-        end
-        local okHeadSize, headSize = pcall(function() return hitboxHead.Size end)
-        if not okHeadSize or not ragebotFiniteVector3(headSize) then
-            error("target Head size is unavailable")
-        end
-        local localHitPoint = ragebotGetHeadAimLocalPoint(headSize)
-        if not ragebotFiniteVector3(localHitPoint) or localHitPoint.Magnitude <= 1e-5 then
-            error("could not build a non-zero local aim point on target Head")
-        end
-        local worldHitPoint = liveHeadCFrame:PointToWorldSpace(localHitPoint)
-        local muzzleToHit = worldHitPoint - muzzlePositionBeforePlan
-        if not ragebotFiniteVector3(worldHitPoint) or not ragebotFiniteVector3(muzzleToHit)
-            or muzzleToHit.Magnitude <= 1e-3 then
-            error("target Head aim vector is invalid")
-        end
-        local muzzleAimCFrame = CFrame.lookAt(muzzlePositionBeforePlan, worldHitPoint)
-        arg4:ShootAt(shotOriginCFrameBeforePlan, muzzleAimCFrame, {
-            Part = hitboxHead,
-            ObjectSpace = localHitPoint,
-        })
-    end
+    if not okCurrentShieldState then currentShieldAimState = shieldAimState end
+
+    -- Restore the stable legacy downward shot angle for ordinary targets. The
+    -- prior live-muzzle/head-CFrame rewrite mixed two coordinate paths: the
+    -- shooter-origin and target ObjectSpace metadata could describe different
+    -- frames after PartGlue/Underground adjusted the server-facing pose. Keep
+    -- the known encoded transport for normal targets; only a positively
+    -- identified Riot Shield state selects the matching counter direction.
+    local useBelowPayload = currentShieldAimState == "Below"
+    local encodedShotOrigin = useBelowPayload and RAGE_SHOT_ORIGIN_BELOW or RAGE_SHOT_ORIGIN_ABOVE
+    local encodedShotDirection = useBelowPayload and RAGE_SHOT_DIRECTION_BELOW or RAGE_SHOT_DIRECTION_ABOVE
+    local shotHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
+    arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, shotHitpoint)
     local afterCount = arg4.ShotRequestCount
     if not ragebotFiniteNumber(afterCount) or afterCount <= beforeCount then
         error("ShootAt returned without incrementing Kicia ShotRequestCount")
@@ -67848,6 +67670,7 @@ local voidSpamApi = {
     Config = ragebotVoidSpamConfig,
     PollShotAck = ragebotVoidSpamPollShotAck,
     ResolveUnconfirmedShot = ragebotVoidSpamResolveUnconfirmedShot,
+    AdvancePhase = ragebotVoidSpamAdvancePhase,
     FiniteNumber = ragebotFiniteNumber,
 }
 local apiPublished, apiPublishError = pcall(rawset, _G, "__CrefyRagebotVoidSpamApi", voidSpamApi)
@@ -68000,8 +67823,8 @@ if meleeDesyncRecentlyDetected then
     local lastRefresh = type(track) == "table" and tonumber(track.lastMeleeGlueRefreshAt) or -math.huge
     if not fakePositionFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
     local state = rawget(_G, "__CrefyRagebotVoidSpamState")
-    local shotPending = type(state) == "table" and state.awaitingShotAck == true
-    if not shotPending and nowForGlue - lastRefresh >= 0.20 then
+    local hidePhaseActive = type(state) == "table" and state.phase == "hide"
+    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
         local previousSource = arg._gluedOurPart
         local partGlue = arg._partGlue
         if previousSource ~= nil and type(partGlue) == "table" and type(partGlue.Free) == "function" then
@@ -69324,15 +69147,8 @@ local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
         state.pendingShotDeadline = 0
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
-        state.phase = "attack"
-        state.activeUntil = 0
-        state.fakePositionActive = false
-        state.fakePositionOffsetX = nil
-        state.fakePositionOffsetZ = nil
-        local shotAt = tonumber(state.lastShotAt) or now
-        if type(shotAt) ~= "number" or shotAt ~= shotAt or shotAt == math.huge or shotAt == -math.huge then shotAt = now end
-        if type(attack) ~= "number" or attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
-        state.nextAttackAt = math.max(shotAt + attack, now)
+        state.nextAttackAt = 0
+        -- ACK failure must not end the Attack phase or manufacture a Hide phase.
     end
     return result or "failed"
 end
@@ -69356,6 +69172,62 @@ local function ragebotFiniteNumber(value)
         if okCall and type(result) == "boolean" then return result end
     end
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
+    local fn = ragebotGetVoidSpamApiFunction("AdvancePhase")
+    if fn ~= nil then
+        local okCall, phase = pcall(fn, state, now, attack, hide)
+        if okCall then return phase end
+    end
+    if type(state) ~= "table" then return "attack" end
+    if not ragebotFiniteNumber(now) then now = os.clock() end
+    if not ragebotFiniteNumber(attack) then attack = 0.1 end
+    if not ragebotFiniteNumber(hide) then hide = 0.25 end
+    attack = math.clamp(attack, 0.1, 1)
+    hide = math.clamp(hide, 0.01, 1)
+    local phaseEnd = tonumber(state.activeUntil)
+    if state.cycleModelVersion ~= 2 then
+        state.cycleModelVersion = 2
+        state.cycleInitialized = false
+        state.phase = "attack"
+        state.activeUntil = 0
+        state.nextAttackAt = 0
+        state.awaitingShotAck = false
+        state.pendingShotItem = nil
+        state.pendingShotAmmo = nil
+        state.pendingShotRequestCount = nil
+        state.pendingShotDeadline = 0
+    end
+    if state.cycleInitialized ~= true or not ragebotFiniteNumber(phaseEnd) or phaseEnd <= 0 then
+        state.cycleInitialized = true
+        state.phase = "attack"
+        state.phaseStartedAt = now
+        state.activeUntil = now + attack
+        state.nextAttackAt = 0
+        state.fakePositionActive = false
+        state.fakePositionOffsetX = nil
+        state.fakePositionOffsetZ = nil
+        return state.phase
+    end
+    if now >= phaseEnd then
+        state.phaseStartedAt = now
+        if state.phase == "attack" then
+            state.phase = "hide"
+            state.activeUntil = now + hide
+            state.fakePositionActive = true
+            state.fakePositionOffsetX = (math.random() - 0.5) * 6
+            state.fakePositionOffsetZ = 0
+        else
+            state.phase = "attack"
+            state.activeUntil = now + attack
+            state.fakePositionActive = false
+            state.fakePositionOffsetX = nil
+            state.fakePositionOffsetZ = nil
+        end
+    end
+    state.nextAttackAt = 0
+    return state.phase
 end
 
 tbl17.cU()
@@ -69998,6 +69870,9 @@ else
         voidSpamState.nextAttackAt = 0
         voidSpamState.lastShotAt = 0
         voidSpamState.phase = "attack"
+        voidSpamState.cycleModelVersion = 2
+        voidSpamState.cycleInitialized = false
+        voidSpamState.phaseStartedAt = 0
         voidSpamState.attackWindowPending = false
         voidSpamState.attackWindowExpiresAt = 0
         voidSpamState.awaitingShotAck = false
@@ -71880,20 +71755,16 @@ if type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true and type(v
         activeUntil = tonumber(voidSpamState.activeUntil) or 0
         activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
     end
-    local awaitingShotAck = voidSpamState.awaitingShotAck == true
-    local fakePositionActive = awaitingShotAck
-    if not fakePositionActive and voidSpamState.phase == "hide" then
-        if activeUntilValid and now < activeUntil then
-            fakePositionActive = true
-        else
-            voidSpamState.phase = "attack"
-            voidSpamState.activeUntil = 0
-        end
-    end
+    local _, phaseAttack, phaseHide = ragebotVoidSpamConfig()
+    ragebotVoidSpamAdvancePhase(voidSpamState, now, phaseAttack, phaseHide)
+    activeUntil = tonumber(voidSpamState.activeUntil) or 0
+    activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
+    local fakePositionActive = voidSpamState.phase == "hide"
+        and activeUntilValid and now < activeUntil
     if fakePositionActive then
         -- Son-style split position: retain the normal client CFrame through the
         -- underground controller, but send a stable fake server CFrame during
-        -- Hide/ACK wait. The bounded horizontal panic offset is selected once
+        -- Hide. The bounded horizontal panic offset is selected once
         -- per Hide window, not randomized each frame.
         local panicX = tonumber(voidSpamState.fakePositionOffsetX) or 0
         local panicZ = tonumber(voidSpamState.fakePositionOffsetZ) or 0
@@ -71919,6 +71790,9 @@ elseif type(voidSpamState) == "table" then
     voidSpamState.nextAttackAt = 0
     voidSpamState.lastShotAt = 0
     voidSpamState.phase = "attack"
+    voidSpamState.cycleModelVersion = 2
+    voidSpamState.cycleInitialized = false
+    voidSpamState.phaseStartedAt = 0
     voidSpamState.attackWindowPending = false
     voidSpamState.attackWindowExpiresAt = 0
     voidSpamState.awaitingShotAck = false
@@ -72206,6 +72080,9 @@ if not sameReset then
         voidSpamState.nextAttackAt = 0
         voidSpamState.lastShotAt = 0
         voidSpamState.phase = "attack"
+        voidSpamState.cycleModelVersion = 2
+        voidSpamState.cycleInitialized = false
+        voidSpamState.phaseStartedAt = 0
         voidSpamState.attackWindowPending = false
         voidSpamState.attackWindowExpiresAt = 0
         voidSpamState.awaitingShotAck = false
