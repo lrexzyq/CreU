@@ -62486,7 +62486,7 @@ end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–2 seconds.",Min=0.01,Max=2,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–2 seconds; default: 0.25 seconds.",Min=0.01,Max=2,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Ragebot Aim Direction",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
@@ -67359,6 +67359,9 @@ local function ragebotVoidSpamState()
         state.fakePositionActive = false
         state.fakePositionOffsetX = nil
         state.fakePositionOffsetZ = nil
+        state.fakePositionTargetX = nil
+        state.fakePositionTargetZ = nil
+        state.fakePositionTargetReady = false
     end
     if type(state.cycleInitialized) ~= "boolean" then state.cycleInitialized = false end
     if not isFiniteClock(state.activeUntil) or state.activeUntil <= 0 then
@@ -67398,6 +67401,9 @@ local function ragebotVoidSpamReset(state)
     state.fakePositionActive = false
     state.fakePositionOffsetX = nil
     state.fakePositionOffsetZ = nil
+    state.fakePositionTargetX = nil
+    state.fakePositionTargetZ = nil
+    state.fakePositionTargetReady = false
     ragebotVoidSpamClearPendingAck(state)
 end
 
@@ -67461,6 +67467,9 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         state.fakePositionActive = false
         state.fakePositionOffsetX = nil
         state.fakePositionOffsetZ = nil
+        state.fakePositionTargetX = nil
+        state.fakePositionTargetZ = nil
+        state.fakePositionTargetReady = false
         return state.phase
     end
 
@@ -67473,14 +67482,20 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.phase = "hide"
             state.activeUntil = now + hide
             state.fakePositionActive = true
-            state.fakePositionOffsetX = (math.random() - 0.5) * 6
-            state.fakePositionOffsetZ = 0
+            state.fakePositionOffsetX = nil
+            state.fakePositionOffsetZ = nil
+            state.fakePositionTargetX = nil
+            state.fakePositionTargetZ = nil
+            state.fakePositionTargetReady = false
         else
             state.phase = "attack"
             state.activeUntil = now + attack
             state.fakePositionActive = false
             state.fakePositionOffsetX = nil
             state.fakePositionOffsetZ = nil
+            state.fakePositionTargetX = nil
+            state.fakePositionTargetZ = nil
+            state.fakePositionTargetReady = false
         end
     end
     state.nextAttackAt = 0 -- legacy field; no longer a shot-rate gate
@@ -67682,6 +67697,20 @@ end
 local shieldAimState = v117(arg3.FighterState)
 local flag19 = shieldAimState ~= "Below"
 local ragebot = v115.Data.Ragebot
+local voidSpamEnabledReloadGate = ragebotVoidSpamConfig()
+if voidSpamEnabledReloadGate then
+    local okReloading, isReloading = pcall(function()
+        return arg4:IsReloading()
+    end)
+    -- Fail closed if reload status is temporarily unreadable: never let a stale
+    -- Void Spam phase keep positioning/attacking while the gun may be reloading.
+    if not okReloading or type(isReloading) ~= "boolean" or isReloading then
+        ragebotVoidSpamReset(ragebotVoidSpamState())
+        arg:ClearTeleport()
+        arg._shootLock:Reset()
+        return arg5 and arg5.CFrame or nil, nil
+    end
+end
 local v119 = flag19 and vector or vector2
 if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
 arg:ClearTeleport()
@@ -67805,6 +67834,15 @@ if not targetReadOk or targetStillValid ~= true then
 end
 local voidSpamEnabledNow, callbackAttack, callbackHide = ragebotVoidSpamConfig()
 if voidSpamEnabledNow then
+    local okReloading, isReloading = pcall(function()
+        return arg4:IsReloading()
+    end)
+    if not okReloading or type(isReloading) ~= "boolean" or isReloading then
+        ragebotVoidSpamReset(ragebotVoidSpamState())
+        arg:ClearTeleport()
+        arg._shootLock:Reset()
+        return false
+    end
     local state = ragebotVoidSpamState()
     local callbackNow = os.clock()
     ragebotVoidSpamAdvancePhase(state, callbackNow, callbackAttack, callbackHide)
@@ -69471,6 +69509,9 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         state.fakePositionActive = false
         state.fakePositionOffsetX = nil
         state.fakePositionOffsetZ = nil
+        state.fakePositionTargetX = nil
+        state.fakePositionTargetZ = nil
+        state.fakePositionTargetReady = false
         return state.phase
     end
     if now >= phaseEnd then
@@ -69479,14 +69520,20 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.phase = "hide"
             state.activeUntil = now + hide
             state.fakePositionActive = true
-            state.fakePositionOffsetX = (math.random() - 0.5) * 6
-            state.fakePositionOffsetZ = 0
+            state.fakePositionOffsetX = nil
+            state.fakePositionOffsetZ = nil
+            state.fakePositionTargetX = nil
+            state.fakePositionTargetZ = nil
+            state.fakePositionTargetReady = false
         else
             state.phase = "attack"
             state.activeUntil = now + attack
             state.fakePositionActive = false
             state.fakePositionOffsetX = nil
             state.fakePositionOffsetZ = nil
+            state.fakePositionTargetX = nil
+            state.fakePositionTargetZ = nil
+            state.fakePositionTargetReady = false
         end
     end
     state.nextAttackAt = 0
@@ -70211,6 +70258,9 @@ else
         voidSpamState.fakePositionActive = false
         voidSpamState.fakePositionOffsetX = nil
         voidSpamState.fakePositionOffsetZ = nil
+        voidSpamState.fakePositionTargetX = nil
+        voidSpamState.fakePositionTargetZ = nil
+        voidSpamState.fakePositionTargetReady = false
     end
     local mustRestore = wasEnabled or overrideActive or restorePending
     if mustRestore then
@@ -72118,7 +72168,7 @@ local function ragebotVoidSpamReconcileRootDesyncCaches(
     local limit = type(tolerance) == "number" and tolerance or 1.5
     local outputPos = lastOutputCFrame.Position
     local basePos = baseCFrame.Position
-    local largeHideOffset = offset.Y < -100 and offset.Magnitude > 100
+    local largeHideOffset = offset.Y < -20 and offset.Magnitude > 20
     local function cacheIsThisVoidSpamOutput(cacheCFrame)
         if typeof(cacheCFrame) ~= "CFrame" then return false end
         local outputScore = ragebotCFrameOrientationScore(cacheCFrame, lastOutputCFrame)
@@ -72173,6 +72223,9 @@ local function ragebotClearVoidSpamTransformSnapshot(state)
     state.fakePositionActive = false
     state.fakePositionOffsetX = nil
     state.fakePositionOffsetZ = nil
+    state.fakePositionTargetX = nil
+    state.fakePositionTargetZ = nil
+    state.fakePositionTargetReady = false
     local token = tonumber(state._voidSpamRestoreRetryToken) or 0
     if token == token and token ~= math.huge and token ~= -math.huge then
         state._voidSpamRestoreRetryToken = token + 1
@@ -72234,9 +72287,9 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     end
 
     -- GetServerCFrame can return RootDesync's cached _cframe instead of the
-    -- actual RootPart pose. Read the real part before deciding whether the 90°
-    -- roll/offset remains applied; otherwise a cache-only setter can pass a
-    -- false-positive verification when _oldCFrame is nil.
+    -- actual RootPart pose. Read the real part before deciding whether the
+    -- pitch/roll/offset remains applied; otherwise a cache-only setter can pass
+    -- a false-positive verification when _oldCFrame is nil.
     local currentReadOk, currentCFrame = pcall(function() return currentRoot.CFrame end)
     if not currentReadOk or typeof(currentCFrame) ~= "CFrame" then return false end
 
@@ -72246,7 +72299,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local deltaOutput = (currentPos - outputPos).Magnitude
     local deltaBase = (currentPos - basePos).Magnitude
     local normalTolerance = 1.5
-    local largeHideOffset = fakeOffset.Y < -100 and fakeOffset.Magnitude > 100
+    local largeHideOffset = fakeOffset.Y < -20 and fakeOffset.Magnitude > 20
     local expectedHidePosition = basePos + fakeOffset
     local hidePositionDelta = (currentPos - expectedHidePosition).Magnitude
     local hideOffsetStillVisible = largeHideOffset and hidePositionDelta <= 8
@@ -72310,9 +72363,9 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local restoredRotation = currentCFrame.Rotation
     local rotationNeedsCorrection = false
     if rotationIsStillRolled then
-        -- Void Spam applies a local +90° Z roll; remove only that local rotation
-        -- so a newer legitimate yaw/pitch is preserved.
-        restoredRotation = (currentCFrame * CFrame.Angles(0, 0, math.rad(-90))).Rotation
+        -- Void Spam applies a local -90° pitch plus +90° Z roll. Remove the
+        -- exact local transform so a newer legitimate yaw is preserved.
+        restoredRotation = (currentCFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90)):Inverse()).Rotation
         rotationNeedsCorrection = true
     end
 
@@ -72391,16 +72444,49 @@ local ragebotData = type(v115) == "table" and v115.Data and v115.Data.Ragebot or
 local voidSpamConfig = type(ragebotData) == "table" and ragebotData.VoidSpam or nil
 local voidSpamConfigured = type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true
 local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
-local voidSpamEnabledForRoll = voidSpamConfigured and type(voidSpamState) == "table"
-if (not voidSpamConfigured or arg._enabled ~= true)
+local voidSpamReloading = false
+if voidSpamConfigured and arg._enabled == true then
+    local context = arg._innerContext
+    local behaviors = context ~= nil and context.ItemBehaviors or nil
+    local reloadCandidate = nil
+    if behaviors ~= nil then
+        local okGun, equippedGun = pcall(function()
+            return behaviors:EquippedItemAsGun()
+        end)
+        if not okGun then
+            -- Missing reload visibility must not leave an old transform active.
+            voidSpamReloading = true
+        elseif equippedGun ~= nil then
+            reloadCandidate = equippedGun
+        end
+    end
+    if reloadCandidate == nil and arg._reloadGun ~= nil then
+        reloadCandidate = arg._reloadGun
+    end
+    if reloadCandidate ~= nil then
+        local okReloading, isReloading = pcall(function()
+            return reloadCandidate:IsReloading()
+        end)
+        if not okReloading or type(isReloading) ~= "boolean" then
+            voidSpamReloading = true
+        else
+            voidSpamReloading = isReloading
+        end
+    end
+end
+local voidSpamSuppressedByReload = voidSpamConfigured and arg._enabled == true and voidSpamReloading
+local voidSpamEnabledForRoll = voidSpamConfigured
+    and type(voidSpamState) == "table"
+    and not voidSpamSuppressedByReload
+if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload)
     and type(voidSpamState) == "table"
     and voidSpamState.voidSpamTransformApplied == true then
     ragebotRequestVoidSpamTransformRestore()
 end
--- Clear only the phase scheduler when disabled or when the planner has no
--- usable frame. Keep the transform snapshot/retry transaction untouched until
--- the actual RootPart pose and RootDesync caches are verified as restored.
-if (not voidSpamConfigured or arg._enabled ~= true)
+-- Clear the phase scheduler while disabled, missing a usable frame, or reloading.
+-- Keep the transform snapshot/retry transaction until its actual pose and caches
+-- are verified restored.
+if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload)
     and type(voidSpamState) == "table" then
     voidSpamState.activeUntil = 0
     voidSpamState.nextAttackAt = 0
@@ -72419,6 +72505,9 @@ if (not voidSpamConfigured or arg._enabled ~= true)
     voidSpamState.fakePositionActive = false
     voidSpamState.fakePositionOffsetX = nil
     voidSpamState.fakePositionOffsetZ = nil
+    voidSpamState.fakePositionTargetX = nil
+    voidSpamState.fakePositionTargetZ = nil
+    voidSpamState.fakePositionTargetReady = false
 end
 if not arg._enabled or typeof(cframe) ~= "CFrame" then
 return cframe
@@ -72457,18 +72546,23 @@ elseif itemBehaviors ~= nil then
     end
 end
 
--- Underground baseline is zero for Gun/Knife and -3.8 for Melee. Void Spam
--- owns an independent +4-stud Y offset; apply it whether or not Underground is
--- integrated. The saved base excludes Void Spam's offset but retains Underground's.
-local RAGEBOT_VOID_SPAM_Y_OFFSET = 4.0
-local RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET = -3.8
+-- Void Spam uses +4.5 studs on its own. When Underground is integrated,
+-- Underground wins: the effective baseline is -3.8 studs for this combined mode.
+-- Melee already receives -3.8 from ApplyToRagebotCFrame, so do not double it.
+local RAGEBOT_VOID_SPAM_Y_OFFSET = 4.5
+local RAGEBOT_UNDERGROUND_Y_OFFSET = -3.8
 if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
-    if undergroundIntegrated and weaponKind == "Melee" then
-        voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET, 0)
+    if undergroundIntegrated then
+        voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_UNDERGROUND_Y_OFFSET, 0)
+        if weaponKind == "Melee" then
+            voidSpamPositionOffset = Vector3.zero
+        else
+            voidSpamPositionOffset = Vector3.new(0, RAGEBOT_UNDERGROUND_Y_OFFSET, 0)
+        end
     else
         voidSpamBaseCFrame = cframe
+        voidSpamPositionOffset = Vector3.new(0, RAGEBOT_VOID_SPAM_Y_OFFSET, 0)
     end
-    voidSpamPositionOffset = Vector3.new(0, RAGEBOT_VOID_SPAM_Y_OFFSET, 0)
     cframe = cframe + voidSpamPositionOffset
 end
 
@@ -72483,7 +72577,7 @@ local function applyVoidSpamSideRoll(value, baseValue)
                 return base
             end
         end
-        local rolled = value * CFrame.Angles(0, 0, math.rad(90))
+        local rolled = value * CFrame.Angles(math.rad(-90), 0, math.rad(90))
         local retryToken = tonumber(voidSpamState._voidSpamRestoreRetryToken) or 0
         if retryToken ~= retryToken or retryToken == math.huge or retryToken == -math.huge then retryToken = 0 end
         voidSpamState._voidSpamRestoreRetryToken = retryToken + 1
@@ -72501,7 +72595,7 @@ local function applyVoidSpamSideRoll(value, baseValue)
     return value
 end
 
-if voidSpamConfigured and type(voidSpamState) == "table" then
+if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppressedByReload then
     local activeUntil = tonumber(voidSpamState.activeUntil) or 0
     local now = os.clock()
     local activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
@@ -72523,19 +72617,70 @@ if voidSpamConfigured and type(voidSpamState) == "table" then
     local fakePositionActive = voidSpamState.phase == "hide"
         and activeUntilValid and now < activeUntil
     if fakePositionActive then
-        local panicX = tonumber(voidSpamState.fakePositionOffsetX) or 0
-        local panicZ = tonumber(voidSpamState.fakePositionOffsetZ) or 0
-        if not ragebotFiniteNumber(panicX) then panicX = 0 end
-        if not ragebotFiniteNumber(panicZ) then panicZ = 0 end
-        panicX = math.clamp(panicX, -3, 3)
-        panicZ = math.clamp(panicZ, -3, 3)
-        local hideOffset = Vector3.new(panicX, -1000, panicZ)
-        cframe = cframe + hideOffset
+        -- Hide shares Evasion Random's BaseRadius / RadiusRandomFactor / Character
+        -- Origin settings, but deliberately does not reuse Evasion's far-axis
+        -- sentinel (1,073,741,824 studs), which can send the character out of-map.
+        -- Keep one random destination for the entire Hide phase so frame updates
+        -- cannot make the character jitter around a continuously changing point.
+        local hidePosition = cframe.Position
+        local targetX = tonumber(voidSpamState.fakePositionTargetX)
+        local targetZ = tonumber(voidSpamState.fakePositionTargetZ)
+        local targetIsFinite = targetX ~= nil and targetX == targetX
+            and targetX ~= math.huge and targetX ~= -math.huge
+            and targetZ ~= nil and targetZ == targetZ
+            and targetZ ~= math.huge and targetZ ~= -math.huge
+
+        if voidSpamState.fakePositionTargetReady ~= true or not targetIsFinite then
+            local randomSettings
+            pcall(function()
+                randomSettings = v115.Data.Ragebot.Evasion.Random
+            end)
+            if type(randomSettings) ~= "table" then randomSettings = {} end
+
+            local baseRadius = tonumber(randomSettings.BaseRadius) or 100
+            if baseRadius ~= baseRadius or baseRadius == math.huge or baseRadius == -math.huge then
+                baseRadius = 100
+            end
+            baseRadius = math.clamp(baseRadius, 5, 100000000)
+
+            local radiusRandomFactor = tonumber(randomSettings.RadiusRandomFactor)
+            if radiusRandomFactor == nil or radiusRandomFactor ~= radiusRandomFactor
+                or radiusRandomFactor == math.huge or radiusRandomFactor == -math.huge then
+                radiusRandomFactor = 0.5
+            end
+            radiusRandomFactor = math.clamp(radiusRandomFactor, 0, 1)
+
+            local radiusMax = baseRadius + baseRadius * radiusRandomFactor
+            local hideRandom = Random.new()
+            local radius = hideRandom:NextNumber(baseRadius, radiusMax)
+            local angle = hideRandom:NextNumber(0, math.pi * 2)
+            local anchorX = randomSettings.AnchorFromCharacter == true and hidePosition.X or 0
+            local anchorZ = randomSettings.AnchorFromCharacter == true and hidePosition.Z or 0
+            targetX = anchorX + math.cos(angle) * radius
+            targetZ = anchorZ + math.sin(angle) * radius
+
+            voidSpamState.fakePositionTargetX = targetX
+            voidSpamState.fakePositionTargetZ = targetZ
+            voidSpamState.fakePositionTargetReady = true
+        end
+
+        local panicX = targetX - hidePosition.X
+        local panicZ = targetZ - hidePosition.Z
+        if panicX ~= panicX or panicX == math.huge or panicX == -math.huge then panicX = 0 end
+        if panicZ ~= panicZ or panicZ == math.huge or panicZ == -math.huge then panicZ = 0 end
+
+        -- Underground has precedence over Void Spam's vertical Hide offset.
+        -- Its existing -3.8-stud baseline stays intact; Hide only randomizes X/Z.
+        local hideYOffset = undergroundIntegrated and 0 or -24
+        cframe = cframe + Vector3.new(panicX, hideYOffset, panicZ)
         voidSpamState.fakePositionActive = true
     else
         voidSpamState.fakePositionActive = false
         voidSpamState.fakePositionOffsetX = nil
         voidSpamState.fakePositionOffsetZ = nil
+        voidSpamState.fakePositionTargetX = nil
+        voidSpamState.fakePositionTargetZ = nil
+        voidSpamState.fakePositionTargetReady = false
     end
     if voidSpamState.attackWindowPending == true
         and type(voidSpamState.attackWindowExpiresAt) == "number"
@@ -72561,6 +72706,9 @@ elseif type(voidSpamState) == "table" then
     voidSpamState.fakePositionActive = false
     voidSpamState.fakePositionOffsetX = nil
     voidSpamState.fakePositionOffsetZ = nil
+    voidSpamState.fakePositionTargetX = nil
+    voidSpamState.fakePositionTargetZ = nil
+    voidSpamState.fakePositionTargetReady = false
 end
 
 if type(controller) ~= "table" or type(controller.ApplyToRagebotCFrame) ~= "function" then
@@ -72830,6 +72978,9 @@ if not sameReset then
         voidSpamState.fakePositionActive = false
         voidSpamState.fakePositionOffsetX = nil
         voidSpamState.fakePositionOffsetZ = nil
+        voidSpamState.fakePositionTargetX = nil
+        voidSpamState.fakePositionTargetZ = nil
+        voidSpamState.fakePositionTargetReady = false
     end
     arg._knifeActionExpected = false
     arg._knifeExternalRiotCamera = false
