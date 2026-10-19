@@ -10,6 +10,33 @@ print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId
 
 local K: { [string]: any } = { connections = {}, cleanups = {}, destroyed = false }
 getgenv().KiciaRebuild = K
+
+-- The teleport loader holds its duplicate guard until this execution either
+-- completes bootstrap or reports a bounded failure. The key is per queued
+-- generation and destination place, so repeated queue entries cannot unload a
+-- still-starting Crefy instance.
+local function markCrefyQueuedRerunBootState(success)
+    local env = _G
+    pcall(function()
+        if type(getgenv) == "function" then
+            local candidate = getgenv()
+            if type(candidate) == "table" then env = candidate end
+        end
+    end)
+    local expected = rawget(env, "__CrefyQueuedRerunExpectedGeneration")
+    if expected == nil then expected = rawget(_G, "__CrefyQueuedRerunExpectedGeneration") end
+    if expected == nil then return end
+    local runKey = tostring(expected) .. ":" .. tostring(game.PlaceId)
+    if success then
+        pcall(rawset, env, "__CrefyAutoExecuteLastSuccessfulRunKey", runKey)
+        pcall(rawset, _G, "__CrefyAutoExecuteLastSuccessfulRunKey", runKey)
+        pcall(rawset, env, "__CrefyAutoExecuteLastFailedRunKey", nil)
+        pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", nil)
+    else
+        pcall(rawset, env, "__CrefyAutoExecuteLastFailedRunKey", runKey)
+        pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", runKey)
+    end
+end
 local RAGEBOT_LOCAL_PENDING_GLUE_TARGETS = setmetatable({}, { __mode = "k" })
 
 -- Recover persisted mutations before any later module can abort initialization.
@@ -13451,7 +13478,7 @@ return ad.c
 end
 end
 do
-local function fn35()local I,W= tbl17 .f(), tbl17 .ad(); tbl17 .a(); tbl17 .r();local l={};l.__index=l;local N={AutoSave=false,AutoSaveConfigName=nil,AutoLoad=false,AutoLoadConfigName=nil,Keybind="RightShift",Size=nil,Position=nil,KeybindsListPosition=nil,WatermarkPosition=nil,MobileButtonPositions=nil,ShowKeybinds=nil,ShowWatermark=nil,MenuKeybindInList=nil,HideMobileMenuButton=nil,SilentLoad=nil};local function P(a)return(a:gsub("%.json$",""));end;local function a(e)if type(e)~="table"then return nil;end;local c,E=e[1],e[2];if type(c)~="number"or type(E)~="number"then return nil;end;if c~=c or E~=E then return nil;end;return{c,E};end;local function e(c)if type(c)~="table"then return nil;end;local E,p={},false;for T,t in c,nil,nil do if type(T)~="string"or T==""then continue;end;local c_26=a(t);if c_26==nil then continue;end;E[T]=c_26;p=true;end;return p and E or nil;end;local function c(E)local p=table.clone(N);if type(E)~="table"then return p;end;if type(E.AutoSave)=="boolean"then p.AutoSave=E.AutoSave;end;if type(E.AutoSaveConfigName)=="string"then p.AutoSaveConfigName=P(E.AutoSaveConfigName);end;if type(E.AutoLoad)=="boolean"then p.AutoLoad=E.AutoLoad;end;if type(E.AutoLoadConfigName)=="string"then p.AutoLoadConfigName=P(E.AutoLoadConfigName);end;if type(E.Keybind)=="string"then p.Keybind=E.Keybind;end;if type(E.ShowKeybinds)=="boolean"then p.ShowKeybinds=E.ShowKeybinds;end;if type(E.ShowWatermark)=="boolean"then p.ShowWatermark=E.ShowWatermark;end;if type(E.MenuKeybindInList)=="boolean"then p.MenuKeybindInList=E.MenuKeybindInList;end;if type(E.HideMobileMenuButton)=="boolean"then p.HideMobileMenuButton=E.HideMobileMenuButton;end;if type(E.SilentLoad)=="boolean"then p.SilentLoad=E.SilentLoad;end;p.Size=a(E.Size);p.Position=a(E.Position);p.KeybindsListPosition=a(E.KeybindsListPosition);p.WatermarkPosition=a(E.WatermarkPosition);p.MobileButtonPositions=e(E.MobileButtonPositions);return p;end;local function P_27(a)if type(a)~="table"then return{};end;local e=table.clone(a);a=e.autosave;e.autosave=nil;if type(a)=="string"then e.AutoSave=true;e.AutoSaveConfigName=a;end;a=e.autoload;e.autoload=nil;if type(a)=="string"then e.AutoLoad=true;e.AutoLoadConfigName=a;end;return e;end;local function a_28(e)if type(e)~="table"then return{};end;local E,p=table.clone(e),{"autoSave","autoSaveConfigName","autoLoad","autoLoadConfigName","keybind","size","position","keybindsListPosition","watermarkPosition","mobileButtonPositions","showKeybinds","showWatermark","menuKeybindInList","hideMobileMenuButton","silentLoad"};for T,T_29 in p,nil,nil do e=string.upper(string.sub(T_29,1,1))..string.sub(T_29,2);if E[e]==nil then E[e]=E[T_29];end;E[T_29]=nil;end;return E;end;l.new=function(e)return setmetatable({_errorReporter=W.new(),_manager=I.new({DefaultConfig=N,CurrentVersion=3,SavePath=e,Deserialize=c,Migrations={[1]=P_27,[2]=a_28}})},l);end;l.Load=function(I)if not I._manager:Exists("general")then return I._manager:Reset();end;local W=I._manager:LoadFromFile("general");if W.Ok then return W.Value;end;I._errorReporter:Report(W.Error);return I._manager:Reset();end;l.Save=function(I,W)I._manager:SetData(W);return I._errorReporter:ReportResult(I._manager:SaveToFile("general"));end;l.Destroy=function(I)I._errorReporter:Destroy();end;return l;end
+local function fn35()local I,W= tbl17 .f(), tbl17 .ad(); tbl17 .a(); tbl17 .r();local l={};l.__index=l;local N={AutoSave=false,AutoSaveConfigName=nil,AutoLoad=false,AutoLoadConfigName=nil,Keybind="RightShift",Size=nil,Position=nil,KeybindsListPosition=nil,WatermarkPosition=nil,MobileButtonPositions=nil,ShowKeybinds=nil,ShowWatermark=nil,MenuKeybindInList=nil,HideMobileMenuButton=nil,SilentLoad=nil};local function P(a)return(a:gsub("%.json$",""));end;local function a(e)if type(e)~="table"then return nil;end;local c,E=e[1],e[2];if type(c)~="number"or type(E)~="number"then return nil;end;if c~=c or E~=E then return nil;end;return{c,E};end;local function e(c)if type(c)~="table"then return nil;end;local E,p={},false;for T,t in c,nil,nil do if type(T)~="string"or T==""then continue;end;local c_26=a(t);if c_26==nil then continue;end;E[T]=c_26;p=true;end;return p and E or nil;end;local function c(E)local p=table.clone(N);if type(E)~="table"then return p;end;if type(E.AutoSave)=="boolean"then p.AutoSave=E.AutoSave;end;if type(E.AutoSaveConfigName)=="string"then p.AutoSaveConfigName=P(E.AutoSaveConfigName);end;if type(E.AutoLoad)=="boolean"then p.AutoLoad=E.AutoLoad;end;if type(E.AutoLoadConfigName)=="string"then p.AutoLoadConfigName=P(E.AutoLoadConfigName);end;if type(E.Keybind)=="string"then p.Keybind=E.Keybind;end;if type(E.ShowKeybinds)=="boolean"then p.ShowKeybinds=E.ShowKeybinds;end;if type(E.ShowWatermark)=="boolean"then p.ShowWatermark=E.ShowWatermark;end;if type(E.MenuKeybindInList)=="boolean"then p.MenuKeybindInList=E.MenuKeybindInList;end;if type(E.HideMobileMenuButton)=="boolean"then p.HideMobileMenuButton=E.HideMobileMenuButton;end;if type(E.SilentLoad)=="boolean"then p.SilentLoad=E.SilentLoad;end;if type(E.ReRunAfterTeleport)=="boolean"then p.ReRunAfterTeleport=E.ReRunAfterTeleport;end;p.Size=a(E.Size);p.Position=a(E.Position);p.KeybindsListPosition=a(E.KeybindsListPosition);p.WatermarkPosition=a(E.WatermarkPosition);p.MobileButtonPositions=e(E.MobileButtonPositions);return p;end;local function P_27(a)if type(a)~="table"then return{};end;local e=table.clone(a);a=e.autosave;e.autosave=nil;if type(a)=="string"then e.AutoSave=true;e.AutoSaveConfigName=a;end;a=e.autoload;e.autoload=nil;if type(a)=="string"then e.AutoLoad=true;e.AutoLoadConfigName=a;end;return e;end;local function a_28(e)if type(e)~="table"then return{};end;local E,p=table.clone(e),{"autoSave","autoSaveConfigName","autoLoad","autoLoadConfigName","keybind","size","position","keybindsListPosition","watermarkPosition","mobileButtonPositions","showKeybinds","showWatermark","menuKeybindInList","hideMobileMenuButton","silentLoad"};for T,T_29 in p,nil,nil do e=string.upper(string.sub(T_29,1,1))..string.sub(T_29,2);if E[e]==nil then E[e]=E[T_29];end;E[T_29]=nil;end;return E;end;l.new=function(e)return setmetatable({_errorReporter=W.new(),_manager=I.new({DefaultConfig=N,CurrentVersion=3,SavePath=e,Deserialize=c,Migrations={[1]=P_27,[2]=a_28}})},l);end;l.Load=function(I)if not I._manager:Exists("general")then return I._manager:Reset();end;local W=I._manager:LoadFromFile("general");if W.Ok then return W.Value;end;I._errorReporter:Report(W.Error);return I._manager:Reset();end;l.Save=function(I,W)I._manager:SetData(W);return I._errorReporter:ReportResult(I._manager:SaveToFile("general"));end;l.Destroy=function(I)I._errorReporter:Destroy();end;return l;end
 
 tbl17.ae = function()
 local ae = tbl17.cache.ae
@@ -18935,8 +18962,448 @@ return { Page = v120, Grid = v121 }
 end
 
 local function fn40(arg, arg2, arg3)
-arg:AddToggle({ Label = "Re-run After Teleport", Config = arg3 })
 local stateData = arg2:GetStateData()
+local config
+pcall(function() config = arg2:GetConfig() end)
+
+local function getEnvironment()
+    local env = _G
+    pcall(function()
+        if type(getgenv) == "function" then
+            local candidate = getgenv()
+            if type(candidate) == "table" then env = candidate end
+        end
+    end)
+    return env
+end
+
+local function getPathValue(root, path)
+    if type(root) ~= "table" or type(path) ~= "table" then return nil end
+    local value = root
+    for _, key in ipairs(path) do
+        if type(value) ~= "table" then return nil end
+        value = rawget(value, key)
+    end
+    return value
+end
+
+local function setPathValue(root, path, wanted)
+    if type(root) ~= "table" or type(path) ~= "table" or #path == 0 then return false end
+    local node = root
+    for i = 1, #path - 1 do
+        local key = path[i]
+        local nextNode = rawget(node, key)
+        if type(nextNode) ~= "table" then
+            nextNode = {}
+            rawset(node, key, nextNode)
+        end
+        node = nextNode
+    end
+    rawset(node, path[#path], wanted)
+    return true
+end
+
+local function validUrl(value)
+    return type(value) == "string" and value:match("^https?://%S+$") ~= nil
+end
+
+local function tryReadableCrefyPath(path)
+    if type(path) ~= "string" or path == "" then return nil end
+    local env = getEnvironment()
+    local readFn = rawget(env, "readfile")
+    if type(readFn) ~= "function" then readFn = rawget(_G, "readfile") end
+    if type(readFn) ~= "function" then return nil end
+    local okRead, source = pcall(readFn, path)
+    if not okRead or type(source) ~= "string" or #source < 10000 then return nil end
+    if not source:find("Crefy Premium", 1, true) and not source:find("KiciaRebuild", 1, true) then
+        return nil
+    end
+    return path
+end
+
+local function resolveReloadSource()
+    local env = getEnvironment()
+    local urlKeys = { "CrefySourceUrl", "CrefyScriptUrl", "CrefyLoaderUrl", "__CrefySourceUrl" }
+    for _, key in ipairs(urlKeys) do
+        local value = rawget(env, key)
+        if not validUrl(value) then value = rawget(_G, key) end
+        if validUrl(value) then return value, nil end
+    end
+
+    local pathKeys = { "CrefySourcePath", "CrefyScriptPath", "CrefyFilePath", "__CrefySourcePath" }
+    for _, key in ipairs(pathKeys) do
+        local value = rawget(env, key)
+        if type(value) ~= "string" or value == "" then value = rawget(_G, key) end
+        if type(value) == "string" and value ~= "" then
+            -- An explicit path is user-supplied; retain it even if the executor
+            -- cannot read it until the next place has finished loading.
+            return nil, value
+        end
+    end
+
+    local sourceHint
+    pcall(function()
+        if type(debug) == "table" and type(debug.getinfo) == "function" then
+            local info = debug.getinfo(fn40, "S")
+            sourceHint = info and info.source or nil
+        end
+    end)
+    if type(sourceHint) == "string" and sourceHint:sub(1, 1) == "@" then
+        local candidate = sourceHint:sub(2)
+        local readable = tryReadableCrefyPath(candidate)
+        if readable then return nil, readable end
+    end
+
+    local candidates = {
+        "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
+        "scripts/Crefy.lua", "scripts/Crefy.lua.txt",
+        "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
+        "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
+    }
+    for _, candidate in ipairs(candidates) do
+        local readable = tryReadableCrefyPath(candidate)
+        if readable then return nil, readable end
+    end
+    -- Keep a bounded auto-discovery fallback in the queued loader. Some
+    -- executors expose scripts under a workspace path not visible to readfile
+    -- until after the teleport has completed.
+    return nil, nil
+end
+
+local function makeQueuedLoader(sourceUrl, sourcePath, generation)
+    local urlLiteral = string.format("%q", sourceUrl or "")
+    local pathLiteral = string.format("%q", sourcePath or "")
+    local generationLiteral = string.format("%q", tostring(generation or ""))
+    return [[
+local __env = _G
+pcall(function()
+    if type(getgenv) == "function" then
+        local __candidate = getgenv()
+        if type(__candidate) == "table" then __env = __candidate end
+    end
+end)
+local function __getFunction(name)
+    local candidate = rawget(__env, name)
+    if type(candidate) == "function" then return candidate end
+    candidate = rawget(_G, name)
+    if type(candidate) == "function" then return candidate end
+    return nil
+end
+local function __getSetting(name)
+    local value = rawget(__env, name)
+    if value ~= nil then return value end
+    return rawget(_G, name)
+end
+if __getSetting("__CrefyAutoExecuteEnabled") == false then return end
+local __generation = ]] .. generationLiteral .. [[
+local __placeId = tostring(game.PlaceId)
+local __runKey = __generation .. ":" .. __placeId
+if __generation ~= "" then
+    local __currentGeneration = __getSetting("__CrefyAutoExecuteGeneration")
+    if __currentGeneration ~= nil and tostring(__currentGeneration) ~= __generation then return end
+end
+if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then return end
+if __getSetting("__CrefyAutoExecuteLastFailedRunKey") == __runKey then return end
+
+-- If the general settings file is readable, it is authoritative. A malformed
+-- or explicitly disabled setting must never execute a stale queued payload.
+local __readFile = __getFunction("readfile")
+local __stateFileReadable = false
+if type(__readFile) == "function" then
+    local __readOk, __stateText = pcall(__readFile, "kiciarebuild/rivals/general.json")
+    if __readOk and type(__stateText) == "string" then
+        __stateFileReadable = true
+        local __decodeOk, __stateDoc = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(__stateText)
+        end)
+        if not __decodeOk or type(__stateDoc) ~= "table" then
+            warn("[Crefy] Re-run After Teleport cancelled: general settings JSON is invalid.")
+            return
+        end
+        local __stateData = __stateDoc.Data or __stateDoc.data
+        if type(__stateData) ~= "table" then
+            warn("[Crefy] Re-run After Teleport cancelled: general settings data is missing.")
+            return
+        end
+        local __savedToggle = __stateData.ReRunAfterTeleport
+        if __savedToggle == false then return end
+        if __savedToggle ~= nil and __savedToggle ~= true then
+            warn("[Crefy] Re-run After Teleport cancelled: saved toggle value is invalid.")
+            return
+        end
+        -- Older Crefy builds stored this option only in the active Config path.
+        -- For a missing GeneralState field, require the live opt-in flag instead
+        -- of treating the legacy file as an explicit disable.
+        if __savedToggle == nil and __getSetting("__CrefyAutoExecuteEnabled") ~= true then return end
+    end
+end
+if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true then
+    -- Without a readable persisted opt-in, require an explicit runtime opt-in.
+    return
+end
+
+local __existingFlight = __getSetting("__CrefyQueuedRerunInFlight")
+if __existingFlight ~= nil and __existingFlight ~= false then return end
+-- Use a unique lock token as well as a stable run key: an old timeout callback
+-- must never clear a newer retry for the same generation/place pair.
+local __lockToken = __runKey .. ":" .. tostring({})
+rawset(__env, "__CrefyQueuedRerunInFlight", __lockToken)
+rawset(_G, "__CrefyQueuedRerunInFlight", __lockToken)
+rawset(__env, "__CrefyQueuedRerunExpectedGeneration", __generation)
+rawset(_G, "__CrefyQueuedRerunExpectedGeneration", __generation)
+local __timedOut = false
+local function __finish()
+    if rawget(__env, "__CrefyQueuedRerunInFlight") == __lockToken then
+        rawset(__env, "__CrefyQueuedRerunInFlight", nil)
+    end
+    if rawget(_G, "__CrefyQueuedRerunInFlight") == __lockToken then
+        rawset(_G, "__CrefyQueuedRerunInFlight", nil)
+    end
+    if tostring(rawget(__env, "__CrefyQueuedRerunExpectedGeneration") or "") == __generation then
+        rawset(__env, "__CrefyQueuedRerunExpectedGeneration", nil)
+    end
+    if tostring(rawget(_G, "__CrefyQueuedRerunExpectedGeneration") or "") == __generation then
+        rawset(_G, "__CrefyQueuedRerunExpectedGeneration", nil)
+    end
+end
+local __taskDelay = type(task) == "table" and task.delay or nil
+if type(__taskDelay) == "function" then
+    pcall(__taskDelay, 240, function()
+        if __getSetting("__CrefyQueuedRerunInFlight") == __lockToken then
+            __timedOut = true
+            if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") ~= __runKey then
+                rawset(__env, "__CrefyAutoExecuteLastFailedRunKey", __runKey)
+                rawset(_G, "__CrefyAutoExecuteLastFailedRunKey", __runKey)
+            end
+            warn("[Crefy] Re-run After Teleport bootstrap timed out; duplicate guard was released.")
+            __finish()
+        end
+    end)
+end
+local function __isCrefySource(value)
+    return type(value) == "string" and #value >= 10000
+        and (value:find("Crefy Premium", 1, true) ~= nil
+            or value:find("KiciaRebuild", 1, true) ~= nil)
+end
+local function __read(path)
+    if type(path) ~= "string" or path == "" or type(__readFile) ~= "function" then return nil end
+    local ok, value = pcall(__readFile, path)
+    if ok and __isCrefySource(value) then return value end
+    return nil
+end
+local function __runQueuedSource()
+    local __url = ]] .. urlLiteral .. [[
+    local __path = ]] .. pathLiteral .. [[
+    local __envUrl = rawget(__env, "CrefySourceUrl")
+    if type(__envUrl) ~= "string" then __envUrl = rawget(_G, "CrefySourceUrl") end
+    if type(__envUrl) == "string" and __envUrl:match("^https?://%S+$") then __url = __envUrl end
+    local __envPath = rawget(__env, "CrefySourcePath")
+    if type(__envPath) ~= "string" or __envPath == "" then __envPath = rawget(_G, "CrefySourcePath") end
+    if type(__envPath) == "string" and __envPath ~= "" then __path = __envPath end
+
+    local __source
+    if type(__url) == "string" and __url:match("^https?://%S+$") then
+        local __httpOk, __value = pcall(function() return game:HttpGet(__url) end)
+        if __httpOk and __isCrefySource(__value) then
+            __source = __value
+        elseif __httpOk and type(__value) == "string" and #__value > 0 then
+            warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy; trying file paths.")
+        end
+    end
+    if not __source then __source = __read(__path) end
+    if not __source then
+        local __candidates = {
+            "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
+            "scripts/Crefy.lua", "scripts/Crefy.lua.txt",
+            "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
+            "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
+        }
+        for _, __candidatePath in ipairs(__candidates) do
+            __source = __read(__candidatePath)
+            if __source then break end
+        end
+    end
+    local __listFiles = __getFunction("listfiles")
+    if not __source and type(__listFiles) == "function" then
+        for _, __folder in ipairs({ "", ".", "scripts", "workspace", "workspace/scripts", "autoexec" }) do
+            local __okList, __files = pcall(__listFiles, __folder)
+            if __okList and type(__files) == "table" then
+                for _, __file in ipairs(__files) do
+                    local __lower = tostring(__file):lower():gsub("\\", "/")
+                    if __lower:match("/?crefy%.lua$") or __lower:match("/?crefy%.lua%.txt$")
+                        or __lower:match("/?crefy%.txt$") then
+                        __source = __read(__file)
+                        if __source then break end
+                    end
+                end
+            end
+            if __source then break end
+        end
+    end
+    if type(__source) ~= "string" or #__source == 0 then
+        warn("[Crefy] Re-run After Teleport could not locate a valid Crefy source. Set getgenv().CrefySourcePath or getgenv().CrefySourceUrl.")
+        return false
+    end
+    local __compiler = __getFunction("loadstring") or __getFunction("load")
+    if type(__compiler) ~= "function" then
+        warn("[Crefy] Re-run After Teleport: this executor has no loadstring/load compiler.")
+        return false
+    end
+    local __compileCallOk, __chunk, __compileError = pcall(__compiler, __source)
+    if not __compileCallOk or type(__chunk) ~= "function" then
+        warn("[Crefy] Re-run After Teleport compile failed: " .. tostring(__compileError or __chunk))
+        return false
+    end
+    local __runOk, __runError = pcall(__chunk)
+    if not __runOk then
+        warn("[Crefy] Re-run After Teleport execution failed: " .. tostring(__runError))
+        return false
+    end
+
+    -- Crefy starts its client bootstrap asynchronously. Keep the duplicate
+    -- guard until it confirms boot, rather than clearing it after a fixed 3s.
+    local __deadline = os.clock() + 240
+    while os.clock() < __deadline and not __timedOut do
+        if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then
+            return true
+        end
+        if __getSetting("__CrefyAutoExecuteLastFailedRunKey") == __runKey then
+            warn("[Crefy] Re-run After Teleport source started but Crefy bootstrap reported failure.")
+            return false
+        end
+        task.wait(0.25)
+    end
+    if __timedOut then return false end
+    warn("[Crefy] Re-run After Teleport did not receive bootstrap confirmation within 240s.")
+    return false
+end
+local __callOk, __callResult = pcall(__runQueuedSource)
+if not __callOk then warn("[Crefy] Re-run After Teleport loader error: " .. tostring(__callResult)) end
+if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") ~= __runKey then
+    rawset(__env, "__CrefyAutoExecuteLastFailedRunKey", __runKey)
+    rawset(_G, "__CrefyAutoExecuteLastFailedRunKey", __runKey)
+end
+__finish()
+]]
+end
+
+local queueRegisteredForCurrentEnable = false
+local runtimeEnabled = nil
+local function applyRerunSetting(enabled, persist)
+    enabled = enabled == true
+    local wasEnabled = runtimeEnabled
+    runtimeEnabled = enabled
+
+    local env = getEnvironment()
+    pcall(rawset, env, "__CrefyAutoExecuteEnabled", enabled)
+    pcall(rawset, _G, "__CrefyAutoExecuteEnabled", enabled)
+    local persistenceFailed = false
+    if persist == true then
+        if type(stateData) ~= "table" then
+            persistenceFailed = true
+            warn("[Crefy] Re-run After Teleport setting could not be persisted: GeneralState data is unavailable.")
+        else
+            stateData.ReRunAfterTeleport = enabled
+            local saveCallOk, saveResult = pcall(function() return arg2:SaveState() end)
+            persistenceFailed = not saveCallOk or saveResult == false
+                or (type(saveResult) == "table" and saveResult.Ok == false)
+            if persistenceFailed then
+                warn("[Crefy] Re-run After Teleport setting could not be persisted: "
+                    .. tostring(type(saveResult) == "table" and saveResult.Error and saveResult.Error.Detail or saveResult))
+                if not enabled then
+                    warn("[Crefy] The OFF state could not be saved; a queued script may still run if the executor environment resets.")
+                end
+            end
+        end
+    end
+    if config ~= nil and type(arg3) == "table" then
+        pcall(function()
+            if config:Get(arg3) ~= enabled then config:Set(arg3, enabled) end
+        end)
+    end
+
+    if enabled and persist == true and persistenceFailed then
+        -- The queued loader intentionally fails closed when it can read a
+        -- settings file that does not say true. Do not claim to arm rerun when
+        -- the opt-in could not be saved for a fresh executor environment.
+        queueRegisteredForCurrentEnable = false
+        return
+    end
+
+    if not enabled and (wasEnabled == true or persist == true) then
+        local currentGeneration = tonumber(rawget(env, "__CrefyAutoExecuteGeneration")) or 0
+        currentGeneration = currentGeneration + 1
+        pcall(rawset, env, "__CrefyAutoExecuteGeneration", currentGeneration)
+        pcall(rawset, _G, "__CrefyAutoExecuteGeneration", currentGeneration)
+    end
+
+    if enabled and (wasEnabled ~= true or persist == true) then
+        local sourceUrl, sourcePath = resolveReloadSource()
+        local queueFn, queueOwner
+        local candidateNames = { "queue_on_teleport", "queueonteleport", "queueOnTeleport" }
+        for _, key in ipairs(candidateNames) do
+            local candidate = rawget(env, key)
+            if type(candidate) ~= "function" then candidate = rawget(_G, key) end
+            if type(candidate) == "function" then queueFn = candidate; break end
+        end
+        if queueFn == nil then
+            local synTable = rawget(env, "syn")
+            if type(synTable) ~= "table" then synTable = rawget(_G, "syn") end
+            if type(synTable) == "table" and type(synTable.queue_on_teleport) == "function" then
+                queueFn, queueOwner = synTable.queue_on_teleport, synTable
+            end
+        end
+        if type(queueFn) ~= "function" then
+            warn("[Crefy] Re-run After Teleport is enabled, but this executor exposes no queue_on_teleport API.")
+            queueRegisteredForCurrentEnable = false
+        elseif not queueRegisteredForCurrentEnable then
+            local currentGeneration = tonumber(rawget(env, "__CrefyAutoExecuteGeneration")) or 0
+            local nextGeneration = currentGeneration + 1
+            local payload = makeQueuedLoader(sourceUrl, sourcePath, nextGeneration)
+            local okQueue, queueResult = pcall(queueFn, payload)
+            if (not okQueue or queueResult == false) and queueOwner ~= nil then
+                okQueue, queueResult = pcall(queueFn, queueOwner, payload)
+            end
+            if okQueue and queueResult ~= false then
+                pcall(rawset, env, "__CrefyAutoExecuteGeneration", nextGeneration)
+                pcall(rawset, _G, "__CrefyAutoExecuteGeneration", nextGeneration)
+                queueRegisteredForCurrentEnable = true
+                if sourceUrl == nil and sourcePath == nil then
+                    warn("[Crefy] Re-run After Teleport queued with file auto-discovery. If it cannot find the source, set getgenv().CrefySourcePath or getgenv().CrefySourceUrl.")
+                end
+            else
+                queueRegisteredForCurrentEnable = false
+                warn("[Crefy] Failed to queue Re-run After Teleport: " .. tostring(queueResult))
+            end
+        end
+    elseif not enabled then
+        queueRegisteredForCurrentEnable = false
+    end
+end
+
+-- The persistent GeneralState flag survives a place change even when the user
+-- does not save a separate Ragebot config profile. Mirror it into the control's
+-- Config path before building the toggle so the visual state and runtime agree.
+local persistedEnabled = nil
+if stateData ~= nil and type(stateData.ReRunAfterTeleport) == "boolean" then
+    persistedEnabled = stateData.ReRunAfterTeleport
+end
+if persistedEnabled ~= nil and config ~= nil and type(arg3) == "table" then
+    pcall(function() if config:Get(arg3) ~= persistedEnabled then config:Set(arg3, persistedEnabled) end end)
+end
+local toggle = arg:AddToggle({ Label = "Re-run After Teleport", Config = arg3 })
+if toggle ~= nil and type(toggle.OnChanged) == "function" then
+    toggle:OnChanged(function(enabled)
+        applyRerunSetting(enabled, true)
+    end)
+end
+local configuredEnabled = false
+if config ~= nil and type(arg3) == "table" then
+    pcall(function() configuredEnabled = config:Get(arg3) == true end)
+end
+local initialEnabled = configuredEnabled
+if persistedEnabled ~= nil then initialEnabled = persistedEnabled end
+applyRerunSetting(initialEnabled, false)
 
 arg:AddToggle({
 Label = v86[142],
@@ -19494,8 +19961,9 @@ local state = arg._state
 local stateData = arg._stateData
 
 if state ~= nil and stateData ~= nil then
-state:Save(stateData)
+return state:Save(stateData)
 end
+return { Ok = false, Error = { Detail = "GeneralState is unavailable" } }
 end
 
 index2.GetOverlayLayer = function(arg)
@@ -68456,6 +68924,9 @@ _partGlue = arg,
 _shootLock = v116.new(),
 _hitboxWindowUntil = -1,
 _hitboxWindowTarget = nil,
+_hitboxWindowAliveState = nil,
+_hitboxWindowInitialHealth = nil,
+_hitboxWindowConfirmed = false,
 _attackCooldown = -1,
 _attackCooldownTarget = nil,
 _lastKnifeTarget = nil,
@@ -68593,10 +69064,56 @@ if okPing and type(ping) == "number" and ping == ping and ping >= 0 and ping < 1
 primeDelay = math.clamp(0.05 + ping * 0.5, 0.075, 0.18)
 end
 
+local function finiteKnifeHealth(state)
+    local okHealth, healthValue = pcall(function()
+        return state ~= nil and state.Health or nil
+    end)
+    local health = okHealth and tonumber(healthValue) or nil
+    if type(health) ~= "number" or health ~= health or health == math.huge or health == -math.huge or health < 0 then
+        return nil
+    end
+    return health
+end
+
+local function refreshBackstabConfirmation(expectedTarget)
+    local trackedTarget = expectedTarget or hitboxHead
+    if arg._hitboxWindowTarget ~= trackedTarget or arg._hitboxWindowConfirmed == true then
+        return
+    end
+    local baseline = tonumber(arg._hitboxWindowInitialHealth)
+    local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
+    if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
+        and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
+        -- Health change is the best local confirmation available that the server
+        -- accepted the attack. Stop retries, but retain the target cooldown.
+        arg._hitboxWindowConfirmed = true
+        arg._hitboxWindowUntil = -1
+        arg._nextKnifeWindowAttackAt = 0
+    end
+end
+
 if isKnife then
 if arg._lastKnifeTarget ~= hitboxHead then
+    local previousWindowTarget = arg._hitboxWindowTarget
+    if previousWindowTarget ~= nil and previousWindowTarget ~= hitboxHead then
+        refreshBackstabConfirmation(previousWindowTarget)
+        -- A target switch must not strand an unconfirmed attempt behind the
+        -- 1.25s cooldown. Preserve cooldown only when health change confirmed it.
+        if arg._hitboxWindowConfirmed ~= true and arg._attackCooldownTarget == previousWindowTarget then
+            arg._attackCooldown = -1
+            arg._attackCooldownTarget = nil
+        end
+        arg._hitboxWindowUntil = -1
+        arg._hitboxWindowTarget = nil
+        arg._hitboxWindowAliveState = nil
+        arg._hitboxWindowInitialHealth = nil
+        arg._hitboxWindowConfirmed = false
+    end
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
+arg._hitboxWindowAliveState = nil
+arg._hitboxWindowInitialHealth = nil
+arg._hitboxWindowConfirmed = false
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 arg._knifePrimePitch = nil
@@ -68613,6 +69130,7 @@ arg:InvalidateKnifeState()
 end
 
 local hasHitboxWindow = isKnife
+and arg._hitboxWindowConfirmed ~= true
 and now2 < arg._hitboxWindowUntil
 and arg._hitboxWindowTarget == hitboxHead
 
@@ -68656,8 +69174,20 @@ if not okAttack or attackResult == false then
 arg:_AbortBackstabAttempt(hitboxHead)
 end
 end
-elseif now2 >= arg._hitboxWindowUntil then
-arg._hitboxWindowTarget = nil
+elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitboxWindowUntil then
+    -- Inspect health at the end of the retry window, rather than stopping retries
+    -- on any early health change (which could come from another player).
+    refreshBackstabConfirmation(hitboxHead)
+    if arg._hitboxWindowConfirmed == true then
+        -- Keep the confirmed target identity until target switch/reset so its
+        -- cooldown cannot be mistaken for an unconfirmed stale attempt.
+        arg._nextKnifeWindowAttackAt = 0
+    else
+        -- A non-throwing remote call is not server acknowledgement. If no health
+        -- change arrived during the retry window, release the cooldown and prime
+        -- a fresh attempt instead of silently suppressing this target for 1.25s.
+        arg:_AbortBackstabAttempt(hitboxHead)
+    end
 end
 
 local meleeDt = tonumber(arg2) or 0
@@ -68700,11 +69230,12 @@ if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
     return
 end
+local healthBeforeAttack = finiteKnifeHealth(aliveState)
 local okAttack, attackResult = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and attackResult ~= false then
-arg:_RecordBackstab(hitboxHead)
+arg:_RecordBackstab(hitboxHead, aliveState, healthBeforeAttack)
 else
 arg:_AbortBackstabAttempt(hitboxHead)
 end
@@ -68734,10 +69265,18 @@ end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox)
+index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
 local now2 = os.clock()
 arg._hitboxWindowUntil = now2 + 0.625
 arg._hitboxWindowTarget = targetHitbox
+arg._hitboxWindowAliveState = targetAliveState
+local baselineHealth = tonumber(healthBeforeAttack)
+if type(baselineHealth) ~= "number" or baselineHealth ~= baselineHealth
+    or baselineHealth == math.huge or baselineHealth == -math.huge or baselineHealth < 0 then
+    baselineHealth = nil
+end
+arg._hitboxWindowInitialHealth = baselineHealth
+arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = now2 + 0.12
 arg._attackCooldown = now2 + 1.25
 arg._attackCooldownTarget = targetHitbox
@@ -68747,6 +69286,9 @@ index2._AbortBackstabAttempt = function(arg, targetHitbox)
 if targetHitbox == nil or arg._hitboxWindowTarget == targetHitbox then
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
+arg._hitboxWindowAliveState = nil
+arg._hitboxWindowInitialHealth = nil
+arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 end
 if targetHitbox == nil or arg._attackCooldownTarget == targetHitbox then
@@ -68764,6 +69306,9 @@ end
 index2.InvalidateKnifeState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
+arg._hitboxWindowAliveState = nil
+arg._hitboxWindowInitialHealth = nil
+arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 arg._attackCooldown = -1
 arg._attackCooldownTarget = nil
@@ -68777,6 +69322,9 @@ end
 index2.ResetState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
+arg._hitboxWindowAliveState = nil
+arg._hitboxWindowInitialHealth = nil
+arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 arg._genericMeleeNextAttackAt = 0
 arg._genericMeleeTarget = nil
@@ -70538,9 +71086,19 @@ end
 
 
 if okCall then
+-- A fresh successful claim/release changes which controller owns the camera.
+-- A prime timestamp from the previous owner must never authorize a Knife strike.
+arg._knifeCameraPrimeTarget = nil
+arg._knifeCameraPrimeAt = nil
+arg._knifeCameraPrimeAngles = nil
 arg._knifeCameraLocked = locked
 else
 arg._knifeCameraLocked = nil
+if locked then
+    arg._knifeCameraPrimeTarget = nil
+    arg._knifeCameraPrimeAt = nil
+    arg._knifeCameraPrimeAngles = nil
+end
 if os.clock() >= (arg._nextKnifeCameraWarningAt or 0) then
 arg._nextKnifeCameraWarningAt = os.clock() + 5
 warn("[Ragebot] Knife camera arbiter did not confirm " .. (locked and "claim" or "release") .. "; will retry. Result: " .. tostring(callResult))
@@ -71848,8 +72406,11 @@ if arg._knifeActionExpected == true and type(weaponAction) == "function" then
             weaponAction = nil
         end
     else
+        local arbiter = arg._cameraArbiter
+        local lockRequired = type(arbiter) == "table" and type(arbiter.claim) == "function"
         local primedAt = tonumber(arg._knifeCameraPrimeAt)
-        if v131.ViewAngles == nil
+        if (lockRequired and arg._knifeCameraLocked ~= true)
+            or v131.ViewAngles == nil
             or type(primedAt) ~= "number" or primedAt ~= primedAt
             or primedAt == math.huge or primedAt == -math.huge
             or os.clock() - primedAt < 0.06 then
@@ -73355,6 +73916,17 @@ end
 
 local function ragebotFlushKnifeViewAngles(owner, characterController, payload, target)
     if owner._knifeActionExpected ~= true or payload == nil then return false end
+    local arbiter = owner._cameraArbiter
+    if type(arbiter) == "table" and type(arbiter.claim) == "function"
+        and owner._knifeCameraLocked ~= true then
+        -- Do not begin/retain camera prime while another owner may still control
+        -- the winning angle payload. _SetKnifeCameraLock clears this timer when
+        -- it eventually acquires ownership.
+        owner._knifeCameraPrimeTarget = nil
+        owner._knifeCameraPrimeAt = nil
+        owner._knifeCameraPrimeAngles = nil
+        return false
+    end
     local aliveState = target ~= nil and target.AliveState or nil
     local targetKey = aliveState ~= nil and aliveState.HitboxHead or nil
     if targetKey == nil then
@@ -76941,6 +77513,7 @@ if K.destroyed then return end
 local _lp = _players.LocalPlayer
 if not _lp then
 warn("[Crefy Premium] ABORTED: no LocalPlayer after 60s")
+markCrefyQueuedRerunBootState(false)
 pcall(K.Unload)
 return
 end
@@ -76952,6 +77525,7 @@ _ps = _lp:FindFirstChild("PlayerScripts")
 end
 if not _ps then
 warn("[Crefy Premium] ABORTED: no PlayerScripts")
+markCrefyQueuedRerunBootState(false)
 pcall(K.Unload)
 return
 end
@@ -76964,6 +77538,7 @@ _ctrl = _ps:FindFirstChild("Controllers")
 end
 if not _ctrl then
 warn("[Crefy Premium] ABORTED: PlayerScripts.Controllers not found. This script is built for Rivals - remove it from autoexec if you are in a different game.")
+markCrefyQueuedRerunBootState(false)
 pcall(K.Unload)
 return
 end
@@ -77009,6 +77584,7 @@ end
 local _finalUiOk = _finalGuiCount >= 2
 if not _clientReady or not _finalSpawnedOk or not _finalUiOk then
     warn("[Crefy Premium] ABORTED: client did not reach the required character/UI ready state within 45s.")
+    markCrefyQueuedRerunBootState(false)
     pcall(K.Unload)
     return
 end
@@ -77016,6 +77592,7 @@ local _finalPlayerScripts = _lp:FindFirstChild("PlayerScripts")
 local _finalControllers = _finalPlayerScripts and _finalPlayerScripts:FindFirstChild("Controllers") or nil
 if _finalControllers == nil then
     warn("[Crefy Premium] ABORTED: Controllers disappeared before bootstrap.")
+    markCrefyQueuedRerunBootState(false)
     pcall(K.Unload)
     return
 end
@@ -77028,9 +77605,11 @@ local bootOk, bootResult = pcall(function()
 end)
 if not bootOk then
     warn("[Crefy Premium] bootstrap failed: " .. tostring(bootResult))
+    markCrefyQueuedRerunBootState(false)
     pcall(K.Unload)
     return
 end
+markCrefyQueuedRerunBootState(true)
 task.spawn(function()
 task.wait(60)
 if K.destroyed then return end
