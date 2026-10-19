@@ -195,10 +195,16 @@ local function startupRecoverPersistedMutations()
                         if not readOk then
                             -- Unknown ownership is not permission to overwrite a live value.
                             stillPending = true
-                        elseif currentReference ~= info.InstalledReference then
-                            -- The value no longer matches our installed reference; preserve another owner's value.
-                            if sourceQueue[sourcePart] == info then sourceQueue[sourcePart] = nil end
                         else
+                            local knownPendingTargetReference = info.PendingRollbackTargetReferenceKnown == true
+                                and currentReference == info.PendingRollbackTargetReference
+                            local matchesTrackedTransaction = currentReference == info.InstalledReference
+                                or knownPendingTargetReference
+                            if not matchesTrackedTransaction then
+                                -- The value no longer matches any value recorded by this transaction;
+                                -- preserve another owner's value and retire only this stale snapshot.
+                                if sourceQueue[sourcePart] == info then sourceQueue[sourcePart] = nil end
+                            else
                             local restored = false
                             for _, writer in ipairs(writers) do
                                 local writeOk, writeResult = pcall(writer, sourcePart, "PhysicsRepRootRef", info.OriginalReference)
@@ -215,6 +221,7 @@ local function startupRecoverPersistedMutations()
                             else
                                 stillPending = true
                             end
+                            end -- matchesTrackedTransaction
                         end
                     end
                 end
@@ -27907,9 +27914,13 @@ end
 index2.SetServerCFrame = function(arg, arg2)
 local rootDesync = arg._rootDesync
 if rootDesync == nil then
-return
+-- Clearing an absent per-character controller is handled; a non-nil pose
+-- cannot be accepted without a RootDesync instance.
+return arg2 == nil
 end
-rootDesync:SetServerCFrame(arg2)
+local setMethod = rootDesync.SetServerCFrame
+if type(setMethod) ~= "function" then return false end
+return setMethod(rootDesync, arg2)
 end
 
 index2.GetServerCFrame = function(arg)
@@ -53755,7 +53766,10 @@ local function partGlueRestoreSourceReference(sourcePart, info)
     end
     if not validPart then return true, "source instance is no longer a BasePart" end
     local parentOk, sourceParent = pcall(function() return sourcePart.Parent end)
-    if parentOk and sourceParent == nil then return true, "source instance was removed" end
+    if not parentOk then
+        return false, "source Parent could not be read; preserving pending snapshot"
+    end
+    if sourceParent == nil then return true, "source instance was removed" end
 
     local readOk, currentReference = partGlueReadSourceReference(sourcePart)
     -- Ownership must be known before rollback. A failed read is not permission
@@ -53764,8 +53778,15 @@ local function partGlueRestoreSourceReference(sourcePart, info)
         return false, "current PhysicsRepRootRef could not be read; preserving pending snapshot"
     end
     -- Do not overwrite a value another script installed after our last successful
-    -- Acquire; in that case our own reference is no longer the active value.
-    if currentReference ~= info.InstalledReference then return true, "source reference changed by another owner" end
+    -- Acquire. A failed retarget may, however, leave the previous target's own
+    -- reference installed; persisted rollback records explicitly identify that
+    -- value as part of this transaction so it is not mistaken for an external owner.
+    local installedMatches = currentReference == info.InstalledReference
+    local pendingTargetMatches = info.PendingRollbackTargetReferenceKnown == true
+        and currentReference == info.PendingRollbackTargetReference
+    if not installedMatches and not pendingTargetMatches then
+        return true, "source reference changed by another owner"
+    end
 
     local writers = {}
     if type(v104) == "function" then writers[#writers + 1] = v104 end
@@ -53961,10 +53982,23 @@ local function partGluePersistSourceReference(sourcePart, info)
     if type(queue) ~= "table" then return false end
     local existing = queue[sourcePart]
     if type(existing) == "table" and existing ~= info then
-        -- Never replace an older rollback baseline with a later/intermediate one.
-        if existing.OriginalReferenceKnown == true or existing.RestorePending == true then
-            return false
+        -- Preserve the earliest known baseline but keep the queue object aligned
+        -- with the currently tracked transaction. Refusing the write silently
+        -- left the queue and local map pointing at different snapshots, so a later
+        -- Acquire could mistake this script's own newer reference for an outside owner.
+        if existing.OriginalReferenceKnown == true then
+            info.OriginalReference = existing.OriginalReference
+            info.OriginalReferenceKnown = true
         end
+        if existing.PendingRollbackTargetReferenceKnown == true
+            and info.PendingRollbackTargetReferenceKnown ~= true then
+            info.PendingRollbackInstalledReference = existing.PendingRollbackInstalledReference
+            info.PendingRollbackTargetReference = existing.PendingRollbackTargetReference
+            info.PendingRollbackTargetReferenceKnown = true
+            info.PendingRollbackTargetPart = existing.PendingRollbackTargetPart
+        end
+        if existing.RestorePending == true then info.RestorePending = true end
+        if info.InstalledReference == nil then info.InstalledReference = existing.InstalledReference end
     end
     queue[sourcePart] = info
     return true
@@ -53979,10 +54013,111 @@ local function partGlueClearPersistedSourceReference(sourcePart, resolvedInfo)
     end
 end
 
-local function partGlueRestoreTrackedSourceReference(glue, sourcePart)
+local function partGlueTryWriteSourceReference(sourcePart, referenceValue)
+    local writers = {}
+    if type(v104) == "function" then writers[#writers + 1] = v104 end
+    if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
+    local lastError = "no PhysicsRepRootRef setter available"
+    for _, writer in ipairs(writers) do
+        local writeOk, writeResult = pcall(writer, sourcePart, "PhysicsRepRootRef", referenceValue)
+        if writeOk and writeResult ~= false then
+            local readOk, actualReference = partGlueReadSourceReference(sourcePart)
+            if readOk and actualReference == referenceValue then return true end
+            lastError = "PhysicsRepRootRef rollback read-back mismatch/unavailable"
+        else
+            lastError = tostring(writeOk and "setter returned false" or writeResult)
+        end
+    end
+    return false, lastError
+end
+
+local function partGlueClearPendingSourceRollback(info)
+    if type(info) ~= "table" then return end
+    info.PendingRollbackInstalledReference = nil
+    info.PendingRollbackTargetReference = nil
+    info.PendingRollbackTargetReferenceKnown = nil
+    info.PendingRollbackTargetPart = nil
+end
+
+local function partGlueRestoreTrackedSourceReference(glue, sourcePart, forceReleaseTarget)
     local map = type(glue) == "table" and glue._sourceReferenceInfoBySourcePart or nil
     local info = type(map) == "table" and map[sourcePart] or nil
     if type(info) ~= "table" then return true end
+
+    -- A failed retarget can leave our new PhysicsRepRootRef installed after the
+    -- old target is still active. Preserve both possibilities explicitly: when
+    -- that old target remains the live owner, rollback to its reference first;
+    -- when it has already been released, restore the original pre-PartGlue value.
+    local pendingInstalled = info.PendingRollbackInstalledReference
+    local pendingTargetKnown = info.PendingRollbackTargetReferenceKnown == true
+    if pendingInstalled ~= nil and pendingTargetKnown then
+        local readOk, currentReference = partGlueReadSourceReference(sourcePart)
+        if not readOk then
+            info.RestorePending = true
+            info.LastRestoreError = "pending retarget rollback could not read PhysicsRepRootRef"
+            partGluePersistSourceReference(sourcePart, info)
+            return false, info.LastRestoreError
+        end
+
+        local pendingTargetReference = info.PendingRollbackTargetReference
+        local pendingTargetPart = info.PendingRollbackTargetPart
+        local activeTarget = type(glue) == "table"
+            and type(glue._targetPartBySourcePart) == "table"
+            and glue._targetPartBySourcePart[sourcePart] or nil
+        local activeGlueInfo = type(glue) == "table"
+            and type(glue._glueInfoByTargetPart) == "table"
+            and pendingTargetPart ~= nil and glue._glueInfoByTargetPart[pendingTargetPart] or nil
+        local activeRefCount = type(activeGlueInfo) == "table" and tonumber(activeGlueInfo.RefCount) or 0
+        local oldTargetStillOwned = forceReleaseTarget ~= true
+            and pendingTargetPart ~= nil
+            and activeTarget == pendingTargetPart
+            and type(activeGlueInfo) == "table"
+            and activeGlueInfo.RestorePending ~= true
+            and activeRefCount > 0
+
+        if oldTargetStillOwned then
+            if currentReference == pendingInstalled then
+                local writeOk, writeError = partGlueTryWriteSourceReference(sourcePart, pendingTargetReference)
+                if not writeOk then
+                    info.RestorePending = true
+                    info.LastRestoreError = tostring(writeError)
+                    partGluePersistSourceReference(sourcePart, info)
+                    return false, info.LastRestoreError
+                end
+            elseif currentReference ~= pendingTargetReference then
+                info.RestorePending = true
+                info.LastRestoreError = "PhysicsRepRootRef changed while a retarget rollback was pending"
+                partGluePersistSourceReference(sourcePart, info)
+                return false, info.LastRestoreError
+            end
+
+            info.InstalledReference = pendingTargetReference
+            partGlueClearPendingSourceRollback(info)
+            info.RestorePending = false
+            info.LastRestoreError = nil
+            partGlueClearPersistedSourceReference(sourcePart, info)
+            return true
+        end
+
+        -- The old target was released; the correct final destination is the
+        -- original reference, not a reference to a target whose glue is gone.
+        if currentReference == pendingInstalled then
+            info.InstalledReference = pendingInstalled
+        elseif currentReference == pendingTargetReference then
+            info.InstalledReference = pendingTargetReference
+        elseif info.OriginalReferenceKnown == true and currentReference == info.OriginalReference then
+            map[sourcePart] = nil
+            partGlueClearPersistedSourceReference(sourcePart, info)
+            return true
+        else
+            info.RestorePending = true
+            info.LastRestoreError = "PhysicsRepRootRef ownership is ambiguous during pending rollback"
+            partGluePersistSourceReference(sourcePart, info)
+            return false, info.LastRestoreError
+        end
+        partGlueClearPendingSourceRollback(info)
+    end
+
     local restoreOk, restored, restoreError = pcall(partGlueRestoreSourceReference, sourcePart, info)
     if restoreOk and restored == true then
         map[sourcePart] = nil
@@ -54001,7 +54136,20 @@ if type(arg._sourceReferenceInfoBySourcePart) ~= "table" then arg._sourceReferen
 -- (or safely prove another owner changed the value) before creating a new one.
 local persistedSourceQueue = partGlueGetSourceReferenceQueue(false)
 local persistedSourceInfo = type(persistedSourceQueue) == "table" and persistedSourceQueue[arg2] or nil
-if type(persistedSourceInfo) == "table" then
+local trackedSourceInfo = type(arg._sourceReferenceInfoBySourcePart) == "table"
+    and arg._sourceReferenceInfoBySourcePart[arg2] or nil
+local trackedTarget = type(arg._targetPartBySourcePart) == "table"
+    and arg._targetPartBySourcePart[arg2] or nil
+local activeRetargetRollback = type(persistedSourceInfo) == "table"
+    and trackedSourceInfo == persistedSourceInfo
+    and trackedSourceInfo.PendingRollbackTargetReferenceKnown == true
+    and trackedSourceInfo.PendingRollbackTargetPart ~= nil
+    and trackedTarget == trackedSourceInfo.PendingRollbackTargetPart
+-- A rollback record tied to a still-active prior target must be resolved by the
+-- tracked helper below (new reference -> prior target reference). Restoring the
+-- ultimate baseline here would leave _targetPartBySourcePart pointing at a glue
+-- whose PhysicsRepRootRef had silently been reset.
+if type(persistedSourceInfo) == "table" and not activeRetargetRollback then
     local persistedRestoreOk, persistedRestored, persistedRestoreError = pcall(
         partGlueRestoreSourceReference, arg2, persistedSourceInfo
     )
@@ -54035,6 +54183,7 @@ warn("[PartGlue] Acquire skipped safely: " .. tostring(referenceError))
 end
 return nil
 end
+local v119 = arg._targetPartBySourcePart[arg2]
 local function restoreSourceReference()
     if not previousReferenceKnown then return false, "previous value unavailable" end
     local lastError = "no PhysicsRepRootRef setter available"
@@ -54060,24 +54209,33 @@ local function restoreSourceReference()
             end
         end
     end
-    -- Failed first-time acquisitions still need a durable rollback record.
-    -- When an earlier target is still actively glued, keep its baseline snapshot
-    -- untouched rather than replacing it with a temporary rollback target.
+    -- Keep the earliest known baseline, but record that this acquisition may
+    -- still own the current reference. If the prior target is still active,
+    -- remember the intermediate rollback target too; otherwise a retry could
+    -- mistake our failed write for an external owner's value and discard the
+    -- only snapshot needed for cleanup.
     local tracked = arg._sourceReferenceInfoBySourcePart[arg2]
     if type(tracked) ~= "table" then
-        local rollbackInfo = {
+        tracked = {
             OriginalReference = previousReference,
             OriginalReferenceKnown = true,
-            InstalledReference = reference,
-            RestorePending = true,
-            LastRestoreError = lastError,
         }
-        arg._sourceReferenceInfoBySourcePart[arg2] = rollbackInfo
-        partGluePersistSourceReference(arg2, rollbackInfo)
+        arg._sourceReferenceInfoBySourcePart[arg2] = tracked
     end
+    tracked.InstalledReference = reference
+    tracked.RestorePending = true
+    tracked.LastRestoreError = lastError
+    if v119 ~= nil and arg._targetPartBySourcePart[arg2] == v119 then
+        tracked.PendingRollbackInstalledReference = reference
+        tracked.PendingRollbackTargetReference = previousReference
+        tracked.PendingRollbackTargetReferenceKnown = previousReferenceKnown == true
+        tracked.PendingRollbackTargetPart = v119
+    else
+        partGlueClearPendingSourceRollback(tracked)
+    end
+    partGluePersistSourceReference(arg2, tracked)
     return false, lastError
 end
-local v119 = arg._targetPartBySourcePart[arg2]
 
 if v119 ~= arg3 then
 local setupOk, setupError = pcall(arg._SetupGlue, arg, arg3, reference)
@@ -54148,6 +54306,7 @@ else
     sourceReferenceInfo.InstalledReference = reference
     sourceReferenceInfo.RestorePending = false
     sourceReferenceInfo.LastRestoreError = nil
+    partGlueClearPendingSourceRollback(sourceReferenceInfo)
 end
 partGlueClearPersistedSourceReference(arg2, sourceReferenceInfo)
 return cframe
@@ -54341,12 +54500,22 @@ index2.RetryPendingRestores = function(arg)
     if type(sourceMap) == "table" then
         for sourcePart, sourceInfo in pairs(sourceMap) do
             if type(sourceInfo) == "table" and sourceInfo.RestorePending == true then
-                local sourceRestoreOk, sourceRestored = pcall(partGlueRestoreSourceReference, sourcePart, sourceInfo)
-                if sourceRestoreOk and sourceRestored == true and sourceMap[sourcePart] == sourceInfo then
-                    sourceMap[sourcePart] = nil
-                    partGlueClearPersistedSourceReference(sourcePart, sourceInfo)
+                local sourceRestoreOk, sourceRestored, sourceRestoreError = pcall(
+                    partGlueRestoreTrackedSourceReference, arg, sourcePart
+                )
+                if sourceRestoreOk and sourceRestored == true then
+                    -- A tracked rollback may only restore the reference to an old
+                    -- target which is still actively owned. Keep the baseline map
+                    -- until Free/Destroy releases that target; the helper clears it
+                    -- itself only when the final original reference is restored.
+                    if sourceMap[sourcePart] == sourceInfo
+                        and arg._targetPartBySourcePart[sourcePart] == nil then
+                        sourceMap[sourcePart] = nil
+                        partGlueClearPersistedSourceReference(sourcePart, sourceInfo)
+                    end
                 else
                     sourceInfo.RestorePending = true
+                    sourceInfo.LastRestoreError = tostring(sourceRestoreOk and sourceRestoreError or sourceRestored)
                     partGluePersistSourceReference(sourcePart, sourceInfo)
                 end
             end
@@ -54401,10 +54570,14 @@ end
 local sourceMap = arg._sourceReferenceInfoBySourcePart
 if type(sourceMap) == "table" then
     for sourcePart, sourceInfo in pairs(sourceMap) do
-        local sourceRestoreOk, sourceRestored, sourceRestoreError = pcall(partGlueRestoreSourceReference, sourcePart, sourceInfo)
-        if sourceRestoreOk and sourceRestored == true and sourceMap[sourcePart] == sourceInfo then
-            sourceMap[sourcePart] = nil
-            partGlueClearPersistedSourceReference(sourcePart, sourceInfo)
+        local sourceRestoreOk, sourceRestored, sourceRestoreError = pcall(
+            partGlueRestoreTrackedSourceReference, arg, sourcePart, true
+        )
+        if sourceRestoreOk and sourceRestored == true then
+            if sourceMap[sourcePart] == sourceInfo then
+                sourceMap[sourcePart] = nil
+                partGlueClearPersistedSourceReference(sourcePart, sourceInfo)
+            end
         else
             if type(sourceInfo) == "table" then
                 sourceInfo.RestorePending = true
@@ -62281,7 +62454,35 @@ end
 end
 do
 local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
-local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"}})
+local voidSpamRestoreRetryToken = 0
+local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
+    if enabled == false then
+        voidSpamRestoreRetryToken = voidSpamRestoreRetryToken + 1
+        local retryToken = voidSpamRestoreRetryToken
+        local restore = rawget(_G, "__CrefyRestoreVoidSpamTransform")
+        if type(restore) == "function" then
+            local ok, result = pcall(restore)
+            if not ok or result == false then
+                -- Keep retrying briefly even if Ragebot's planner is disabled;
+                -- relying only on its next update could leave the 90-degree
+                -- roll or Hide translation in place indefinitely.
+                task.spawn(function()
+                    local deadline = os.clock() + 2
+                    while retryToken == voidSpamRestoreRetryToken and os.clock() < deadline do
+                        task.wait(0.05)
+                        local retryOk, retryResult = pcall(restore)
+                        if retryOk and retryResult == true then return end
+                    end
+                    if retryToken == voidSpamRestoreRetryToken then
+                        warn("[Ragebot] Void Spam transform could not be verified as restored; keeping the snapshot for a later retry.")
+                    end
+                end)
+            end
+        end
+    else
+        voidSpamRestoreRetryToken = voidSpamRestoreRetryToken + 1
+    end
+end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.1–1 second.",Min=0.1,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
@@ -63165,7 +63366,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
-local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.8
+local UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -64116,6 +64317,9 @@ end
 undergroundController.IsEnabled = function()
 return undergroundEnabled == true
 end
+undergroundController.IsRagebotIntegrated = function()
+return undergroundEnabled == true and undergroundRagebotIntegrated == true
+end
 undergroundController.SetRagebotIntegration = function(active)
 undergroundRagebotRequested = active == true
 local shouldIntegrate = undergroundEnabled and undergroundRagebotRequested
@@ -64146,9 +64350,12 @@ end
 if typeof(clientCFrame) == "CFrame" then
 undergroundLastClientCFrame = clientCFrame
 end
--- Only non-knife melee receives the small vertical adjustment. Guns, knives,
--- and unresolved item states retain the requested zero offset (0, 0, 0).
-local offset = weaponKind == "Melee" and Vector3.new(0, UNDERGROUND_RAGEBOT_Y_OFFSET, 0) or Vector3.zero
+-- Underground positioning is weapon-specific: Gun and Knife stay at the
+-- planned CFrame; only non-Knife melee uses the legacy -3.8-stud adjustment.
+-- Unknown weapon kinds fail neutral rather than shifting a gun by accident.
+local offset = weaponKind == "Melee"
+    and Vector3.new(0, UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET, 0)
+    or Vector3.zero
 local adjusted = cframe + offset
 undergroundLastServerCFrame = adjusted
 return adjusted
@@ -64161,6 +64368,47 @@ end
 _G.__LuaHookUndergroundStandaloneCleanup = undergroundCleanup
 if type(K) == "table" and type(K.onUnload) == "function" then
 K.onUnload(function()
+    -- This callback is registered before the local restore function is declared
+    -- later in the file. Resolve the published hook at callback time instead of
+    -- referencing an out-of-scope local (which would resolve as a nil global).
+    local restoreKey = "__CrefyRestoreVoidSpamTransform"
+    local restoreFn = rawget(_G, restoreKey)
+    local restoreOk, restoreResult = false, nil
+    if type(restoreFn) == "function" then
+        restoreOk, restoreResult = pcall(restoreFn)
+    end
+    if restoreOk and restoreResult == true then
+        if rawget(_G, restoreKey) == restoreFn then
+            rawset(_G, restoreKey, nil)
+        end
+    else
+        -- Keep the current global hook while retrying. The old controller can
+        -- survive briefly through reload; the newer script may also replace the
+        -- hook, so every retry resolves the active function again.
+        task.spawn(function()
+            local deadline = os.clock() + 2
+            local restored = false
+            local restoredFn = nil
+            while os.clock() < deadline do
+                task.wait(0.05)
+                local currentRestore = rawget(_G, restoreKey)
+                if type(currentRestore) ~= "function" then currentRestore = restoreFn end
+                if type(currentRestore) == "function" then
+                    local okRetry, retryResult = pcall(currentRestore)
+                    if okRetry and retryResult == true then
+                        restored = true
+                        restoredFn = currentRestore
+                        break
+                    end
+                end
+            end
+            if restored and rawget(_G, restoreKey) == restoredFn then
+                rawset(_G, restoreKey, nil)
+            elseif not restored then
+                warn("[Ragebot] Unload left Void Spam restore pending; keeping the global restore hook for a later retry.")
+            end
+        end)
+    end
 undergroundController.Stop(true)
 if undergroundRespawnConnection then
 pcall(function() undergroundRespawnConnection:Disconnect() end)
@@ -67355,9 +67603,9 @@ ragebotFiniteNumber = function(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
--- Reconstruct the real target head pose before PartGlue moves the local hitbox.
--- The weak-key cache belongs to the HitboxHead instance and is only used while it
--- remains under the same character model.
+-- Keep target identity tied to the live FighterState throughout planning. PartGlue
+-- can relocate the local hitbox to its encoded anchor, so its post-Acquire Position
+-- is not an independent server-side Head-position measurement.
 local RAGE_SHOT_ORIGIN_ABOVE = {
     ["\0"] = -9e37,
     ["\1"] = 0,
@@ -67430,7 +67678,6 @@ end
 
 local shieldAimState = v117(arg3.FighterState)
 local flag19 = shieldAimState ~= "Below"
-local useShieldCounterShot = shieldAimState == "Above" or shieldAimState == "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
 if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
@@ -67598,18 +67845,12 @@ local okSend, sendError = pcall(function()
 
 
 
-    local okCurrentShieldState, currentShieldAimState = pcall(v117, arg3.FighterState)
-    if not okCurrentShieldState then currentShieldAimState = shieldAimState end
-
-    -- Restore the stable legacy downward shot angle for ordinary targets. The
-    -- prior live-muzzle/head-CFrame rewrite mixed two coordinate paths: the
-    -- shooter-origin and target ObjectSpace metadata could describe different
-    -- frames after PartGlue/Underground adjusted the server-facing pose. Keep
-    -- the known encoded transport for normal targets; only a positively
-    -- identified Riot Shield state selects the matching counter direction.
-    local useBelowPayload = currentShieldAimState == "Below"
-    local encodedShotOrigin = useBelowPayload and RAGE_SHOT_ORIGIN_BELOW or RAGE_SHOT_ORIGIN_ABOVE
-    local encodedShotDirection = useBelowPayload and RAGE_SHOT_DIRECTION_BELOW or RAGE_SHOT_DIRECTION_ABOVE
+    -- Keep payload direction synchronized with the state used to build this
+    -- plan. Re-reading shield state here can switch the payload after the CFrame
+    -- was planned, producing an internally inconsistent shot (the V47 behavior
+    -- used the captured flag19 for both planning and firing).
+    local encodedShotOrigin = flag19 and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
+    local encodedShotDirection = flag19 and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
     local shotHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
     arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, shotHitpoint)
     local afterCount = arg4.ShotRequestCount
@@ -67666,6 +67907,7 @@ end
 -- Lua local functions do not cross the factory's lexical scope, so the controller
 -- must resolve these through this explicit shared API instead of calling nil globals.
 local voidSpamApi = {
+    ApiVersion = 3,
     State = ragebotVoidSpamState,
     Config = ragebotVoidSpamConfig,
     PollShotAck = ragebotVoidSpamPollShotAck,
@@ -69082,16 +69324,14 @@ local v116 = tbl17.jz()
 local cameraArbiter = tbl17.co()
 tbl17.cF()
 local v117 = tbl17.jD()
--- This controller is created by a different Lua factory than the hitscan planner.
--- Bind safe local wrappers to the explicit API published by tbl17.jD(); never rely
--- on the planner's lexical locals being visible here.
+-- The planner and the CFrame applier live in separate factories. Use their
+-- shared helpers only when the API explicitly matches this schema; older,
+-- unversioned executor globals fall back to the local implementation.
 local function ragebotGetVoidSpamApiFunction(name)
     local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
-    if type(api) ~= "table" then return nil end
-    local candidate
-    local okRead = pcall(function() candidate = api[name] end)
-    if okRead and type(candidate) == "function" then return candidate end
-    return nil
+    if type(api) ~= "table" or api.ApiVersion ~= 3 then return nil end
+    local fn = rawget(api, name)
+    return type(fn) == "function" and fn or nil
 end
 
 local function ragebotVoidSpamState()
@@ -69764,6 +70004,68 @@ end
 end
 end
 
+local function ragebotRequestVoidSpamTransformRestore()
+    local state = rawget(_G, "__CrefyRagebotVoidSpamState")
+    local restore = rawget(_G, "__CrefyRestoreVoidSpamTransform")
+    if type(restore) ~= "function" then
+        local pending = type(state) == "table" and state.voidSpamTransformApplied == true
+        if type(state) == "table" then state._voidSpamTransformRestorePending = pending end
+        return not pending
+    end
+
+    local restoreOk, restoreResult = pcall(restore)
+    if restoreOk and restoreResult == true then
+        if type(state) == "table" then state._voidSpamTransformRestorePending = false end
+        return true
+    end
+    if type(state) ~= "table" or state.voidSpamTransformApplied ~= true then
+        if type(state) == "table" then state._voidSpamTransformRestorePending = false end
+        return true
+    end
+    state._voidSpamTransformRestorePending = true
+
+    local oldToken = tonumber(state._voidSpamRestoreRetryToken) or 0
+    if oldToken ~= oldToken or oldToken == math.huge or oldToken == -math.huge then oldToken = 0 end
+    -- Avoid creating/cancelling one retry worker on every planner update.
+    if state._voidSpamRestoreRetryScheduledToken == oldToken then return false end
+
+    local token = oldToken + 1
+    state._voidSpamRestoreRetryToken = token
+    state._voidSpamRestoreRetryScheduledToken = token
+    if type(task) == "table" and type(task.spawn) == "function" and type(task.wait) == "function" then
+        task.spawn(function()
+            local deadline = os.clock() + 3
+            while os.clock() < deadline
+                and type(state) == "table"
+                and state._voidSpamRestoreRetryToken == token
+                and state._voidSpamRestoreRetryScheduledToken == token
+                and state.voidSpamTransformApplied == true do
+                task.wait(0.05)
+                local currentRestore = rawget(_G, "__CrefyRestoreVoidSpamTransform")
+                if type(currentRestore) ~= "function" then currentRestore = restore end
+                local retryOk, retryResult = pcall(currentRestore)
+                if retryOk and retryResult == true then
+                    if type(state) == "table" and state._voidSpamRestoreRetryScheduledToken == token then
+                        state._voidSpamRestoreRetryScheduledToken = nil
+                    end
+                    return
+                end
+            end
+            if type(state) == "table" and state._voidSpamRestoreRetryScheduledToken == token then
+                state._voidSpamRestoreRetryScheduledToken = nil
+                if state._voidSpamRestoreRetryToken == token
+                    and state.voidSpamTransformApplied == true
+                    and os.clock() >= deadline then
+                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot kept for a later retry.")
+                end
+            end
+        end)
+    else
+        state._voidSpamRestoreRetryScheduledToken = nil
+    end
+    return false
+end
+
 index2.SetEnabled = function(arg, enabled)
 enabled = enabled == true
 local wasEnabled = arg._enabled == true
@@ -69834,6 +70136,9 @@ else
 
 
     arg._enabled = false
+    -- Turning off Ragebot must release VoidSpam's independent roll/offset even
+    -- when the planner stops before another _ApplyUndergroundOffset call.
+    ragebotRequestVoidSpamTransformRestore()
     local keepRestoreTransaction = arg._repRootCounterRestorePending == true
     if keepRestoreTransaction then
         ragebotPoseRestoreGateSet(arg, true, nil, arg._repRootCounterRestoreCFrame, arg._repRootCounterRestoreRootPart)
@@ -70270,14 +70575,22 @@ end
 -- Poll the pending ACK on every valid controller update, not only when the
 -- hitscan planner runs. Translocate returns early and must not bypass the deadline.
 local pendingVoidSpamState = ragebotVoidSpamState()
+local phaseEnabledForUpdate, phaseAttackForUpdate, phaseHideForUpdate = ragebotVoidSpamConfig()
+local phaseNowForUpdate = os.clock()
 if pendingVoidSpamState.awaitingShotAck == true then
-    local _, pendingAttack = ragebotVoidSpamConfig()
     local pendingItem = pendingVoidSpamState.pendingShotItem
     if pendingItem ~= nil then
-        ragebotVoidSpamPollShotAck(pendingVoidSpamState, pendingItem, os.clock(), pendingAttack)
+        ragebotVoidSpamPollShotAck(pendingVoidSpamState, pendingItem, phaseNowForUpdate, phaseAttackForUpdate)
     else
-        ragebotVoidSpamResolveUnconfirmedShot(pendingVoidSpamState, os.clock(), pendingAttack, "failed")
+        ragebotVoidSpamResolveUnconfirmedShot(pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, "failed")
     end
+end
+-- Keep the phase clock live even when no target is available or a strategy
+-- returns early; otherwise the first target after an idle gap can enter Hide.
+if phaseEnabledForUpdate then
+    ragebotVoidSpamAdvancePhase(
+        pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, phaseHideForUpdate
+    )
 end
 
 local mode = v115.Data.Ragebot.Evasion.Mode
@@ -71726,21 +72039,449 @@ end
 return { CFrame = v121.compute(arg2) }
 end
 
+local function ragebotCFrameOrientationMatches(a, b)
+    if typeof(a) ~= "CFrame" or typeof(b) ~= "CFrame" then return false end
+    local ok, matches = pcall(function()
+        return a.RightVector:Dot(b.RightVector) > 0.98
+            and a.UpVector:Dot(b.UpVector) > 0.98
+            and a.LookVector:Dot(b.LookVector) > 0.98
+    end)
+    return ok and matches == true
+end
+
+local function ragebotCFrameOrientationScore(a, b)
+    if typeof(a) ~= "CFrame" or typeof(b) ~= "CFrame" then return nil end
+    local ok, score = pcall(function()
+        return a.RightVector:Dot(b.RightVector)
+            + a.UpVector:Dot(b.UpVector)
+            + a.LookVector:Dot(b.LookVector)
+    end)
+    return ok and type(score) == "number" and score == score and score or nil
+end
+
+local function ragebotVoidSpamControllerRoot(controller)
+    if type(controller) ~= "table" then return nil end
+    local root = nil
+    pcall(function()
+        local rootDesync = controller._rootDesync
+        root = rootDesync and rootDesync._rootPart or nil
+    end)
+    if typeof(root) == "Instance" then return root end
+    pcall(function()
+        local context = controller._context
+        local state = context and context.State
+        root = state and state.RootPart or nil
+    end)
+    if typeof(root) == "Instance" then return root end
+    return nil
+end
+
+local function ragebotVoidSpamReconcileRootDesyncCaches(
+    controller, rootPart, lastOutputCFrame, baseCFrame, desiredCFrame, fakeOffset, tolerance
+)
+    if ragebotPoseRestoreGateIsActive()
+        or type(controller) ~= "table"
+        or ragebotVoidSpamControllerRoot(controller) ~= rootPart
+        or typeof(lastOutputCFrame) ~= "CFrame"
+        or typeof(baseCFrame) ~= "CFrame"
+        or typeof(desiredCFrame) ~= "CFrame" then
+        return false
+    end
+    local rootDesync = nil
+    pcall(function() rootDesync = controller._rootDesync end)
+    if type(rootDesync) ~= "table" or rootDesync._rootPart ~= rootPart then return true end
+
+    local offset = typeof(fakeOffset) == "Vector3" and fakeOffset or Vector3.zero
+    local limit = type(tolerance) == "number" and tolerance or 1.5
+    local outputPos = lastOutputCFrame.Position
+    local basePos = baseCFrame.Position
+    local largeHideOffset = offset.Y < -100 and offset.Magnitude > 100
+    local function cacheIsThisVoidSpamOutput(cacheCFrame)
+        if typeof(cacheCFrame) ~= "CFrame" then return false end
+        local outputScore = ragebotCFrameOrientationScore(cacheCFrame, lastOutputCFrame)
+        local baseScore = ragebotCFrameOrientationScore(cacheCFrame, baseCFrame)
+        if outputScore == nil or baseScore == nil or outputScore <= baseScore + 0.15 then
+            return false
+        end
+        local cachePosition = cacheCFrame.Position
+        local nearOutput = (cachePosition - outputPos).Magnitude <= limit
+        local nearBase = (cachePosition - basePos).Magnitude <= limit
+        local stillHidden = largeHideOffset and cachePosition.Y <= basePos.Y + offset.Y * 0.5
+        return nearOutput or nearBase or stillHidden
+    end
+
+    local readOldOk, cachedOld = pcall(function() return rootDesync._oldCFrame end)
+    if not readOldOk then return false end
+    if cacheIsThisVoidSpamOutput(cachedOld) then
+        local writeOk = pcall(function() rootDesync._oldCFrame = desiredCFrame end)
+        if not writeOk then return false end
+        local verifyOk, verified = pcall(function() return rootDesync._oldCFrame end)
+        if not verifyOk or typeof(verified) ~= "CFrame"
+            or not ragebotCFrameOrientationMatches(verified, desiredCFrame)
+            or (verified.Position - desiredCFrame.Position).Magnitude > 0.25 then
+            return false
+        end
+    end
+    local readServerOk, cachedServer = pcall(function() return rootDesync._cframe end)
+    if not readServerOk then return false end
+    if cacheIsThisVoidSpamOutput(cachedServer) then
+        local writeOk = pcall(function() rootDesync._cframe = desiredCFrame end)
+        if not writeOk then return false end
+        local verifyOk, verified = pcall(function() return rootDesync._cframe end)
+        if not verifyOk or typeof(verified) ~= "CFrame"
+            or not ragebotCFrameOrientationMatches(verified, desiredCFrame)
+            or (verified.Position - desiredCFrame.Position).Magnitude > 0.25 then
+            return false
+        end
+    end
+    return true
+end
+
+local function ragebotClearVoidSpamTransformSnapshot(state)
+    if type(state) ~= "table" then return end
+    state.voidSpamTransformApplied = false
+    state.voidSpamBaseCFrame = nil
+    state.voidSpamOutputCFrame = nil
+    state.voidSpamFakeOffset = nil
+    state.voidSpamController = nil
+    state.voidSpamRootPart = nil
+    state._voidSpamRestoreRetryScheduledToken = nil
+    state._voidSpamTransformRestorePending = false
+    state.fakePositionActive = false
+    state.fakePositionOffsetX = nil
+    state.fakePositionOffsetZ = nil
+    local token = tonumber(state._voidSpamRestoreRetryToken) or 0
+    if token == token and token ~= math.huge and token ~= -math.huge then
+        state._voidSpamRestoreRetryToken = token + 1
+    end
+end
+
+local function ragebotRestoreVoidSpamTransform(stateOverride)
+    local state = type(stateOverride) == "table"
+        and stateOverride or rawget(_G, "__CrefyRagebotVoidSpamState")
+    if type(state) ~= "table" or state.voidSpamTransformApplied ~= true then
+        return true
+    end
+
+    local controller = state.voidSpamController
+    local baseCFrame = state.voidSpamBaseCFrame
+    local lastOutputCFrame = state.voidSpamOutputCFrame
+    local fakeOffset = typeof(state.voidSpamFakeOffset) == "Vector3"
+        and state.voidSpamFakeOffset or Vector3.zero
+    if type(controller) ~= "table" or typeof(baseCFrame) ~= "CFrame"
+        or typeof(lastOutputCFrame) ~= "CFrame" then
+        return false
+    end
+
+    local setFn
+    local methodsOk = pcall(function()
+        setFn = controller.SetServerCFrame
+    end)
+    if not methodsOk then setFn = nil end
+    -- A destroyed CharacterController may no longer have its RootDesync setter.
+    -- The identity-checked RootPart remains the final recovery fallback below.
+
+    local currentRoot = ragebotVoidSpamControllerRoot(controller)
+    if typeof(currentRoot) ~= "Instance" then return false end
+    local rootValidOk, rootValid = pcall(function()
+        return currentRoot:IsA("BasePart")
+            and currentRoot.Parent ~= nil
+            and currentRoot:IsDescendantOf(workspace)
+    end)
+    if not rootValidOk or not rootValid then return false end
+
+    local snapshotRoot = state.voidSpamRootPart
+    if snapshotRoot ~= nil then
+        if typeof(snapshotRoot) ~= "Instance" then return false end
+        local oldRootReadOk, oldRootStillInWorld = pcall(function()
+            return snapshotRoot:IsA("BasePart") and snapshotRoot:IsDescendantOf(workspace)
+        end)
+        if not oldRootReadOk then return false end
+        if snapshotRoot ~= currentRoot then
+            -- Never transfer a stale roll/offset to a replacement character.
+            -- The old root is no longer controller-owned; retire only this stale
+            -- transaction rather than moving the new character to an old pose.
+            ragebotClearVoidSpamTransformSnapshot(state)
+            return true
+        end
+        if not oldRootStillInWorld then
+            ragebotClearVoidSpamTransformSnapshot(state)
+            return true
+        end
+    end
+
+    -- GetServerCFrame can return RootDesync's cached _cframe instead of the
+    -- actual RootPart pose. Read the real part before deciding whether the 90°
+    -- roll/offset remains applied; otherwise a cache-only setter can pass a
+    -- false-positive verification when _oldCFrame is nil.
+    local currentReadOk, currentCFrame = pcall(function() return currentRoot.CFrame end)
+    if not currentReadOk or typeof(currentCFrame) ~= "CFrame" then return false end
+
+    local currentPos = currentCFrame.Position
+    local outputPos = lastOutputCFrame.Position
+    local basePos = baseCFrame.Position
+    local deltaOutput = (currentPos - outputPos).Magnitude
+    local deltaBase = (currentPos - basePos).Magnitude
+    local normalTolerance = 1.5
+    local largeHideOffset = fakeOffset.Y < -100 and fakeOffset.Magnitude > 100
+    local expectedHidePosition = basePos + fakeOffset
+    local hidePositionDelta = (currentPos - expectedHidePosition).Magnitude
+    local hideOffsetStillVisible = largeHideOffset and hidePositionDelta <= 8
+    local nearOutputPosition = deltaOutput <= normalTolerance
+    local nearBasePosition = deltaBase <= normalTolerance
+
+    -- Legacy transactions created before RootPart identity was stored can be
+    -- adopted only if the current part still matches the captured pose closely.
+    -- Do not apply old snapshots across a respawn merely because the controller
+    -- object itself survived reload.
+    if snapshotRoot == nil then
+        -- Legacy snapshots cannot prove RootPart identity. Adopt only when both
+        -- position and orientation closely match the saved output or base pose;
+        -- being merely far below the base is not enough to identify this root.
+        local outputOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, lastOutputCFrame)
+        local baseOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, baseCFrame)
+        local exactLegacyPoseMatches = (nearOutputPosition and outputOrientationMatches)
+            or (nearBasePosition and baseOrientationMatches)
+        if not exactLegacyPoseMatches then return false end
+        state.voidSpamRootPart = currentRoot
+    end
+
+    -- Another restore transaction owns pose changes while the gate is active.
+    -- Let it finish first, then retry the Void Spam cleanup against the real pose.
+    if ragebotPoseRestoreGateIsActive() then return false end
+
+    local outputScore = ragebotCFrameOrientationScore(currentCFrame, lastOutputCFrame)
+    local baseScore = ragebotCFrameOrientationScore(currentCFrame, baseCFrame)
+    if outputScore == nil or baseScore == nil then return false end
+
+    local rotationIsStillRolled = outputScore > baseScore + 0.15
+    local rotationAlreadyRestored = baseScore > outputScore + 0.15
+    if not rotationIsStillRolled and not rotationAlreadyRestored then
+        -- Another controller supplied an orientation that cannot be attributed
+        -- safely to either snapshot. Keep the recovery record and retry later.
+        return false
+    end
+
+    if largeHideOffset and not nearOutputPosition and not nearBasePosition and not hideOffsetStillVisible then
+        -- Do not remove only the roll and then discard the sole recovery record
+        -- while a large Hide translation is still ambiguous.
+        return false
+    end
+
+    local restoredPosition = currentPos
+    local positionNeedsCorrection = false
+    if nearOutputPosition then
+        restoredPosition = currentPos - fakeOffset
+        positionNeedsCorrection = fakeOffset.Magnitude > 0.01
+    elseif nearBasePosition then
+        restoredPosition = currentPos
+    elseif not largeHideOffset then
+        -- For a normal offset the character likely moved after the snapshot.
+        -- Preserve the newer location while still removing our own side roll.
+        restoredPosition = currentPos
+    elseif hideOffsetStillVisible then
+        restoredPosition = currentPos - fakeOffset
+        positionNeedsCorrection = true
+    end
+
+    local restoredRotation = currentCFrame.Rotation
+    local rotationNeedsCorrection = false
+    if rotationIsStillRolled then
+        -- Void Spam applies a local +90° Z roll; remove only that local rotation
+        -- so a newer legitimate yaw/pitch is preserved.
+        restoredRotation = (currentCFrame * CFrame.Angles(0, 0, math.rad(-90))).Rotation
+        rotationNeedsCorrection = true
+    end
+
+    if rotationAlreadyRestored and not positionNeedsCorrection then
+        if nearBasePosition or fakeOffset.Magnitude <= 0.01 then
+            local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
+                controller, currentRoot, lastOutputCFrame, baseCFrame, currentCFrame,
+                fakeOffset, normalTolerance
+            )
+            if not cachesOk then return false end
+            ragebotClearVoidSpamTransformSnapshot(state)
+            return true
+        end
+        if not nearOutputPosition and not hideOffsetStillVisible then return false end
+    end
+
+    if rotationNeedsCorrection or positionNeedsCorrection then
+        if ragebotPoseRestoreGateIsActive() then return false end
+        local restoredCFrame = CFrame.new(restoredPosition) * restoredRotation
+        local setterOk, setterResult = false, nil
+        if type(setFn) == "function" then
+            setterOk, setterResult = pcall(setFn, controller, restoredCFrame)
+        end
+        if not setterOk or setterResult == false then
+            -- Fall back to the actual RootPart only if the wrapper no longer has
+            -- a RootDesync owner. A live owner rejecting the write remains a
+            -- hard failure; do not bypass it or another active restore gate.
+            local rootDesyncPresent = false
+            pcall(function() rootDesyncPresent = controller._rootDesync ~= nil end)
+            if rootDesyncPresent or ragebotPoseRestoreGateIsActive() then return false end
+        end
+        -- SetServerCFrame may only update RootDesync._cframe when _oldCFrame is
+        -- nil. Explicitly restore this same, identity-checked RootPart as well.
+        if ragebotPoseRestoreGateIsActive() then return false end
+        local rootStillCurrent = ragebotVoidSpamControllerRoot(controller) == currentRoot
+        if not rootStillCurrent then return false end
+        local directWriteOk = pcall(function() currentRoot.CFrame = restoredCFrame end)
+        if not directWriteOk then return false end
+        local verifyOk, verifyCFrame = pcall(function() return currentRoot.CFrame end)
+        if not verifyOk or typeof(verifyCFrame) ~= "CFrame"
+            or not ragebotCFrameOrientationMatches(verifyCFrame, restoredCFrame)
+            or (verifyCFrame.Position - restoredCFrame.Position).Magnitude > 0.25 then
+            return false
+        end
+
+        -- Reconcile same-root RootDesync caches before clearing the snapshot; either
+        -- cache can replay the rolled/hidden pose after this function returns.
+        local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
+            controller, currentRoot, lastOutputCFrame, baseCFrame, restoredCFrame,
+            fakeOffset, normalTolerance
+        )
+        if not cachesOk then return false end
+    end
+
+    ragebotClearVoidSpamTransformSnapshot(state)
+    return true
+end
+
+pcall(rawset, _G, "__CrefyRestoreVoidSpamTransform", ragebotRestoreVoidSpamTransform)
+
+-- The previous execution's unload hook may have been too old to restore the
+-- transform (or its callback may have failed before this version could publish
+-- its recovery hook). Once the compatible restore function exists, immediately
+-- retry any persisted Void Spam transform before the new planner can overwrite
+-- its recovery snapshot. Failure keeps the snapshot and schedules a bounded retry.
+do
+    local staleVoidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
+    if type(staleVoidSpamState) == "table"
+        and staleVoidSpamState.voidSpamTransformApplied == true then
+        ragebotRequestVoidSpamTransformRestore()
+    end
+end
+
 index2._ApplyUndergroundOffset = function(arg, cframe, characterController)
+local ragebotData = type(v115) == "table" and v115.Data and v115.Data.Ragebot or nil
+local voidSpamConfig = type(ragebotData) == "table" and ragebotData.VoidSpam or nil
+local voidSpamConfigured = type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true
+local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
+local voidSpamEnabledForRoll = voidSpamConfigured and type(voidSpamState) == "table"
+if (not voidSpamConfigured or arg._enabled ~= true)
+    and type(voidSpamState) == "table"
+    and voidSpamState.voidSpamTransformApplied == true then
+    ragebotRequestVoidSpamTransformRestore()
+end
+-- Clear only the phase scheduler when disabled or when the planner has no
+-- usable frame. Keep the transform snapshot/retry transaction untouched until
+-- the actual RootPart pose and RootDesync caches are verified as restored.
+if (not voidSpamConfigured or arg._enabled ~= true)
+    and type(voidSpamState) == "table" then
+    voidSpamState.activeUntil = 0
+    voidSpamState.nextAttackAt = 0
+    voidSpamState.lastShotAt = 0
+    voidSpamState.phase = "attack"
+    voidSpamState.cycleModelVersion = 2
+    voidSpamState.cycleInitialized = false
+    voidSpamState.phaseStartedAt = 0
+    voidSpamState.attackWindowPending = false
+    voidSpamState.attackWindowExpiresAt = 0
+    voidSpamState.awaitingShotAck = false
+    voidSpamState.pendingShotItem = nil
+    voidSpamState.pendingShotAmmo = nil
+    voidSpamState.pendingShotRequestCount = nil
+    voidSpamState.pendingShotDeadline = 0
+    voidSpamState.fakePositionActive = false
+    voidSpamState.fakePositionOffsetX = nil
+    voidSpamState.fakePositionOffsetZ = nil
+end
 if not arg._enabled or typeof(cframe) ~= "CFrame" then
 return cframe
 end
-local ragebotData = type(v115) == "table" and v115.Data and v115.Data.Ragebot or nil
-local voidSpamConfig = type(ragebotData) == "table" and ragebotData.VoidSpam or nil
-local voidSpamEnabledForRoll = type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true
-local function applyVoidSpamSideRoll(value)
-    if voidSpamEnabledForRoll and typeof(value) == "CFrame" then
-        return value * CFrame.Angles(0, 0, math.rad(90))
+
+local controller = rawget(_G, "__CrefyUndergroundController")
+local undergroundIntegrated = false
+if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "function" then
+    local okIntegrated, integrated = pcall(controller.IsRagebotIntegrated)
+    undergroundIntegrated = okIntegrated and integrated == true
+end
+
+-- The base snapshot excludes Void Spam's own offset/roll, but retains the
+-- independent legacy Underground adjustment if that controller is active.
+local voidSpamBaseCFrame = cframe
+local voidSpamPositionOffset = Vector3.zero
+local weaponKind = "Other"
+local innerContext = arg._innerContext
+local itemBehaviors = innerContext ~= nil and innerContext.ItemBehaviors or nil
+if arg._knifeActionExpected == true or arg._knifeCameraLocked == true then
+    weaponKind = "Knife"
+elseif itemBehaviors ~= nil then
+    local okMelee, melee = pcall(function()
+        return itemBehaviors:EquippedItemAsMelee()
+    end)
+    if okMelee and melee ~= nil then
+        local okName, meleeName = pcall(function() return melee.Name end)
+        if okName and type(meleeName) == "string" then
+            weaponKind = meleeName == "Knife" and "Knife" or "Melee"
+        end
+    else
+        local okGun, gun = pcall(function()
+            return itemBehaviors:EquippedItemAsGun()
+        end)
+        if okGun and gun ~= nil then weaponKind = "Gun" end
+    end
+end
+
+-- Underground baseline is zero for Gun/Knife and -3.8 for Melee. Keep
+-- Void Spam's separate -4-stud feature offset only when Underground is not
+-- integrated, so its snapshot never invents an extra Underground displacement.
+local RAGEBOT_VOID_SPAM_Y_OFFSET = -4.0
+local RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET = -3.8
+if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
+    if undergroundIntegrated then
+        if weaponKind == "Melee" then
+            voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET, 0)
+        else
+            voidSpamBaseCFrame = cframe
+        end
+    else
+        voidSpamPositionOffset = Vector3.new(0, RAGEBOT_VOID_SPAM_Y_OFFSET, 0)
+        cframe = cframe + voidSpamPositionOffset
+    end
+end
+
+local function applyVoidSpamSideRoll(value, baseValue)
+    if voidSpamEnabledForRoll and typeof(value) == "CFrame" and type(voidSpamState) == "table" then
+        local base = typeof(baseValue) == "CFrame" and baseValue or voidSpamBaseCFrame
+        if voidSpamState._voidSpamTransformRestorePending == true then
+            local restored = ragebotRequestVoidSpamTransformRestore()
+            if not restored or voidSpamState._voidSpamTransformRestorePending == true then
+                -- Keep the unresolved snapshot and do not stack a new roll/Hide
+                -- offset on top of a pose whose previous owner has not been restored.
+                return base
+            end
+        end
+        local rolled = value * CFrame.Angles(0, 0, math.rad(90))
+        local retryToken = tonumber(voidSpamState._voidSpamRestoreRetryToken) or 0
+        if retryToken ~= retryToken or retryToken == math.huge or retryToken == -math.huge then retryToken = 0 end
+        voidSpamState._voidSpamRestoreRetryToken = retryToken + 1
+        voidSpamState._voidSpamRestoreRetryScheduledToken = nil
+        voidSpamState.voidSpamTransformApplied = true
+        voidSpamState.voidSpamBaseCFrame = base
+        voidSpamState.voidSpamOutputCFrame = rolled
+        -- Store the exact feature-owned positional delta so it can be removed
+        -- without touching an independently-owned Underground baseline offset.
+        voidSpamState.voidSpamFakeOffset = value.Position - base.Position
+        voidSpamState.voidSpamController = characterController
+        voidSpamState.voidSpamRootPart = ragebotVoidSpamControllerRoot(characterController)
+        return rolled
     end
     return value
 end
-local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
-if type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true and type(voidSpamState) == "table" then
+
+if voidSpamConfigured and type(voidSpamState) == "table" then
     local activeUntil = tonumber(voidSpamState.activeUntil) or 0
     local now = os.clock()
     local activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
@@ -71762,17 +72503,14 @@ if type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true and type(v
     local fakePositionActive = voidSpamState.phase == "hide"
         and activeUntilValid and now < activeUntil
     if fakePositionActive then
-        -- Son-style split position: retain the normal client CFrame through the
-        -- underground controller, but send a stable fake server CFrame during
-        -- Hide. The bounded horizontal panic offset is selected once
-        -- per Hide window, not randomized each frame.
         local panicX = tonumber(voidSpamState.fakePositionOffsetX) or 0
         local panicZ = tonumber(voidSpamState.fakePositionOffsetZ) or 0
         if not ragebotFiniteNumber(panicX) then panicX = 0 end
         if not ragebotFiniteNumber(panicZ) then panicZ = 0 end
         panicX = math.clamp(panicX, -3, 3)
         panicZ = math.clamp(panicZ, -3, 3)
-        cframe = cframe + Vector3.new(panicX, -1000, panicZ)
+        local hideOffset = Vector3.new(panicX, -1000, panicZ)
+        cframe = cframe + hideOffset
         voidSpamState.fakePositionActive = true
     else
         voidSpamState.fakePositionActive = false
@@ -71804,46 +72542,24 @@ elseif type(voidSpamState) == "table" then
     voidSpamState.fakePositionOffsetX = nil
     voidSpamState.fakePositionOffsetZ = nil
 end
-local controller = rawget(_G, "__CrefyUndergroundController")
+
 if type(controller) ~= "table" or type(controller.ApplyToRagebotCFrame) ~= "function" then
-return applyVoidSpamSideRoll(cframe)
+    return applyVoidSpamSideRoll(cframe, voidSpamBaseCFrame)
 end
 local clientCFrame = nil
 if characterController ~= nil then
-local okClient, resultClient = pcall(function()
-return characterController:GetClientCFrame()
-end)
-if okClient and typeof(resultClient) == "CFrame" then
-clientCFrame = resultClient
-end
-end
-local weaponKind = "Other"
-local innerContext = arg._innerContext
-local itemBehaviors = innerContext ~= nil and innerContext.ItemBehaviors or nil
-
-if arg._knifeActionExpected == true or arg._knifeCameraLocked == true then
-    weaponKind = "Knife"
-elseif itemBehaviors ~= nil then
-    local okMelee, melee = pcall(function()
-        return itemBehaviors:EquippedItemAsMelee()
+    local okClient, resultClient = pcall(function()
+        return characterController:GetClientCFrame()
     end)
-    if okMelee and melee ~= nil then
-        local okName, meleeName = pcall(function() return melee.Name end)
-        if okName and type(meleeName) == "string" then
-            weaponKind = meleeName == "Knife" and "Knife" or "Melee"
-        end
-    else
-        local okGun, gun = pcall(function()
-            return itemBehaviors:EquippedItemAsGun()
-        end)
-        if okGun and gun ~= nil then weaponKind = "Gun" end
+    if okClient and typeof(resultClient) == "CFrame" then
+        clientCFrame = resultClient
     end
 end
 local ok, adjusted = pcall(controller.ApplyToRagebotCFrame, cframe, clientCFrame, weaponKind)
 if ok and typeof(adjusted) == "CFrame" then
-return applyVoidSpamSideRoll(adjusted)
+    return applyVoidSpamSideRoll(adjusted, voidSpamBaseCFrame)
 end
-return applyVoidSpamSideRoll(cframe)
+return applyVoidSpamSideRoll(cframe, voidSpamBaseCFrame)
 end
 
 local function ragebotFlushKnifeViewAngles(owner, characterController, payload, target)
@@ -71996,6 +72712,7 @@ end
 
 index2._Reset = function(arg)
 if type(arg) ~= "table" then return end
+ragebotRequestVoidSpamTransformRestore()
 local keepRestoreTransaction = arg._repRootCounterRestorePending == true
 local pendingRestorePose = keepRestoreTransaction and arg._repRootCounterRestoreCFrame or nil
 local pendingRestoreRoot = keepRestoreTransaction and arg._repRootCounterRestoreRootPart or nil
