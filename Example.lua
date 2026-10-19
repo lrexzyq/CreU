@@ -503,6 +503,99 @@ do
         Height = 90,
     })
 
+    -- AddVideo: embeds a playable rbxassetid:// video. Right-click the
+    -- "Simulate Progress" button's neighbor above for an unrelated demo;
+    -- this one just autoplays muted.
+    NewControls:AddVideo("DemoVideo", {
+        Video = "rbxassetid://14448410291",
+        Height = 120,
+        Volume = 0,
+        Looped = true,
+        Playing = true,
+    })
+
+    -- AddViewport: embeds a rotatable 3D preview of any BasePart/Model.
+    -- Right-click + drag to orbit, scroll to zoom.
+    do
+        local PreviewPart = Instance.new("Part")
+        PreviewPart.Size = Vector3.new(4, 4, 4)
+        PreviewPart.Color = Color3.fromRGB(0, 255, 140)
+        PreviewPart.Material = Enum.Material.Neon
+        PreviewPart.Anchored = true
+
+        NewControls:AddViewport("DemoViewport", {
+            Object = PreviewPart,
+            Height = 160,
+            Interactive = true,
+            AutoFocus = true,
+        })
+    end
+
+    -- AddUIPassthrough: embeds any pre-built GuiObject you already have,
+    -- unchanged, inside a groupbox -- here just a small custom Frame with
+    -- its own gradient, but this is the control to reach for when you
+    -- need something this library's own control set doesn't cover.
+    do
+        local CustomFrame = Instance.new("Frame")
+        CustomFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+        CustomFrame.BorderSizePixel = 0
+        CustomFrame.Size = UDim2.fromScale(1, 1)
+
+        local Gradient = Instance.new("UIGradient")
+        Gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 140)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 100, 255)),
+        })
+        Gradient.Rotation = 45
+        Gradient.Parent = CustomFrame
+
+        local CustomLabel = Instance.new("TextLabel")
+        CustomLabel.BackgroundTransparency = 1
+        CustomLabel.Size = UDim2.fromScale(1, 1)
+        CustomLabel.Text = "Custom hand-built UI"
+        CustomLabel.TextColor3 = Color3.new(1, 1, 1)
+        CustomLabel.Font = Enum.Font.GothamBold
+        CustomLabel.TextSize = 16
+        CustomLabel.Parent = CustomFrame
+
+        NewControls:AddUIPassthrough("DemoPassthrough", {
+            Instance = CustomFrame,
+            Height = 60,
+        })
+    end
+
+    -- AddDialog: a modal confirmation dialog on the Window itself (not a
+    -- groupbox), separate from Library:Confirm below. Supports multiple
+    -- footer buttons with distinct variants, and WaitTime makes a button
+    -- count down (visually, via a progress bar) before it's clickable --
+    -- handy for destructive actions you want the user to pause on first.
+    NewControls:AddButton({
+        Text = "Show Dialog (AddDialog)",
+        Tooltip = "Demonstrates Window:AddDialog with a delayed confirm button",
+        Func = function()
+            Window:AddDialog("DemoDialog", {
+                Title = "Delete Configuration",
+                Description = "This cannot be undone. The confirm button unlocks after a short delay.",
+                FooterButtons = {
+                    Cancel = {
+                        Title = "Cancel",
+                        Variant = "Secondary",
+                        Order = 1,
+                    },
+                    Confirm = {
+                        Title = "Delete",
+                        Variant = "Destructive",
+                        Order = 2,
+                        WaitTime = 2,
+                        Callback = function()
+                            Library:Notify("Dialog confirmed", 2)
+                        end,
+                    },
+                },
+            })
+        end,
+    })
+
     NewControls:AddButton({
         Text = "Show Toast With Actions",
         Tooltip = "Demonstrates Library:NotifyWithActions",

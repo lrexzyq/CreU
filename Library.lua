@@ -3489,12 +3489,19 @@ local BaseGroupbox = {};
 
 do
     local Funcs = {};
-    function Funcs:AddBlank(Size)
+    function Funcs:AddBlank(Size, Visible)
         local Groupbox = self;
         local Container = Groupbox.Container;
-        Library:Create('Frame', {
+        -- FIX: previously didn't return the Frame it created, so any
+        -- caller trying to do `local Blank = Groupbox:AddBlank(...)` to
+        -- later toggle its visibility (as AddUIPassthrough above does)
+        -- silently got nil. Visible is a new optional 2nd param (defaults
+        -- to true, matching the old always-visible behaviour), added for
+        -- the same reason.
+        return Library:Create('Frame', {
             BackgroundTransparency = 1;
             Size = UDim2.new(1, 0, 0, Size);
+            Visible = Visible ~= false;
             ZIndex = 1;
             Parent = Container;
         });
@@ -5490,6 +5497,482 @@ function Funcs:AddDropdown(Idx, Info)
 
         return Dropdown;
     end;
+    -- Embeds a 3D-rotatable ViewportFrame previewing a BasePart/Model
+    -- (right-click + drag to orbit, scroll/pinch to zoom). Ported from
+    -- the upstream Linoria Library (credit to its authors). Dropped its
+    -- use of Library.Window.Tabs[Library.ActiveTab]:GetSides() to disable
+    -- side-panel scrolling while dragging the viewport -- neither
+    -- Library.Window nor a GetSides() method exist in this file's
+    -- Window/Tab objects, and it's a minor UX nicety rather than
+    -- something the viewport needs to function. Replaced
+    -- Library:MouseIsOverFrame (doesn't exist here) with an inline
+    -- AbsolutePosition/AbsoluteSize check for the pinch-zoom gating.
+    function Funcs:AddViewport(Idx, Info)
+        Info = type(Info) == 'table' and Info or {}
+        local Dragging, Pinching = false, false
+        local LastMousePos, LastPinchDist = nil, 0
+
+        local Viewport = {
+            Object = Info.Clone and Info.Object:Clone() or Info.Object,
+            Camera = (not Info.Camera) and Instance.new('Camera') or Info.Camera,
+            Interactive = Info.Interactive,
+            AutoFocus = Info.AutoFocus,
+            Height = (typeof(Info.Height) == 'number' and Info.Height > 0) and Info.Height or 200,
+            Visible = Info.Visible ~= false,
+            Type = 'Viewport',
+        }
+
+        assert(
+            typeof(Viewport.Object) == 'Instance' and (Viewport.Object:IsA('BasePart') or Viewport.Object:IsA('Model')),
+            'AddViewport: Object must be a BasePart or Model.'
+        )
+        assert(
+            typeof(Viewport.Camera) == 'Instance' and Viewport.Camera:IsA('Camera'),
+            'AddViewport: Camera must be a valid Camera instance.'
+        )
+
+        local function GetModelSize(Model)
+            if Model:IsA('BasePart') then
+                return Model.Size
+            end
+            return select(2, Model:GetBoundingBox())
+        end
+
+        local function FocusCamera()
+            local ModelSize = GetModelSize(Viewport.Object)
+            local MaxExtent = math.max(ModelSize.X, ModelSize.Y, ModelSize.Z)
+            local CameraDistance = MaxExtent * 2
+            local ModelPosition = Viewport.Object:GetPivot().Position
+
+            Viewport.Camera.CFrame =
+                CFrame.new(ModelPosition + Vector3.new(0, MaxExtent / 2, CameraDistance), ModelPosition)
+        end
+
+        local Blank = nil
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        local Holder = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -4, 0, Viewport.Height),
+            Visible = Viewport.Visible,
+            Parent = Container,
+        })
+
+        local Box = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor,
+            BorderColor3 = Library.OutlineColor,
+            BorderSizePixel = 1,
+            BorderMode = Enum.BorderMode.Inset,
+            Size = UDim2.fromScale(1, 1),
+            ZIndex = 6,
+            Parent = Holder,
+        })
+        Library:AddToRegistry(Box, {
+            BackgroundColor3 = 'MainColor',
+            BorderColor3 = 'OutlineColor',
+        })
+
+        Library:Create('UIPadding', {
+            PaddingBottom = UDim.new(0, 3),
+            PaddingLeft = UDim.new(0, 8),
+            PaddingRight = UDim.new(0, 8),
+            PaddingTop = UDim.new(0, 4),
+            Parent = Box,
+        })
+
+        local ViewportFrame = Library:Create('ViewportFrame', {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Parent = Box,
+            CurrentCamera = Viewport.Camera,
+            Active = Viewport.Interactive,
+            ZIndex = 7,
+        })
+
+        ViewportFrame.InputBegan:Connect(function(Input)
+            if not Viewport.Interactive then return end
+
+            if Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                Dragging = true
+                LastMousePos = Input.Position
+            elseif Input.UserInputType == Enum.UserInputType.Touch and not Pinching then
+                Dragging = true
+                LastMousePos = Input.Position
+            end
+        end)
+
+        Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
+            if Library.Unloaded then return end
+            if not Viewport.Interactive then return end
+
+            if Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                Dragging = false
+            elseif Input.UserInputType == Enum.UserInputType.Touch then
+                Dragging = false
+            end
+        end))
+
+        Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
+            if Library.Unloaded then return end
+            if not Viewport.Interactive or not Dragging or Pinching then return end
+
+            if Input.UserInputType == Enum.UserInputType.MouseMovement
+                or Input.UserInputType == Enum.UserInputType.Touch then
+                local MouseDelta = Input.Position - LastMousePos
+                LastMousePos = Input.Position
+
+                local Position = Viewport.Object:GetPivot().Position
+                local Camera = Viewport.Camera
+
+                local RotationY = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), -MouseDelta.X * 0.01)
+                Camera.CFrame = CFrame.new(Position) * RotationY * CFrame.new(-Position) * Camera.CFrame
+
+                local RotationX = CFrame.fromAxisAngle(Camera.CFrame.RightVector, -MouseDelta.Y * 0.01)
+                local PitchedCFrame = CFrame.new(Position) * RotationX * CFrame.new(-Position) * Camera.CFrame
+
+                if PitchedCFrame.UpVector.Y > 0.1 then
+                    Camera.CFrame = PitchedCFrame
+                end
+            end
+        end))
+
+        ViewportFrame.InputChanged:Connect(function(Input)
+            if not Viewport.Interactive then return end
+
+            if Input.UserInputType == Enum.UserInputType.MouseWheel then
+                local ZoomAmount = Input.Position.Z * 2
+                Viewport.Camera.CFrame += Viewport.Camera.CFrame.LookVector * ZoomAmount
+            end
+        end)
+
+        Library:GiveSignal(InputService.TouchPinch:Connect(function(TouchPositions, Scale, Velocity, State)
+            if Library.Unloaded then return end
+            if not Viewport.Interactive then return end
+
+            local OverViewport = false
+            local Ok = pcall(function()
+                local Pos = ViewportFrame.AbsolutePosition
+                local Size = ViewportFrame.AbsoluteSize
+                local Touch = TouchPositions[1]
+                OverViewport = Touch.X >= Pos.X and Touch.X <= Pos.X + Size.X
+                    and Touch.Y >= Pos.Y and Touch.Y <= Pos.Y + Size.Y
+            end)
+            if not (Ok and OverViewport) then return end
+
+            if State == Enum.UserInputState.Begin then
+                Pinching = true
+                Dragging = false
+                LastPinchDist = (TouchPositions[1] - TouchPositions[2]).Magnitude
+            elseif State == Enum.UserInputState.Change then
+                local CurrentDist = (TouchPositions[1] - TouchPositions[2]).Magnitude
+                local Delta = (CurrentDist - LastPinchDist) * 0.1
+                LastPinchDist = CurrentDist
+                Viewport.Camera.CFrame += Viewport.Camera.CFrame.LookVector * Delta
+            elseif State == Enum.UserInputState.End or State == Enum.UserInputState.Cancel then
+                Pinching = false
+            end
+        end))
+
+        Viewport.Object.Parent = ViewportFrame
+        if Viewport.AutoFocus then
+            FocusCamera()
+        end
+
+        function Viewport:SetObject(Object, Clone)
+            assert(Object, 'SetObject: Object cannot be nil.')
+
+            if Clone then
+                Object = Object:Clone()
+            end
+
+            if Viewport.Object then
+                Viewport.Object:Destroy()
+            end
+
+            Viewport.Object = Object
+            Viewport.Object.Parent = ViewportFrame
+
+            Groupbox:Resize()
+        end
+
+        function Viewport:SetHeight(Height)
+            assert(type(Height) == 'number' and Height > 0, 'SetHeight: Height must be greater than 0.')
+            Viewport.Height = Height
+
+            Holder.Size = UDim2.new(1, -4, 0, Viewport.Height)
+            Groupbox:Resize()
+        end
+
+        function Viewport:Focus()
+            if not Viewport.Object then return end
+            FocusCamera()
+        end
+
+        function Viewport:SetCamera(Camera)
+            assert(
+                Camera and typeof(Camera) == 'Instance' and Camera:IsA('Camera'),
+                'SetCamera: Camera must be a valid Camera instance.'
+            )
+
+            Viewport.Camera = Camera
+            ViewportFrame.CurrentCamera = Camera
+        end
+
+        function Viewport:SetInteractive(Interactive)
+            Viewport.Interactive = Interactive
+            ViewportFrame.Active = Interactive
+        end
+
+        function Viewport:SetVisible(Visible)
+            Viewport.Visible = Visible
+
+            Holder.Visible = Viewport.Visible
+            if Blank then Blank.Visible = Viewport.Visible end
+
+            Groupbox:Resize()
+        end
+
+        Viewport:SetHeight(Viewport.Height)
+
+        Blank = Groupbox:AddBlank(10, Viewport.Visible)
+        Groupbox:Resize()
+
+        Viewport.Holder = Holder
+        Viewport.Container = Container
+        Viewport.ViewportFrame = ViewportFrame
+
+        Options[Idx] = Viewport
+
+        Library:UpdateDependencyBoxes()
+
+        return Viewport
+    end
+
+    -- Embeds a VideoFrame (plays an rbxassetid:// video) inside this
+    -- groupbox. Ported from the upstream Linoria Library (credit to its
+    -- authors); same adjustments as AddUIPassthrough below (no
+    -- Library:Validate/Templates, no Groupbox.Elements/
+    -- UpdateDependencyGroupboxes).
+    function Funcs:AddVideo(Idx, Info)
+        Info = type(Info) == 'table' and Info or {}
+        assert(type(Info.Video) == 'string', 'AddVideo: Video must be a string (rbxassetid://...).')
+        assert(type(Info.Height) == 'number' and Info.Height > 0, 'AddVideo: Height must be a number greater than 0.')
+
+        local Blank = nil
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        local Video = {
+            Video = Info.Video,
+            Looped = Info.Looped == true,
+            Playing = Info.Playing == true,
+            Volume = type(Info.Volume) == 'number' and Info.Volume or 1,
+            Height = Info.Height,
+            Visible = Info.Visible ~= false,
+            Type = 'Video',
+        }
+
+        local Holder = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -4, 0, Info.Height),
+            Visible = Video.Visible,
+            Parent = Container,
+        })
+
+        local Box = Library:Create('Frame', {
+            BackgroundColor3 = Library.MainColor,
+            BorderColor3 = Library.OutlineColor,
+            BorderSizePixel = 1,
+            BorderMode = Enum.BorderMode.Inset,
+            Size = UDim2.fromScale(1, 1),
+            ZIndex = 6,
+            Parent = Holder,
+        })
+        Library:AddToRegistry(Box, {
+            BackgroundColor3 = 'MainColor',
+            BorderColor3 = 'OutlineColor',
+        })
+
+        Library:Create('UIPadding', {
+            PaddingBottom = UDim.new(0, 3),
+            PaddingLeft = UDim.new(0, 8),
+            PaddingRight = UDim.new(0, 8),
+            PaddingTop = UDim.new(0, 4),
+            Parent = Box,
+        })
+
+        local VideoFrameInstance = Library:Create('VideoFrame', {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Video = Video.Video,
+            Looped = Video.Looped,
+            Volume = Video.Volume,
+            ZIndex = 7,
+            Parent = Box,
+        })
+        VideoFrameInstance.Playing = Video.Playing
+
+        function Video:SetHeight(Height)
+            assert(type(Height) == 'number' and Height > 0, 'SetHeight: Height must be a number greater than 0.')
+
+            Video.Height = Height
+            Holder.Size = UDim2.new(1, -4, 0, Height)
+            Groupbox:Resize()
+        end
+
+        function Video:SetVideo(NewVideo)
+            assert(type(NewVideo) == 'string', 'SetVideo: Video must be a string.')
+
+            VideoFrameInstance.Video = NewVideo
+            Video.Video = NewVideo
+        end
+
+        function Video:SetLooped(Looped)
+            assert(type(Looped) == 'boolean', 'SetLooped: Looped must be a boolean.')
+
+            VideoFrameInstance.Looped = Looped
+            Video.Looped = Looped
+        end
+
+        function Video:SetVolume(Volume)
+            assert(type(Volume) == 'number', 'SetVolume: Volume must be a number between 0 and 10.')
+
+            VideoFrameInstance.Volume = Volume
+            Video.Volume = Volume
+        end
+
+        function Video:SetPlaying(Playing)
+            assert(type(Playing) == 'boolean', 'SetPlaying: Playing must be a boolean.')
+
+            VideoFrameInstance.Playing = Playing
+            Video.Playing = Playing
+        end
+
+        function Video:Play()
+            VideoFrameInstance.Playing = true
+            Video.Playing = true
+        end
+
+        function Video:Pause()
+            VideoFrameInstance.Playing = false
+            Video.Playing = false
+        end
+
+        function Video:SetVisible(Visible)
+            Video.Visible = Visible
+
+            Holder.Visible = Video.Visible
+            if Blank then Blank.Visible = Video.Visible end
+
+            Groupbox:Resize()
+        end
+
+        Video:SetHeight(Video.Height)
+
+        Blank = Groupbox:AddBlank(10, Video.Visible)
+        Groupbox:Resize()
+
+        Video.Holder = Holder
+        Video.Container = Container
+        Video.VideoFrame = VideoFrameInstance
+
+        Options[Idx] = Video
+
+        Library:UpdateDependencyBoxes()
+
+        return Video
+    end
+
+    -- Embeds an arbitrary pre-built GuiObject (any GuiBase2d: Frame,
+    -- ViewportFrame, a whole custom UI tree someone built by hand, etc.)
+    -- inside this groupbox, with the groupbox's normal resize/show/hide
+    -- handling. Ported from the upstream Linoria Library (credit to its
+    -- authors); dropped its Library:Validate(Info, Templates...) call
+    -- (that validation/template system doesn't exist in this file) in
+    -- favor of plain asserts, and Groupbox.Elements/
+    -- UpdateDependencyGroupboxes (neither exists here either -- this
+    -- file tracks a groupbox's contents via Container:GetChildren()
+    -- directly instead of a parallel Elements list).
+    function Funcs:AddUIPassthrough(Idx, Info)
+        Info = type(Info) == 'table' and Info or {}
+
+        local Blank = nil
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        assert(Info.Instance ~= nil, 'AddUIPassthrough: Instance must be provided.')
+        assert(
+            typeof(Info.Instance) == 'Instance' and Info.Instance:IsA('GuiBase2d'),
+            'AddUIPassthrough: Instance must inherit from GuiBase2d.'
+        )
+        assert(type(Info.Height) == 'number' and Info.Height > 0, 'AddUIPassthrough: Height must be a number greater than 0.')
+
+        local Passthrough = {
+            Instance = Info.Instance,
+            Height = Info.Height,
+            Visible = Info.Visible ~= false,
+            Type = 'UIPassthrough',
+        }
+
+        local Holder = Library:Create('Frame', {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -4, 0, Info.Height),
+            Visible = Passthrough.Visible,
+            Parent = Container,
+        })
+
+        Passthrough.Instance.Parent = Holder
+        pcall(function() Passthrough.Instance.ZIndex = 7 end)
+
+        function Passthrough:SetHeight(Height)
+            assert(type(Height) == 'number' and Height > 0, 'SetHeight: Height must be a number greater than 0.')
+
+            Passthrough.Height = Height
+            Holder.Size = UDim2.new(1, -4, 0, Height)
+            Groupbox:Resize()
+        end
+
+        function Passthrough:SetInstance(Instance)
+            assert(Instance ~= nil, 'SetInstance: Instance must be provided.')
+            assert(
+                typeof(Instance) == 'Instance' and Instance:IsA('GuiBase2d'),
+                'SetInstance: Instance must inherit from GuiBase2d.'
+            )
+
+            if Passthrough.Instance then
+                Passthrough.Instance.Parent = nil
+            end
+
+            Passthrough.Instance = Instance
+            Passthrough.Instance.Parent = Holder
+            pcall(function() Passthrough.Instance.ZIndex = 7 end)
+        end
+
+        function Passthrough:SetVisible(Visible)
+            Passthrough.Visible = Visible
+
+            Holder.Visible = Passthrough.Visible
+            if Blank then Blank.Visible = Passthrough.Visible end
+
+            Groupbox:Resize()
+        end
+
+        Passthrough:SetHeight(Passthrough.Height)
+
+        Blank = Groupbox:AddBlank(10, Passthrough.Visible)
+        Groupbox:Resize()
+
+        Passthrough.Holder = Holder
+        Passthrough.Container = Container
+
+        Options[Idx] = Passthrough
+
+        Library:UpdateDependencyBoxes()
+
+        return Passthrough
+    end
+
     function Funcs:AddDependencyBox()
         local Depbox = {
             Dependencies = {};
@@ -7611,6 +8094,468 @@ function Library:CreateWindow(...)
     function Window:Minimize() return Window:SetMinimized(true) end
     function Window:Restore() return Window:SetMinimized(false) end
     if Window.AlwaysOnTop then Window:SetAlwaysOnTop(true) end
+    -- Modal dialog, ported from the upstream Linoria Library (credit to
+    -- its authors), adapted to this file's naming (Outer in place of a
+    -- separate LibraryMainOuterFrame global, Library.DPIScale in place of
+    -- a bare DPIScale upvalue) and fixing one bug found in the source:
+    -- it wrote results to `Library.Dialogues`, a field that's never
+    -- initialized anywhere in that file, which would error the first
+    -- time a dialog was dismissed or a second one created. Using a local
+    -- Dialogues table here instead (matching what the upstream file
+    -- actually declares at the top but then doesn't consistently use).
+    --
+    -- A Dialog is a BaseGroupbox (same as AddDependencyBox), so anything
+    -- Toggle/Slider/Dropdown/etc. can be added inside one via
+    -- Dialog:AddToggle(...) and friends, in addition to its title/
+    -- description/footer buttons.
+    local Dialogues = {}
+    function Window:AddDialog(Idx, Info)
+        assert(Info.Title, "AddDialog: Missing `Title` string.")
+        assert(Info.Description, "AddDialog: Missing `Description` string.")
+
+        if Dialogues[Idx] then
+            Dialogues[Idx]:Dismiss()
+        end
+
+        local DialogOverlay = Library:Create("TextButton", {
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1),
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 9000,
+            Parent = Outer,
+        })
+        TweenService:Create(DialogOverlay, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.5,
+        }):Play()
+
+        local DialogFrame = Library:Create("Frame", {
+            BackgroundColor3 = Library.MainColor,
+            BorderColor3 = Library.OutlineColor,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(400 * Library.DPIScale, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            ZIndex = 9001,
+            Parent = DialogOverlay,
+        })
+        Library:AddToRegistry(DialogFrame, {
+            BackgroundColor3 = "MainColor",
+            BorderColor3 = "OutlineColor",
+        })
+
+        local DialogScale = Library:Create("UIScale", {
+            Scale = 0.95,
+            Parent = DialogFrame,
+        })
+        TweenService:Create(DialogScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Scale = 1,
+        }):Play()
+
+        local InnerContainer = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -24, 1, -24),
+            Position = UDim2.fromOffset(12, 12),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            ZIndex = 9002,
+            Parent = DialogFrame,
+        })
+        Library:Create("UIListLayout", {
+            Padding = UDim.new(0, 10),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = InnerContainer,
+        })
+
+        local HeaderContainer = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 1,
+            ZIndex = 9003,
+            Parent = InnerContainer,
+        })
+        Library:Create("UIListLayout", {
+            Padding = UDim.new(0, 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = HeaderContainer,
+        })
+
+        local TitleRow = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 18),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 1,
+            ZIndex = 9003,
+            Parent = HeaderContainer,
+        })
+        Library:Create("UIListLayout", {
+            Padding = UDim.new(0, 6),
+            FillDirection = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = TitleRow,
+        })
+
+        local TitleLabel = Library:CreateLabel({
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 18),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            Text = Info.Title or "Dialog",
+            TextSize = 18,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 9003,
+            Parent = TitleRow,
+            RichText = true,
+        })
+        if Info.TitleColor then
+            TitleLabel.TextColor3 = Info.TitleColor
+        else
+            Library:AddToRegistry(TitleLabel, { TextColor3 = "FontColor" })
+        end
+
+        local DescriptionLabel = Library:CreateLabel({
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 14),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            Text = Info.Description or "Description",
+            TextSize = 14,
+            TextTransparency = Info.DescriptionColor and 0 or 0.2,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextWrapped = true,
+            ZIndex = 9003,
+            LayoutOrder = 2,
+            Parent = HeaderContainer,
+            RichText = true,
+        })
+        if Info.DescriptionColor then
+            DescriptionLabel.TextColor3 = Info.DescriptionColor
+        else
+            Library:AddToRegistry(DescriptionLabel, { TextColor3 = "FontColor" })
+        end
+
+        local DialogContainer = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 4,
+            Visible = false,
+            ZIndex = 9003,
+            Parent = InnerContainer,
+        })
+        Library:Create("UIListLayout", {
+            Padding = UDim.new(0, 1),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = DialogContainer,
+        })
+
+        local _Sep2 = Library:Create("Frame", {
+            BackgroundColor3 = Library.OutlineColor,
+            BackgroundTransparency = 0,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 1),
+            LayoutOrder = 5,
+            ZIndex = 9003,
+            Parent = InnerContainer,
+        })
+        Library:AddToRegistry(_Sep2, {
+            BackgroundColor3 = "OutlineColor",
+        })
+
+        local ButtonsHolder = Library:Create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            LayoutOrder = 6,
+            ZIndex = 9002,
+            Parent = InnerContainer,
+        })
+        Library:Create("UIListLayout", {
+            Padding = UDim.new(0, 8),
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Right,
+            Wraps = true,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = ButtonsHolder,
+        })
+        Library:Create("UIPadding", {
+            PaddingTop = UDim.new(0, 0),
+            Parent = ButtonsHolder,
+        })
+
+        local FooterButtonsList = {}
+
+        local Dialog = {
+            Elements = {},
+            Container = DialogContainer,
+        }
+
+        function Dialog:Resize()
+            local MaxWidth = Outer.AbsoluteSize.X * 0.75
+            local MinWidth = 400 * Library.DPIScale
+
+            local TotalButtonWidth = 0
+            local ButtonCount = 0
+            local HasButtons = false
+
+            for _, BtnWrap in pairs(FooterButtonsList) do
+                HasButtons = true
+                ButtonCount = ButtonCount + 1
+                TotalButtonWidth = TotalButtonWidth + BtnWrap.Container.Size.X.Offset
+            end
+
+            local TargetWidth = MinWidth
+            if HasButtons then
+                local RequiredWidth = TotalButtonWidth + ((ButtonCount - 1) * 8 * Library.DPIScale) + (30 * Library.DPIScale)
+                TargetWidth = math.max(MinWidth, math.min(RequiredWidth, MaxWidth))
+            end
+
+            local DescY = select(2, Library:GetTextBounds(DescriptionLabel.Text, Library.Font, 14 * Library.DPIScale, TargetWidth - (30 * Library.DPIScale)))
+            DescriptionLabel.Size = UDim2.new(1, 0, 0, DescY)
+
+            local HasElements = false
+            for _, v in pairs(DialogContainer:GetChildren()) do
+                if not v:IsA("UIListLayout") and not v:IsA("UIPadding") then
+                    HasElements = true
+                    break
+                end
+            end
+
+            if HasElements then
+                for _, v in pairs(DialogContainer:GetDescendants()) do
+                    if not v:IsA("GuiObject") then continue end
+                    if v:GetAttribute("ZIndexApplied") then continue end
+
+                    v:SetAttribute("ZIndexApplied", true)
+                    v.ZIndex = v.ZIndex + 9003
+                end
+            end
+
+            DialogContainer.Visible = HasElements
+
+            ButtonsHolder.Visible = HasButtons
+            _Sep2.Visible = HasButtons
+
+            DialogFrame.Size = UDim2.fromOffset(TargetWidth, 0)
+        end
+
+        function Dialog:SetTitle(Title)
+            TitleLabel.Text = Title
+            Dialog:Resize()
+        end
+
+        function Dialog:SetDescription(Description)
+            DescriptionLabel.Text = Description
+            Dialog:Resize()
+        end
+
+        function Dialog:Dismiss()
+            TweenService:Create(DialogScale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.95 }):Play()
+            TweenService:Create(DialogOverlay, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
+
+            task.delay(0.1, function()
+                DialogOverlay:Destroy()
+            end)
+
+            Dialogues[Idx] = nil
+            Library.ActiveDialog = nil
+        end
+
+        DialogOverlay.MouseButton1Click:Connect(function()
+            if Info.OutsideClickDismiss then
+                Dialog:Dismiss()
+            end
+        end)
+
+        function Dialog:RemoveFooterButton(ButtonIdx)
+            if FooterButtonsList[ButtonIdx] then
+                FooterButtonsList[ButtonIdx].Container:Destroy()
+                FooterButtonsList[ButtonIdx] = nil
+            end
+        end
+
+        function Dialog:SetButtonDisabled(ButtonIdx, Disabled)
+            if FooterButtonsList[ButtonIdx] and type(FooterButtonsList[ButtonIdx].SetDisabled) == "function" then
+                FooterButtonsList[ButtonIdx]:SetDisabled(Disabled)
+            end
+        end
+
+        function Dialog:SetButtonOrder(ButtonIdx, Order)
+            if FooterButtonsList[ButtonIdx] and FooterButtonsList[ButtonIdx].Container then
+                FooterButtonsList[ButtonIdx].Container.LayoutOrder = Order
+            end
+        end
+
+        function Dialog:AddFooterButton(ButtonIdx, ButtonInfo)
+            Dialog:RemoveFooterButton(ButtonIdx)
+
+            local WaitTime = ButtonInfo.WaitTime or 0
+            local Variant = ButtonInfo.Variant or "Primary"
+
+            local BtnInnerColor = Library.MainColor
+            local BtnBorderColor = Library.OutlineColor
+            local DestructiveColor = Color3.fromRGB(220, 38, 38)
+
+            if Variant == "Primary" then
+                BtnBorderColor = Library.AccentColor
+            elseif Variant == "Secondary" then
+                BtnInnerColor = Library.BackgroundColor
+                BtnBorderColor = Library.OutlineColor
+            elseif Variant == "Destructive" then
+                BtnBorderColor = DestructiveColor
+            elseif Variant == "Ghost" then
+                BtnBorderColor = Library.MainColor
+            end
+
+            local LabelX = select(1, Library:GetTextBounds(ButtonInfo.Title or ButtonIdx, Library.Font, 14 * Library.DPIScale))
+            local BtnW = LabelX + (24 * Library.DPIScale)
+            local BtnH = 20 * Library.DPIScale
+
+            local ButtonContainer = Library:Create("Frame", {
+                BackgroundColor3 = Color3.new(0, 0, 0),
+                BorderColor3 = Color3.new(0, 0, 0),
+                Size = UDim2.fromOffset(BtnW, BtnH),
+                LayoutOrder = ButtonInfo.Order or 0,
+                ZIndex = 9003,
+                Parent = ButtonsHolder,
+            })
+            Library:AddToRegistry(ButtonContainer, { BorderColor3 = "Black" })
+
+            local TextBtn = Library:Create("TextButton", {
+                BackgroundColor3 = BtnInnerColor,
+                BorderColor3 = BtnBorderColor,
+                BorderMode = Enum.BorderMode.Inset,
+                BackgroundTransparency = WaitTime > 0 and 0.5 or 0,
+                Size = UDim2.new(1, 0, 1, 0),
+                Text = "",
+                AutoButtonColor = false,
+                ZIndex = 9004,
+                Parent = ButtonContainer,
+            })
+
+            if Variant == "Primary" then
+                Library:AddToRegistry(TextBtn, { BackgroundColor3 = "MainColor", BorderColor3 = "AccentColor" })
+            elseif Variant == "Secondary" then
+                Library:AddToRegistry(TextBtn, { BackgroundColor3 = "BackgroundColor", BorderColor3 = "OutlineColor" })
+            elseif Variant == "Ghost" then
+                Library:AddToRegistry(TextBtn, { BackgroundColor3 = "MainColor", BorderColor3 = "MainColor" })
+            end
+
+            Library:Create("UIGradient", {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(212, 212, 212)),
+                }),
+                Rotation = 90,
+                Parent = TextBtn,
+            })
+
+            local HighlightBorderColor = Variant == "Destructive" and DestructiveColor or Library.AccentColor
+            ButtonContainer.MouseEnter:Connect(function()
+                ButtonContainer.BorderColor3 = HighlightBorderColor
+            end)
+            ButtonContainer.MouseLeave:Connect(function()
+                ButtonContainer.BorderColor3 = Color3.new(0, 0, 0)
+            end)
+
+            local TextColor = Library.FontColor
+            if Variant == "Destructive" then
+                TextColor = Color3.new(1, 1, 1)
+            end
+
+            local BtnLabel = Library:CreateLabel({
+                BackgroundTransparency = 1,
+                Size = UDim2.fromScale(1, 1),
+                Text = ButtonInfo.Title or ButtonIdx,
+                TextColor3 = TextColor,
+                TextTransparency = WaitTime > 0 and 0.5 or 0,
+                TextSize = 14 * Library.DPIScale,
+                ZIndex = 9005,
+                Parent = TextBtn,
+            })
+
+            if Variant ~= "Destructive" then
+                Library:AddToRegistry(BtnLabel, { TextColor3 = "FontColor" })
+            end
+
+            local ProgressBar
+            if WaitTime > 0 then
+                ProgressBar = Library:Create("Frame", {
+                    BackgroundColor3 = Library.AccentColor,
+                    BorderSizePixel = 0,
+                    Position = UDim2.new(0, 0, 1, -2),
+                    Size = UDim2.new(0, 0, 0, 2),
+                    ZIndex = 2,
+                    Parent = TextBtn,
+                })
+                Library:AddToRegistry(ProgressBar, { BackgroundColor3 = "AccentColor" })
+            end
+
+            local IsActive = WaitTime <= 0
+
+            local ButtonWrap = {
+                Container = ButtonContainer,
+                SetDisabled = function(self, Disabled)
+                    IsActive = not Disabled
+                    if Disabled then
+                        TweenService:Create(TextBtn, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0.5 }):Play()
+                        TweenService:Create(BtnLabel, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0.5 }):Play()
+                    else
+                        TweenService:Create(TextBtn, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0 }):Play()
+                        TweenService:Create(BtnLabel, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 }):Play()
+                    end
+                end
+            }
+
+            TextBtn.MouseButton1Click:Connect(function()
+                if not IsActive then return end
+
+                if ButtonInfo.Callback then
+                    ButtonInfo.Callback(Dialog)
+                end
+
+                if Info.AutoDismiss ~= false then
+                    Dialog:Dismiss()
+                end
+            end)
+
+            if WaitTime > 0 then
+                TweenService:Create(ProgressBar, TweenInfo.new(WaitTime, Enum.EasingStyle.Linear), {
+                    Size = UDim2.new(1, 0, 0, 2)
+                }):Play()
+
+                task.delay(WaitTime, function()
+                    ButtonWrap:SetDisabled(false)
+
+                    if ProgressBar then
+                        TweenService:Create(ProgressBar, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                            BackgroundTransparency = 1
+                        }):Play()
+                    end
+                end)
+            end
+
+            FooterButtonsList[ButtonIdx] = ButtonWrap
+        end
+
+        if Info.FooterButtons then
+            for BIdx, BInfo in pairs(Info.FooterButtons) do
+                if type(BIdx) == "number" and BInfo.Id then BIdx = BInfo.Id end
+                Dialog:AddFooterButton(BIdx, BInfo)
+            end
+        end
+
+        setmetatable(Dialog, BaseGroupbox)
+
+        Dialogues[Idx] = Dialog
+        Library.ActiveDialog = Dialog
+
+        Dialog:Resize()
+
+        return Dialog
+    end
+
     function Window:AddTab(Name, Icon)
         local TabInfo = type(Name) == 'table' and Name or { Name = Name, Icon = Icon };
         Name = tostring(TabInfo.Name or TabInfo.Text or 'Tab');
