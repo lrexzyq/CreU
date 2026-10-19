@@ -20787,7 +20787,7 @@ return bd.c
 end
 end
 do
-local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
+local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
 local be = tbl17.cache.be
@@ -62484,9 +62484,9 @@ local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a co
     end
 end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
-voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.1–1 second.",Min=0.1,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
-voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
+voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–2 seconds.",Min=0.01,Max=2,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
+voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–2 seconds; default: 0.25 seconds.",Min=0.01,Max=2,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Ragebot Aim Direction",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
@@ -67410,7 +67410,7 @@ local function ragebotVoidSpamConfig()
     end
     local attack = tonumber(config.Attack) or 0.1
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
-    attack = math.clamp(attack, 0.1, 1)
+    attack = math.clamp(attack, 0.01, 2)
 
 
     if config.Attack ~= attack then
@@ -67418,7 +67418,10 @@ local function ragebotVoidSpamConfig()
     end
     local hide = tonumber(config.Hide) or 0.25
     if hide ~= hide or hide == math.huge or hide == -math.huge then hide = 0.25 end
-    hide = math.clamp(hide, 0.01, 1)
+    hide = math.clamp(hide, 0.01, 2)
+    if config.Hide ~= hide then
+        pcall(function() config.Hide = hide end)
+    end
     return true, attack, hide
 end
 
@@ -67432,8 +67435,8 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(now) then now = os.clock() end
     if not ragebotFiniteNumber(attack) then attack = 0.1 end
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
-    attack = math.clamp(attack, 0.1, 1)
-    hide = math.clamp(hide, 0.01, 1)
+    attack = math.clamp(attack, 0.01, 2)
+    hide = math.clamp(hide, 0.01, 2)
 
     if state.cycleModelVersion ~= 2 then
         state.cycleModelVersion = 2
@@ -67849,8 +67852,22 @@ local okSend, sendError = pcall(function()
     -- plan. Re-reading shield state here can switch the payload after the CFrame
     -- was planned, producing an internally inconsistent shot (the V47 behavior
     -- used the captured flag19 for both planning and firing).
-    local encodedShotOrigin = flag19 and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
-    local encodedShotDirection = flag19 and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
+    local aimDirectionMode = type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
+    if aimDirectionMode ~= "Up" and aimDirectionMode ~= "Down" and aimDirectionMode ~= "Part" then
+        aimDirectionMode = "Part"
+        pcall(function() ragebot.AimDirection = "Part" end)
+    end
+    local shotDirectionAbove
+    if aimDirectionMode == "Up" then
+        shotDirectionAbove = true
+    elseif aimDirectionMode == "Down" then
+        shotDirectionAbove = false
+    else
+        -- Part preserves the original shield-aware behavior exactly.
+        shotDirectionAbove = flag19
+    end
+    local encodedShotOrigin = shotDirectionAbove and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
+    local encodedShotDirection = shotDirectionAbove and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
     local shotHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
     arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, shotHitpoint)
     local afterCount = arg4.ShotRequestCount
@@ -69366,10 +69383,16 @@ local function ragebotVoidSpamConfig()
     if type(config) ~= "table" or config.Enabled ~= true then return false, 0.1, 0.25 end
     local attack = tonumber(config.Attack) or 0.1
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
-    attack = math.clamp(attack, 0.1, 1)
+    attack = math.clamp(attack, 0.01, 2)
     local hide = tonumber(config.Hide) or 0.25
     if hide ~= hide or hide == math.huge or hide == -math.huge then hide = 0.25 end
-    hide = math.clamp(hide, 0.01, 1)
+    hide = math.clamp(hide, 0.01, 2)
+    if config.Attack ~= attack then
+        pcall(function() config.Attack = attack end)
+    end
+    if config.Hide ~= hide then
+        pcall(function() config.Hide = hide end)
+    end
     return true, attack, hide
 end
 
@@ -69424,8 +69447,8 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(now) then now = os.clock() end
     if not ragebotFiniteNumber(attack) then attack = 0.1 end
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
-    attack = math.clamp(attack, 0.1, 1)
-    hide = math.clamp(hide, 0.01, 1)
+    attack = math.clamp(attack, 0.01, 2)
+    hide = math.clamp(hide, 0.01, 2)
     local phaseEnd = tonumber(state.activeUntil)
     if state.cycleModelVersion ~= 2 then
         state.cycleModelVersion = 2
@@ -72434,22 +72457,19 @@ elseif itemBehaviors ~= nil then
     end
 end
 
--- Underground baseline is zero for Gun/Knife and -3.8 for Melee. Keep
--- Void Spam's separate -4-stud feature offset only when Underground is not
--- integrated, so its snapshot never invents an extra Underground displacement.
-local RAGEBOT_VOID_SPAM_Y_OFFSET = -4.0
+-- Underground baseline is zero for Gun/Knife and -3.8 for Melee. Void Spam
+-- owns an independent +4-stud Y offset; apply it whether or not Underground is
+-- integrated. The saved base excludes Void Spam's offset but retains Underground's.
+local RAGEBOT_VOID_SPAM_Y_OFFSET = 4.0
 local RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET = -3.8
 if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
-    if undergroundIntegrated then
-        if weaponKind == "Melee" then
-            voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET, 0)
-        else
-            voidSpamBaseCFrame = cframe
-        end
+    if undergroundIntegrated and weaponKind == "Melee" then
+        voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_VOID_SPAM_BASE_MELEE_Y_OFFSET, 0)
     else
-        voidSpamPositionOffset = Vector3.new(0, RAGEBOT_VOID_SPAM_Y_OFFSET, 0)
-        cframe = cframe + voidSpamPositionOffset
+        voidSpamBaseCFrame = cframe
     end
+    voidSpamPositionOffset = Vector3.new(0, RAGEBOT_VOID_SPAM_Y_OFFSET, 0)
+    cframe = cframe + voidSpamPositionOffset
 end
 
 local function applyVoidSpamSideRoll(value, baseValue)
