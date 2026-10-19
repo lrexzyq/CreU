@@ -401,6 +401,14 @@ local function ragebotObserveFakePosition(rootPart, now)
     end
 
     local dt = now - (tonumber(track.lastAt) or now)
+    -- The same combat root is observed by the controller and by both weapon
+    -- planners. Do not count two reads from the same frame as separate motion
+    -- samples; that can manufacture a FakePosition oscillation from one update.
+    if dt >= 0 and dt < (1 / 120) then
+        local lastDesyncAt = tonumber(track.lastDesyncAt) or -math.huge
+        local sinceDesync = now - lastDesyncAt
+        return sinceDesync <= 0.25, false, sinceDesync <= 1.0
+    end
     local detected = false
     if dt > 0 and dt <= 0.25 then
         local delta = position - track.lastPosition
@@ -426,12 +434,17 @@ local function ragebotObserveFakePosition(rootPart, now)
             end
             if track.lastVerticalSign ~= 0 and sign ~= track.lastVerticalSign then
                 track.flipCount = (tonumber(track.flipCount) or 0) + 1
-                if track.flipCount >= 2 and now - (tonumber(track.flipWindowStartedAt) or now) <= 0.65 then
+                -- Two sign changes can occur during an ordinary jump/landing.
+                -- Require a longer, sustained alternating sequence before treating
+                -- vertical motion alone as FakePosition oscillation.
+                if track.flipCount >= 3 and now - (tonumber(track.flipWindowStartedAt) or now) <= 0.65 then
                     detected = true
                 end
             end
             track.lastVerticalSign = sign
-        elseif horizontal > 2.5 or math.abs(verticalDelta) < 0.7 or dt > 0.18 then
+        else
+            -- A sample that does not match the narrow vertical-oscillation shape
+            -- breaks the sequence; intermediate deltas must not keep old flips alive.
             track.flipCount = 0
             track.lastVerticalSign = 0
             track.flipWindowStartedAt = now
@@ -512,9 +525,13 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     local supportingSignature = overhead and tilted
 
     local track = RAGEBOT_PURE_TP_TRACKS[targetRoot]
-    if type(track) ~= "table" then
+    -- A target root can survive while the local character respawns/rebinds. Never
+    -- compare against a head position sampled from a different local RootPart.
+    if type(track) ~= "table" or track.localRoot ~= localRoot then
         RAGEBOT_PURE_TP_TRACKS[targetRoot] = {
+            localRoot = localRoot,
             lastTargetPosition = targetPosition,
+            lastLocalHeadPosition = localHeadPosition,
             lastRelativeOffset = relativeOffset,
             lastAt = now,
             lastTilted = tilted,
@@ -528,8 +545,66 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
 
     local priorAt = tonumber(track.lastAt) or now
     local dt = now - priorAt
-    if dt <= 0 or dt > 0.45 then
+    -- A duplicate/non-monotonic timestamp is not a new sample. Do not clear
+    -- triggeredWhileNear or reset the supporting window on a duplicate read.
+    if dt <= 0 then return false end
+    if dt > 0.45 then
+        track.localRoot = localRoot
         track.lastTargetPosition = targetPosition
+        track.lastLocalHeadPosition = localHeadPosition
+        track.lastRelativeOffset = relativeOffset
+        track.lastAt = now
+        track.lastTilted = tilted
+        track.lastSupportingSignature = supportingSignature
+        track.supportingSignatureSince = supportingSignature and now or nil
+        track.triggeredWhileNear = false
+        return false
+    end
+
+    -- Relative movement includes motion from both characters. If our own RootPart
+    -- was teleported/dash-corrected, the target can appear to snap into the attack
+    -- envelope even while its replicated RootPart barely moved. Compare each side
+    -- independently before classifying the relative displacement as an enemy Pure TP.
+    local priorTargetPosition = track.lastTargetPosition
+    local priorLocalHeadPosition = track.lastLocalHeadPosition
+    local targetDelta = typeof(priorTargetPosition) == "Vector3"
+        and (targetPosition - priorTargetPosition) or Vector3.zero
+    local localHeadDelta = typeof(priorLocalHeadPosition) == "Vector3"
+        and (localHeadPosition - priorLocalHeadPosition) or Vector3.zero
+    local targetIndependentSnap = false
+    local localMotionDiscontinuity = false
+    local localVelocityValid = typeof(localVelocity) == "Vector3"
+        and fakePositionFiniteNumber(localVelocity.X) and fakePositionFiniteNumber(localVelocity.Y)
+        and fakePositionFiniteNumber(localVelocity.Z)
+    local targetVelocityValid = typeof(targetVelocity) == "Vector3"
+        and fakePositionFiniteNumber(targetVelocity.X) and fakePositionFiniteNumber(targetVelocity.Y)
+        and fakePositionFiniteNumber(targetVelocity.Z)
+    if dt > 0 and dt <= 0.45 and localVelocityValid then
+        local localDeltaMagnitude = localHeadDelta.Magnitude
+        local localResidual = (localHeadDelta - localVelocity * dt).Magnitude
+        local localSpeed = math.min(localVelocity.Magnitude, 120)
+        local localTeleportThreshold = math.max(18, localSpeed * dt * 2 + 8)
+        localMotionDiscontinuity = (localDeltaMagnitude >= 3.25
+            and fakePositionFiniteNumber(localResidual) and localResidual >= 2.5)
+            or localDeltaMagnitude > localTeleportThreshold
+    end
+    if dt > 0 and dt <= 0.45 and targetVelocityValid then
+        local targetDeltaMagnitude = targetDelta.Magnitude
+        local targetResidual = (targetDelta - targetVelocity * dt).Magnitude
+        -- A longer sample window has more legitimate acceleration error. Require
+        -- a larger independent displacement before letting it override evidence
+        -- that the local character itself jumped/teleported between samples.
+        local targetSnapDistance = dt <= 0.25 and 3.25 or 8.0
+        local targetSnapResidual = dt <= 0.25 and 2.5 or 5.0
+        targetIndependentSnap = targetDeltaMagnitude >= targetSnapDistance
+            and fakePositionFiniteNumber(targetResidual) and targetResidual >= targetSnapResidual
+    end
+    if localMotionDiscontinuity and not targetIndependentSnap then
+        -- Re-baseline all positions together. Do not let the same local movement
+        -- trigger again through another observer call in the same controller tick.
+        track.localRoot = localRoot
+        track.lastTargetPosition = targetPosition
+        track.lastLocalHeadPosition = localHeadPosition
         track.lastRelativeOffset = relativeOffset
         track.lastAt = now
         track.lastTilted = tilted
@@ -599,7 +674,9 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     local canTriggerNear = track.triggeredWhileNear ~= true
     local detected = canTriggerNear and movementBackedTP
 
+    track.localRoot = localRoot
     track.lastTargetPosition = targetPosition
+    track.lastLocalHeadPosition = localHeadPosition
     track.lastRelativeOffset = relativeOffset
     track.lastAt = now
     track.lastTilted = tilted
@@ -693,10 +770,14 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     local priorAt = type(track) == "table" and tonumber(track.lastAt) or nil
     local staleTrack = priorAt == nil or not fakePositionFiniteNumber(priorAt)
         or now < priorAt or now - priorAt > 1.0
-    if type(track) ~= "table" or track.hitbox ~= targetHitbox or staleTrack then
+    -- Distance history is relative to the local character. Reset when its RootPart
+    -- changes so a respawn cannot look like a target snapped into the old position.
+    if type(track) ~= "table" or track.hitbox ~= targetHitbox
+        or track.localRoot ~= localRoot or staleTrack then
         local glueLikeNow = hitboxRootOffset >= 1000 or ragebotIsHookerAnchorPosition(hitboxPosition)
         RAGEBOT_REP_ROOT_CONTACT_TRACKS[targetRoot] = {
             hitbox = targetHitbox,
+            localRoot = localRoot,
             lastRootPosition = rootPosition,
             lastHitboxPosition = hitboxPosition,
             lastAt = now,
@@ -744,6 +825,7 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     local ready = now - lastTriggerAt >= 0.75
     local detected = glueEdge or persistentGlueLike or hitboxDiscontinuity or snappedIntoBody
 
+    track.localRoot = localRoot
     track.lastRootPosition = rootPosition
     track.lastHitboxPosition = hitboxPosition
     track.lastAt = now
@@ -923,7 +1005,11 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
                 return candidate.target, "rep-root-contact"
             end
 
-            if knifeState == false then
+            -- FakePosition alone is a weaker signal than Pure TP/RepRoot. A large
+            -- displacement from a distant player (dash, knockback, or server correction)
+            -- must not redirect the local Ragebot; only consume it near combat range.
+            local fakePositionCounterInRange = candidate.distance <= 36
+            if knifeState == false and fakePositionCounterInRange then
                 -- Consume one FakePosition event exactly once; a remembered event
                 -- can survive a short Knife transition without repeatedly refreshing
                 -- the response window on every Heartbeat.
@@ -27581,6 +27667,75 @@ local updateCameraRotationRemote = tbl17.aS().UpdateCameraRotationRemote
 local get = tbl17.cp().get
 local v117 = tbl17.cH()
 local localPlayer = cloneref(game:GetService("Players")).LocalPlayer
+local nextCameraRemoteResolveAt = 0
+local nextCameraSendWarningAt = 0
+local function cameraRemoteIsValid(candidate)
+    local ok, valid = pcall(function()
+        return typeof(candidate) == "Instance"
+            and (candidate:IsA("RemoteEvent") or candidate:IsA("UnreliableRemoteEvent"))
+            and candidate.Parent ~= nil and type(candidate.FireServer) == "function"
+    end)
+    return ok and valid == true
+end
+local function resolveCameraRotationRemote()
+    if cameraRemoteIsValid(updateCameraRotationRemote) then return updateCameraRotationRemote end
+    local now = os.clock()
+    if now < nextCameraRemoteResolveAt then return nil end
+    nextCameraRemoteResolveAt = now + 0.5
+    local candidate = nil
+    pcall(function()
+        local api = tbl17.aS()
+        candidate = type(api) == "table" and rawget(api, "UpdateCameraRotationRemote") or nil
+    end)
+    if not cameraRemoteIsValid(candidate) then
+        pcall(function()
+            local remotes = _ReplicatedStorage:FindFirstChild("Remotes")
+            local replication = remotes and remotes:FindFirstChild("Replication")
+            local fighter = replication and replication:FindFirstChild("Fighter")
+            candidate = fighter and fighter:FindFirstChild("UpdateCameraRotation") or nil
+        end)
+    end
+    if cameraRemoteIsValid(candidate) then
+        updateCameraRotationRemote = candidate
+        nextCameraRemoteResolveAt = 0
+        return candidate
+    end
+    return nil
+end
+local function cameraPayloadHasTwoCharacters(payload)
+    if type(payload) ~= "string" then return false end
+    local okLength, characterCount = pcall(utf8.len, payload)
+    return okLength and characterCount == 2
+end
+local function sendCameraRotationPayload(payload)
+    -- Camera rotations are encoded as two UTF-8 code points (utf8.char), not
+    -- necessarily two bytes; values 128-255 occupy multiple bytes in Lua strings.
+    if not cameraPayloadHasTwoCharacters(payload) then
+        return false, "camera payload must contain exactly two valid UTF-8 characters"
+    end
+    local activeRemote = resolveCameraRotationRemote()
+    if activeRemote == nil then return false, "UpdateCameraRotation remote unavailable" end
+    local okSend, sendError = pcall(function()
+        if type(fireServer2) == "function" then
+            fireServer2(activeRemote, payload, nil)
+        else
+            activeRemote:FireServer(payload, nil)
+        end
+    end)
+    if okSend then return true end
+    -- The cloned method can be executor-specific; make one guarded direct-method
+    -- attempt before reporting failure. Neither error is allowed to abort Ragebot.
+    local okDirect, directError = pcall(function() activeRemote:FireServer(payload, nil) end)
+    if okDirect then return true end
+    return false, tostring(sendError) .. "; direct fallback: " .. tostring(directError)
+end
+local function warnCameraSendFailure(message)
+    local now = os.clock()
+    if now >= nextCameraSendWarningAt then
+        nextCameraSendWarningAt = now + 5
+        warn("[ViewAngleDriver] Camera rotation send failed; queued payload will be retried when possible: " .. tostring(message))
+    end
+end
 local index2 = {}
 index2.__index = index2
 
@@ -27608,19 +27763,56 @@ _payloadBySlot = {},
 _winning = nil,
 _fullySuppressed = v86[153],
 _dirty = false,
+_lastFlushSucceeded = false,
 }, index2)
 end
 
+local function readCameraUpvalue(method, index)
+    if type(method) ~= "function" or type(index) ~= "number" or type(debug) ~= "table" then
+        return false, nil
+    end
+    if type(debug.getupvalues) == "function" then
+        local okRead, values = pcall(debug.getupvalues, method)
+        if okRead and type(values) == "table" then
+            local value = values[index]
+            if value ~= nil then return true, value end
+            -- Some executor implementations return named/partial upvalue tables.
+            -- If the numeric slot is absent, try debug.getupvalue before declaring
+            -- the current owner unreadable.
+        end
+    end
+    if type(debug.getupvalue) == "function" then
+        local okRead, first, second = pcall(debug.getupvalue, method, index)
+        if okRead then
+            if second ~= nil then return true, second end
+            -- Standard debug.getupvalue returns (name, value); a nil second
+            -- result is a readable nil upvalue, not the upvalue name itself.
+            -- A few executor APIs expose only the value, so accept non-string
+            -- first results as their single-value form.
+            if type(first) == "string" then return true, nil end
+            return first ~= nil, first
+        end
+    end
+    return false, nil
+end
+
 index2._LoadJointsHook = function(arg)
-if arg._jointsRestore ~= nil then
-return v115.VoidOk
+local prior = arg._jointsRestore
+if prior ~= nil then
+    local current = v102(clientFighterCharacterJoints, "Update")
+    if current == prior.InstalledJointsUpdate then
+        return v115.VoidOk
+    end
+    -- Do not overwrite another module's newer wrapper. If our hook was replaced,
+    -- re-wrap the current method and retain that method as the restoration target.
+    arg._jointsRestore = nil
 end
 local update = v102(clientFighterCharacterJoints, "Update")
-if update == nil then
+if type(update) ~= "function" then
 return v115.err("ViewAngleDriver", "function_lookup", "Joints.Update method not found")
 end
 
-v103(clientFighterCharacterJoints, "Update", function(arg2, arg3, arg4)
+local installedUpdate = function(arg2, arg3, arg4)
 local clientFighterCharacter = v102(arg2, "ClientFighterCharacter")
 local clientFighter = clientFighterCharacter and v102(clientFighterCharacter, "ClientFighter")
 if clientFighter == nil then
@@ -27636,16 +27828,68 @@ end
 end
 
 return update(arg2, arg3, arg4)
-end)
-
-arg._jointsRestore = { JointsUpdateMethod = update }
+end
+v103(clientFighterCharacterJoints, "Update", installedUpdate)
+arg._jointsRestore = { JointsUpdateMethod = update, InstalledJointsUpdate = installedUpdate }
 return v115.VoidOk
 end
 
 index2._LoadReplicationHook = function(arg)
-if arg._replicationRestore ~= nil then
-return v115.VoidOk
+local auditNow = os.clock()
+local nextAuditAt = tonumber(arg._nextReplicationHookAuditAt) or 0
+if type(arg._replicationRestore) == "table"
+    and arg._replicationRestore.Installed == true
+    and auditNow < nextAuditAt then
+    -- This is called from angle updates, including each Heartbeat. Avoid dumping
+    -- closure upvalues every frame; periodically verify ownership instead.
+    return v115.VoidOk
 end
+if arg._replicationRestore ~= nil then
+    local previousRestore = arg._replicationRestore
+    if previousRestore.Installed ~= true and auditNow < nextAuditAt then
+        return v115.err("ViewAngleDriver", "setupvalue", "camera utility rollback retry is throttled")
+    end
+    local readOk, currentUtility = readCameraUpvalue(
+        previousRestore.CameraReplicationLoopMethod, previousRestore.UtilityIndex)
+    if previousRestore.Installed == true and readOk
+        and currentUtility == previousRestore.PatchedUtility then
+        arg._nextReplicationHookAuditAt = auditNow + 0.25
+        return v115.VoidOk
+    end
+    if readOk and currentUtility == previousRestore.Utility then
+        -- Our earlier rollback already succeeded despite an uncertain return value.
+        arg._replicationRestore = nil
+    elseif readOk and currentUtility ~= previousRestore.PatchedUtility then
+        -- Another owner replaced this upvalue. Preserve that newer value rather
+        -- than writing our stale snapshot over it; the current owner can be wrapped
+        -- afresh below if it still exposes the expected camera utility interface.
+        arg._replicationRestore = nil
+    elseif readOk and currentUtility == previousRestore.PatchedUtility
+        and previousRestore.Installed ~= true then
+        local okRestore = false
+        if type(debug) == "table" and type(debug.setupvalue) == "function" then
+            pcall(debug.setupvalue, previousRestore.CameraReplicationLoopMethod,
+                previousRestore.UtilityIndex, previousRestore.Utility)
+            local verifyOk, verifyUtility = readCameraUpvalue(
+                previousRestore.CameraReplicationLoopMethod, previousRestore.UtilityIndex)
+            okRestore = verifyOk and verifyUtility == previousRestore.Utility
+        end
+        if okRestore then
+            arg._replicationRestore = nil
+        else
+            arg._nextReplicationHookAuditAt = os.clock() + 0.10
+            return v115.err("ViewAngleDriver", "setupvalue",
+                "camera-rotation utility restoration is still pending; retry was not verified")
+        end
+    else
+        -- Without a reliable read-back, neither stacking a second wrapper nor
+        -- overwriting an unknown upvalue is safe.
+        arg._nextReplicationHookAuditAt = os.clock() + 0.10
+        return v115.err("ViewAngleDriver", "setupvalue",
+            "camera-rotation utility ownership could not be verified")
+    end
+end
+arg._nextReplicationHookAuditAt = nil
 local v118 = getmetatable(fighterController)
 if v118 == nil then
 return v115.err("ViewAngleDriver", "get_metatable", "FighterController metatable not found")
@@ -27704,7 +27948,28 @@ return v117.encodeCameraRotation(arg3)
 end }, { __index = v122 })
 local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
 if not okSetup then
-return v115.err("ViewAngleDriver", "setupvalue", "failed to install camera-rotation wrapper: " .. tostring(setupResult))
+    -- Do not assume a failing setupvalue call is atomic. Attempt rollback and
+    -- preserve a pending snapshot if restoration cannot be verified.
+    pcall(debug.setupvalue, v120, v121, v122)
+    local rollbackVerified = false
+    pcall(function()
+        if type(debug.getupvalues) == "function" then
+            local values = debug.getupvalues(v120)
+            rollbackVerified = type(values) == "table" and values[v121] == v122
+        elseif type(debug.getupvalue) == "function" then
+            local first, second = debug.getupvalue(v120, v121)
+            rollbackVerified = (second ~= nil and second == v122) or (second == nil and first == v122)
+        end
+    end)
+    if not rollbackVerified then
+        arg._replicationRestore = {
+            CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122,
+            PatchedUtility = patchedUtility, Installed = false,
+        }
+    end
+    arg._nextReplicationHookAuditAt = os.clock() + 0.10
+    return v115.err("ViewAngleDriver", "setupvalue", "failed to install camera-rotation wrapper: " .. tostring(setupResult)
+        .. (rollbackVerified and "; original utility restored" or "; original utility restoration pending"))
 end
 
 local verifyOk, wrapperInstalled = pcall(function()
@@ -27722,10 +27987,33 @@ end
 return false
 end)
 if not verifyOk or wrapperInstalled ~= true then
-return v115.err("ViewAngleDriver", "setupvalue", "camera-rotation wrapper verification failed after setupvalue (return=" .. tostring(setupResult) .. ")")
+    pcall(debug.setupvalue, v120, v121, v122)
+    local rollbackVerified = false
+    pcall(function()
+        if type(debug.getupvalues) == "function" then
+            local values = debug.getupvalues(v120)
+            rollbackVerified = type(values) == "table" and values[v121] == v122
+        elseif type(debug.getupvalue) == "function" then
+            local first, second = debug.getupvalue(v120, v121)
+            rollbackVerified = (second ~= nil and second == v122) or (second == nil and first == v122)
+        end
+    end)
+    if not rollbackVerified then
+        -- Preserve ownership of a possibly installed wrapper until Destroy() can
+        -- restore the original upvalue; never report the wrapper as installed.
+        arg._replicationRestore = {
+            CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122,
+            PatchedUtility = patchedUtility, Installed = false,
+        }
+    end
+    arg._nextReplicationHookAuditAt = os.clock() + 0.10
+    return v115.err("ViewAngleDriver", "setupvalue", "camera-rotation wrapper verification failed after setupvalue (return=" .. tostring(setupResult)
+        .. (rollbackVerified and "; original utility restored" or "; original utility restoration pending") .. ")")
 end
 
-arg._replicationRestore = { CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122 }
+arg._replicationRestore = { CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122,
+    PatchedUtility = patchedUtility, Installed = true }
+arg._nextReplicationHookAuditAt = os.clock() + 0.25
 return v115.VoidOk
 end
 
@@ -27758,6 +28046,7 @@ return v115.VoidOk
 end
 arg._payloadBySlot[arg2] = arg3
 arg._dirty = true
+arg._lastFlushSucceeded = false
 arg:_Resolve()
 arg:_CancelRestore()
 if arg._winning == nil then
@@ -27771,7 +28060,9 @@ return arg:_LoadReplicationHook()
 end
 
 index2.SendRawCameraRotation = function(arg, arg2)
-fireServer2(updateCameraRotationRemote, arg2, nil)
+local okSend, sendError = sendCameraRotationPayload(arg2)
+if not okSend then warnCameraSendFailure(sendError) end
+return okSend
 end
 
 index2.Suppress = function(arg, fullySuppressed)
@@ -27779,9 +28070,16 @@ if arg._fullySuppressed == fullySuppressed then
 return v115.VoidOk
 end
 arg._fullySuppressed = fullySuppressed
+arg._lastFlushSucceeded = false
 if fullySuppressed then
 arg:_CancelRestore()
 return arg:_LoadReplicationHook()
+end
+-- Releasing suppression must force a fresh send of the active winner. Otherwise
+-- the slot can remain unchanged, _dirty stays false, and the Knife prime gate may
+-- keep seeing the previous failed/suppressed flush forever.
+if arg._winning ~= nil then
+    arg._dirty = true
 end
 return v115.VoidOk
 end
@@ -27791,58 +28089,134 @@ arg:_CancelRestore()
 table.clear(arg._payloadBySlot)
 arg._winning = nil
 arg._dirty = v86[153]
+arg._lastFlushSucceeded = false
 end
 
 index2.Flush = function(arg)
-if not arg._dirty then
-return
-end
-
+if not arg._dirty then return arg._lastFlushSucceeded == true end
 if arg._fullySuppressed then
-return
+    arg._lastFlushSucceeded = false
+    return false
 end
 local winning = arg._winning
 
 if winning == nil then
-arg._dirty = false
-
-arg._restoreTask = arg._restoreTrove:Add(task.delay(0.05 + localPlayer:GetNetworkPing(), function()
-if arg._winning ~= nil or arg._fullySuppressed then
-return
+    arg._dirty = false
+    arg._lastFlushSucceeded = false
+    local ping = 0
+    pcall(function()
+        local measured = localPlayer:GetNetworkPing()
+        if type(measured) == "number" and measured == measured
+            and measured >= 0 and measured < 5 then ping = measured end
+    end)
+    local restoreTask
+    restoreTask = task.delay(0.05 + ping, function()
+        -- Remove completed restore threads from the Trove so repeated camera-slot
+        -- transitions do not accumulate dead task handles for the lifetime of UI.
+        if arg._restoreTask == restoreTask then arg._restoreTask = nil end
+        arg._restoreTrove:Remove(restoreTask, true)
+        if arg._winning ~= nil or arg._fullySuppressed then return end
+        local okAngle, currentAngle = pcall(get)
+        if not okAngle or typeof(currentAngle) ~= "Vector2" then
+            warnCameraSendFailure("could not read current camera angles for restore")
+            return
+        end
+        local okEncode, payload = pcall(v117.encodeCameraRotation, currentAngle)
+        if not okEncode or not cameraPayloadHasTwoCharacters(payload) then
+            warnCameraSendFailure("could not encode current camera angles for restore")
+            return
+        end
+        local okSend, sendError = sendCameraRotationPayload(payload)
+        if not okSend then warnCameraSendFailure(sendError) end
+    end)
+    arg._restoreTask = arg._restoreTrove:Add(restoreTask)
+    return false
 end
-fireServer2(updateCameraRotationRemote, v117.encodeCameraRotation(get()), nil)
-end))
 
-return
+-- Do not clear _dirty before encoding and sending. The boolean result lets the
+-- Knife prime gate distinguish a local FireServer success from a failed send.
+local okEncode, payload = pcall(fn36, winning)
+if not okEncode or not cameraPayloadHasTwoCharacters(payload) then
+    arg._lastFlushSucceeded = false
+    warnCameraSendFailure("could not encode the active view-angle payload")
+    return false
 end
-
+local okSend, sendError = sendCameraRotationPayload(payload)
+if not okSend then
+    arg._dirty = true
+    arg._lastFlushSucceeded = false
+    warnCameraSendFailure(sendError)
+    return false
+end
 arg._dirty = false
-fireServer2(updateCameraRotationRemote, fn36(winning), nil)
+arg._lastFlushSucceeded = true
+return true
 end
 
 index2._RevertHooks = function(arg)
 local jointsRestore = arg._jointsRestore
 
 if jointsRestore ~= nil then
-arg._jointsRestore = nil
-v103(clientFighterCharacterJoints, "Update", jointsRestore.JointsUpdateMethod)
+    local currentUpdate = v102(clientFighterCharacterJoints, "Update")
+    if currentUpdate == jointsRestore.InstalledJointsUpdate then
+        v103(clientFighterCharacterJoints, "Update", jointsRestore.JointsUpdateMethod)
+        arg._jointsRestore = nil
+    elseif currentUpdate == jointsRestore.JointsUpdateMethod then
+        -- The original method is already active; there is nothing left to undo.
+        arg._jointsRestore = nil
+    else
+        -- A different owner replaced the method after our installation. Do not
+        -- overwrite that owner's newer hook with a stale function snapshot.
+        arg._jointsRestore = nil
+        warn("[ViewAngleDriver] Joints.Update ownership changed; skipped stale restore")
+    end
 end
 
 local replicationRestore = arg._replicationRestore
 
 if replicationRestore ~= nil then
-local restoreOk, restoreError = false, "debug.setupvalue is unavailable"
-if type(debug) == "table" and type(debug.setupvalue) == "function" then
-local callOk, restoreResult = pcall(debug.setupvalue, replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex, replicationRestore.Utility)
-restoreOk = callOk and restoreResult ~= nil
-restoreError = callOk and (restoreResult == nil and "debug.setupvalue returned nil" or nil) or restoreResult
+local restoreOk, restoreError = false, "camera utility ownership could not be verified"
+local readOk, currentUtility = readCameraUpvalue(
+    replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex)
+if readOk and currentUtility == replicationRestore.Utility then
+    restoreOk = true -- already restored
+elseif readOk and currentUtility == replicationRestore.PatchedUtility then
+    if type(debug) == "table" and type(debug.setupvalue) == "function" then
+        for attempt = 1, 3 do
+            local callOk, callResult = pcall(debug.setupvalue,
+                replicationRestore.CameraReplicationLoopMethod,
+                replicationRestore.UtilityIndex, replicationRestore.Utility)
+            if not callOk then restoreError = callResult
+            elseif callResult == nil then restoreError = "debug.setupvalue returned nil" end
+            local verifyOk, verifyUtility = readCameraUpvalue(
+                replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex)
+            if verifyOk and verifyUtility == replicationRestore.Utility then
+                restoreOk = true
+                restoreError = nil
+                break
+            elseif not verifyOk then
+                restoreError = "read-back verification unavailable"
+            end
+        end
+    end
+elseif readOk then
+    -- Someone else replaced the upvalue after we installed our wrapper. Preserve
+    -- the newer owner rather than restoring the stale original utility over it.
+    restoreOk = true
+    restoreError = "ownership changed; stale restore skipped"
+else
+    restoreError = "could not read current camera utility upvalue"
 end
 if restoreOk then
 arg._replicationRestore = nil
+if restoreError ~= nil and os.clock() >= (arg._nextReplicationRestoreWarningAt or 0) then
+    arg._nextReplicationRestoreWarningAt = os.clock() + 5
+    warn("[ViewAngleDriver] " .. tostring(restoreError))
+end
 else
 if os.clock() >= (arg._nextReplicationRestoreWarningAt or 0) then
 arg._nextReplicationRestoreWarningAt = os.clock() + 5
-warn("[ViewAngleDriver] Failed to restore camera replication utility: " .. tostring(restoreError))
+warn("[ViewAngleDriver] Failed to restore camera replication utility after bounded retries: " .. tostring(restoreError))
 end
 end
 end
@@ -27964,7 +28338,7 @@ return arg._viewAngleDriver:SendViewAngles(arg2, arg3)
 end
 
 index2.SendRawCameraRotation = function(arg, arg2)
-arg._viewAngleDriver:SendRawCameraRotation(arg2)
+return arg._viewAngleDriver:SendRawCameraRotation(arg2)
 end
 
 index2.SuppressCameraReplication = function(arg, arg2)
@@ -27972,7 +28346,7 @@ arg._viewAngleDriver:Suppress(arg2)
 end
 
 index2.FlushViewAngles = function(arg)
-arg._viewAngleDriver:Flush()
+return arg._viewAngleDriver:Flush()
 end
 
 index2.HeartbeatUpdate = function(arg)
@@ -31548,11 +31922,15 @@ local function riotEnsureRemote()
 end
 
 riotState.sendRagebotCamera = function(encoded)
-    if type(encoded) ~= "string" or #encoded ~= 2 then
-        return false, nil, false
+    local okLength, characterCount = false, nil
+    if type(encoded) == "string" then
+        okLength, characterCount = pcall(utf8.len, encoded)
+    end
+    if not okLength or characterCount ~= 2 then
+        return false, nil, false, "invalid camera payload"
     end
     if not riotEnsureRemote() then
-        return false, nil, false
+        return false, nil, false, "UpdateCameraRotation remote unavailable"
     end
     local now = os.clock()
     local lastAt = tonumber(riotState.ragebotBridgeLastFireAt) or 0
@@ -31563,13 +31941,21 @@ riotState.sendRagebotCamera = function(encoded)
         return true, lastAt, false
     end
     local activeRemote = remote
-    local fireOk = pcall(function()
-        activeRemote:FireServer(encoded, nil)
-    end)
+    -- Use the cached cloned method when available. The regular method may be
+    -- wrapped by the camera-replication hook; Ragebot's explicit payload must not
+    -- be intercepted/replaced by the standalone Riot writer's hook state.
+    local fireOk, fireError
+    if type(fireServer) == "function" then
+        fireOk, fireError = pcall(fireServer, activeRemote, encoded, nil)
+    else
+        fireOk, fireError = pcall(function()
+            activeRemote:FireServer(encoded, nil)
+        end)
+    end
     if not fireOk then
         remote = nil
         nextRemoteResolveAt = 0
-        return false, nil, false
+        return false, nil, false, tostring(fireError)
     end
     riotState.ragebotBridgeLastFireAt = now
     riotState.ragebotBridgeLastEncoded = encoded
@@ -68136,13 +68522,32 @@ local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
 local v119 = flag19 and vector or vector2
 local isKnifeItem = arg4.Name == "Knife"
+local orientationOk, v121, v122, v123 = pcall(function()
+    return rootPart.CFrame:ToOrientation()
+end)
+if not orientationOk or not fakePositionFiniteNumber(v121)
+    or not fakePositionFiniteNumber(v122) or not fakePositionFiniteNumber(v123) then
+    if isKnifeItem then
+        arg:_AbortBackstabAttempt(hitboxHead)
+    else
+        arg:ResetState()
+    end
+    local fallbackCFrame = nil
+    pcall(function()
+        if gluedOurPart ~= nil and gluedOurPart:IsA("BasePart") then
+            fallbackCFrame = gluedOurPart.CFrame
+        end
+    end)
+    return fallbackCFrame, nil, nil, false, nil
+end
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
 if typeof(v120) ~= "CFrame" then
 -- Acquire can fail transiently while PartGlue restores its PhysicsRepRootRef.
--- Resetting here used to erase the knife's prime target and restart its lead-in
--- every time, which could look like the knife was raised but never attacked.
+-- Keep Knife's target angle alive during this short failure instead of replacing
+-- it with the general defensive angle while the backstab sequence is primed.
 if not isKnifeItem then arg:ResetState() end
-return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
+return gluedOurPart ~= nil and gluedOurPart.CFrame or nil,
+    isKnifeItem and fn37(v121, v122) or nil, nil, false, nil
 end
 arg._gluedOurPart = gluedOurPart
 local n
@@ -68153,12 +68558,28 @@ else
 n = v118(v120.Position + v119, hitboxHead.Position)
 end
 
-local v121, v122, v123 = aliveState.RootPart.CFrame:ToOrientation()
 local n33 = flag19 and -1.5707963267948966 or 1.5707963267948966
 local v124 = (flag19 and { tbl18 } or { tbl20 })[1]
 local v125 = (flag19 and { tbl19 } or { tbl21 })[1]
 local v126 = fn38(v124, n33, v122, v123)
 local v127 = fn38(v125, n33, v122, v123)
+local function buildFreshKnifeAttackPayload()
+    local okPayload, attackOrigin, attackDirection = pcall(function()
+        if aliveState.Alive ~= true or aliveState.RootPart ~= rootPart
+            or aliveState.HitboxHead ~= hitboxHead
+            or not rootPart:IsA("BasePart") or not rootPart:IsDescendantOf(workspace)
+            or not hitboxHead:IsA("BasePart") or not hitboxHead:IsDescendantOf(workspace) then
+            return nil, nil
+        end
+        local _, currentYaw, currentRoll = rootPart.CFrame:ToOrientation()
+        return fn38(v124, n33, currentYaw, currentRoll),
+            fn38(v125, n33, currentYaw, currentRoll)
+    end)
+    if not okPayload or type(attackOrigin) ~= "table" or type(attackDirection) ~= "table" then
+        return nil, nil
+    end
+    return attackOrigin, attackDirection
+end
 local now2 = os.clock()
 local isKnife = isKnifeItem
 
@@ -68223,8 +68644,13 @@ if arg._hitboxWindowTarget ~= hitboxHead or attackNow >= arg._hitboxWindowUntil 
 return
 end
 arg._nextKnifeWindowAttackAt = attackNow + 0.12
+local attackOrigin, attackDirection = buildFreshKnifeAttackPayload()
+if attackOrigin == nil or attackDirection == nil then
+    arg:_AbortBackstabAttempt(hitboxHead)
+    return
+end
 local okAttack, attackResult = pcall(function()
-return arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
+return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if not okAttack or attackResult == false then
 arg:_AbortBackstabAttempt(hitboxHead)
@@ -68244,13 +68670,17 @@ if meleeShootFrames ~= meleeShootFrames or meleeShootFrames == math.huge or mele
 end
 meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
 if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
-return fn36(), nil, nil
+    if isKnife then
+        -- A locked Knife must keep its target angle and local attack pose. The old
+        -- generic evade CFrame could move the player away during the prime window,
+        -- then restore the target angle only after the backstab timing had passed.
+        return n, fn37(v121, v122), nil
+    end
+    return fn36(), nil, nil
 end
 
-
-
 if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
-return n, nil, nil
+    return n, isKnife and fn37(v121, v122) or nil, nil
 end
 
 if isKnife then
@@ -68265,8 +68695,13 @@ end
 local attackPitch = arg._knifePrimePitch or v121
 local attackYaw = arg._knifePrimeYaw or v122
 return n, fn37(attackPitch, attackYaw), function()
+local attackOrigin, attackDirection = buildFreshKnifeAttackPayload()
+if attackOrigin == nil or attackDirection == nil then
+    arg:_AbortBackstabAttempt(hitboxHead)
+    return
+end
 local okAttack, attackResult = pcall(function()
-return arg4:HeavyAttackEncoded(v126, v127, hitboxHead, tbl22)
+return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and attackResult ~= false then
 arg:_RecordBackstab(hitboxHead)
@@ -69915,6 +70350,8 @@ _lastDefensiveViewAngles = nil,
 _cameraArbiter = cameraArbiter,
 _knifeCameraLocked = false,
 _knifeActionExpected = false,
+_knifeExternalRiotCamera = false,
+_externalRiotCameraSlotCleared = false,
 _playerContext = arg3,
 _targetSelection = v124.new(arg, arg2),
 _spatialLimitGate = v130,
@@ -70736,6 +71173,24 @@ if previousEvasionMode ~= mode then
 end
 arg._lastEvasionMode = mode
 local okAction, actionResult = pcall(v128.getAction, innerContext)
+if okAction and actionResult ~= nil then
+    if type(actionResult) ~= "table" then
+        -- The planner accepts nil as a legitimate no-action state, but false,
+        -- numbers and strings are not action objects. Do not coerce them to nil.
+        okAction = false
+        actionResult = "GetAction returned invalid result type: " .. type(actionResult)
+    else
+        local shapeOk, actionType = pcall(function() return actionResult.Type end)
+        local supportedType = shapeOk and (actionType == "Attack" or actionType == "Melee"
+            or actionType == "Reload" or actionType == "Swap")
+        if not supportedType then
+            -- An unknown/malformed action table must not fall through as a no-op
+            -- and be interpreted by Evasion as permission to TP.
+            okAction = false
+            actionResult = "GetAction returned an unsupported action type: " .. tostring(actionType)
+        end
+    end
+end
 local v130 = okAction and actionResult or nil
 if not okAction then
 local warningNow = os.clock()
@@ -70747,7 +71202,8 @@ end
 
 local repRootCounterActive = false
 local repRootCounterTarget = nil
-if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") and arg._reloadGun == nil and (v130 == nil or v130.Type ~= "Reload") then
+if okAction and (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker")
+    and arg._reloadGun == nil and (v130 == nil or v130.Type ~= "Reload") then
     local nowForRepRoot = os.clock()
     local storedCounterTarget = arg._repRootCounterTarget
     local counterUntil = tonumber(arg._repRootCounterUntil) or 0
@@ -71126,6 +71582,40 @@ if arg._repRootCounterRestorePending == true then
     end
 end
 
+-- Weapon-action selection is a prerequisite for every movement/attack planner.
+-- A thrown GetAction call is not equivalent to a legitimate nil/no-action result:
+-- fail closed for this update so Translocate/Random cannot TP on an unknown weapon
+-- state and no stale Knife callback can fire after a transient controller error.
+if not okAction then
+    pcall(function() characterController:SetServerCFrame(nil) end)
+    pcall(function() characterController:SendViewAngles(20, nil) end)
+    pcall(function() characterController:FlushViewAngles() end)
+    pcall(function() arg:_SetKnifeCameraLock(false) end)
+    arg._knifeActionExpected = false
+    arg._knifeExternalRiotCamera = false
+    arg._externalRiotCameraSlotCleared = false
+    arg._externalRiotCameraTarget = nil
+    arg._externalRiotCameraStartedAt = nil
+    arg._externalRiotCameraStartCount = nil
+    arg._externalRiotCameraPrimed = false
+    arg._externalRiotCameraPrimeAt = nil
+    arg._knifeCameraPrimeTarget = nil
+    arg._knifeCameraPrimeAt = nil
+    arg._knifeCameraPrimeAngles = nil
+    ragebotResetRiotCameraPrime(arg)
+    pcall(function() arg._ApplyForcedCrouch(false) end)
+    local meleeStrategy = rawget(arg, "_meleeStrategy")
+    if type(meleeStrategy) == "table" and type(meleeStrategy.ResetState) == "function" then
+        pcall(meleeStrategy.ResetState, meleeStrategy)
+    end
+    local hitscanStrategy = rawget(arg, "_hitscanStrategy")
+    if type(hitscanStrategy) == "table" and type(hitscanStrategy.ResetState) == "function" then
+        pcall(hitscanStrategy.ResetState, hitscanStrategy)
+    end
+    ragebotMarkActiveLifecycle(arg)
+    return
+end
+
 local repRootTranslocateBlockUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
 if not fakePositionFiniteNumber(repRootTranslocateBlockUntil) then
     repRootTranslocateBlockUntil = 0
@@ -71145,7 +71635,7 @@ if ragebotPoseRestoreGateIsActive()
     return
 end
 
-if mode == "Translocate" and arg._reloadGun == nil
+if okAction and mode == "Translocate" and arg._reloadGun == nil
     and (v130 == nil or v130.Type ~= "Reload")
     and not repRootCounterActive and not repRootTranslocateBlocked then
 
@@ -71154,6 +71644,7 @@ if mode == "Translocate" and arg._reloadGun == nil
 ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 arg._knifeActionExpected = false
 arg._knifeExternalRiotCamera = false
+arg._externalRiotCameraSlotCleared = false
 arg._externalRiotCameraTarget = nil
 arg._externalRiotCameraStartedAt = nil
 arg._externalRiotCameraStartCount = nil
@@ -71636,38 +72127,19 @@ local function ragebotBuildRiotKnifeViewAngles(target)
     local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
     if hitbox == nil then return nil end
 
-
-
-
-    local model = aliveState ~= nil and aliveState.Model or nil
-    if model == nil then
-        local root = aliveState ~= nil and aliveState.RootPart or nil
-        pcall(function()
-            if root ~= nil and root:IsA("BasePart") then
-                model = root:FindFirstAncestorOfClass("Model")
-            end
-        end)
-    end
-    local anglePart = nil
+    -- Match the very same combat RootPart used by the melee payload builder.
+    -- Choosing Model.HumanoidRootPart independently can send camera yaw for a
+    -- different part on rigs with a custom replicated combat root.
+    local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, candidatePart = pcall(function()
-        if model == nil or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
+        if anglePart == nil or not anglePart:IsA("BasePart")
+            or not anglePart:IsDescendantOf(workspace) then
             return nil
         end
-        local root = model:FindFirstChild("HumanoidRootPart")
-        if root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace) then
-            return root
-        end
-        local head = model:FindFirstChild("Head")
-        if head ~= nil and head:IsA("BasePart") and head:IsDescendantOf(workspace) then
-            return head
-        end
-        return nil
+        return anglePart
     end)
-    if okPart and candidatePart ~= nil then anglePart = candidatePart end
-
-
-
-    if anglePart == nil then return nil end
+    if not okPart or candidatePart == nil then return nil end
+    anglePart = candidatePart
 
     local okAngles, pitch, yaw = pcall(function()
         return anglePart.CFrame:ToOrientation()
@@ -71747,7 +72219,7 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
         end
         return ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
-    local callOk, sendOk, sentAt, didSend = pcall(sender, encoded)
+    local callOk, sendOk, sentAt, didSend, sendFailure = pcall(sender, encoded)
     -- Keep `now` in this function scope: the post-send and dedupe paths compare
     -- against the latest monotonic time, not a branch-local variable.
     local now = os.clock()
@@ -71755,7 +72227,9 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
         local now = os.clock()
         if now >= (owner._nextRiotBridgeWarningAt or 0) then
             owner._nextRiotBridgeWarningAt = now + 5
-            warn("[Ragebot] Riot camera update was not sent; using internal Knife angles after a bounded wait.")
+            local reason = not callOk and tostring(sendOk)
+                or (type(sendFailure) == "string" and sendFailure or "camera sender rejected the update")
+            warn("[Ragebot] Riot camera send unavailable (" .. reason .. "); internal Knife angles activate after the bounded wait.")
         end
         return ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
@@ -72887,8 +73361,8 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
         owner._knifeCameraPrimeTarget = nil
         owner._knifeCameraPrimeAt = nil
         owner._knifeCameraPrimeAngles = nil
-        characterController:FlushViewAngles()
-        return true
+        local okFlush, flushed = pcall(function() return characterController:FlushViewAngles() end)
+        return okFlush and flushed == true
     end
     if owner._knifeCameraPrimeTarget ~= targetKey then
         owner._knifeCameraPrimeTarget = targetKey
@@ -72900,23 +73374,32 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     local yaw = type(payload) == "table" and tonumber(payload.Yaw) or nil
     local finitePitch = type(pitch) == "number" and pitch == pitch and pitch ~= math.huge and pitch ~= -math.huge
     local finiteYaw = type(yaw) == "number" and yaw == yaw and yaw ~= math.huge and yaw ~= -math.huge
-    if payloadKind ~= "Normalized" or not finitePitch or not finiteYaw then
+    local validPayload = payloadKind == "Normalized" and finitePitch and finiteYaw
+    if not validPayload then
         owner._knifeCameraPrimeAt = nil
         owner._knifeCameraPrimeAngles = nil
-    else
-        local baseline = owner._knifeCameraPrimeAngles
-        local primeAt = tonumber(owner._knifeCameraPrimeAt)
-        local primeAtValid = type(primeAt) == "number" and primeAt == primeAt
-            and primeAt ~= math.huge and primeAt ~= -math.huge
-        if baseline == nil or not primeAtValid then
-            -- Start the lead-time clock on the first valid angle for this target.
-            owner._knifeCameraPrimeAt = os.clock()
-        end
-        -- This function flushes the angle every update before WeaponAction runs.
-        -- A rapidly changing yaw is not a reason to restart the lead-time clock.
-        owner._knifeCameraPrimeAngles = { Pitch = pitch, Yaw = yaw }
     end
-    characterController:FlushViewAngles()
+
+    -- A prime timer is meaningful only after the driver confirms that the current
+    -- winning angle payload was actually passed to FireServer without an error.
+    local okFlush, flushed = pcall(function() return characterController:FlushViewAngles() end)
+    if not okFlush or flushed ~= true then
+        owner._knifeCameraPrimeAt = nil
+        owner._knifeCameraPrimeAngles = nil
+        return false
+    end
+    if not validPayload then return true end
+
+    local baseline = owner._knifeCameraPrimeAngles
+    local primeAt = tonumber(owner._knifeCameraPrimeAt)
+    local primeAtValid = type(primeAt) == "number" and primeAt == primeAt
+        and primeAt ~= math.huge and primeAt ~= -math.huge
+    if baseline == nil or not primeAtValid then
+        -- Start lead-time only after a successful camera send for this target.
+        owner._knifeCameraPrimeAt = os.clock()
+    end
+    -- A rapidly changing yaw is not a reason to restart the lead-time clock.
+    owner._knifeCameraPrimeAngles = { Pitch = pitch, Yaw = yaw }
     return true
 end
 
@@ -72937,6 +73420,22 @@ index2._ApplyPlan = function(arg, arg2, arg3, arg4)
 local characterController = arg4 ~= nil and arg4.CharacterController or nil
 if characterController == nil then
 return
+end
+if arg._knifeExternalRiotCamera == true then
+    if arg._externalRiotCameraSlotCleared ~= true then
+        local clearOk, clearError = pcall(function()
+            characterController:SendViewAngles(20, nil)
+            characterController:FlushViewAngles()
+        end)
+        if clearOk then
+            arg._externalRiotCameraSlotCleared = true
+        elseif os.clock() >= (arg._nextExternalRiotSlotClearWarningAt or 0) then
+            arg._nextExternalRiotSlotClearWarningAt = os.clock() + 5
+            warn("[Ragebot] Could not clear the internal Knife camera payload for external Riot ownership: " .. tostring(clearError))
+        end
+    end
+else
+    arg._externalRiotCameraSlotCleared = false
 end
 local cFrame = arg2 ~= nil and arg2.CFrame or nil
 local defensiveViewAngles = arg2 ~= nil and arg2.ViewAngles or nil
@@ -73140,6 +73639,7 @@ if not sameReset then
     end
     arg._knifeActionExpected = false
     arg._knifeExternalRiotCamera = false
+    arg._externalRiotCameraSlotCleared = false
     arg._externalRiotCameraTarget = nil
     arg._externalRiotCameraStartedAt = nil
     arg._externalRiotCameraStartCount = nil
