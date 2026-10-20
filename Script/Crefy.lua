@@ -464,7 +464,9 @@ local function ragebotObserveFakePosition(rootPart, now)
                 -- Two sign changes can occur during an ordinary jump/landing.
                 -- Require a longer, sustained alternating sequence before treating
                 -- vertical motion alone as FakePosition oscillation.
-                if track.flipCount >= 3 and now - (tonumber(track.flipWindowStartedAt) or now) <= 0.65 then
+                -- Fix: 2 flips (not 3) là đủ để detect FakePosition oscillation
+                -- 3 quá conservative, hooker dừng oscillate trước khi switch Knife
+                if track.flipCount >= 2 and now - (tonumber(track.flipWindowStartedAt) or now) <= 0.65 then
                     detected = true
                 end
             end
@@ -697,7 +699,10 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     -- in that pose alone is not evidence of a teleport. Keep movement as mandatory.
     local movementBackedTP = rapidTPIntoCombat
         or (attackEnvelope and abruptRelativeMove and supportingTP)
-    if not attackEnvelope then track.triggeredWhileNear = false end
+    -- Fix: reset triggeredWhileNear sớm hơn (6 studs thay vì 11)
+    -- Hooker có thể backstab nhiều lần liên tiếp trong combat range <11 studs
+    -- nếu không reset thì chỉ detect attack đầu tiên
+    if relativeDistance > 6.0 then track.triggeredWhileNear = false end
     local canTriggerNear = track.triggeredWhileNear ~= true
     local detected = canTriggerNear and movementBackedTP
 
@@ -719,6 +724,86 @@ end
 -- This observer detects only visible, replicated effects; it must also avoid parts that
 -- this script itself currently owns through PartGlue.
 local RAGEBOT_REP_ROOT_CONTACT_TRACKS = setmetatable({}, { __mode = "k" })
+
+-- ============================================================
+-- Knife Cooldown Tracker
+-- Mục tiêu: tự học cooldown của từng hooker target dựa trên
+-- khoảng thời gian giữa các lần hitboxDiscontinuity / anomalyProximity
+-- Hooker default: _attackCooldown = 1.25s, _hitboxWindowUntil = 0.625s
+-- Nhưng variant có thể spam liên tục hoặc dùng 1.35s
+-- ============================================================
+local RAGEBOT_KNIFE_COOLDOWN_TRACKS = setmetatable({}, { __mode = "k" })
+local KNIFE_COOLDOWN_SAMPLES_MAX    = 6     -- giữ tối đa 6 mẫu gần nhất
+local KNIFE_COOLDOWN_DEFAULT        = 1.25  -- hooker default
+local KNIFE_COOLDOWN_MIN_PLAUSIBLE  = 0.18  -- spam variant tối thiểu
+local KNIFE_COOLDOWN_MAX_PLAUSIBLE  = 2.6   -- slow variant tối đa
+-- Cửa sổ "sắp attack" trước thời điểm dự đoán
+local KNIFE_PREEMPT_LEAD            = 0.30
+-- Cho phép trượt ±150ms so với thời điểm dự đoán
+local KNIFE_PREEMPT_SLACK           = 0.15
+
+local function ragebotKnifeCooldownTrack(targetRoot)
+    local t = RAGEBOT_KNIFE_COOLDOWN_TRACKS[targetRoot]
+    if type(t) ~= "table" then
+        t = {
+            lastAttackAt      = -math.huge,
+            intervals         = {},
+            estimatedCooldown = KNIFE_COOLDOWN_DEFAULT,
+            hitboxWindowEst   = 0.625,
+        }
+        RAGEBOT_KNIFE_COOLDOWN_TRACKS[targetRoot] = t
+    end
+    return t
+end
+
+-- Ghi nhận một attack event (hitboxDiscontinuity hoặc anomalous proximity onset).
+-- Cập nhật estimatedCooldown bằng median của các khoảng cách gần nhất.
+local function ragebotRecordKnifeAttack(targetRoot, now)
+    if targetRoot == nil then return end
+    local t = ragebotKnifeCooldownTrack(targetRoot)
+    local last = tonumber(t.lastAttackAt) or -math.huge
+    if last > -math.huge and now > last then
+        local iv = now - last
+        if iv >= KNIFE_COOLDOWN_MIN_PLAUSIBLE and iv <= KNIFE_COOLDOWN_MAX_PLAUSIBLE then
+            local s = t.intervals
+            s[#s + 1] = iv
+            if #s > KNIFE_COOLDOWN_SAMPLES_MAX then
+                table.remove(s, 1)
+            end
+            if #s >= 2 then
+                local sorted = table.move(s, 1, #s, 1, {})
+                table.sort(sorted)
+                local med = sorted[math.ceil(#sorted / 2)]
+                t.estimatedCooldown = math.clamp(med,
+                    KNIFE_COOLDOWN_MIN_PLAUSIBLE, KNIFE_COOLDOWN_MAX_PLAUSIBLE)
+                -- Ước tính hitboxWindow ≈ cooldown/2 (theo cấu trúc hooker)
+                t.hitboxWindowEst = t.estimatedCooldown * 0.5
+            end
+        elseif iv < KNIFE_COOLDOWN_MIN_PLAUSIBLE then
+            -- spam variant: cực ngắn, override về min
+            t.estimatedCooldown = KNIFE_COOLDOWN_MIN_PLAUSIBLE
+            t.hitboxWindowEst   = KNIFE_COOLDOWN_MIN_PLAUSIBLE * 0.5
+        end
+    end
+    t.lastAttackAt = now
+end
+
+-- Trả về: predictedImminent (bool), estimatedCooldown, timeUntilNext
+-- predictedImminent = true nếu predicted next attack đang trong cửa sổ [now, now+LEAD]
+local function ragebotKnifePredictImminent(targetRoot, now)
+    local t = RAGEBOT_KNIFE_COOLDOWN_TRACKS[targetRoot]
+    if type(t) ~= "table" then return false, KNIFE_COOLDOWN_DEFAULT, math.huge end
+    local last = tonumber(t.lastAttackAt) or -math.huge
+    if last <= -math.huge then return false, t.estimatedCooldown, math.huge end
+    local cd   = tonumber(t.estimatedCooldown) or KNIFE_COOLDOWN_DEFAULT
+    local since = now - last
+    local timeUntil = cd - since
+    -- Cửa sổ dự đoán: từ LEAD giây trước đến SLACK giây sau thời điểm dự đoán
+    local imminent = timeUntil >= -KNIFE_PREEMPT_SLACK
+        and timeUntil <= KNIFE_PREEMPT_LEAD
+    return imminent, cd, timeUntil
+end
+-- ============================================================
 
 local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
     -- A target with an unresolved local restore snapshot must never be attributed
@@ -813,6 +898,10 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
             glueLikeSince = glueLikeNow and now or nil,
             persistentTriggerConsumed = false,
             lastTriggerAt = -math.huge,
+            -- [NEW] Anomalous proximity: hitbox gần victim nhưng root xa
+            -- Dùng để detect lần 2+ khi hitbox đã ở near-victim và KHÔNG trả về anchor
+            anomalousSince = nil,
+            anomalousTriggerConsumed = false,
         }
         -- Require a follow-up sample; a single stale/static position is not enough.
         return false
@@ -848,9 +937,66 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
         and fakePositionFiniteNumber(rootDelta) and rootDelta >= 18
         and priorDistance >= 12 and distanceToLocal <= 2
         and priorDistance - distanceToLocal >= 10
+
+    -- ── [NEW] Anomalous Proximity ────────────────────────────────────────────
+    -- Phát hiện: enemy hitbox bám sát victim (≤8 studs) trong khi root xa (≥20)
+    -- Đây là signature của PhysicsRepRootRef đang active khi hooker đã Acquire
+    -- về near-victim và KHÔNG trả hitbox về anchor giữa các lần attack.
+    -- condition:
+    --   hitboxToLocal ≤ 8   → hitbox trong tầm knife của victim
+    --   rootToLocal   ≥ 20  → root (hooker char) đứng xa victim
+    --   hitboxRootOffset ≥ 15 → hitbox tách khỏi root rõ ràng (không phải bình thường)
+    local hitboxToLocal = fakePositionFiniteNumber(hitboxPosition.X)
+        and (hitboxPosition - localPosition).Magnitude or math.huge
+    local anomalousProximityNow = fakePositionFiniteNumber(hitboxToLocal)
+        and hitboxToLocal <= 8.0
+        and distanceToLocal >= 20.0
+        and hitboxRootOffset >= 15.0
+
+    if anomalousProximityNow then
+        if not fakePositionFiniteNumber(track.anomalousSince) then
+            track.anomalousSince = now
+            track.anomalousTriggerConsumed = false
+        end
+    else
+        track.anomalousSince = nil
+        track.anomalousTriggerConsumed = false
+    end
+    local anomalousSinceVal = tonumber(track.anomalousSince)
+    local persistentAnomalousProximity = anomalousProximityNow
+        and anomalousSinceVal ~= nil
+        and fakePositionFiniteNumber(anomalousSinceVal)
+        and now - anomalousSinceVal >= 0.06
+        and track.anomalousTriggerConsumed ~= true
+    -- ────────────────────────────────────────────────────────────────────────
+
     local lastTriggerAt = tonumber(track.lastTriggerAt) or -math.huge
-    local ready = now - lastTriggerAt >= 0.75
-    local detected = glueEdge or persistentGlueLike or hitboxDiscontinuity or snappedIntoBody
+    -- Fix: cooldown 0.5s (thay vì 0.75) để catch lần attack kế nhanh hơn.
+    -- Counter window vẫn 0.75s; ready chỉ ảnh hưởng đến việc re-detect.
+    local ready = now - lastTriggerAt >= 0.50
+
+    -- Fix: reset persistentTriggerConsumed và anomalousTriggerConsumed
+    -- khi ready window đã qua để cho phép detect lại chu kỳ tấn công tiếp theo.
+    -- Nếu không reset thì lần 2+ không bao giờ fire persistentGlueLike/persistentAnomalous.
+    if ready then
+        if track.persistentTriggerConsumed == true and glueLikeNow then
+            track.persistentTriggerConsumed = false
+            -- Restart persistent timer để fire sau 0.06s
+            if fakePositionFiniteNumber(track.glueLikeSince) then
+                track.glueLikeSince = now - 0.05
+            end
+        end
+        if track.anomalousTriggerConsumed == true and anomalousProximityNow then
+            track.anomalousTriggerConsumed = false
+            if fakePositionFiniteNumber(track.anomalousSince) then
+                track.anomalousSince = now - 0.05
+            end
+        end
+    end
+
+    local detected = glueEdge or persistentGlueLike
+        or hitboxDiscontinuity or snappedIntoBody
+        or persistentAnomalousProximity
 
     track.localRoot = localRoot
     track.lastRootPosition = rootPosition
@@ -862,6 +1008,11 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     if ready and detected then
         track.lastTriggerAt = now
         if glueLikeNow then track.persistentTriggerConsumed = true end
+        if anomalousProximityNow then track.anomalousTriggerConsumed = true end
+        -- Ghi nhận attack event cho knife cooldown tracker
+        if hitboxDiscontinuity or (persistentAnomalousProximity and not (track.anomalousTriggerConsumed)) then
+            ragebotRecordKnifeAttack(targetRoot, now)
+        end
         return true
     end
     return false
@@ -991,13 +1142,6 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
         if ragebotIsLocallyGluedTarget(controller, candidate.hitbox) then
             RAGEBOT_REP_ROOT_CONTACT_TRACKS[candidate.root] = nil
         else
-            -- Detect pure-TP overhead attacks independently of PhysicsRepRootRef.
-            -- This observer runs before the equipment gate so a Knife-based Ue-like
-            -- teleport is still recognized, but it must not freeze Translocate.
-            local pureTpDetected = false
-            local okPureTp, pureTpValue = pcall(ragebotObservePureTpAttack, candidate.root, localRoot, now)
-            if okPureTp then pureTpDetected = pureTpValue == true end
-
             -- Keep sampling while the attacker holds Knife. A pure-TP/oscillation
             -- script may stop moving immediately before the weapon-state transition
             -- becomes visible; the one-second memory is consumed once if it later
@@ -1010,26 +1154,32 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
             end
 
             local knifeState = ragebotTargetKnifeState(candidate.target)
-            if pureTpDetected then
-                controller._lastPureTpThreatTarget = candidate.target
-                controller._lastPureTpThreatAt = now
-                -- Pure TP is a primary movement signature; body tilt and exact overhead
-                -- height are optional corroboration, not requirements. A confirmed TP
-                -- event starts the response even when the target currently holds Knife.
-                local fakeTrack = RAGEBOT_FAKE_POSITION_TRACKS[candidate.root]
-                local lastDesyncAt = type(fakeTrack) == "table" and tonumber(fakeTrack.lastDesyncAt) or -math.huge
-                if type(fakeTrack) == "table" and fakePositionFiniteNumber(lastDesyncAt) then
-                    fakeTrack.lastCounterConsumedDesyncAt = lastDesyncAt
-                end
-                RAGEBOT_REP_ROOT_CONTACT_TRACKS[candidate.root] = nil
-                return candidate.target, "pure-tp"
-            end
+            -- Pure-TP detection bị xóa theo yêu cầu
+            -- (gây false positive và không cần thiết khi RepRoot đã đủ mạnh)
 
             -- RepRoot/PartGlue effects are observable signatures, not a direct read of
             -- another client's hidden PhysicsRepRootRef. A confirmed anomaly also starts
             -- the response independently of the attacker's currently equipped weapon.
             if ragebotObserveRepRootContact(candidate.root, candidate.hitbox, localRoot, now) then
+                -- Ghi nhận attack vào cooldown tracker khi RepRoot fires
+                ragebotRecordKnifeAttack(candidate.root, now)
                 return candidate.target, "rep-root-contact"
+            end
+
+            -- [NEW] Knife Cooldown Prediction:
+            -- Nếu target đang cầm Knife và cooldown tracker dự đoán attack SẮP xảy ra,
+            -- pre-activate counter ngay bây giờ để ragebot đã ở vị trí counter trước khi attack.
+            -- Điều này đặc biệt quan trọng cho lần attack 2+ khi hitboxDiscontinuity không còn fire
+            -- (hitbox đã ở near-victim từ attack trước).
+            local knifeState2 = ragebotTargetKnifeState(candidate.target)
+            if knifeState2 == true then
+                local imminentAttack, cooldownEst, timeUntilNext =
+                    ragebotKnifePredictImminent(candidate.root, now)
+                if imminentAttack then
+                    -- Counter được active DỰA TRÊN DỰ ĐOÁN; kind = "knife-cooldown-predict"
+                    -- để policy gate biết đây là confirmed threat (knife equipped + đã track được)
+                    return candidate.target, "knife-cooldown-predict"
+                end
             end
 
             -- FakePosition alone is a weaker signal than Pure TP/RepRoot. A large
@@ -69267,7 +69417,9 @@ end
 
 index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
 local now2 = os.clock()
-arg._hitboxWindowUntil = now2 + 0.625
+-- Sau khi backstab: một lần retry ngắn (0.08s window) thay vì 0.625s liên tục
+-- Tránh tình trạng backstab spam → hooker manual timing bắt được nhịp cố định
+arg._hitboxWindowUntil = now2 + 0.08
 arg._hitboxWindowTarget = targetHitbox
 arg._hitboxWindowAliveState = targetAliveState
 local baselineHealth = tonumber(healthBeforeAttack)
@@ -69277,8 +69429,11 @@ if type(baselineHealth) ~= "number" or baselineHealth ~= baselineHealth
 end
 arg._hitboxWindowInitialHealth = baselineHealth
 arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = now2 + 0.12
-arg._attackCooldown = now2 + 1.25
+arg._nextKnifeWindowAttackAt = now2 + 0.08
+-- Random cooldown [0.625, 1.65]: hooker không thể manual-timing được vì
+-- không biết khi nào mình sẽ backstab lại
+local randomCooldown = 0.625 + math.random() * (1.65 - 0.625)
+arg._attackCooldown = now2 + randomCooldown
 arg._attackCooldownTarget = targetHitbox
 end
 
@@ -71251,6 +71406,7 @@ else
     table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
     table.clear(RAGEBOT_FAKE_POSITION_TRACKS)
     table.clear(RAGEBOT_PURE_TP_TRACKS)
+    table.clear(RAGEBOT_KNIFE_COOLDOWN_TRACKS)
     if not keepRestoreTransaction then
         arg._repRootCounterTarget = nil
         arg._repRootCounterKind = nil
@@ -71727,6 +71883,8 @@ if previousEvasionMode ~= mode then
             end
         end
         table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
+        -- Knife cooldown history vẫn giữ khi mode thay đổi
+        -- vì cooldown là thuộc tính của TARGET, không phải mode của mình
     end
 end
 arg._lastEvasionMode = mode
@@ -71775,9 +71933,12 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         end
         local storedKnifeState = ragebotTargetKnifeState(storedCounterTarget)
         local storedKind = arg._repRootCounterKind
-        local confirmedTPOrRepRoot = storedKind == "pure-tp" or storedKind == "rep-root-contact"
+        local confirmedTPOrRepRoot = storedKind == "rep-root-contact"
+        -- knife-cooldown-predict cũng là confirmed (target đang cầm knife + đã track cooldown)
+        local confirmedKnifePrediction = storedKind == "knife-cooldown-predict"
+            and storedKnifeState == true
         local restorePendingNow = arg._repRootCounterRestorePending == true
-        local targetPolicyValid = storedKnifeState == false or confirmedTPOrRepRoot
+        local targetPolicyValid = storedKnifeState == false or confirmedTPOrRepRoot or confirmedKnifePrediction
         local targetShouldExpire = not restorePendingNow
             and (nowForRepRoot >= counterUntil or not storedTargetValid or not targetPolicyValid)
         if targetShouldExpire then
@@ -71811,11 +71972,35 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         end
         if detectedTarget ~= nil then
             local detectedKnifeState = ragebotTargetKnifeState(detectedTarget)
-            local confirmedTPOrRepRoot = detectedKind == "pure-tp" or detectedKind == "rep-root-contact"
-            if detectedKnifeState == false or confirmedTPOrRepRoot then
+            local confirmedTPOrRepRoot = detectedKind == "rep-root-contact"
+            -- [NEW] knife-cooldown-predict: target đang cầm Knife và được confirm qua cooldown tracker
+            local confirmedKnifePrediction = detectedKind == "knife-cooldown-predict"
+                and detectedKnifeState == true
+            if detectedKnifeState == false or confirmedTPOrRepRoot or confirmedKnifePrediction then
                 arg._repRootCounterTarget = detectedTarget
                 arg._repRootCounterKind = detectedKind
-                arg._repRootCounterUntil = nowForRepRoot + 0.75
+                -- [NEW] Dynamic counter window:
+                -- Nếu có cooldown estimate cho target này, extend window để cover cả lần attack kế.
+                -- Ví dụ: hooker cooldown 1.25s → window = max(0.75, 1.25 + 0.35) = 1.60s
+                -- Với spam variant (0.18s): window = max(0.75, 0.18 + 0.35) = 0.75s (không đổi)
+                local detectedRoot = nil
+                pcall(function()
+                    local aliveState = detectedTarget.AliveState
+                    detectedRoot = aliveState and aliveState.RootPart or nil
+                end)
+                local baseWindow = 0.75
+                if detectedRoot ~= nil then
+                    local _, cdEst, _ = ragebotKnifePredictImminent(detectedRoot, nowForRepRoot)
+                    -- Chỉ extend khi estimate đáng tin (đã có ít nhất 2 mẫu thực tế)
+                    local cdTrack = RAGEBOT_KNIFE_COOLDOWN_TRACKS[detectedRoot]
+                    local sampleCount = type(cdTrack) == "table"
+                        and type(cdTrack.intervals) == "table"
+                        and #cdTrack.intervals or 0
+                    if sampleCount >= 2 and cdEst >= 0.4 then
+                        baseWindow = math.max(0.75, cdEst + 0.35)
+                    end
+                end
+                arg._repRootCounterUntil = nowForRepRoot + baseWindow
                 arg._repRootCounterActionAt = nil
                 -- Snapshot the pre-Translocate client pose. If the controller has
                 -- no readable client pose for this update, fall back to the current
@@ -71850,12 +72035,17 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                 repRootCounterTarget = detectedTarget
                 if nowForRepRoot >= (arg._nextRepRootCounterNoticeAt or 0) then
                     arg._nextRepRootCounterNoticeAt = nowForRepRoot + 5
-                    if detectedKind == "pure-tp" then
-                        warn("[Ragebot] Pure TP detected; evasion paused and Ragebot is focusing the detected attacker.")
-                    elseif detectedKind == "rep-root-contact" then
+                    if detectedKind == "rep-root-contact" then
                         warn("[Ragebot] Observable RepRoot/PartGlue signature detected; evasion paused and Ragebot is focusing the detected attacker.")
                     elseif detectedKind == "fake-position-memory" then
                         warn("[Ragebot] Recently observed FakePosition threat resumed/changed state; consuming one bounded response window.")
+                    elseif detectedKind == "knife-cooldown-predict" then
+                        local _, cdEst, timeUntil = ragebotKnifePredictImminent(
+                            (detectedTarget.AliveState and detectedTarget.AliveState.RootPart) or nil,
+                            nowForRepRoot)
+                        warn(string.format(
+                            "[Ragebot] Knife cooldown prediction fired: estimated cooldown=%.3fs, next attack in %.3fs; pre-activating counter.",
+                            cdEst, timeUntil))
                     else
                         warn("[Ragebot] Observable FakePosition displacement triggered a bounded response window.")
                     end
@@ -72091,8 +72281,10 @@ if arg._repRootCounterRestorePending == true then
                 ragebotResolveRepRootTarget, arg, targetToResume
             )
             local resumedKind = arg._repRootCounterKind
-            local resumedHasConfirmedSignature = resumedKind == "pure-tp"
-                or resumedKind == "rep-root-contact"
+            local resumedHasConfirmedSignature = resumedKind == "rep-root-contact"
+                or resumedKind == "knife-cooldown-predict"
+                or resumedKind == "fake-position"
+                or resumedKind == "fake-position-memory"
             local resumedKnifeState = ragebotTargetKnifeState(targetToResume)
             local resumedPolicyValid = resumedHasConfirmedSignature or resumedKnifeState == false
             if okCounterTarget and validCounterTarget == true and resumedPolicyValid then
@@ -72853,8 +73045,14 @@ local counterTarget = arg._repRootCounterTarget
 local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "table"
     and (counterTarget == arg4 or (counterTarget.FighterState ~= nil
         and counterTarget.FighterState == arg4.FighterState))
+-- Fix: accept tất cả các counter kind, không chỉ pure-tp/rep-root-contact
+-- Nếu không accept kind mới (knife-cooldown-predict, fake-position...) thì
+-- character sẽ tp đi giữa chừng → backstab không bao giờ land
 local stationaryCounterResponse = arg._enabled == true and os.clock() < counterUntil
-    and (counterKind == "pure-tp" or counterKind == "rep-root-contact")
+    and (counterKind == "rep-root-contact"
+        or counterKind == "knife-cooldown-predict"
+        or counterKind == "fake-position"
+        or counterKind == "fake-position-memory")
     and counterTargetMatches
 local actionItem = arg3 ~= nil and arg3.Item or nil
 local shouldLockKnifeCamera = arg._enabled
@@ -74121,6 +74319,7 @@ end
 table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
 table.clear(RAGEBOT_FAKE_POSITION_TRACKS)
 table.clear(RAGEBOT_PURE_TP_TRACKS)
+table.clear(RAGEBOT_KNIFE_COOLDOWN_TRACKS)
 if not keepRestoreTransaction then
     arg._repRootCounterTarget = nil
     arg._repRootCounterKind = nil
