@@ -948,10 +948,14 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     --   hitboxRootOffset ≥ 15 → hitbox tách khỏi root rõ ràng (không phải bình thường)
     local hitboxToLocal = fakePositionFiniteNumber(hitboxPosition.X)
         and (hitboxPosition - localPosition).Magnitude or math.huge
+    -- Fix: dùng relative threshold thay vì absolute rootToLocal >= 20.
+    -- Với absolute threshold, hooker ở gần (15 studs) không bị detect vì rootToLocal < 20.
+    -- Relative check: root phải xa hơn hitbox ≥8 studs → phát hiện đúng khi hooker
+    -- glue hitbox về phía victim dù ở bất kỳ khoảng cách nào.
     local anomalousProximityNow = fakePositionFiniteNumber(hitboxToLocal)
-        and hitboxToLocal <= 8.0
-        and distanceToLocal >= 20.0
-        and hitboxRootOffset >= 15.0
+        and hitboxToLocal <= 6.0                           -- trong tầm knife
+        and distanceToLocal >= hitboxToLocal + 8.0         -- root xa hơn hitbox ≥8 studs
+        and hitboxRootOffset >= 12.0                       -- hitbox cách xa root ≥12 studs
 
     if anomalousProximityNow then
         if not fakePositionFiniteNumber(track.anomalousSince) then
@@ -19198,10 +19202,16 @@ local function resolveReloadSource()
             sourceHint = info and info.source or nil
         end
     end)
-    if type(sourceHint) == "string" and sourceHint:sub(1, 1) == "@" then
-        local candidate = sourceHint:sub(2)
-        local readable = tryReadableCrefyPath(candidate)
-        if readable then return nil, readable end
+    if type(sourceHint) == "string" then
+        if sourceHint:sub(1, 1) == "@" then
+            local candidate = sourceHint:sub(2)
+            local readable = tryReadableCrefyPath(candidate)
+            if readable then return nil, readable end
+        elseif sourceHint:sub(1, 1) == "=" then
+            -- Script được load từ URL (executor dùng "=url" thay vì "@path")
+            local candidate = sourceHint:sub(2)
+            if validUrl(candidate) then return candidate, nil end
+        end
     end
 
     local candidates = {
@@ -19287,8 +19297,16 @@ if type(__readFile) == "function" then
         if __savedToggle == nil and __getSetting("__CrefyAutoExecuteEnabled") ~= true then return end
     end
 end
-if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true then
-    -- Without a readable persisted opt-in, require an explicit runtime opt-in.
+-- Cho phép boot nếu user đã đặt CrefySourceUrl/Path rõ ràng,
+-- kể cả khi settings file chưa đọc được (filesystem chưa mount sau teleport)
+local __hasExplicitSource =
+    (type(rawget(__env, "CrefySourceUrl")) == "string" and rawget(__env, "CrefySourceUrl") ~= "")
+    or (type(rawget(_G,  "CrefySourceUrl")) == "string" and rawget(_G,  "CrefySourceUrl") ~= "")
+    or (type(rawget(__env, "CrefySourcePath")) == "string" and rawget(__env, "CrefySourcePath") ~= "")
+    or (type(rawget(_G,  "CrefySourcePath")) == "string" and rawget(_G,  "CrefySourcePath") ~= "")
+if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true
+    and not __hasExplicitSource then
+    -- Without a readable persisted opt-in or explicit source, require runtime opt-in.
     return
 end
 
@@ -19487,7 +19505,11 @@ local function applyRerunSetting(enabled, persist)
         pcall(rawset, _G, "__CrefyAutoExecuteGeneration", currentGeneration)
     end
 
-    if enabled and (wasEnabled ~= true or persist == true) then
+    -- Fix: cũng re-queue nếu queueRegisteredForCurrentEnable == false
+    -- (xảy ra khi place change clear queue, hoặc executor reset)
+    local needsRequeue = enabled and (wasEnabled ~= true or persist == true
+        or queueRegisteredForCurrentEnable == false)
+    if needsRequeue then
         local sourceUrl, sourcePath = resolveReloadSource()
         local queueFn, queueOwner
         local candidateNames = { "queue_on_teleport", "queueonteleport", "queueOnTeleport" }
@@ -19506,7 +19528,7 @@ local function applyRerunSetting(enabled, persist)
         if type(queueFn) ~= "function" then
             warn("[Crefy] Re-run After Teleport is enabled, but this executor exposes no queue_on_teleport API.")
             queueRegisteredForCurrentEnable = false
-        elseif not queueRegisteredForCurrentEnable then
+        else
             local currentGeneration = tonumber(rawget(env, "__CrefyAutoExecuteGeneration")) or 0
             local nextGeneration = currentGeneration + 1
             local payload = makeQueuedLoader(sourceUrl, sourcePath, nextGeneration)
@@ -32562,9 +32584,15 @@ riotState.sendRagebotCamera = function(encoded)
     -- Use the cached cloned method when available. The regular method may be
     -- wrapped by the camera-replication hook; Ragebot's explicit payload must not
     -- be intercepted/replaced by the standalone Riot writer's hook state.
+    -- Roblox throws "Expected ':' not '.' calling member function FireServer" khi
+    -- dùng RemoteEvent.FireServer clone trên UnreliableRemoteEvent (khác C++ binding).
+    -- Fix: detect loại remote và dùng clone tương ứng.
+    local isUnreliable = false
+    pcall(function() isUnreliable = activeRemote:IsA("UnreliableRemoteEvent") end)
     local fireOk, fireError
-    if type(fireServer) == "function" then
-        fireOk, fireError = pcall(fireServer, activeRemote, encoded, nil)
+    local chosenFireFn = isUnreliable and fireServer2 or fireServer
+    if type(chosenFireFn) == "function" then
+        fireOk, fireError = pcall(chosenFireFn, activeRemote, encoded, nil)
     else
         fireOk, fireError = pcall(function()
             activeRemote:FireServer(encoded, nil)
@@ -73045,14 +73073,15 @@ local counterTarget = arg._repRootCounterTarget
 local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "table"
     and (counterTarget == arg4 or (counterTarget.FighterState ~= nil
         and counterTarget.FighterState == arg4.FighterState))
--- Fix: accept tất cả các counter kind, không chỉ pure-tp/rep-root-contact
--- Nếu không accept kind mới (knife-cooldown-predict, fake-position...) thì
--- character sẽ tp đi giữa chừng → backstab không bao giờ land
+-- stationaryCounterResponse: chỉ dừng TP khi detect được HOOKER signature thực sự.
+-- fake-position / fake-position-memory KHÔNG được include ở đây vì:
+--   1. Chúng trigger cho bất kỳ enemy nào có ragebot (oscillation bình thường)
+--   2. Khi include → character không bao giờ TP → hooker tắt ragebot, backstab, bật lại = chết
+-- rep-root-contact: hitbox ở anchor/discontinuity → hooker glue xác nhận
+-- knife-cooldown-predict: đã học cooldown target, predict attack sắp đến
 local stationaryCounterResponse = arg._enabled == true and os.clock() < counterUntil
     and (counterKind == "rep-root-contact"
-        or counterKind == "knife-cooldown-predict"
-        or counterKind == "fake-position"
-        or counterKind == "fake-position-memory")
+        or counterKind == "knife-cooldown-predict")
     and counterTargetMatches
 local actionItem = arg3 ~= nil and arg3.Item or nil
 local shouldLockKnifeCamera = arg._enabled
@@ -75252,6 +75281,10 @@ _startItemUsed = false,
 _lastCrouching = false,
 _lastSliding = false,
 _lastPositionSampleTime = 0,
+-- Fix: _startTime phải được set ngay khi bắt đầu record, không phải lazily.
+-- Nếu không set ở đây, _SamplePosition sẽ return early cho đến khi có input đầu tiên,
+-- dẫn đến Positions array rỗng khi player đứng yên lúc bắt đầu replay.
+_startTime = os.clock(),
 _recording = {
 MapName = arg,
 DisplayPosition = v119 * displayWorldPosition,
@@ -75294,7 +75327,8 @@ arg:_SamplePosition()
 end
 
 index2._SamplePosition = function(arg)
-if arg._startTime == nil or arg._rootPart == nil or arg._rootPart.Parent == nil then
+-- Fix: không cần kiểm tra _startTime == nil vì đã được init trong constructor
+if arg._rootPart == nil or arg._rootPart.Parent == nil then
 return
 end
 local now2 = os.clock()
