@@ -22,12 +22,14 @@ end
 local runtime = { Running = true, Connections = {} }
 env.AutoShootRuntime = runtime
 
-local repo = 'https://raw.githubusercontent.com/lrexzyq/CreU/main/'
+local repo = 'https://raw.githubusercontent.com/lrexzyq/Crefy/main/'
 local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 runtime.Library = Library
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 local Options = Library.Options
+Library.ForceCheckbox = false
+Library.ShowToggleFrameInKeybinds = true
 
 local repS = cloneref(game:GetService("ReplicatedStorage"))
 local plrs = cloneref(game:GetService("Players"))
@@ -906,6 +908,22 @@ do
     local remoteRot = nil
     local cleanFireRot = nil
     local lp = plrs.LocalPlayer
+    local statusReason = 'off'
+    local statusSince = os.clock()
+    local statusNotified = {}
+
+    local function setStatus(reason)
+        local now = os.clock()
+        if reason ~= statusReason then
+            statusReason = reason
+            statusSince = now
+        end
+        if reason == 'off' or statusNotified[reason] then return end
+        local minimumDuration = reason == 'active' and 1 or 2.5
+        if now - statusSince < minimumDuration then return end
+        statusNotified[reason] = true
+        pcall(function() Library:Notify({ Title = 'Perfect Block', Description = reason, Time = 3 }) end)
+    end
 
     local function resolveRemote()
         if remoteRot and remoteRot.Parent ~= nil then return true end
@@ -937,15 +955,34 @@ do
         return nil
     end
 
+    local function isController(candidate)
+        if candidate == nil then return false end
+        local okMethod, method = pcall(function() return candidate.GetFighter end)
+        return okMethod and type(method) == 'function'
+    end
+
+    local function hasLocalFighter(candidate)
+        if candidate == nil then return false end
+        local ok, fighter = pcall(function() return candidate.LocalFighter end)
+        return ok and fighter ~= nil
+    end
+
     local function resolveController(objects)
+        if isController(FighterController) then
+            controller = FighterController
+            return true
+        end
         if type(objects) ~= 'table' then objects = collectGCObjects() end
         if type(objects) ~= 'table' then return false end
         for _, object in ipairs(objects) do
-            if type(object) == 'table' and rawget(object, 'Objects') and rawget(object, 'LocalFighter') then
-                local okMethod, method = pcall(function() return object.GetFighter end)
-                if okMethod and type(method) == 'function' then
-                    controller = object
-                    return true
+            if type(object) == 'table' then
+                local hasObjects = rawget(object, 'Objects') ~= nil
+                local okObjects, objectsValue = pcall(function() return object.Objects end)
+                if hasObjects or (okObjects and objectsValue ~= nil) then
+                    if isController(object) then
+                        controller = object
+                        return true
+                    end
                 end
             end
         end
@@ -953,11 +990,11 @@ do
     end
 
     local function getCameraRotation(fighter)
-        if type(fighter) ~= 'table' then return nil end
-        local rotation = rawget(fighter, 'CameraRotation')
-        if typeof(rotation) == 'Vector2' then return rotation end
-        local method = rawget(fighter, 'GetCameraRotation')
-        if type(method) == 'function' then
+        if fighter == nil then return nil end
+        local okRotation, rotation = pcall(function() return fighter.CameraRotation end)
+        if okRotation and typeof(rotation) == 'Vector2' then return rotation end
+        local okMethod, method = pcall(function() return fighter.GetCameraRotation end)
+        if okMethod and type(method) == 'function' then
             local ok, result = pcall(method, fighter)
             if ok and typeof(result) == 'Vector2' then return result end
         end
@@ -1121,25 +1158,33 @@ do
     local function update()
         if not active or not runtime.Running then
             silentActive = false
+            setStatus('off')
             return
         end
         if not resolveRemote() or type(cleanFireRot) ~= 'function' then
             silentActive = false
+            setStatus('UpdateCameraRotation remote unavailable')
             return
         end
-        if not controller or not rawget(controller, 'LocalFighter') then
-            silentActive = false
-            return
+        if not isController(controller) or not hasLocalFighter(controller) then
+            resolveController()
+            if not isController(controller) or not hasLocalFighter(controller) then
+                silentActive = false
+                setStatus('FighterController or LocalFighter unavailable')
+                return
+            end
         end
         local player = findTarget()
         if not player or player == lp or player.Parent ~= plrs then
             silentActive = false
+            setStatus('no eligible target with a replicated camera rotation')
             return
         end
         local okFighter, fighter = pcall(function() return controller:GetFighter(player) end)
         local rotation = okFighter and fighter and getCameraRotation(fighter) or nil
         if not rotation then
             silentActive = false
+            setStatus('target CameraRotation unavailable')
             return
         end
         local maxPitch = math.rad(89.9)
@@ -1150,6 +1195,11 @@ do
         lastEncoded = encodeByte(pitch) .. encodeByte(yaw)
         silentActive = true
         pcall(cleanFireRot, remoteRot, lastEncoded, nil)
+        if hasLiveHook() then
+            setStatus('active')
+        else
+            setStatus('running without encoder hook')
+        end
     end
 
     local function setupLoop(mode)
@@ -1176,6 +1226,9 @@ do
     local function start()
         if cleaned or active then return active end
         active = true
+        statusReason = 'starting'
+        statusSince = os.clock()
+        table.clear(statusNotified)
         workerGeneration = workerGeneration + 1
         local thisGeneration = workerGeneration
         silentActive = false
@@ -1197,7 +1250,7 @@ do
         task.spawn(function()
             while active and workerGeneration == thisGeneration and runtime.Running and not cleaned do
                 if not remoteRot or remoteRot.Parent == nil then resolveRemote() end
-                local needsController = not controller or not rawget(controller, 'LocalFighter')
+                local needsController = not isController(controller)
                 local needsHook = not hasLiveHook()
                 if needsController or needsHook then
                     local retryObjects = collectGCObjects()
@@ -1216,6 +1269,7 @@ do
         active = false
         workerGeneration = workerGeneration + 1
         silentActive = false
+        setStatus('off')
         if currentLoopConnection then
             pcall(function() currentLoopConnection:Disconnect() end)
             currentLoopConnection = nil
@@ -1303,92 +1357,59 @@ Library:OnUnload(cleanupRuntime)
 
 local Window = Library:CreateWindow({
     Title = 'Auto Shoot',
+    Footer = 'Auto Shoot | Underground | Perfect Block',
+    Icon = 95816097006870,
+    NotifySide = 'Right',
+    ShowCustomCursor = true,
     Center = true,
     AutoShow = true,
+    Resizable = true,
     Size = UDim2.fromOffset(700, 600),
     Minimizable = true,
     MinimizeKeybind = Enum.KeyCode.RightBracket,
-    Footer = { 'Auto Shoot' }
+    MobileButtonsSide = 'Right',
+    ShowMobileButtons = true,
+    AlwaysOnTop = false
 })
-
-Library:SetNotifySide('Right')
 
 local Tabs = {
-    Main = Window:AddTab({
-        Name = 'main',
-        Icon = 'crosshair',
-        Description = 'auto-shoot controls'
-    }),
-    ['ui settings'] = Window:AddTab({
-        Name = 'ui settings',
-        Icon = 'settings',
-        Description = 'theme and configuration settings'
-    })
+    Main = Window:AddTab('Main', 'crosshair'),
+    ['UI Settings'] = Window:AddTab('UI Settings', 'settings')
 }
 
-local LeftGroupBox = Tabs.Main:AddLeftGroupbox('combat settings', 'crosshair')
-local PerfectBlockGroupBox = Tabs.Main:AddRightGroupbox('perfect block', 'shield')
-
-PerfectBlockGroupBox:AddToggle('PerfectBlockToggle', {
-    Text = 'perfect block',
-    Default = false,
-    Tooltip = 'enables the silent camera perfect block mode',
-    Callback = function(Value)
-        if not runtime.Running then return end
-        if Value then
-            PerfectBlock.Start()
-        else
-            PerfectBlock.Stop()
-        end
-    end
-}):AddKeyPicker('PerfectBlockKeybind', {
-    Default = 'H',
-    Mode = 'Toggle',
-    Text = 'perfect block bind',
-    SyncToggleState = true,
-    NoUI = false
+local LeftGroupBox = Tabs.Main:AddGroupbox({
+    Side = 'Left',
+    Name = 'Combat Settings',
+    IconName = 'crosshair'
 })
 
-PerfectBlockGroupBox:AddDropdown('PerfectBlockLoopMode', {
-    Text = 'loop mode',
-    Values = { 'PreSimulation', 'RenderStepped', 'Heartbeat' },
-    Default = 'PreSimulation',
-    Callback = function(Value)
-        PerfectBlock.SetLoopMode(Value)
-    end
-})
-
-PerfectBlockGroupBox:AddSlider('PerfectBlockDistanceSlider', {
-    Text = 'trigger distance',
-    Default = 10000,
-    Min = 25,
-    Max = 10000000000,
-    Rounding = 0,
-    Suffix = ' studs',
-    Callback = function(Value)
-        PerfectBlock.SetDistance(Value)
-    end
+local PerfectBlockGroupBox = Tabs.Main:AddGroupbox({
+    Side = 'Right',
+    Name = 'Perfect Block',
+    IconName = 'shield'
 })
 
 LeftGroupBox:AddToggle('EnabledToggle', {
-    Text = 'enable auto-shoot',
-    Default = getgenv().Config.Enabled,
-    Tooltip = 'toggles the existing auto-shoot loop',
+    Text = 'Enable Auto Shoot',
+    Default = getgenv().Config.Enabled == true,
+    Tooltip = 'Toggles the existing Auto Shoot logic',
     Callback = function(Value)
-        getgenv().Config.Enabled = Value
+        if runtime.Running and type(getgenv().Config) == 'table' then
+            getgenv().Config.Enabled = Value == true
+        end
     end
 }):AddKeyPicker('EnabledKeybind', {
     Default = 'F',
     Mode = 'Toggle',
-    Text = 'toggle script bind',
+    Text = 'Auto Shoot bind',
     SyncToggleState = true,
     NoUI = false
 })
 
 LeftGroupBox:AddToggle('UndergroundToggle', {
-    Text = 'underground',
+    Text = 'Underground',
     Default = false,
-    Tooltip = 'starts or stops the underground controller',
+    Tooltip = 'Starts or stops the Underground controller',
     Callback = function(Value)
         if not runtime.Running then return end
         if Value then
@@ -1400,7 +1421,7 @@ LeftGroupBox:AddToggle('UndergroundToggle', {
 }):AddKeyPicker('UndergroundKeybind', {
     Default = 'G',
     Mode = 'Toggle',
-    Text = 'underground bind',
+    Text = 'Underground bind',
     SyncToggleState = true,
     NoUI = false
 })
@@ -1409,179 +1430,191 @@ LeftGroupBox:AddDropdown('WeaponSlotDropdown', {
     Values = { 'Primary', 'Secondary', 'Melee' },
     Default = getgenv().Config.WeaponSlot,
     Multi = false,
-    Text = 'weapon slot',
-    Tooltip = 'select which slot to auto-equip',
+    Text = 'Weapon slot',
+    Tooltip = 'Select which slot to auto-equip',
     Callback = function(Value)
-        getgenv().Config.WeaponSlot = Value
+        if type(getgenv().Config) == 'table' then
+            getgenv().Config.WeaponSlot = Value
+        end
     end
 })
 
 LeftGroupBox:AddSlider('FireRateSlider', {
-    Text = 'fire rate (seconds)',
+    Text = 'Fire rate (seconds)',
     Default = getgenv().Config.FireRate,
     Min = 0.01,
     Max = 0.5,
     Rounding = 2,
     Compact = false,
     Callback = function(Value)
-        getgenv().Config.FireRate = Value
+        if type(getgenv().Config) == 'table' then
+            getgenv().Config.FireRate = math.clamp(Value, 0.01, 0.5)
+        end
     end
 })
 
 LeftGroupBox:AddSlider('MaxDistSlider', {
-    Text = 'max distance',
+    Text = 'Max distance',
     Default = getgenv().Config.MaxDistance,
     Min = 50,
     Max = 2000,
     Rounding = 0,
     Compact = false,
     Callback = function(Value)
-        getgenv().Config.MaxDistance = Value
+        if type(getgenv().Config) == 'table' then
+            getgenv().Config.MaxDistance = math.clamp(Value, 50, 2000)
+        end
     end
 })
 
-local MenuGroup = Tabs['ui settings']:AddLeftGroupbox('menu', 'wrench')
-
-MenuGroup:AddToggle('NotifyOnError', {
-    Text = 'notify on callback error',
-    Default = Library.NotifyOnError == true,
+PerfectBlockGroupBox:AddToggle('PerfectBlockToggle', {
+    Text = 'Perfect Block',
+    Default = false,
+    Tooltip = 'Enables Perfect Block camera replication',
     Callback = function(Value)
-        Library.NotifyOnError = Value
+        if not runtime.Running then return end
+        if Value then
+            PerfectBlock.Start()
+        else
+            PerfectBlock.Stop()
+        end
+    end
+}):AddKeyPicker('PerfectBlockKeybind', {
+    Default = 'H',
+    Mode = 'Toggle',
+    Text = 'Perfect Block bind',
+    SyncToggleState = true,
+    NoUI = false
+})
+
+PerfectBlockGroupBox:AddDropdown('PerfectBlockLoopMode', {
+    Text = 'Loop mode',
+    Values = { 'PreSimulation', 'RenderStepped', 'Heartbeat' },
+    Default = 'PreSimulation',
+    Callback = function(Value)
+        PerfectBlock.SetLoopMode(Value)
     end
 })
 
-MenuGroup:AddToggle('ShowKeybinds', {
-    Text = 'show keybinds',
-    Default = Library.ShowKeybinds ~= false,
+PerfectBlockGroupBox:AddSlider('PerfectBlockDistanceSlider', {
+    Text = 'Trigger distance',
+    Default = 10000,
+    Min = 25,
+    Max = 10000000000,
+    Rounding = 0,
+    Suffix = ' studs',
     Callback = function(Value)
-        Library:SetShowKeybinds(Value)
+        PerfectBlock.SetDistance(Value)
+    end
+})
+
+local MenuGroup = Tabs['UI Settings']:AddGroupbox({
+    Side = 'Left',
+    Name = 'Menu',
+    IconName = 'wrench'
+})
+
+MenuGroup:AddToggle('KeybindMenuOpen', {
+    Default = Library.KeybindFrame and Library.KeybindFrame.Visible or false,
+    Text = 'Open Keybind Menu',
+    Callback = function(Value)
+        if Library.KeybindFrame then
+            Library.KeybindFrame.Visible = Value
+        end
+    end
+})
+
+MenuGroup:AddToggle('ShowCustomCursor', {
+    Text = 'Custom Cursor',
+    Default = Library.ShowCustomCursor,
+    Callback = function(Value)
+        Library.ShowCustomCursor = Value
     end
 })
 
 MenuGroup:AddToggle('AlwaysOnTop', {
-    Text = 'always on top',
-    Default = Window.AlwaysOnTop,
+    Text = 'Always On Top',
+    Default = Window.AlwaysOnTop == true,
     Callback = function(Value)
         Window:SetAlwaysOnTop(Value)
     end
 })
 
-MenuGroup:AddToggle('UseBlur', {
-    Text = 'ui blur',
-    Default = Library.UseBlur == true,
-    Callback = function(Value)
-        Library.UseBlur = Value
-        if Library.UpdateBlur then
-            Library:UpdateBlur()
-        end
-    end
-})
-
-MenuGroup:AddSlider('BlurSize', {
-    Text = 'blur size',
-    Default = Library.BlurSize or 15,
-    Min = 1,
-    Max = 40,
-    Rounding = 0,
-    Callback = function(Value)
-        Library.BlurSize = Value
-        if Library.UpdateBlur then
-            Library:UpdateBlur()
-        end
-    end
-})
-
 MenuGroup:AddDropdown('NotificationSide', {
-    Text = 'notification side',
     Values = { 'Left', 'Right' },
     Default = 'Right',
+    Text = 'Notification Side',
     Callback = function(Value)
         Library:SetNotifySide(Value)
     end
 })
 
-MenuGroup:AddLabel('menu bind'):AddKeyPicker('MenuKeybind', {
-    Default = 'End',
-    NoUI = true,
-    Text = 'menu keybind'
-})
-
-MenuGroup:AddButton({
-    Text = 'test notification',
-    Func = function()
-        Library:Notify('Auto Shoot notification test', 3)
+MenuGroup:AddDropdown('DPIDropdown', {
+    Values = { '50%', '75%', '100%', '125%', '150%', '175%', '200%' },
+    Default = '100%',
+    Text = 'DPI Scale',
+    Callback = function(Value)
+        local DPI = tonumber(tostring(Value):gsub('%%', ''))
+        if DPI then
+            Library:SetDPIScale(DPI)
+        end
     end
 })
 
-MenuGroup:AddButton({
-    Text = 'unload',
-    Func = function()
-        Library:Unload()
-    end
-})
-
-local Utilities = Tabs['ui settings']:AddRightGroupbox('library utilities', 'wrench')
-
-Utilities:AddSection('appearance')
-Utilities:AddSlider('UtilFontSize', {
-    Text = 'font size',
-    Default = Library.FontSize or 14,
-    Min = 10,
+MenuGroup:AddSlider('UICornerSlider', {
+    Text = 'Corner Radius',
+    Default = Library.CornerRadius or 4,
+    Min = 0,
     Max = 20,
     Rounding = 0,
     Callback = function(Value)
-        Library:SetFontSize(Value)
+        Window:SetCornerRadius(Value)
     end
 })
 
-Utilities:AddSection('keybinds')
+MenuGroup:AddDivider()
+MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', {
+    Default = 'RightShift',
+    NoUI = true,
+    Text = 'Menu keybind'
+})
+
+MenuGroup:AddButton('Unload', function()
+    Library:Unload()
+end)
+
+local Utilities = Tabs['UI Settings']:AddGroupbox({
+    Side = 'Right',
+    Name = 'Library Utilities',
+    IconName = 'wrench'
+})
+
+Utilities:AddSection('Keybinds')
 Utilities:AddDropdown('UtilKeybindMode', {
-    Text = 'keybind mode',
+    Text = 'Keybind mode',
     Values = { 'All', 'Toggle', 'Hold', 'Always' },
     Default = Library.KeybindMode or 'All',
     Callback = function(Value)
-        Library:SetKeybindMode(Value)
+        if Library.SetKeybindMode then
+            Library:SetKeybindMode(Value)
+        end
     end
 })
 
-Utilities:AddButton({
-    Text = 'refresh keybinds',
-    Func = function()
+Utilities:AddButton('Refresh Keybinds', function()
+    if Library.RefreshKeybinds then
         Library:RefreshKeybinds()
     end
-})
-
-Utilities:AddSection('notifications')
-Utilities:AddButton({
-    Text = 'print notification history',
-    Func = function()
-        print('Notification history count:', #Library:NotifyHistory())
-    end
-})
-
-Utilities:AddButton({
-    Text = 'clear notification history',
-    Func = function()
-        Library:ClearNotificationHistory()
-    end
-})
-
-Utilities:AddButton({
-    Text = 'shift notification position',
-    Func = function()
-        Library:SetNotificationConfig({ PositionY = 60 })
-    end
-})
+end)
 
 Library.ToggleKeybind = Options.MenuKeybind
 
 ThemeManager:SetLibrary(Library)
-ThemeManager:SetFolder('CreU')
-ThemeManager:ApplyToTab(Tabs['ui settings'])
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
+ThemeManager:SetFolder('CreU')
 SaveManager:SetFolder('CreU/AutoShoot')
-SaveManager:BuildConfigSection(Tabs['ui settings'])
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
 SaveManager:LoadAutoloadConfig()
-
