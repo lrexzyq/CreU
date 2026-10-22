@@ -29,31 +29,6 @@ local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 local Options = Library.Options
 
-pcall(function()
-    local lp = cloneref(game:GetService("Players")).LocalPlayer
-    local oldKick = lp.Kick
-    hookfunction(oldKick, newcclosure(function(self, ...)
-        if self == lp then return end
-        return oldKick(self, ...)
-    end))
-end)
-
-pcall(function()
-    local mtHook
-    mtHook = hookfunction(getrenv().setmetatable, newcclosure(function(t, mt)
-        if mt and type(mt) == "table" and rawget(mt, "__mode") then
-            local mode = rawget(mt, "__mode")
-            if mode == "kv" or mode == "v" or mode == "k" then
-                local tr = debug.traceback()
-                if tr:find("MiscellaneousController") or tr:find("CameraSecurity") or tr:find("AnalyticsPipelineController") then
-                    return mtHook({1, 2, 3}, {})
-                end
-            end
-        end
-        return mtHook(t, mt)
-    end))
-end)
-
 local repS = cloneref(game:GetService("ReplicatedStorage"))
 local plrs = cloneref(game:GetService("Players"))
 local runS = cloneref(game:GetService("RunService"))
@@ -924,10 +899,10 @@ do
     local lastEncoded = utf8.char(0) .. utf8.char(0)
     local silentActive = false
     local controller = nil
-    local updateConnection = nil
-    local selectedPlayer = nil
-    local selectedPlayerScanAt = 0
+    local currentLoopConnection = nil
+    local loopMode = 'PreSimulation'
     local hookPatches = {}
+    local patchedValues = setmetatable({}, { __mode = 'k' })
     local remoteRot = nil
     local cleanFireRot = nil
     local lp = plrs.LocalPlayer
@@ -945,9 +920,7 @@ do
         local dummyRemote = Instance.new('RemoteEvent')
         if type(clonefunction) == 'function' then
             local ok, result = pcall(clonefunction, dummyRemote.FireServer)
-            if ok and type(result) == 'function' then
-                cleanFireRot = result
-            end
+            if ok and type(result) == 'function' then cleanFireRot = result end
         end
         dummyRemote:Destroy()
         if type(cleanFireRot) ~= 'function' then
@@ -1002,16 +975,13 @@ do
         return utf8.char(math.clamp(encoded, 0, 255))
     end
 
-    local function getReadonlyState(object)
-        if type(isreadonly) ~= 'function' then return nil end
-        local ok, value = pcall(isreadonly, object)
-        if ok then return value end
-        return nil
-    end
-
     local function setRawValue(object, key, value)
         if type(object) ~= 'table' then return false end
-        local wasReadonly = getReadonlyState(object)
+        local wasReadonly = nil
+        if type(isreadonly) == 'function' then
+            local ok, state = pcall(isreadonly, object)
+            if ok then wasReadonly = state end
+        end
         if wasReadonly == true and type(setreadonly) == 'function' then
             pcall(setreadonly, object, false)
         end
@@ -1034,6 +1004,7 @@ do
             end
         end
         table.clear(hookPatches)
+        table.clear(patchedValues)
     end
 
     local function hasLiveHook()
@@ -1048,13 +1019,20 @@ do
     end
 
     local function installEncoderHook(objects)
-        if hasLiveHook() then return true end
-        restoreHooks()
-        if type(debug) ~= 'table' or type(debug.getupvalues) ~= 'function' then
-            return false
-        end
+        if type(debug) ~= 'table' or type(debug.getupvalues) ~= 'function' then return false end
         if type(objects) ~= 'table' then objects = collectGCObjects() end
         if type(objects) ~= 'table' then return false end
+        for index = #hookPatches, 1, -1 do
+            local patch = hookPatches[index]
+            local objectLive = patch.objectPatched and rawget(patch.object, 'EncodeCameraRotation') == patch.wrapper
+            local indexLive = patch.indexPatched and patch.index ~= patch.object
+                and rawget(patch.index, 'EncodeCameraRotation') == patch.wrapper
+            if not objectLive and not indexLive then
+                patchedValues[patch.object] = nil
+                table.remove(hookPatches, index)
+            end
+        end
+        local installedAny = false
         for _, object in ipairs(objects) do
             if type(object) == 'table' then
                 local indexTable = rawget(object, '__index')
@@ -1064,7 +1042,7 @@ do
                         local okUps, upvalues = pcall(debug.getupvalues, cameraLoop)
                         if okUps and type(upvalues) == 'table' then
                             for _, value in pairs(upvalues) do
-                                if type(value) == 'table' then
+                                if type(value) == 'table' and not patchedValues[value] then
                                     local okMeta, meta = pcall(getmetatable, value)
                                     local valueIndex = okMeta and type(meta) == 'table' and rawget(meta, '__index') or nil
                                     if type(valueIndex) == 'table' then
@@ -1092,7 +1070,8 @@ do
                                             end
                                             if patch.objectPatched or patch.indexPatched then
                                                 hookPatches[#hookPatches + 1] = patch
-                                                return true
+                                                patchedValues[value] = true
+                                                installedAny = true
                                             end
                                         end
                                     end
@@ -1103,7 +1082,7 @@ do
                 end
             end
         end
-        return false
+        return installedAny or hasLiveHook()
     end
 
     local function findTarget()
@@ -1122,7 +1101,8 @@ do
                 if not sameTeam then
                     local character = player.Character
                     local root = character and (character:FindFirstChild('HumanoidRootPart') or character.PrimaryPart)
-                    if character and root then
+                    local humanoid = character and character:FindFirstChildOfClass('Humanoid')
+                    if character and root and humanoid and humanoid.Health > 0 then
                         local distance = (root.Position - myPosition).Magnitude
                         if distance <= maxDistance and distance < bestDistance then
                             local okFighter, fighter = pcall(function() return controller:GetFighter(player) end)
@@ -1143,8 +1123,7 @@ do
             silentActive = false
             return
         end
-        if not remoteRot or remoteRot.Parent == nil then resolveRemote() end
-        if not remoteRot or remoteRot.Parent == nil or type(cleanFireRot) ~= 'function' then
+        if not resolveRemote() or type(cleanFireRot) ~= 'function' then
             silentActive = false
             return
         end
@@ -1152,12 +1131,7 @@ do
             silentActive = false
             return
         end
-        local now = os.clock()
-        if now >= selectedPlayerScanAt or (selectedPlayer and selectedPlayer.Parent ~= plrs) then
-            selectedPlayer = findTarget()
-            selectedPlayerScanAt = now + 0.1
-        end
-        local player = selectedPlayer
+        local player = findTarget()
         if not player or player == lp or player.Parent ~= plrs then
             silentActive = false
             return
@@ -1166,8 +1140,6 @@ do
         local rotation = okFighter and fighter and getCameraRotation(fighter) or nil
         if not rotation then
             silentActive = false
-            selectedPlayer = nil
-            selectedPlayerScanAt = now + 0.1
             return
         end
         local maxPitch = math.rad(89.9)
@@ -1180,28 +1152,43 @@ do
         pcall(cleanFireRot, remoteRot, lastEncoded, nil)
     end
 
+    local function setupLoop(mode)
+        if currentLoopConnection then
+            pcall(function() currentLoopConnection:Disconnect() end)
+            currentLoopConnection = nil
+        end
+        loopMode = mode or 'PreSimulation'
+        if not active then return true end
+        local signal
+        if loopMode == 'Heartbeat' then
+            signal = runS.Heartbeat
+        elseif loopMode == 'RenderStepped' then
+            signal = runS.RenderStepped
+        else
+            signal = runS.PreSimulation or runS.Heartbeat
+        end
+        if not signal then return false end
+        local ok, connection = pcall(function() return signal:Connect(update) end)
+        if ok then currentLoopConnection = connection end
+        return currentLoopConnection ~= nil
+    end
+
     local function start()
         if cleaned or active then return active end
         active = true
         workerGeneration = workerGeneration + 1
         local thisGeneration = workerGeneration
         silentActive = false
-        selectedPlayer = nil
-        selectedPlayerScanAt = 0
         resolveRemote()
         local objects = collectGCObjects()
         if objects then
             resolveController(objects)
             installEncoderHook(objects)
+        else
+            resolveController()
+            installEncoderHook()
         end
-        local signal = runS.PreSimulation or runS.Heartbeat
-        if signal then
-            local okConnection, connection = pcall(function()
-                return signal:Connect(update)
-            end)
-            if okConnection then updateConnection = connection end
-        end
-        if not updateConnection then
+        if not setupLoop(loopMode) then
             active = false
             silentActive = false
             restoreHooks()
@@ -1213,27 +1200,25 @@ do
                 local needsController = not controller or not rawget(controller, 'LocalFighter')
                 local needsHook = not hasLiveHook()
                 if needsController or needsHook then
-                    local objects = collectGCObjects()
-                    if objects then
-                        if needsController then resolveController(objects) end
-                        if needsHook then installEncoderHook(objects) end
+                    local retryObjects = collectGCObjects()
+                    if retryObjects then
+                        if needsController then resolveController(retryObjects) end
+                        if needsHook then installEncoderHook(retryObjects) end
                     end
                 end
                 task.wait(1)
             end
         end)
-        return updateConnection ~= nil
+        return currentLoopConnection ~= nil
     end
 
     local function stop()
         active = false
         workerGeneration = workerGeneration + 1
         silentActive = false
-        selectedPlayer = nil
-        selectedPlayerScanAt = 0
-        if updateConnection then
-            pcall(function() updateConnection:Disconnect() end)
-            updateConnection = nil
+        if currentLoopConnection then
+            pcall(function() currentLoopConnection:Disconnect() end)
+            currentLoopConnection = nil
         end
         restoreHooks()
         return true
@@ -1248,11 +1233,18 @@ do
     end
 
     function PerfectBlock.SetDistance(value)
-        if type(value) == 'number' and value == value then
+        if type(value) == 'number' and value == value
+            and value ~= math.huge and value ~= -math.huge then
             maxDistance = math.clamp(value, 25, 10000000000)
-            selectedPlayer = nil
-            selectedPlayerScanAt = 0
         end
+    end
+
+    function PerfectBlock.SetLoopMode(value)
+        if value ~= 'PreSimulation' and value ~= 'RenderStepped' and value ~= 'Heartbeat' then
+            value = 'PreSimulation'
+        end
+        loopMode = value
+        if active then setupLoop(loopMode) end
     end
 
     function PerfectBlock.IsEnabled()
@@ -1267,14 +1259,21 @@ do
         stop()
         controller = nil
         remoteRot = nil
-        selectedPlayer = nil
         if env.AutoShootPerfectBlockCleanup == cleanup then
             env.AutoShootPerfectBlockCleanup = nil
+        end
+        if env.__SilentCamera_Cleanup == cleanup then
+            env.__SilentCamera_Cleanup = nil
+        end
+        if env.__SilentCamera_Cleanup_Prev == cleanup then
+            env.__SilentCamera_Cleanup_Prev = nil
         end
     end
 
     cleanup = function() PerfectBlock.Cleanup() end
     env.AutoShootPerfectBlockCleanup = cleanup
+    env.__SilentCamera_Cleanup = cleanup
+    env.__SilentCamera_Cleanup_Prev = cleanup
 end
 runtime.PerfectBlock = PerfectBlock
 
@@ -1342,6 +1341,21 @@ PerfectBlockGroupBox:AddToggle('PerfectBlockToggle', {
             PerfectBlock.Stop()
         end
     end
+}):AddKeyPicker('PerfectBlockKeybind', {
+    Default = 'H',
+    Mode = 'Toggle',
+    Text = 'perfect block bind',
+    SyncToggleState = true,
+    NoUI = false
+})
+
+PerfectBlockGroupBox:AddDropdown('PerfectBlockLoopMode', {
+    Text = 'loop mode',
+    Values = { 'PreSimulation', 'RenderStepped', 'Heartbeat' },
+    Default = 'PreSimulation',
+    Callback = function(Value)
+        PerfectBlock.SetLoopMode(Value)
+    end
 })
 
 PerfectBlockGroupBox:AddSlider('PerfectBlockDistanceSlider', {
@@ -1383,6 +1397,12 @@ LeftGroupBox:AddToggle('UndergroundToggle', {
             UndergroundController.Stop()
         end
     end
+}):AddKeyPicker('UndergroundKeybind', {
+    Default = 'G',
+    Mode = 'Toggle',
+    Text = 'underground bind',
+    SyncToggleState = true,
+    NoUI = false
 })
 
 LeftGroupBox:AddDropdown('WeaponSlotDropdown', {
