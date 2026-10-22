@@ -29,6 +29,31 @@ local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 local Options = Library.Options
 
+pcall(function()
+    local lp = cloneref(game:GetService("Players")).LocalPlayer
+    local oldKick = lp.Kick
+    hookfunction(oldKick, newcclosure(function(self, ...)
+        if self == lp then return end
+        return oldKick(self, ...)
+    end))
+end)
+
+pcall(function()
+    local mtHook
+    mtHook = hookfunction(getrenv().setmetatable, newcclosure(function(t, mt)
+        if mt and type(mt) == "table" and rawget(mt, "__mode") then
+            local mode = rawget(mt, "__mode")
+            if mode == "kv" or mode == "v" or mode == "k" then
+                local tr = debug.traceback()
+                if tr:find("MiscellaneousController") or tr:find("CameraSecurity") or tr:find("AnalyticsPipelineController") then
+                    return mtHook({1, 2, 3}, {})
+                end
+            end
+        end
+        return mtHook(t, mt)
+    end))
+end)
+
 local repS = cloneref(game:GetService("ReplicatedStorage"))
 local plrs = cloneref(game:GetService("Players"))
 local runS = cloneref(game:GetService("RunService"))
