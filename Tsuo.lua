@@ -1,4 +1,4 @@
--- discord.gg/syncrypt
+-- discord.gg/pornhub
 
 local function geniter(f, s, c)
 	if type(f) ~= "function" then
