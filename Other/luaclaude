@@ -1,0 +1,2053 @@
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local character
+local hrp
+
+local SETTINGS_FILE = "claudelua_settings.json"
+
+local running = false
+local riotRunning = false
+local safeZoneEnabled = false
+local autocollectEnabled = false
+local returnHomeEnabled = false
+local radarEnabled = false
+
+local antiAimEnabled = false
+local antiAimPitch = 0
+local antiAimYaw = 0
+local antiAimConnection = nil
+
+local spinBypassEnabled = false
+local spinBypassConnection = nil
+
+local currentDistance = 500
+local teleportMode = "VOID_SPAM"
+local voidSpamMode = "Quantum Tunneling"
+local teleportInterval = 0.035
+local jitterStrength = 14
+
+local distPlusX = 200000
+local distMinusX = 200000
+local distPlusY = 200000
+local distMinusY = 200000
+local distPlusZ = 200000
+local distMinusZ = 200000
+
+local spinSpeed = 720
+local riotXJitter = 30
+local riotYJitter = 8
+local riotDistance = 300
+
+local safeZoneY = -10
+local safeZoneSavedPos = nil
+
+local autocollectRadius = 60
+local homePosition = nil
+local homeCFrame = nil
+local homeReturnDelay = 3
+local homeReturnDistance = 10
+
+local radarGui = nil
+local radarConnection = nil
+local radarPlayerAddedConnection = nil
+local radarPlayerRemovingConnection = nil
+local radarRange = 1e9
+local radarDots = {}
+
+local teleportConnection
+local riotConnection
+local safeZoneConnection
+local autocollectConnection
+local homeConnection
+
+local originalCFrame
+local riotOriginalCFrame
+local voidHideLastCFrame = nil
+local lastTeleport = 0
+local lastHealScan = 0
+local lastVelocityClear = 0
+
+local voidX = math.random(-1e8, 1e8)
+local voidZ = math.random(-1e8, 1e8)
+local voidYOffset = 0
+local voidYDir = 1
+local voidDirX = math.random() * 2 - 1
+local voidDirZ = math.random() * 2 - 1
+local voidElapsed = 0
+local voidYBase = 1e10 + math.random(-5e9, 5e9)
+local voidDriftSpeed = 9e6
+local voidYDriftSpeed = 4e6
+local voidYDriftRange = 2e9
+local voidChaos = 0.98
+
+local okFS, fsAvailable = pcall(function()
+	return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
+end)
+
+local hasFS = okFS and fsAvailable
+
+local function notify(text)
+	warn("[Claude.lua] " .. tostring(text))
+
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "Claude.lua",
+			Text = tostring(text),
+			Duration = 5,
+		})
+	end)
+end
+
+local function disconnect(conn)
+	if conn then
+		conn:Disconnect()
+	end
+
+	return nil
+end
+
+local function readBool(data, key, default)
+	if data[key] ~= nil then
+		return data[key] == true
+	end
+
+	return default
+end
+
+local function readNum(data, key, default)
+	local value = tonumber(data[key])
+	return value ~= nil and value or default
+end
+
+local function readStr(data, key, default)
+	return type(data[key]) == "string" and data[key] or default
+end
+
+local function updateChar(newCharacter)
+	character = newCharacter
+	hrp = nil
+
+	if character then
+		hrp = character:WaitForChild("HumanoidRootPart", 5)
+	end
+end
+
+if player.Character then
+	updateChar(player.Character)
+end
+
+player.CharacterAdded:Connect(updateChar)
+player.CharacterRemoving:Connect(function()
+	updateChar(nil)
+end)
+
+local SAFE_FLOOR = 2
+local SAFE_MAX_RISE = 800
+
+local function safeTeleport(pos)
+	if not hrp then
+		return
+	end
+
+	local x = pos.X
+	local y = math.clamp(pos.Y, SAFE_FLOOR, hrp.Position.Y + SAFE_MAX_RISE)
+	local z = pos.Z
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = character and { character } or {}
+
+	local hit = workspace:Raycast(Vector3.new(x, y + 500, z), Vector3.new(0, -1000, 0), params)
+	if hit then
+		y = math.max(hit.Position.Y + 3, SAFE_FLOOR)
+	end
+
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+	hrp.CFrame = CFrame.new(x, y, z)
+end
+
+local function rawVoidTeleport(pos)
+	if not hrp then
+		return
+	end
+
+	if tick() - lastVelocityClear > 0.2 then
+		lastVelocityClear = tick()
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	hrp.CFrame = CFrame.new(pos)
+end
+
+local function getVoidHidePosition()
+	if not hrp then
+		return nil
+	end
+
+	return Vector3.new(
+		hrp.Position.X + 2e15,
+		999999,
+		hrp.Position.Z + 2e15
+	)
+end
+
+local function getDirectionalLimitOffset()
+	local raw = Vector3.new(
+		math.random(-distMinusX, distPlusX),
+		math.random(-distMinusY, distPlusY),
+		math.random(-distMinusZ, distPlusZ)
+	)
+
+	if raw.Magnitude <= 0 then
+		return Vector3.zero
+	end
+
+	return raw.Unit * math.min(raw.Magnitude, currentDistance)
+end
+
+local function computeVoidDriftDir(t)
+	local nx = 0
+	local nz = 0
+	local amplitude = 1
+	local frequency = 0.0001
+
+	for _ = 1, 4 do
+		nx += math.noise(t * frequency, 0) * amplitude
+		nz += math.noise(0, t * frequency) * amplitude
+		frequency *= 2.37
+		amplitude *= 0.5
+	end
+
+	nx += math.sin(t * 0.00213) * math.cos(t * 0.00344) * 0.2
+	nz += math.cos(t * 0.00131) * math.sin(t * 0.00579) * 0.2
+
+	local len = math.sqrt(nx * nx + nz * nz)
+	if len < 0.001 then
+		return math.cos(t * 0.1), math.sin(t * 0.1)
+	end
+
+	return nx / len, nz / len
+end
+
+local function getFarVoidPosition(dt)
+	voidElapsed += dt
+
+	if voidSpamMode == "Stable" then
+		return Vector3.new(voidX, voidYBase + voidYOffset, voidZ)
+	end
+
+	if voidSpamMode == "Drift" then
+		local dx, dz = computeVoidDriftDir(voidElapsed)
+
+		voidDirX += (dx - voidDirX) * voidChaos * dt * 10
+		voidDirZ += (dz - voidDirZ) * voidChaos * dt * 10
+
+		voidX += voidDirX * voidDriftSpeed * dt
+		voidZ += voidDirZ * voidDriftSpeed * dt
+
+		voidYOffset += voidYDir * voidYDriftSpeed * dt
+		if math.abs(voidYOffset) >= voidYDriftRange then
+			voidYDir = -voidYDir
+		end
+
+		return Vector3.new(voidX, voidYBase + voidYOffset, voidZ)
+	end
+
+	if voidSpamMode == "Spiral" then
+		local r = math.max(currentDistance * 1000, 1e9) * (1 + math.sin(voidElapsed))
+		return Vector3.new(
+			voidX + math.cos(voidElapsed * 3) * r,
+			voidYBase + voidYOffset,
+			voidZ + math.sin(voidElapsed * 3) * r
+		)
+	end
+
+	if voidSpamMode == "Lissajous" then
+		local r = math.max(currentDistance * 2000, 2e9)
+		return Vector3.new(
+			voidX + math.sin(voidElapsed * 2) * r,
+			voidYBase + math.sin(voidElapsed * 4) * r * 0.1,
+			voidZ + math.sin(voidElapsed * 3) * r
+		)
+	end
+
+	if voidSpamMode == "Extreme Desync" then
+		local t = voidElapsed * 15
+		local r = math.max(currentDistance * 10000, 1e10)
+		return Vector3.new(
+			voidX + math.sin(t) * r,
+			voidYBase + math.cos(t * 1.5) * r * 0.1,
+			voidZ + math.cos(t) * r
+		)
+	end
+
+	if voidSpamMode == "Quantum Oscillation" then
+		local t = voidElapsed * 50
+		local r = math.max(currentDistance * 10000, 1e10) * math.sin(t)
+		return Vector3.new(
+			voidX + r,
+			voidYBase + math.cos(t) * 1e10,
+			voidZ + r
+		)
+	end
+
+	if voidSpamMode == "Frame Skip" then
+		if tick() % 0.1 < 0.05 then
+			return Vector3.new(voidX * 2, voidYBase + 1e11, voidZ * 2)
+		end
+
+		return Vector3.new(voidX, voidYBase, voidZ)
+	end
+
+	local r = math.max(currentDistance * 10000, 1e11)
+	local sign = math.random() > 0.5 and 1 or -1
+	local jitter = Vector3.new(
+		math.random(-1e9, 1e9),
+		math.random(-1e8, 1e8),
+		math.random(-1e9, 1e9)
+	)
+
+	return Vector3.new(voidX + r * sign, voidYBase + jitter.Y, voidZ + r * sign) + jitter
+end
+
+local function startTeleport()
+	teleportConnection = disconnect(teleportConnection)
+
+	if hrp then
+		originalCFrame = hrp.CFrame
+	end
+
+	local phase = 0
+
+	teleportConnection = RunService.Heartbeat:Connect(function(dt)
+		if not running or not hrp then
+			return
+		end
+
+		if tick() - lastTeleport < teleportInterval then
+			return
+		end
+
+		lastTeleport = tick()
+		phase += dt * 28
+
+		if teleportMode == "VOID_HIDE" then
+			if not voidHideLastCFrame and hrp then
+				voidHideLastCFrame = hrp.CFrame
+			end
+
+			local hidePos = getVoidHidePosition()
+			if hidePos then
+				rawVoidTeleport(hidePos)
+			end
+
+			return
+		end
+
+		if teleportMode == "VOID_SPAM" then
+			rawVoidTeleport(getFarVoidPosition(dt))
+			return
+		end
+
+		local offset
+
+		if teleportMode == "FORWARD" then
+			offset = hrp.CFrame.LookVector * currentDistance
+		elseif teleportMode == "CAMERA" and workspace.CurrentCamera then
+			offset = workspace.CurrentCamera.CFrame.LookVector * currentDistance
+		elseif teleportMode == "DIRECTIONAL" then
+			offset = getDirectionalLimitOffset()
+		else
+			local r1 = currentDistance * (0.60 + 0.40 * math.sin(phase * 2.3))
+			local r2 = currentDistance * (0.25 + 0.15 * math.sin(phase * 5.7))
+			local r3 = currentDistance * (0.10 + 0.10 * math.sin(phase * 11.3))
+
+			local oX = math.cos(phase * 7.1) * r1 + math.cos(phase * 13.4) * r2 + math.cos(phase * 21.9) * r3
+			local oZ = math.sin(phase * 7.1) * r1 + math.sin(phase * 13.4) * r2 + math.sin(phase * 21.9) * r3
+			local oY = math.sin(phase * 9) * r1 * 0.4 + math.sin(phase * 17) * r2 * 0.3
+
+			local jX = math.noise(phase * 6, 0, 0) * jitterStrength * 3 + (math.random() - 0.5) * jitterStrength * 2.5
+			local jY = math.noise(0, phase * 6, 0) * jitterStrength * 1.5 + (math.random() - 0.5) * jitterStrength * 1.2
+			local jZ = math.noise(0, 0, phase * 6) * jitterStrength * 3 + (math.random() - 0.5) * jitterStrength * 2.5
+
+			offset = Vector3.new(oX + jX, oY + jY, oZ + jZ)
+		end
+
+		safeTeleport(hrp.Position + offset)
+	end)
+end
+
+local function stopTeleport()
+	teleportConnection = disconnect(teleportConnection)
+
+	if teleportMode == "VOID_HIDE" and hrp and voidHideLastCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = voidHideLastCFrame
+		voidHideLastCFrame = nil
+	elseif hrp and originalCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = originalCFrame
+	end
+
+	originalCFrame = nil
+end
+
+local function startRiot()
+	riotConnection = disconnect(riotConnection)
+
+	if hrp then
+		riotOriginalCFrame = hrp.CFrame
+	end
+
+	local t0 = tick()
+	local seed = math.random(1000, 9999)
+
+	riotConnection = RunService.Heartbeat:Connect(function(dt)
+		if not riotRunning or not hrp then
+			return
+		end
+
+		local t = tick() - t0
+		local spread = riotDistance / 300
+
+		local yaw = math.rad(spinSpeed * dt)
+		local pitch = math.rad(spinSpeed * 0.37 * dt * math.sin(t * 3.1))
+		local roll = math.rad(spinSpeed * 0.19 * dt * math.cos(t * 5.7 + seed))
+
+		local spinCF = hrp.CFrame * CFrame.Angles(pitch, yaw, roll)
+
+		local jX = (math.random() - 0.5) * riotXJitter * spread * 2 + math.noise(t * 9, seed, 0) * riotXJitter * spread
+		local jY = (math.random() - 0.5) * riotYJitter * spread + math.noise(0, t * 9, seed) * riotYJitter * spread * 0.3
+		local jZ = (math.random() - 0.5) * riotXJitter * spread * 2 + math.noise(0, 0, t * 9 + seed) * riotXJitter * spread
+
+		local newY = math.max(spinCF.Position.Y + jY, SAFE_FLOOR)
+		hrp.CFrame = spinCF + Vector3.new(jX, newY - spinCF.Position.Y, jZ)
+	end)
+end
+
+local function stopRiot()
+	riotConnection = disconnect(riotConnection)
+
+	if hrp and riotOriginalCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = riotOriginalCFrame
+	end
+
+	riotOriginalCFrame = nil
+end
+
+local function startSpinBypass()
+	spinBypassConnection = disconnect(spinBypassConnection)
+
+	local lastSpinBypass = 0
+
+	spinBypassConnection = RunService.Heartbeat:Connect(function()
+		if not spinBypassEnabled or not hrp then
+			return
+		end
+
+		if tick() - lastSpinBypass < 0.05 then
+			return
+		end
+
+		lastSpinBypass = tick()
+
+		hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(math.random(-180, 180)), 0)
+		hrp.AssemblyLinearVelocity = Vector3.new(
+			math.random(-200, 200),
+			250,
+			math.random(-200, 200)
+		) * 45
+	end)
+end
+
+local function stopSpinBypass()
+	spinBypassConnection = disconnect(spinBypassConnection)
+
+	if hrp then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+	end
+end
+
+local function startSafeZone()
+	safeZoneConnection = disconnect(safeZoneConnection)
+
+	local lastSafeCheck = 0
+
+	safeZoneConnection = RunService.Heartbeat:Connect(function()
+		if tick() - lastSafeCheck < 0.1 then
+			return
+		end
+
+		lastSafeCheck = tick()
+
+		if not hrp then
+			return
+		end
+
+		if hrp.Position.Y > safeZoneY then
+			safeZoneSavedPos = hrp.Position
+		elseif safeZoneEnabled and safeZoneSavedPos then
+			safeTeleport(safeZoneSavedPos)
+		end
+	end)
+end
+
+local collectHealth = true
+local collectAmmo = true
+local dropObjects = {}
+local lastDropCollect = 0
+local DROP_COLLECT_INTERVAL = 0.08
+
+local function trackDrop(obj)
+	if obj and obj.Name == "_drop" and obj:IsA("BasePart") then
+		dropObjects[obj] = true
+	end
+end
+
+local function untrackDrop(obj)
+	dropObjects[obj] = nil
+end
+
+for _, obj in ipairs(workspace:GetChildren()) do
+	trackDrop(obj)
+end
+
+workspace.ChildAdded:Connect(trackDrop)
+workspace.ChildRemoved:Connect(untrackDrop)
+
+local function touchDrop(drop)
+	if not hrp or not drop or not drop.Parent then
+		return
+	end
+
+	if type(firetouchinterest) == "function" then
+		pcall(function()
+			firetouchinterest(hrp, drop, 0)
+			firetouchinterest(hrp, drop, 1)
+		end)
+	else
+		local oldCFrame = hrp.CFrame
+		hrp.CFrame = drop.CFrame + Vector3.new(0, 2.5, 0)
+
+		task.defer(function()
+			if hrp and oldCFrame then
+				hrp.CFrame = oldCFrame
+			end
+		end)
+	end
+end
+
+local function startAutocollect()
+	autocollectConnection = disconnect(autocollectConnection)
+
+	autocollectConnection = RunService.Heartbeat:Connect(function()
+		if not autocollectEnabled or not hrp then
+			return
+		end
+
+		if tick() - lastDropCollect < DROP_COLLECT_INTERVAL then
+			return
+		end
+
+		lastDropCollect = tick()
+
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local needsHealth = humanoid and humanoid.Health < humanoid.MaxHealth
+
+		for drop in pairs(dropObjects) do
+			if not drop.Parent then
+				dropObjects[drop] = nil
+			elseif drop.Name == "_drop" and drop:IsA("BasePart") then
+				local hasHealth = drop:FindFirstChild("Health") ~= nil
+				local hasAmmo = drop:FindFirstChild("Ammo") ~= nil
+
+				if (collectHealth and hasHealth and needsHealth)
+					or (collectAmmo and hasAmmo) then
+					touchDrop(drop)
+				end
+			end
+		end
+	end)
+end
+
+local function stopAutocollect()
+	autocollectConnection = disconnect(autocollectConnection)
+end
+
+local function saveHome()
+	if hrp then
+		homeCFrame = hrp.CFrame
+		homePosition = hrp.Position
+	end
+end
+
+local function teleportHome()
+	if hrp and homeCFrame then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+		hrp.CFrame = homeCFrame
+	end
+end
+
+local function startReturnHome()
+	homeConnection = disconnect(homeConnection)
+
+	if not homeCFrame and hrp then
+		saveHome()
+	end
+
+	local lastReturn = 0
+	local lastHomeCheck = 0
+
+	homeConnection = RunService.Heartbeat:Connect(function()
+		if tick() - lastHomeCheck < 0.1 then
+			return
+		end
+
+		lastHomeCheck = tick()
+
+		if not returnHomeEnabled or not hrp or not homePosition or not homeCFrame then
+			return
+		end
+
+		if (hrp.Position - homePosition).Magnitude > homeReturnDistance
+			and tick() - lastReturn >= homeReturnDelay then
+			lastReturn = tick()
+			teleportHome()
+		end
+	end)
+end
+
+local function stopReturnHome()
+	homeConnection = disconnect(homeConnection)
+end
+
+local function startAntiAim()
+	antiAimConnection = disconnect(antiAimConnection)
+
+	local lastAntiAim = 0
+
+	antiAimConnection = RunService.Heartbeat:Connect(function()
+		if not antiAimEnabled or not hrp then
+			return
+		end
+
+		if tick() - lastAntiAim < 0.05 then
+			return
+		end
+
+		lastAntiAim = tick()
+
+		hrp.CFrame = hrp.CFrame * CFrame.Angles(
+			math.rad(antiAimPitch),
+			math.rad(antiAimYaw),
+			0
+		)
+	end)
+end
+
+local function stopAntiAim()
+	antiAimConnection = disconnect(antiAimConnection)
+end
+
+local function destroyRadar()
+	radarConnection = disconnect(radarConnection)
+	radarPlayerAddedConnection = disconnect(radarPlayerAddedConnection)
+	radarPlayerRemovingConnection = disconnect(radarPlayerRemovingConnection)
+
+	if radarGui then
+		radarGui:Destroy()
+		radarGui = nil
+	end
+
+	table.clear(radarDots)
+end
+
+local function createRadar()
+	destroyRadar()
+
+	local playerGui = player:WaitForChild("PlayerGui")
+
+	radarGui = Instance.new("ScreenGui")
+	radarGui.Name = "ClaudeLuaRadar"
+	radarGui.ResetOnSpawn = false
+	radarGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	radarGui.Parent = playerGui
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 180, 0, 180)
+	frame.Position = UDim2.new(1, -200, 0, 90)
+	frame.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+	frame.BackgroundTransparency = 0.15
+	frame.BorderSizePixel = 0
+	frame.Parent = radarGui
+
+    	local shadow = Instance.new("ImageLabel")
+	shadow.Name = "Shadow"
+	shadow.Size = UDim2.new(1, 20, 1, 28)
+	shadow.Position = UDim2.new(0, -14, 0, -10)
+	shadow.BackgroundTransparency = 1
+	shadow.Image = "rbxassetid://1316045217"
+	shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+	shadow.ImageTransparency = 0.60
+	shadow.ScaleType = Enum.ScaleType.Slice
+	shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+	shadow.ZIndex = frame.ZIndex - 1
+	shadow.Parent = frame
+
+	local draggingRadar = false
+	local radarDragStart
+	local radarStartPos
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingRadar = true
+			radarDragStart = input.Position
+			radarStartPos = frame.Position
+		end
+	end)
+
+	frame.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingRadar = false
+		end
+	end)
+
+	UIS.InputChanged:Connect(function(input)
+		if draggingRadar and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - radarDragStart
+			frame.Position = UDim2.new(
+				radarStartPos.X.Scale,
+				radarStartPos.X.Offset + delta.X,
+				radarStartPos.Y.Scale,
+				radarStartPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = frame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(82, 85, 255)
+	stroke.Thickness = 1.2
+	stroke.Parent = frame
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -12, 0, 22)
+	title.Position = UDim2.new(0, 6, 0, 4)
+	title.BackgroundTransparency = 1
+	title.Text = "Radar/minimap"
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 16
+	title.TextXAlignment = Enum.TextXAlignment.Center
+	title.Parent = frame
+
+	local area = Instance.new("Frame")
+	area.Size = UDim2.new(1, -16, 1, -38)
+	area.Position = UDim2.new(0, 8, 0, 30)
+	area.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+	area.BackgroundTransparency = 0.25
+	area.BorderSizePixel = 0
+	area.ClipsDescendants = true
+	area.Parent = frame
+
+	local areaCorner = Instance.new("UICorner")
+	areaCorner.CornerRadius = UDim.new(0, 25)
+	areaCorner.Parent = area
+
+	local areaStroke = Instance.new("UIStroke")
+	areaStroke.Color = Color3.fromRGB(55, 55, 70)
+	areaStroke.Thickness = 1
+	areaStroke.Parent = area
+
+	local you = Instance.new("Frame")
+	you.Size = UDim2.new(0, 8, 0, 8)
+	you.Position = UDim2.new(0.5, -4, 0.5, -4)
+	you.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	you.BorderSizePixel = 0
+	you.Parent = area
+
+	local youCorner = Instance.new("UICorner")
+	youCorner.CornerRadius = UDim.new(1, 0)
+	youCorner.Parent = you
+
+	local function makeDot(targetPlayer)
+		local dot = Instance.new("Frame")
+		dot.Size = UDim2.new(0, 7, 0, 7)
+		dot.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+		dot.BorderSizePixel = 0
+		dot.Visible = false
+		dot.Parent = area
+
+		local dotCorner = Instance.new("UICorner")
+		dotCorner.CornerRadius = UDim.new(1, 0)
+		dotCorner.Parent = dot
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(0, 95, 0, 14)
+		label.Position = UDim2.new(0, 9, 0, -4)
+		label.BackgroundTransparency = 1
+		label.Text = targetPlayer.Name
+		label.TextColor3 = Color3.fromRGB(220, 220, 230)
+		label.Font = Enum.Font.Gotham
+		label.TextSize = 10
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Parent = dot
+
+		radarDots[targetPlayer] = dot
+	end
+
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= player then
+			makeDot(other)
+		end
+	end
+
+	radarPlayerAddedConnection = Players.PlayerAdded:Connect(function(other)
+		if radarGui and other ~= player then
+			makeDot(other)
+		end
+	end)
+
+	radarPlayerRemovingConnection = Players.PlayerRemoving:Connect(function(other)
+		if radarDots[other] then
+			radarDots[other]:Destroy()
+			radarDots[other] = nil
+		end
+	end)
+
+	local lastRadarUpdate = 0
+
+	radarConnection = RunService.Heartbeat:Connect(function()
+		if tick() - lastRadarUpdate < 0.15 then
+			return
+		end
+
+		lastRadarUpdate = tick()
+
+		if not radarEnabled or not radarGui or not hrp then
+			return
+		end
+
+		local areaSize = area.AbsoluteSize
+		local radius = math.min(areaSize.X, areaSize.Y) * 0.5
+		local center = Vector2.new(areaSize.X * 0.5, areaSize.Y * 0.5)
+
+		for other, dot in pairs(radarDots) do
+			local otherChar = other.Character
+			local otherRoot = otherChar and otherChar:FindFirstChild("HumanoidRootPart")
+			local otherHumanoid = otherChar and otherChar:FindFirstChildOfClass("Humanoid")
+
+			if otherRoot and otherHumanoid and otherHumanoid.Health > 0 then
+				local relative = otherRoot.Position - hrp.Position
+				local dist = Vector3.new(relative.X, 0, relative.Z).Magnitude
+				local clampedX = math.clamp(relative.X / radarRange, -1, 1)
+				local clampedZ = math.clamp(relative.Z / radarRange, -1, 1)
+
+				local pos = center + Vector2.new(clampedX, clampedZ) * radius
+
+				dot.Position = UDim2.new(0, pos.X - 3.5, 0, pos.Y - 3.5)
+				dot.Visible = dist <= radarRange
+
+				if math.abs(relative.Y) > radarRange * 0.25 then
+					dot.BackgroundColor3 = Color3.fromRGB(90, 170, 255)
+				elseif dist < radarRange * 0.25 then
+					dot.BackgroundColor3 = Color3.fromRGB(80, 255, 120)
+				elseif dist < radarRange * 0.65 then
+					dot.BackgroundColor3 = Color3.fromRGB(255, 210, 80)
+				else
+					dot.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+				end
+
+				local label = dot:FindFirstChildOfClass("TextLabel")
+				if label then
+					label.Text = string.format("%s %.1fM", other.Name, dist / 1e6)
+				end
+			else
+				dot.Visible = false
+			end
+		end
+	end)
+end
+
+local function setRadarEnabled(value)
+	radarEnabled = value
+
+	if radarEnabled then
+		createRadar()
+	else
+		destroyRadar()
+	end
+end
+
+local function collectSettings()
+	return {
+		currentDistance = currentDistance,
+		teleportMode = teleportMode,
+		voidSpamMode = voidSpamMode,
+		teleportInterval = teleportInterval,
+		jitterStrength = jitterStrength,
+
+		distPlusX = distPlusX,
+		distMinusX = distMinusX,
+		distPlusY = distPlusY,
+		distMinusY = distMinusY,
+		distPlusZ = distPlusZ,
+		distMinusZ = distMinusZ,
+
+		spinSpeed = spinSpeed,
+		riotXJitter = riotXJitter,
+		riotYJitter = riotYJitter,
+		riotDistance = riotDistance,
+
+		safeZoneY = safeZoneY,
+		safeZoneEnabled = safeZoneEnabled,
+
+		autocollectRadius = autocollectRadius,
+		autocollectEnabled = autocollectEnabled,
+
+		returnHomeEnabled = returnHomeEnabled,
+		homeReturnDelay = homeReturnDelay,
+		homeReturnDistance = homeReturnDistance,
+
+		radarEnabled = radarEnabled,
+		radarRange = radarRange,
+
+		antiAimEnabled = antiAimEnabled,
+		antiAimPitch = antiAimPitch,
+		antiAimYaw = antiAimYaw,
+
+		spinBypassEnabled = spinBypassEnabled,
+	}
+end
+
+local function saveSettings()
+	if not hasFS then
+		notify("File saving is not available in this environment.")
+		return
+	end
+
+	local ok, err = pcall(function()
+		writefile(SETTINGS_FILE, HttpService:JSONEncode(collectSettings()))
+	end)
+
+	if ok then
+		notify("Settings saved.")
+	else
+		notify("Save failed: " .. tostring(err))
+	end
+end
+
+local function loadSettings()
+	if not hasFS then
+		return nil
+	end
+
+	local okExists, exists = pcall(function()
+		return isfile(SETTINGS_FILE)
+	end)
+
+	if not okExists or not exists then
+		return nil
+	end
+
+	local okRead, data = pcall(function()
+		return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+	end)
+
+	if okRead and type(data) == "table" then
+		return data
+	end
+
+	return nil
+end
+
+local function applyLoadedSettings(data)
+	if type(data) ~= "table" then
+		return
+	end
+
+	currentDistance = readNum(data, "currentDistance", currentDistance)
+	teleportMode = readStr(data, "teleportMode", teleportMode)
+	voidSpamMode = readStr(data, "voidSpamMode", voidSpamMode)
+	teleportInterval = readNum(data, "teleportInterval", teleportInterval)
+	jitterStrength = readNum(data, "jitterStrength", jitterStrength)
+
+	distPlusX = readNum(data, "distPlusX", distPlusX)
+	distMinusX = readNum(data, "distMinusX", distMinusX)
+	distPlusY = readNum(data, "distPlusY", distPlusY)
+	distMinusY = readNum(data, "distMinusY", distMinusY)
+	distPlusZ = readNum(data, "distPlusZ", distPlusZ)
+	distMinusZ = readNum(data, "distMinusZ", distMinusZ)
+
+	spinSpeed = readNum(data, "spinSpeed", spinSpeed)
+	riotXJitter = readNum(data, "riotXJitter", riotXJitter)
+	riotYJitter = readNum(data, "riotYJitter", riotYJitter)
+	riotDistance = readNum(data, "riotDistance", riotDistance)
+
+	safeZoneY = readNum(data, "safeZoneY", safeZoneY)
+	autocollectRadius = readNum(data, "autocollectRadius", autocollectRadius)
+	homeReturnDelay = readNum(data, "homeReturnDelay", homeReturnDelay)
+	homeReturnDistance = readNum(data, "homeReturnDistance", homeReturnDistance)
+
+	radarRange = readNum(data, "radarRange", radarRange)
+
+	antiAimPitch = readNum(data, "antiAimPitch", antiAimPitch)
+	antiAimYaw = readNum(data, "antiAimYaw", antiAimYaw)
+
+	safeZoneEnabled = readBool(data, "safeZoneEnabled", safeZoneEnabled)
+	autocollectEnabled = readBool(data, "autocollectEnabled", autocollectEnabled)
+	returnHomeEnabled = readBool(data, "returnHomeEnabled", returnHomeEnabled)
+	radarEnabled = readBool(data, "radarEnabled", radarEnabled)
+	antiAimEnabled = readBool(data, "antiAimEnabled", antiAimEnabled)
+	spinBypassEnabled = readBool(data, "spinBypassEnabled", spinBypassEnabled)
+
+	if autocollectEnabled then
+		startAutocollect()
+	else
+		stopAutocollect()
+	end
+
+	if returnHomeEnabled then
+		startReturnHome()
+	else
+		stopReturnHome()
+	end
+
+	setRadarEnabled(radarEnabled)
+
+	if antiAimEnabled then
+		startAntiAim()
+	else
+		stopAntiAim()
+	end
+
+	if spinBypassEnabled then
+		startSpinBypass()
+	else
+		stopSpinBypass()
+	end
+end
+
+local function loadNeverLose()
+	print("wait sir im gonna think...")
+
+	local candidates = {}
+
+	local localModule = script and typeof(script) == "Instance" and script:FindFirstChild("NeverLose")
+	if localModule then
+		table.insert(candidates, localModule)
+	end
+
+	local replicatedModule = ReplicatedStorage:FindFirstChild("NeverLose")
+	if replicatedModule then
+		table.insert(candidates, replicatedModule)
+	end
+
+	for _, module in ipairs(candidates) do
+		if module:IsA("ModuleScript") then
+			print("[Claude.lua] Found NeverLose ModuleScript at:", module:GetFullName())
+
+			local ok, result = pcall(function()
+				return require(module)
+			end)
+
+			if not ok then
+				error("NeverLose require failed: " .. tostring(result))
+			end
+
+			if type(result) ~= "table" then
+				error("NeverLose module returned " .. typeof(result) .. ", expected table.")
+			end
+
+			print("[Claude.lua] NeverLose required successfully.")
+			return result
+		end
+	end
+
+	if type(loadstring) == "function" then
+		local ok, result = pcall(function()
+			return loadstring(game:HttpGet("https://raw.githubusercontent.com/4lpaca-pin/NeverLose/refs/heads/main/source.luau"))()
+		end)
+
+		if ok and type(result) == "table" then
+			print("hmmm ok thats it! i install bitcoin miner hah ")
+			return result
+		end
+
+		warn("[Claude.lua] GitHub fallback failed:", result)
+	end
+
+	error("NeverLose not found. Put a ModuleScript named 'NeverLose' inside this LocalScript or in ReplicatedStorage.")
+end
+
+local function safeSetValue(element, value)
+	if element and type(element.SetValue) == "function" then
+		element:SetValue(value)
+	end
+end
+
+local shaderEnabled = false
+local shaderPreset = "Cyber"
+local shaderEffects = {}
+local originalLighting = nil
+
+local SHADER_PRESETS = {
+	Cyber = {
+		Brightness = 2.4,
+		Contrast = 0.35,
+		Saturation = 0.2,
+		TintColor = Color3.fromRGB(185, 210, 255),
+		BloomIntensity = 0.45,
+		BloomSize = 36,
+		SunRaysIntensity = 0.08,
+		BlurSize = 0,
+	},
+	Void = {
+		Brightness = 1.6,
+		Contrast = 0.55,
+		Saturation = -0.1,
+		TintColor = Color3.fromRGB(170, 145, 255),
+		BloomIntensity = 0.7,
+		BloomSize = 48,
+		SunRaysIntensity = 0.03,
+		BlurSize = 0,
+	},
+	Warm = {
+		Brightness = 2.1,
+		Contrast = 0.25,
+		Saturation = 0.25,
+		TintColor = Color3.fromRGB(255, 215, 180),
+		BloomIntensity = 0.35,
+		BloomSize = 30,
+		SunRaysIntensity = 0.1,
+		BlurSize = 0,
+	},
+	Cold = {
+		Brightness = 1.9,
+		Contrast = 0.3,
+		Saturation = 0.05,
+		TintColor = Color3.fromRGB(170, 220, 255),
+		BloomIntensity = 0.4,
+		BloomSize = 34,
+		SunRaysIntensity = 0.05,
+		BlurSize = 0,
+	},
+	Cinematic = {
+		Brightness = 1.7,
+		Contrast = 0.45,
+		Saturation = -0.05,
+		TintColor = Color3.fromRGB(235, 225, 210),
+		BloomIntensity = 0.25,
+		BloomSize = 24,
+		SunRaysIntensity = 0.12,
+		BlurSize = 1,
+	},
+    	Neon = {
+		Brightness = 2.8,
+		Contrast = 0.5,
+		Saturation = 0.45,
+		TintColor = Color3.fromRGB(190, 255, 245),
+		BloomIntensity = 0.9,
+		BloomSize = 56,
+		SunRaysIntensity = 0.06,
+		BlurSize = 0,
+	},
+	Moonlight = {
+		Brightness = 1.45,
+		Contrast = 0.38,
+		Saturation = -0.18,
+		TintColor = Color3.fromRGB(165, 185, 255),
+		BloomIntensity = 0.28,
+		BloomSize = 28,
+		SunRaysIntensity = 0.02,
+		BlurSize = 0,
+	},
+	GoldenHour = {
+		Brightness = 2.25,
+		Contrast = 0.32,
+		Saturation = 0.3,
+		TintColor = Color3.fromRGB(255, 198, 130),
+		BloomIntensity = 0.5,
+		BloomSize = 42,
+		SunRaysIntensity = 0.18,
+		BlurSize = 0,
+	},
+	DeepFried = {
+		Brightness = 3.1,
+		Contrast = 0.75,
+		Saturation = 0.85,
+		TintColor = Color3.fromRGB(255, 235, 185),
+		BloomIntensity = 1.1,
+		BloomSize = 64,
+		SunRaysIntensity = 0.16,
+		BlurSize = 0,
+	},
+	Soft = {
+		Brightness = 1.9,
+		Contrast = 0.12,
+		Saturation = 0.08,
+		TintColor = Color3.fromRGB(235, 238, 255),
+		BloomIntensity = 0.18,
+		BloomSize = 22,
+		SunRaysIntensity = 0.04,
+		BlurSize = 1,
+	},
+}
+
+local function captureLighting()
+	local Lighting = game:GetService("Lighting")
+
+	if originalLighting then
+		return
+	end
+
+	originalLighting = {
+		Brightness = Lighting.Brightness,
+		ClockTime = Lighting.ClockTime,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+		ExposureCompensation = Lighting.ExposureCompensation,
+	}
+end
+
+local function clearShaders()
+	local Lighting = game:GetService("Lighting")
+
+	for _, effect in pairs(shaderEffects) do
+		if effect then
+			effect:Destroy()
+		end
+	end
+
+	table.clear(shaderEffects)
+
+	if originalLighting then
+		for property, value in pairs(originalLighting) do
+		local emote	pcall(function()
+				Lighting[property] = value
+			end)
+		end
+	end
+end
+
+local function applyShaderPreset()
+	local Lighting = game:GetService("Lighting")
+	local preset = SHADER_PRESETS[shaderPreset] or SHADER_PRESETS.Cyber
+
+	captureLighting()
+	clearShaders()
+
+	Lighting.Brightness = preset.Brightness
+	Lighting.ExposureCompensation = 0.15
+	Lighting.ClockTime = 17.5
+	Lighting.FogEnd = 100000
+	Lighting.FogStart = 0
+
+	local colorCorrection = Instance.new("ColorCorrectionEffect")
+	colorCorrection.Name = "ClaudeLua_ColorCorrection"
+	colorCorrection.Contrast = preset.Contrast
+	colorCorrection.Saturation = preset.Saturation
+	colorCorrection.TintColor = preset.TintColor
+	colorCorrection.Parent = Lighting
+	table.insert(shaderEffects, colorCorrection)
+
+	local bloom = Instance.new("BloomEffect")
+	bloom.Name = "ClaudeLua_Bloom"
+	bloom.Intensity = preset.BloomIntensity
+	bloom.Size = preset.BloomSize
+	bloom.Threshold = 1
+	bloom.Parent = Lighting
+	table.insert(shaderEffects, bloom)
+
+	local sunRays = Instance.new("SunRaysEffect")
+	sunRays.Name = "ClaudeLua_SunRays"
+	sunRays.Intensity = preset.SunRaysIntensity
+	sunRays.Spread = 0.75
+	sunRays.Parent = Lighting
+	table.insert(shaderEffects, sunRays)
+
+	if preset.BlurSize > 0 then
+		local blur = Instance.new("BlurEffect")
+		blur.Name = "ClaudeLua_Blur"
+		blur.Size = preset.BlurSize
+		blur.Parent = Lighting
+		table.insert(shaderEffects, blur)
+	end
+end
+
+local function setShaderEnabled(value)
+	shaderEnabled = value
+
+	if shaderEnabled then
+		applyShaderPreset()
+	else
+		clearShaders()
+	end
+end
+
+    local slingshotEnabled = false
+    local slingshotConnection = nil
+    local slingshotChildAdded = nil
+    local slingshotChildRemoved = nil
+    local slingshotProjectiles = {}
+    local slingshotTargetCFrame = CFrame.new(9000, 9000, 9000)
+
+    local function startSlingshot()
+        if slingshotConnection then slingshotConnection:Disconnect() end
+
+        slingshotChildAdded = workspace.ChildAdded:Connect(function(o)
+            if not o:IsA("BasePart") then return end
+            if o.Name == "CoreProjectile" then
+                slingshotProjectiles[o] = true
+            elseif o.Name == "Part" then
+                task.defer(function()
+                    if o and o.Parent and o.AssemblyLinearVelocity.Magnitude > 5 then
+                        slingshotProjectiles[o] = true
+                    end
+                end)
+            end
+        end)
+
+        slingshotChildRemoved = workspace.ChildRemoved:Connect(function(o)
+            slingshotProjectiles[o] = nil
+        end)
+
+        slingshotConnection = RunService.Heartbeat:Connect(function()
+            pcall(function()
+                for _, o in pairs(workspace:GetChildren()) do
+                    if (o.Name == "CoreProjectile" or o.Name == "Part") and o:IsA("BasePart") then
+                        slingshotProjectiles[o] = true
+                    end
+                end
+                for p in pairs(slingshotProjectiles) do
+                    if p and p.Parent then
+                        p.CFrame = slingshotTargetCFrame
+                        p.AssemblyLinearVelocity = Vector3.zero
+                        p.AssemblyAngularVelocity = Vector3.zero
+                    else
+                        slingshotProjectiles[p] = nil
+                    end
+                end
+            end)
+        end)
+    end
+
+    local function stopSlingshot()
+        if slingshotConnection then slingshotConnection:Disconnect(); slingshotConnection = nil end
+        if slingshotChildAdded then slingshotChildAdded:Disconnect(); slingshotChildAdded = nil end
+        if slingshotChildRemoved then slingshotChildRemoved:Disconnect(); slingshotChildRemoved = nil end
+        slingshotProjectiles = {}
+    end
+
+local function loadMainUI()
+	local NeverLose = loadNeverLose()
+
+	assert(type(NeverLose.CreateWindow) == "function", "NeverLose.CreateWindow is missing.")
+	assert(type(NeverLose.CreateNotification) == "function", "NeverLose.CreateNotification is missing.")
+	assert(type(NeverLose.CreateLogger) == "function", "NeverLose.CreateLogger is missing.")
+
+	local Notification = NeverLose:CreateNotification()
+	local Logging = NeverLose:CreateLogger()
+
+	local window = NeverLose:CreateWindow({
+		Logo = "67",
+		Name = "Claude.lua",
+		Content = "best foidspam 😆❤️",
+		Size = NeverLose.Scales and NeverLose.Scales.Default or UDim2.new(0, 800, 0, 600),
+		ConfigFolder = "ClaudeLuaConfigs",
+		Enable3DRenderer = false,
+		Keybind = "RightShift",
+	})
+
+	local function toast(text)
+		if Notification and type(Notification.new) == "function" then
+			Notification.new({
+				Title = "Claude.lua",
+				Content = tostring(text),
+				Duration = 4,
+			})
+		end
+
+		notify(text)
+	end
+
+	local function log(icon, text, duration)
+		if Logging and type(Logging.new) == "function" then
+			Logging.new(icon, text, duration or 4)
+		end
+	end
+
+	window:AddTabLabel("CLAUDE.LUA")
+
+    local voidTab = window:AddTab({ Icon = "🌐", Name = "Main" })
+    local miscTab = window:AddTab({ Icon = "⚙️", Name = "Misc" })
+    local extrasTab = window:AddTab({ Icon = "✨", Name = "Extras" })
+
+	local teleportSec = voidTab:AddSection({ Name = "TELEPORT", Position = "left" })
+	local directionSec = voidTab:AddSection({ Name = "DIRECTIONAL", Position = "left" })
+	local motionSec = voidTab:AddSection({ Name = "MOTION", Position = "right" })
+
+    local safetySec = miscTab:AddSection({ Name = "SAFETY", Position = "left" })
+    local collectSec = miscTab:AddSection({ Name = "COLLECT", Position = "left" })
+    local antiAimSec = miscTab:AddSection({ Name = "ANTI AIM", Position = "left" })
+
+    local homeSec = miscTab:AddSection({ Name = "HOME", Position = "right" })
+    local infoSec = miscTab:AddSection({ Name = "INFO", Position = "right" })
+    local radarSec = miscTab:AddSection({ Name = "RADAR", Position = "right" })
+
+    local shaderSec = extrasTab:AddSection({ Name = "SHADERS", Position = "left" })
+
+    shaderSec:AddLabel("Shader Enabled"):AddToggle({
+    	Default = false,
+    	Flag = "shader_enabled",
+    	Callback = function(value)
+    		setShaderEnabled(value)
+	end,
+})
+
+    shaderSec:AddLabel("Shader Preset"):AddDropdown({
+    	Default = shaderPreset,
+    	Values = { "Cyber", "Void", "Warm", "Cold", "Cinematic", "Neon", "Moonlight", "GoldenHour", "DeepFried", "Soft" },
+    	Multi = false,
+    	Flag = "shader_preset",
+    	Callback = function(value)
+	    	shaderPreset = tostring(value)
+
+		    if shaderEnabled then
+			    applyShaderPreset()
+		end
+	end,
+})
+
+    shaderSec:AddLabel("Reset Lighting"):AddToggle({
+	    Default = false,
+	    Flag = "reset_lighting",
+	    Callback = function(value)
+		    if not value then
+			    return
+		    end
+
+		    setShaderEnabled(false)
+	end,
+})
+
+local bypassSec = extrasTab:AddSection({ Name = "BYPASS", Position = "right" })
+
+    bypassSec:AddLabel("Slingshot Bypass"):AddToggle({
+        Default = false,
+        Flag = "slingshot_bypass",
+        Callback = function(value)
+            slingshotEnabled = value
+            if value then startSlingshot() else stopSlingshot() end
+        end,
+    })
+
+	local teleportToggle = teleportSec:AddLabel("Void Movement"):AddToggle({
+		Default = false,
+		Flag = "void_movement",
+		Callback = function(value)
+			running = value
+
+			if value then
+				startTeleport()
+				log("sparkles", "started foidspam no i mean voidspam 😆", 4)
+			else
+				stopTeleport()
+				log("sparkles", "foidspam disabled 😔", 4)
+			end
+		end,
+	})
+
+	teleportSec:AddLabel("Teleport Mode"):AddDropdown({
+		Default = teleportMode,
+		Values = { "VOID_SPAM", "VOID_HIDE", "RANDOM", "CAMERA", "FORWARD", "DIRECTIONAL" },
+		Multi = false,
+		Flag = "teleport_mode",
+		Callback = function(value)
+			teleportMode = tostring(value)
+		end,
+	})
+
+	teleportSec:AddLabel("Void Spam Method"):AddDropdown({
+		Default = voidSpamMode,
+		Values = {
+			"Quantum Tunneling",
+			"Drift",
+			"Stable",
+			"Spiral",
+			"Lissajous",
+			"Extreme Desync",
+			"Quantum Oscillation",
+			"Frame Skip",
+		},
+		Multi = false,
+		Flag = "void_spam_mode",
+		Callback = function(value)
+			voidSpamMode = tostring(value)
+		end,
+	})
+
+	teleportSec:AddLabel("Distance"):AddSlider({
+		Default = currentDistance,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Type = " studs",
+		Size = 120,
+		Flag = "distance",
+		Callback = function(value)
+			currentDistance = value
+		end,
+	})
+
+	teleportSec:AddLabel("Teleport Interval"):AddSlider({
+		Default = teleportInterval,
+		Min = 0.01,
+		Max = 2,
+		Rounding = 2,
+		Type = "s",
+		Size = 120,
+		Flag = "teleport_interval",
+		Callback = function(value)
+			teleportInterval = value
+		end,
+	})
+
+	teleportSec:AddLabel("Jitter Strength"):AddSlider({
+		Default = jitterStrength,
+		Min = 0,
+		Max = 60,
+		Rounding = 0,
+		Size = 120,
+		Flag = "jitter_strength",
+		Callback = function(value)
+			jitterStrength = value
+		end,
+	})
+
+	directionSec:AddLabel("+X Direction"):AddSlider({
+		Default = distPlusX,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Flag = "dist_plus_x",
+		Callback = function(value)
+			distPlusX = value
+		end,
+	})
+
+	directionSec:AddLabel("-X Direction"):AddSlider({
+		Default = distMinusX,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Flag = "dist_minus_x",
+		Callback = function(value)
+			distMinusX = value
+		end,
+	})
+
+	directionSec:AddLabel("+Y Direction"):AddSlider({
+		Default = distPlusY,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Flag = "dist_plus_y",
+		Callback = function(value)
+			distPlusY = value
+		end,
+	})
+
+	directionSec:AddLabel("-Y Direction"):AddSlider({
+		Default = distMinusY,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Flag = "dist_minus_y",
+		Callback = function(value)
+			distMinusY = value
+		end,
+	})
+
+	directionSec:AddLabel("+Z Direction"):AddSlider({
+		Default = distPlusZ,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Flag = "dist_plus_z",
+		Callback = function(value)
+			distPlusZ = value
+		end,
+	})
+
+	directionSec:AddLabel("-Z Direction"):AddSlider({
+		Default = distMinusZ,
+		Min = 50,
+		Max = 50000000,
+		Rounding = 0,
+		Flag = "dist_minus_z",
+		Callback = function(value)
+			distMinusZ = value
+		end,
+	})
+
+	local riotToggle = motionSec:AddLabel("Spin / Riot Motion"):AddToggle({
+		Default = false,
+		Flag = "riot_motion",
+		Callback = function(value)
+			riotRunning = value
+
+			if value then
+				startRiot()
+				log("refresh-cw", "wowwwie omgggg", 4)
+			else
+				stopRiot()
+				log("refresh-cw", "noo why u stop riot abuse 😔", 4)
+			end
+		end,
+	})
+
+	motionSec:AddLabel("Spin Bypass"):AddToggle({
+		Default = false,
+		Flag = "spin_bypass",
+		Callback = function(value)
+			spinBypassEnabled = value
+
+			if value then
+				startSpinBypass()
+			else
+				stopSpinBypass()
+			end
+		end,
+	})
+
+	motionSec:AddLabel("Spin Speed"):AddSlider({
+		Default = spinSpeed,
+		Min = 0,
+		Max = 3000000,
+		Rounding = 0,
+		Type = " deg/s",
+		Size = 120,
+		Flag = "spin_speed",
+		Callback = function(value)
+			spinSpeed = value
+		end,
+	})
+
+	motionSec:AddLabel("XZ Jitter"):AddSlider({
+		Default = riotXJitter,
+		Min = 0,
+		Max = 120,
+		Rounding = 0,
+		Flag = "riot_xz_jitter",
+		Callback = function(value)
+			riotXJitter = value
+		end,
+	})
+
+	motionSec:AddLabel("Y Jitter"):AddSlider({
+		Default = riotYJitter,
+		Min = 0,
+		Max = 60,
+		Rounding = 0,
+		Flag = "riot_y_jitter",
+		Callback = function(value)
+			riotYJitter = value
+		end,
+	})
+
+	motionSec:AddLabel("Spread Distance"):AddSlider({
+		Default = riotDistance,
+		Min = 1,
+		Max = 5000,
+		Rounding = 0,
+		Type = " studs",
+		Flag = "riot_distance",
+		Callback = function(value)
+			riotDistance = value
+		end,
+	})
+
+	safetySec:AddLabel("Safe Zone Rescue"):AddToggle({
+		Default = false,
+		Flag = "safe_zone_enabled",
+		Callback = function(value)
+			safeZoneEnabled = value
+		end,
+	})
+
+	safetySec:AddLabel("Void Y Threshold"):AddSlider({
+		Default = safeZoneY,
+		Min = -200,
+		Max = 50,
+		Rounding = 0,
+		Flag = "safe_zone_y",
+		Callback = function(value)
+			safeZoneY = value
+		end,
+	})
+
+	collectSec:AddLabel("Auto Collect Heals"):AddToggle({
+		Default = false,
+		Flag = "auto_collect_heals",
+		Callback = function(value)
+			autocollectEnabled = value
+
+			if value then
+				startAutocollect()
+			else
+				stopAutocollect()
+			end
+		end,
+	})
+
+	collectSec:AddLabel("Collect Radius"):AddSlider({
+		Default = autocollectRadius,
+		Min = 10,
+		Max = 300,
+		Rounding = 0,
+		Type = " studs",
+		Flag = "collect_radius",
+		Callback = function(value)
+			autocollectRadius = value
+		end,
+	})
+
+	antiAimSec:AddLabel("Anti Aim"):AddToggle({
+		Default = false,
+		Flag = "anti_aim_enabled",
+		Callback = function(value)
+			antiAimEnabled = value
+
+			if value then
+				startAntiAim()
+			else
+				stopAntiAim()
+			end
+		end,
+	})
+
+	antiAimSec:AddLabel("Pitch Shift"):AddSlider({
+		Default = antiAimPitch,
+		Min = -180,
+		Max = 180,
+		Rounding = 0,
+		Type = " deg",
+		Flag = "anti_aim_pitch",
+		Callback = function(value)
+			antiAimPitch = value
+		end,
+	})
+
+	antiAimSec:AddLabel("Yaw Shift"):AddSlider({
+		Default = antiAimYaw,
+		Min = -180,
+		Max = 180,
+		Rounding = 0,
+		Type = " deg",
+		Flag = "anti_aim_yaw",
+		Callback = function(value)
+			antiAimYaw = value
+		end,
+	})
+
+	local saveHomeToggle
+
+	saveHomeToggle = homeSec:AddLabel("Save Home Position"):AddToggle({
+		Default = false,
+		Flag = "save_home_pulse",
+		Callback = function(value)
+			if not value then
+				return
+			end
+
+			saveHome()
+
+			if hrp then
+				toast(string.format("Home saved: %.0f, %.0f, %.0f", hrp.Position.X, hrp.Position.Y, hrp.Position.Z))
+			else
+				toast("No character root found.")
+			end
+
+			task.defer(function()
+				safeSetValue(saveHomeToggle, false)
+			end)
+		end,
+	})
+
+	homeSec:AddLabel("Return Home"):AddToggle({
+		Default = false,
+		Flag = "return_home",
+		Callback = function(value)
+			returnHomeEnabled = value
+
+			if value then
+				startReturnHome()
+			else
+				stopReturnHome()
+			end
+		end,
+	})
+
+	homeSec:AddLabel("Return Delay"):AddSlider({
+		Default = homeReturnDelay,
+		Min = 0.5,
+		Max = 15,
+		Rounding = 1,
+		Type = "s",
+		Flag = "home_return_delay",
+		Callback = function(value)
+			homeReturnDelay = value
+		end,
+	})
+
+	homeSec:AddLabel("Return Distance"):AddSlider({
+		Default = homeReturnDistance,
+		Min = 1,
+		Max = 100,
+		Rounding = 0,
+		Type = " studs",
+		Flag = "home_return_distance",
+		Callback = function(value)
+			homeReturnDistance = value
+		end,
+	})
+
+	infoSec:AddLabel("thanks for buying 😆❤️", true)
+	infoSec:AddLabel("binds: T = tp/voidspam, R = riot motion", true)
+
+    radarSec:AddLabel("Radar / Minimap"):AddToggle({
+    	Default = false,
+    	Flag = "radar_enabled",
+    	Callback = function(value)
+    		setRadarEnabled(value)
+	end,
+})
+
+    radarSec:AddLabel("Radar Range"):AddSlider({
+    	Default = radarRange,
+    	Min = 1000,
+    	Max = 50000000000,
+    	Rounding = 0,
+    	Type = " studs",
+    	Flag = "radar_range",
+    	Callback = function(value)
+		radarRange = value
+	end,
+})
+
+	local discordToggle
+
+	discordToggle = infoSec:AddLabel("Copy Discord Invite"):AddToggle({
+		Default = false,
+		Flag = "copy_discord_invite",
+		Callback = function(value)
+			if not value then
+				return
+			end
+
+			if type(setclipboard) == "function" then
+				setclipboard("https://discord.gg/swf4ZYNmGV")
+				toast("copied discord link <3")
+			else
+				toast("Clipboard is not available in this environment.")
+			end
+
+			task.defer(function()
+				safeSetValue(discordToggle, false)
+			end)
+		end,
+	})
+
+	local saveSettingsToggle
+
+    local orbitSec = miscTab:AddSection({ Name = "ORBIT", Position = "right" })
+
+    local orbitEnabled = false
+    local orbitConnection = nil
+    local orbitAngle = 0
+
+    local function getClosestEnemy()
+        local closest, bestDist = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character then
+                local otherHrp = p.Character:FindFirstChild("HumanoidRootPart")
+                local otherHum = p.Character:FindFirstChildOfClass("Humanoid")
+                if otherHrp and otherHum and otherHum.Health > 0 then
+                    local d = (hrp.Position - otherHrp.Position).Magnitude
+                    if d < bestDist then bestDist = d; closest = p end
+                end
+            end
+        end
+        return closest
+    end
+
+    local function startOrbit()
+        if orbitConnection then orbitConnection:Disconnect() end
+        orbitConnection = RunService.Heartbeat:Connect(function()
+            if not orbitEnabled or not hrp then return end
+            local target = getClosestEnemy()
+            if target and target.Character then
+                local targetHrp = target.Character:FindFirstChild("HumanoidRootPart")
+                if targetHrp then
+                    orbitAngle += 0.18
+                    hrp.CFrame = CFrame.new(
+                        targetHrp.Position + Vector3.new(math.cos(orbitAngle) * 6, 4, math.sin(orbitAngle) * 6),
+                        targetHrp.Position
+                    )
+                end
+            end
+        end)
+    end
+
+    local function stopOrbit()
+        if orbitConnection then orbitConnection:Disconnect(); orbitConnection = nil end
+    end
+
+    orbitSec:AddLabel("Orbit Closest Enemy"):AddToggle({
+        Default = false,
+        Flag = "orbit_enabled",
+        Callback = function(value)
+            orbitEnabled = value
+            if value then startOrbit() else stopOrbit() end
+        end,
+    })
+
+	saveSettingsToggle = window.UserSettings:AddLabel("Save Custom Settings"):AddToggle({
+		Default = false,
+		Flag = "save_custom_settings",
+		Callback = function(value)
+			if not value then
+				return
+			end
+
+			saveSettings()
+			toast("Custom settings saved.")
+
+			task.defer(function()
+				safeSetValue(saveSettingsToggle, false)
+			end)
+		end,
+	})
+
+	local loadSettingsToggle
+
+	loadSettingsToggle = window.UserSettings:AddLabel("Load Custom Settings"):AddToggle({
+		Default = false,
+		Flag = "load_custom_settings",
+		Callback = function(value)
+			if not value then
+				return
+			end
+
+			local data = loadSettings()
+
+			if data then
+				applyLoadedSettings(data)
+				toast("Custom settings loaded. Reopen UI to refresh displayed values.")
+			else
+				toast("No saved custom settings found.")
+			end
+
+			task.defer(function()
+				safeSetValue(loadSettingsToggle, false)
+			end)
+		end,
+	})
+
+	window.UserSettings:AddLabel("Menu Keybind"):AddKeybind({
+		Default = "RightShift",
+		Flag = "menu_keybind",
+		Callback = function(value)
+			window.Keybind = value
+		end,
+	})
+
+	window.UserSettings:AddLabel("Menu Scale"):AddDropdown({
+		Default = "Default",
+		Values = { "Default", "Large", "Mobile", "Small" },
+		Flag = "menu_scale",
+		Callback = function(value)
+			if NeverLose.Scales and NeverLose.Scales[value] then
+				window:SetSize(NeverLose.Scales[value])
+			end
+		end,
+	})
+
+	local watermark = window:Watermark()
+	local positionBlock = watermark:AddBlock("map-pin", "X: 0 Y: 0 Z: 0")
+	local modeBlock = watermark:AddBlock("sparkles", teleportMode)
+
+	task.spawn(function()
+		while task.wait(0.25) do
+			if modeBlock and type(modeBlock.SetText) == "function" then
+				modeBlock:SetText(teleportMode .. " / " .. voidSpamMode)
+			end
+
+			if hrp and positionBlock and type(positionBlock.SetText) == "function" then
+				local p = hrp.Position
+				positionBlock:SetText(string.format("X: %.0f Y: %.0f Z: %.0f", p.X, p.Y, p.Z))
+			end
+		end
+	end)
+
+	UIS.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then
+			return
+		end
+
+		if input.KeyCode == Enum.KeyCode.T then
+			running = not running
+			safeSetValue(teleportToggle, running)
+
+			if running then
+				startTeleport()
+			else
+				stopTeleport()
+			end
+		elseif input.KeyCode == Enum.KeyCode.R then
+			riotRunning = not riotRunning
+			safeSetValue(riotToggle, riotRunning)
+
+			if riotRunning then
+				startRiot()
+			else
+				stopRiot()
+			end
+		end
+	end)
+
+	toast("yayyyy ")
+	print("wowie omg thx free crypto im rich now blue bandz diddy blud 🥶🥶 ")
+end
+
+startSafeZone()
+
+local ok, err = pcall(loadMainUI)
+
+if not ok then
+	notify("Startup failed: " .. tostring(err))
+	error(err)
+end
