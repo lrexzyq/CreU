@@ -19189,14 +19189,14 @@ end
 
 local function resolveReloadSource()
     local env = getEnvironment()
-    local urlKeys = { "CrefySourceUrl", "CrefyScriptUrl", "CrefyLoaderUrl", "__CrefySourceUrl" }
+    local urlKeys = { "CrefySourceUrl", "CrefyScriptUrl", "CrefyLoaderUrl", "__CrefySourceUrl", "CrevySourceUrl", "CrevyScriptUrl", "CrevyLoaderUrl", "__CrevySourceUrl" }
     for _, key in ipairs(urlKeys) do
         local value = getEnvironmentValue(env, key)
         if not validUrl(value) then value = getEnvironmentValue(_G, key) end
         if validUrl(value) then return value, nil end
     end
 
-    local pathKeys = { "CrefySourcePath", "CrefyScriptPath", "CrefyFilePath", "__CrefySourcePath" }
+    local pathKeys = { "CrefySourcePath", "CrefyScriptPath", "CrefyFilePath", "__CrefySourcePath", "CrevySourcePath", "CrevyScriptPath", "CrevyFilePath", "__CrevySourcePath" }
     for _, key in ipairs(pathKeys) do
         local value = getEnvironmentValue(env, key)
         if type(value) ~= "string" or value == "" then value = getEnvironmentValue(_G, key) end
@@ -19215,10 +19215,21 @@ local function resolveReloadSource()
         end
     end)
     if type(sourceHint) == "string" then
+        local sourceUrlHint = sourceHint:match("(https?://[^%s\"']+)")
+        if validUrl(sourceUrlHint) then return sourceUrlHint, nil end
         if sourceHint:sub(1, 1) == "@" then
             local candidate = sourceHint:sub(2)
             local readable = tryReadableCrefyPath(candidate)
             if readable then return nil, readable end
+            local normalized = candidate:gsub("\\", "/")
+            if normalized ~= candidate then
+                readable = tryReadableCrefyPath(normalized)
+                if readable then return nil, readable end
+            end
+            -- debug source paths are more reliable than guessing a working
+            -- directory. Preserve a plausible Lua path for the post-teleport read.
+            if (candidate:lower():match("%.lua$") or candidate:lower():match("%.lua%.txt$")) then return nil, candidate end
+            if (normalized:lower():match("%.lua$") or normalized:lower():match("%.lua%.txt$")) then return nil, normalized end
         elseif sourceHint:sub(1, 1) == "=" then
             -- Some executors use "=url"; others expose a file-like source label.
             local candidate = sourceHint:sub(2)
@@ -19230,6 +19241,8 @@ local function resolveReloadSource()
                 readable = tryReadableCrefyPath(normalized)
                 if readable then return nil, readable end
             end
+            if (candidate:lower():match("%.lua$") or candidate:lower():match("%.lua%.txt$")) then return nil, candidate end
+            if (normalized:lower():match("%.lua$") or normalized:lower():match("%.lua%.txt$")) then return nil, normalized end
         end
     end
 
@@ -19272,6 +19285,52 @@ local function resolveReloadSource()
                         or basename:match("^crefy.*%.txt$") then
                         local readable = tryReadableCrefyPath(tostring(filePath))
                         if readable then return nil, readable end
+                    end
+                end
+            end
+        end
+    end
+    -- Some executors keep scripts several folders below their filesystem root.
+    -- Do a bounded recursive walk while the current executor session is still live.
+    if type(listFn) == "function" then
+        local pendingFolders = {
+            { Path = "", Depth = 0 }, { Path = ".", Depth = 0 },
+            { Path = "scripts", Depth = 0 }, { Path = "workspace", Depth = 0 },
+            { Path = "autoexec", Depth = 0 }, { Path = "autoexec/scripts", Depth = 0 },
+            { Path = "kiciarebuild", Depth = 0 },
+        }
+        local visitedFolders = {}
+        local scannedEntries = 0
+        local cursor = 1
+        while cursor <= #pendingFolders and scannedEntries < 2000 do
+            local folderInfo = pendingFolders[cursor]
+            cursor = cursor + 1
+            local folder = folderInfo.Path
+            local normalizedFolder = tostring(folder):lower():gsub("\\", "/")
+            if not visitedFolders[normalizedFolder] and folderInfo.Depth <= 4 then
+                visitedFolders[normalizedFolder] = true
+                local listOk, entries = pcall(listFn, folder)
+                if listOk and type(entries) == "table" then
+                    for _, entry in ipairs(entries) do
+                        scannedEntries = scannedEntries + 1
+                        local pathValue = tostring(entry)
+                        local lower = pathValue:lower():gsub("\\", "/")
+                        local basename = lower:match("([^/]+)$") or lower
+                        if basename:match("^crefy.*%.lua$")
+                            or basename:match("^crefy.*%.lua%.txt$")
+                            or basename:match("^crefy.*%.txt$") then
+                            local readable = tryReadableCrefyPath(pathValue)
+                            if readable then return nil, readable end
+                        elseif folderInfo.Depth < 4 and not basename:match("%.[%w]+$") then
+                            local nextFolder = pathValue
+                            local nextNormalized = nextFolder:lower():gsub("\\", "/")
+                            if not visitedFolders[nextNormalized] then
+                                pendingFolders[#pendingFolders + 1] = {
+                                    Path = nextFolder, Depth = folderInfo.Depth + 1
+                                }
+                            end
+                        end
+                        if scannedEntries >= 2000 then break end
                     end
                 end
             end
@@ -19370,6 +19429,17 @@ local __hasExplicitSource =
     or (type(__getSetting("CrefySourcePath")) == "string" and __getSetting("CrefySourcePath") ~= "")
     or (type(__getSetting("CrefyScriptUrl")) == "string" and __getSetting("CrefyScriptUrl") ~= "")
     or (type(__getSetting("CrefyScriptPath")) == "string" and __getSetting("CrefyScriptPath") ~= "")
+    or (type(__getSetting("CrefyLoaderUrl")) == "string" and __getSetting("CrefyLoaderUrl") ~= "")
+    or (type(__getSetting("__CrefySourceUrl")) == "string" and __getSetting("__CrefySourceUrl") ~= "")
+    or (type(__getSetting("__CrefySourcePath")) == "string" and __getSetting("__CrefySourcePath") ~= "")
+    or (type(__getSetting("CrevySourceUrl")) == "string" and __getSetting("CrevySourceUrl") ~= "")
+    or (type(__getSetting("CrevySourcePath")) == "string" and __getSetting("CrevySourcePath") ~= "")
+    or (type(__getSetting("CrevyScriptUrl")) == "string" and __getSetting("CrevyScriptUrl") ~= "")
+    or (type(__getSetting("CrevyScriptPath")) == "string" and __getSetting("CrevyScriptPath") ~= "")
+    or (type(__getSetting("CrevyLoaderUrl")) == "string" and __getSetting("CrevyLoaderUrl") ~= "")
+    or (type(__getSetting("__CrevySourceUrl")) == "string" and __getSetting("__CrevySourceUrl") ~= "")
+    or (type(__getSetting("__CrevySourcePath")) == "string" and __getSetting("__CrevySourcePath") ~= "")
+    or (type(__getSetting("CrevyFilePath")) == "string" and __getSetting("CrevyFilePath") ~= "")
 local __canAutoDiscoverSource = type(__readFile) == "function"
 if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true
     and not __hasExplicitSource and not __canAutoDiscoverSource then
@@ -19429,9 +19499,9 @@ end
 local function __runQueuedSource()
     local __url = __embeddedSourceUrl
     local __path = __embeddedSourcePath
-    local __envUrl = __getSetting("CrefySourceUrl") or __getSetting("CrefyScriptUrl")
+    local __envUrl = __getSetting("CrefySourceUrl") or __getSetting("CrefyScriptUrl") or __getSetting("CrevySourceUrl") or __getSetting("CrevyScriptUrl") or __getSetting("CrevyLoaderUrl") or __getSetting("__CrevySourceUrl")
     if type(__envUrl) == "string" and __envUrl:match("^https?://%S+$") then __url = __envUrl end
-    local __envPath = __getSetting("CrefySourcePath") or __getSetting("CrefyScriptPath") or __getSetting("CrefyFilePath")
+    local __envPath = __getSetting("CrefySourcePath") or __getSetting("CrefyScriptPath") or __getSetting("CrefyFilePath") or __getSetting("CrevySourcePath") or __getSetting("CrevyScriptPath") or __getSetting("CrevyFilePath") or __getSetting("__CrevySourcePath")
     if type(__envPath) == "string" and __envPath ~= "" then __path = __envPath end
 
     local __source
@@ -19444,7 +19514,9 @@ local function __runQueuedSource()
         end
     end
     if not __source then __source = __read(__path) end
-    if not __source then
+    local function __discoverLocalSource()
+        local __found = __read(__path)
+        if __found then return __found end
         local __candidates = {
             "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
             "Crefylua.lua", "Crefylua.lua.txt", "Crefylua.txt",
@@ -19459,35 +19531,81 @@ local function __runQueuedSource()
             "kiciarebuild/rivals/Crefy.lua", "kiciarebuild/rivals/Crefylua.lua",
         }
         for _, __candidatePath in ipairs(__candidates) do
-            __source = __read(__candidatePath)
-            if __source then break end
+            __found = __read(__candidatePath)
+            if __found then return __found end
         end
-    end
-    local __listFiles = __getFunction("listfiles")
-    if not __source and type(__listFiles) == "function" then
-        local __folders = {
-            "", ".", "scripts", "workspace", "workspace/scripts", "autoexec",
-            "autoexec/scripts", "scripts/kiciarebuild", "kiciarebuild", "kiciarebuild/rivals",
+
+        local __listFiles = __getFunction("listfiles")
+        if type(__listFiles) ~= "function" then return nil end
+        local __pendingFolders = {
+            { Path = "", Depth = 0 }, { Path = ".", Depth = 0 },
+            { Path = "scripts", Depth = 0 }, { Path = "workspace", Depth = 0 },
+            { Path = "workspace/scripts", Depth = 0 }, { Path = "autoexec", Depth = 0 },
+            { Path = "autoexec/scripts", Depth = 0 }, { Path = "scripts/kiciarebuild", Depth = 0 },
+            { Path = "kiciarebuild", Depth = 0 }, { Path = "kiciarebuild/rivals", Depth = 0 },
         }
-        for _, __folder in ipairs(__folders) do
-            local __okList, __files = pcall(__listFiles, __folder)
-            if __okList and type(__files) == "table" then
-                for _, __file in ipairs(__files) do
-                    local __lower = tostring(__file):lower():gsub("\\", "/")
-                    local __basename = __lower:match("([^/]+)$") or __lower
-                    if __basename:match("^crefy.*%.lua$")
-                        or __basename:match("^crefy.*%.lua%.txt$")
-                        or __basename:match("^crefy.*%.txt$") then
-                        __source = __read(__file)
-                        if __source then break end
+        local __visitedFolders = {}
+        local __scannedEntries = 0
+        local __cursor = 1
+        while __cursor <= #__pendingFolders and __scannedEntries < 2000 and not __found do
+            local __folderInfo = __pendingFolders[__cursor]
+            __cursor = __cursor + 1
+            local __folder = __folderInfo.Path
+            local __normalizedFolder = tostring(__folder):lower():gsub("\\", "/")
+            if not __visitedFolders[__normalizedFolder] and __folderInfo.Depth <= 4 then
+                __visitedFolders[__normalizedFolder] = true
+                local __listOk, __entries = pcall(__listFiles, __folder)
+                if __listOk and type(__entries) == "table" then
+                    for _, __entry in ipairs(__entries) do
+                        __scannedEntries = __scannedEntries + 1
+                        local __pathValue = tostring(__entry)
+                        local __lower = __pathValue:lower():gsub("\\", "/")
+                        local __basename = __lower:match("([^/]+)$") or __lower
+                        if __basename:match("^crefy.*%.lua$")
+                            or __basename:match("^crefy.*%.lua%.txt$")
+                            or __basename:match("^crefy.*%.txt$") then
+                            __found = __read(__pathValue)
+                            if __found then break end
+                        elseif __folderInfo.Depth < 4 and not __basename:match("%.[%w]+$") then
+                            local __nextNormalized = __pathValue:lower():gsub("\\", "/")
+                            if not __visitedFolders[__nextNormalized] then
+                                __pendingFolders[#__pendingFolders + 1] = {
+                                    Path = __pathValue, Depth = __folderInfo.Depth + 1
+                                }
+                            end
+                        end
+                        if __scannedEntries >= 2000 then break end
                     end
                 end
             end
-            if __source then break end
         end
+        return __found
     end
+
+    -- Some executors mount their filesystem a little after the queued payload
+    -- starts. Keep searching for a bounded window instead of permanently marking
+    -- this destination as failed after one early readfile/listfiles miss.
+    local __sourceSearchDeadline = os.clock() + 30
+    local __nextFullScanAt = 0
+    repeat
+        if not __source then
+            local __now = os.clock()
+            if __now >= __nextFullScanAt then
+                __source = __discoverLocalSource()
+                __nextFullScanAt = os.clock() + 1.5
+            else
+                __source = __read(__path)
+            end
+        end
+        if not __source and os.clock() < __sourceSearchDeadline then
+            local __wait = type(task) == "table" and task.wait or nil
+            if type(__wait) ~= "function" then break end
+            pcall(__wait, 0.5)
+            __source = __read(__path)
+        end
+    until __source or os.clock() >= __sourceSearchDeadline
     if type(__source) ~= "string" or #__source == 0 then
-        warn("[Crefy] Re-run After Teleport could not locate a valid Crefy source. Set getgenv().CrefySourcePath or getgenv().CrefySourceUrl.")
+        warn("[Crefy] Re-run After Teleport failed: no readable source was found after bounded file search. The queue API accepted the job, but cannot execute an absent source. Store Crefylua.lua in an executor-readable folder or set getgenv().CrefySourcePath / CrefySourceUrl (legacy aliases: CrevySourcePath / CrevySourceUrl).")
         return false
     end
     local __compiler = __getFunction("loadstring") or __getFunction("load")
@@ -19589,6 +19707,16 @@ local function applyRerunSetting(enabled, persist)
         or queueRegisteredForCurrentEnable == false)
     if needsRequeue then
         local sourceUrl, sourcePath = resolveReloadSource()
+        -- Compatibility bridge for older already-queued payloads that read "Crevy" (missing f).
+        -- New payloads embed these values; aliases only help old jobs when the executor preserves getgenv.
+        if sourceUrl ~= nil then
+            pcall(rawset, env, "CrevySourceUrl", sourceUrl)
+            pcall(rawset, _G, "CrevySourceUrl", sourceUrl)
+        end
+        if sourcePath ~= nil then
+            pcall(rawset, env, "CrevySourcePath", sourcePath)
+            pcall(rawset, _G, "CrevySourcePath", sourcePath)
+        end
         local queueFn, queueOwner
         local candidateNames = {
             "queue_on_teleport", "queueonteleport", "queueOnTeleport", "QueueOnTeleport",
@@ -19644,7 +19772,7 @@ local function applyRerunSetting(enabled, persist)
                 pcall(rawset, _G, "__CrefyAutoExecuteGeneration", nextGeneration)
                 queueRegisteredForCurrentEnable = true
                 if sourceUrl == nil and sourcePath == nil then
-                    warn("[Crefy] Re-run After Teleport queued with file auto-discovery. If it cannot find the source, set getgenv().CrefySourcePath or getgenv().CrefySourceUrl.")
+                    print("[Crefy] Re-run After Teleport queue accepted; this only confirms the queue API accepted the payload, not that source discovery will succeed. Store Crefylua.lua in an executor-readable folder or configure CrefySourcePath/CrefySourceUrl (legacy aliases CrevySourcePath/CrevySourceUrl).")
                 end
             else
                 queueRegisteredForCurrentEnable = false
@@ -64515,6 +64643,7 @@ local UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
+local undergroundNextTransitionWarningAt = 0
 local undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
 local undergroundDepth = UNDERGROUND_MIN_DEPTH
 local undergroundAdaptiveScanAt = 0
@@ -64913,9 +65042,32 @@ local function undergroundProbeSurface(char, root)
     if not bounds then
         return nil
     end
-    local minY = bounds[3]
-    local maxY = bounds[4]
-    if type(minY) ~= 'number' or type(maxY) ~= 'number' then
+    -- The character's live bounding box may be on the hidden Ragebot pose while
+    -- clientCF represents the visible pose. Reproject its corners from the live
+    -- RootPart frame into clientCF before comparing them with raycast surfaces.
+    local liveRootCFrame = root.CFrame
+    if typeof(liveRootCFrame) ~= 'CFrame' then return nil end
+    local boxCFrame, boxSize = bounds[1], bounds[2]
+    local minY = math.huge
+    local maxY = -math.huge
+    for x = -1, 1, 2 do
+        for y = -1, 1, 2 do
+            for z = -1, 1, 2 do
+                local corner = boxCFrame:PointToWorldSpace(Vector3.new(
+                    boxSize.X * 0.5 * x,
+                    boxSize.Y * 0.5 * y,
+                    boxSize.Z * 0.5 * z
+                ))
+                local localCorner = liveRootCFrame:PointToObjectSpace(corner)
+                local intendedCorner = clientCF:PointToWorldSpace(localCorner)
+                minY = math.min(minY, intendedCorner.Y)
+                maxY = math.max(maxY, intendedCorner.Y)
+            end
+        end
+    end
+    if minY == math.huge or maxY == -math.huge
+        or type(minY) ~= 'number' or type(maxY) ~= 'number'
+        or minY ~= minY or maxY ~= maxY then
         return nil
     end
 
@@ -65146,6 +65298,29 @@ local function undergroundServerCFrame(char, root)
         return nil
     end
     local boxCFrame, boxSize = bounds[1], bounds[2]
+    -- GetBoundingBox is measured from the live character model, while
+    -- currentRoot can be the cached/client pose during Ragebot desync. Using
+    -- currentRoot:PointToObjectSpace(worldCorner) mixes two different origins;
+    -- after Ragebot stops, the vertical delta can be counted as character height
+    -- and produce an enormous negative target Y. Normalize geometry against the
+    -- live RootPart, then apply only its local shape to the intended pose rotation.
+    local liveRootCFrame
+    local liveRootReadOk = pcall(function() liveRootCFrame = root.CFrame end)
+    if not liveRootReadOk or typeof(liveRootCFrame) ~= "CFrame" then
+        return nil
+    end
+    local liveRootPosition = liveRootCFrame.Position
+    local intendedPosition = currentRoot.Position
+    local function finiteCoord(n)
+        return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+    end
+    if not finiteCoord(liveRootPosition.X) or not finiteCoord(liveRootPosition.Y)
+        or not finiteCoord(liveRootPosition.Z) or not finiteCoord(intendedPosition.X)
+        or not finiteCoord(intendedPosition.Y) or not finiteCoord(intendedPosition.Z)
+        or math.abs(liveRootPosition.X) > 100000 or math.abs(liveRootPosition.Y) > 100000
+        or math.abs(liveRootPosition.Z) > 100000 then
+        return nil
+    end
     local localCorners = {}
     for x = -1, 1, 2 do
         for y = -1, 1, 2 do
@@ -65155,7 +65330,7 @@ local function undergroundServerCFrame(char, root)
                     boxSize.Y * 0.5 * y,
                     boxSize.Z * 0.5 * z
                 ))
-                localCorners[#localCorners + 1] = currentRoot:PointToObjectSpace(corner)
+                localCorners[#localCorners + 1] = liveRootCFrame:PointToObjectSpace(corner)
             end
         end
     end
@@ -65467,25 +65642,136 @@ end
 undergroundController.SetRagebotIntegration = function(active)
 undergroundRagebotRequested = active == true
 local shouldIntegrate = undergroundEnabled and undergroundRagebotRequested
-if shouldIntegrate == undergroundRagebotIntegrated then return end
-undergroundRagebotIntegrated = shouldIntegrate
--- Integration transitions must never replay undergroundLastClientCFrame. That
--- cache may be stale by the time Ragebot disables/resets or a RootPart is replaced.
+if shouldIntegrate == undergroundRagebotIntegrated then return true end
+
 if shouldIntegrate then
+    -- Publish integrated state only when Ragebot actually takes ownership.
+    undergroundRagebotIntegrated = true
     if undergroundDesync then
         pcall(function() undergroundDesync:Destroy(true) end)
         undergroundDesync = nil
     end
-elseif undergroundEnabled then
-    local char = undergroundGetCharacter()
-    local root = undergroundGetRoot(char)
-    if root and root.Parent then
-        if undergroundDesync then
-            pcall(function() undergroundDesync:Destroy(true) end)
+    return true
+end
+
+if not undergroundEnabled then
+    undergroundRagebotIntegrated = false
+    return true
+end
+
+local char = undergroundGetCharacter()
+local root = undergroundGetRoot(char)
+local humanoid = undergroundGetHumanoid(char)
+if not (root and root.Parent and char == undergroundSnapshotCharacter
+    and humanoid ~= nil and humanoid.Health > 0) then
+    -- Keep integrated=true so the next Ragebot update retries this hand-off.
+    -- Marking it false here would make the old early-return prevent all retries.
+    return false
+end
+
+-- Stop the previous Heartbeat/RenderStep writer before selecting a pose.
+if undergroundDesync then
+    pcall(function() undergroundDesync:Destroy(true) end)
+    undergroundDesync = nil
+end
+
+local livePose
+local liveReadOk = pcall(function() livePose = root.CFrame end)
+local cachedPose = undergroundLastClientCFrame
+local snapshotPose = type(undergroundSnapshot) == "table"
+    and undergroundSnapshot.character == char and undergroundSnapshot.rootCFrame or nil
+local function validUndergroundPose(cf)
+    if typeof(cf) ~= "CFrame" then return false end
+    local components = { cf:GetComponents() }
+    for _, component in ipairs(components) do
+        if type(component) ~= "number" or component ~= component
+            or component == math.huge or component == -math.huge then
+            return false
         end
-        undergroundDesync = UndergroundRootDesync.new(root)
+    end
+    local pos = cf.Position
+    return math.abs(pos.X) <= 100000 and math.abs(pos.Y) <= 100000
+        and math.abs(pos.Z) <= 100000
+end
+local livePoseIsValid = liveReadOk and validUndergroundPose(livePose)
+local cachedPoseIsValid = validUndergroundPose(cachedPose)
+local snapshotPoseIsValid = validUndergroundPose(snapshotPose)
+local gateActive = ragebotPoseRestoreGateIsActive()
+local gate = gateActive and ragebotPoseRestoreGateRead() or nil
+local approvedPose = type(gate) == "table" and rawget(gate, "pose") or nil
+local approvedRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
+local approvedPoseIsValid = gateActive and approvedRoot == root
+    and validUndergroundPose(approvedPose)
+
+-- An active restore gate owns the RootPart. Never fall back to the live/deep pose
+-- when the gate has not yet published an approved pose; retry next update instead.
+if gateActive and not approvedPoseIsValid then
+    if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+        undergroundNextTransitionWarningAt = os.clock() + 5
+        warn("[Underground] Ragebot restore gate is active without an approved pose; hand-off deferred safely.")
+    end
+    return false
+end
+
+local handoffPose
+if approvedPoseIsValid then
+    handoffPose = approvedPose
+elseif not gateActive and cachedPoseIsValid then
+    -- The cached client pose beats a finite but potentially hidden Ragebot pose.
+    handoffPose = cachedPose
+elseif livePoseIsValid then
+    handoffPose = livePose
+elseif snapshotPoseIsValid then
+    handoffPose = snapshotPose
+end
+if handoffPose == nil then
+    if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+        undergroundNextTransitionWarningAt = os.clock() + 5
+        warn("[Underground] No valid client pose available for Ragebot hand-off; retrying.")
+    end
+    return false
+end
+
+local needsPoseWrite = not livePoseIsValid
+    or (livePose.Position - handoffPose.Position).Magnitude > 2
+if needsPoseWrite then
+    local writeOk, writeError = pcall(function()
+        root.CFrame = handoffPose
+        if (not livePoseIsValid)
+            or (livePose.Position - handoffPose.Position).Magnitude > 12 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
+    local verifyOk, verifiedPose = pcall(function() return root.CFrame end)
+    if writeOk and verifyOk and validUndergroundPose(verifiedPose)
+        and (verifiedPose.Position - handoffPose.Position).Magnitude <= 3 then
+        handoffPose = verifiedPose
+    else
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Client-pose hand-off could not be verified; retrying. " .. tostring(writeError or verifiedPose))
+        end
+        return false
     end
 end
+
+undergroundLastClientCFrame = handoffPose
+-- The pose hand-off is now valid. Only now publish standalone Underground mode.
+undergroundRagebotIntegrated = false
+undergroundLastServerCFrame = nil
+undergroundAdaptiveScanAt = 0
+undergroundAdaptiveDepthUpdatedAt = 0
+undergroundCachedFloorPart = nil
+undergroundCachedLocalPosition = nil
+undergroundCachedEnvironmentId = nil
+undergroundDesync = UndergroundRootDesync.new(root)
+local freshServerPose = undergroundServerCFrame(char, root)
+if freshServerPose ~= nil then
+    undergroundLastServerCFrame = freshServerPose
+    undergroundDesync:SetServerCFrame(freshServerPose)
+end
+return true
 end
 undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame, weaponKind)
 if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
@@ -71131,6 +71417,34 @@ local function ragebotTrySetInstanceProperty(instance, property, value)
     return false, tostring(lastError)
 end
 
+local function ragebotUndergroundHandoffIsPending(owner)
+    if type(owner) ~= "table" or owner._undergroundHandoffPending ~= true then
+        return false
+    end
+    local controller = rawget(_G, "__CrefyUndergroundController")
+    if type(controller) ~= "table" then
+        owner._undergroundHandoffPending = false
+        return false
+    end
+    local transitionOk, transitionResult = false, nil
+    local transition = rawget(controller, "SetRagebotIntegration")
+    if type(transition) == "function" then
+        transitionOk, transitionResult = pcall(transition, false)
+    end
+    local isIntegrated = rawget(controller, "IsRagebotIntegrated")
+    if type(isIntegrated) == "function" then
+        local checkOk, active = pcall(isIntegrated)
+        if checkOk and active ~= true then
+            owner._undergroundHandoffPending = false
+            return false
+        end
+    elseif transitionOk and transitionResult == true then
+        owner._undergroundHandoffPending = false
+        return false
+    end
+    return true
+end
+
 local function ragebotScheduleDestroyHeightRestoreRetry(owner)
     if type(owner) ~= "table" or owner._destroyHeightRestoreRetryScheduled == true then return end
     if type(task) ~= "table" or type(task.delay) ~= "function" then return end
@@ -71143,6 +71457,20 @@ local function ragebotScheduleDestroyHeightRestoreRetry(owner)
         end
         if owner._destroyHeightRestorePending ~= true or owner._enabled == true then
             owner._destroyHeightRestoreRetryScheduled = false
+            return
+        end
+        if ragebotUndergroundHandoffIsPending(owner) then
+            attempts = attempts + 1
+            if attempts >= 20 then
+                owner._destroyHeightRestoreRetryScheduled = false
+                if os.clock() >= (owner._nextDestroyHeightWarningAt or 0) then
+                    owner._nextDestroyHeightWarningAt = os.clock() + 5
+                    warn("[Ragebot] Underground hand-off is still pending; keeping FallenPartsDestroyHeight protection active until the hand-off completes.")
+                end
+                return
+            end
+            local scheduleOk = pcall(task.delay, 0.05, retry)
+            if not scheduleOk then owner._destroyHeightRestoreRetryScheduled = false end
             return
         end
         attempts = attempts + 1
@@ -71512,6 +71840,7 @@ if enabled then
         arg._enabled = true
         arg._destroyHeightOverrideActive = true
         arg._destroyHeightRestorePending = false
+        arg._undergroundHandoffPending = false
         ragebotPublishControlState(true)
     else
 
@@ -71543,6 +71872,27 @@ else
     -- Turning off Ragebot must release VoidSpam's independent roll/offset even
     -- when the planner stops before another _ApplyUndergroundOffset call.
     ragebotRequestVoidSpamTransformRestore()
+    -- Hand Underground back to its standalone controller BEFORE restoring the
+    -- game's FallenPartsDestroyHeight. Otherwise the server-position override
+    -- can be released while the character is still at Ragebot's hidden/deep pose,
+    -- allowing the void kill to win the race against Underground's next Heartbeat.
+    local undergroundHandoffPending = false
+    local undergroundController = rawget(_G, "__CrefyUndergroundController")
+    if type(undergroundController) == "table"
+        and type(undergroundController.SetRagebotIntegration) == "function" then
+        local transitionOk, transitionResult = pcall(undergroundController.SetRagebotIntegration, false)
+        local transitionError = not transitionOk and transitionResult or nil
+        undergroundHandoffPending = not transitionOk or transitionResult == false
+        if type(undergroundController.IsRagebotIntegrated) == "function" then
+            local checkOk, isStillIntegrated = pcall(undergroundController.IsRagebotIntegrated)
+            if checkOk and isStillIntegrated == true then undergroundHandoffPending = true end
+        end
+        if undergroundHandoffPending and os.clock() >= (arg._nextUndergroundHandoffWarningAt or 0) then
+            arg._nextUndergroundHandoffWarningAt = os.clock() + 5
+            warn("[Ragebot] Underground hand-off is pending; delaying FallenPartsDestroyHeight restore until the RootPart pose is safe. " .. tostring(transitionError or "restore gate/RootPart not ready"))
+        end
+    end
+    arg._undergroundHandoffPending = undergroundHandoffPending
     local keepRestoreTransaction = arg._repRootCounterRestorePending == true
     if keepRestoreTransaction then
         ragebotPoseRestoreGateSet(arg, true, nil, arg._repRootCounterRestoreCFrame, arg._repRootCounterRestoreRootPart)
@@ -71599,31 +71949,37 @@ else
     end
     local mustRestore = wasEnabled or overrideActive or restorePending
     if mustRestore then
-        local restoreOk, restoreError = ragebotTrySetInstanceProperty(
-            workspace,
-            "FallenPartsDestroyHeight",
-            fallenPartsDestroyHeight
-        )
-        if restoreOk then
-            arg._destroyHeightOverrideActive = false
-            arg._destroyHeightRestorePending = false
-            ragebotClearPersistedDestroyHeight()
-        else
-            arg._destroyHeightOverrideActive = overrideActive or wasEnabled
+        if ragebotUndergroundHandoffIsPending(arg) then
+            -- Do not remove the void-death protection while Underground still
+            -- owns no verified client pose; a hidden RootPart could die before
+            -- the next controller update gets a chance to finish the hand-off.
+            arg._destroyHeightOverrideActive = true
             arg._destroyHeightRestorePending = true
             ragebotScheduleDestroyHeightRestoreRetry(arg)
-            if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
-                arg._nextDestroyHeightWarningAt = os.clock() + 5
-                warn("[Ragebot] Failed to restore FallenPartsDestroyHeight; will retry during cleanup: " .. tostring(restoreError))
+        else
+            local restoreOk, restoreError = ragebotTrySetInstanceProperty(
+                workspace,
+                "FallenPartsDestroyHeight",
+                fallenPartsDestroyHeight
+            )
+            if restoreOk then
+                arg._destroyHeightOverrideActive = false
+                arg._destroyHeightRestorePending = false
+                arg._undergroundHandoffPending = false
+                ragebotClearPersistedDestroyHeight()
+            else
+                arg._destroyHeightOverrideActive = overrideActive or wasEnabled
+                arg._destroyHeightRestorePending = true
+                ragebotScheduleDestroyHeightRestoreRetry(arg)
+                if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
+                    arg._nextDestroyHeightWarningAt = os.clock() + 5
+                    warn("[Ragebot] Failed to restore FallenPartsDestroyHeight; will retry during cleanup: " .. tostring(restoreError))
+                end
             end
         end
     end
 
     ragebotSafeClearReloadTransport(arg)
-    local undergroundController = rawget(_G, "__CrefyUndergroundController")
-    if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
-        pcall(undergroundController.SetRagebotIntegration, false)
-    end
 end
 end
 
@@ -71846,18 +72202,23 @@ if arg._enabled ~= true and arg._destroyHeightRestorePending == true then
     local nowRestore = os.clock()
     if nowRestore >= (arg._nextDestroyHeightRestoreRetryAt or 0) then
         arg._nextDestroyHeightRestoreRetryAt = nowRestore + 1
-        local restored, restoreError = ragebotTrySetInstanceProperty(
-            workspace, "FallenPartsDestroyHeight", fallenPartsDestroyHeight
-        )
-        if restored then
-            arg._destroyHeightOverrideActive = false
-            arg._destroyHeightRestorePending = false
-            ragebotClearPersistedDestroyHeight()
-        else
+        if ragebotUndergroundHandoffIsPending(arg) then
             ragebotScheduleDestroyHeightRestoreRetry(arg)
-            if nowRestore >= (arg._nextDestroyHeightWarningAt or 0) then
-                arg._nextDestroyHeightWarningAt = nowRestore + 5
-                warn("[Ragebot] Deferred FallenPartsDestroyHeight restore still failing: " .. tostring(restoreError))
+        else
+            local restored, restoreError = ragebotTrySetInstanceProperty(
+                workspace, "FallenPartsDestroyHeight", fallenPartsDestroyHeight
+            )
+            if restored then
+                arg._destroyHeightOverrideActive = false
+                arg._destroyHeightRestorePending = false
+                arg._undergroundHandoffPending = false
+                ragebotClearPersistedDestroyHeight()
+            else
+                ragebotScheduleDestroyHeightRestoreRetry(arg)
+                if nowRestore >= (arg._nextDestroyHeightWarningAt or 0) then
+                    arg._nextDestroyHeightWarningAt = nowRestore + 5
+                    warn("[Ragebot] Deferred FallenPartsDestroyHeight restore still failing: " .. tostring(restoreError))
+                end
             end
         end
     end
@@ -71866,6 +72227,9 @@ ragebotPublishControlState(arg._enabled == true)
 local undergroundController = rawget(_G, "__CrefyUndergroundController")
 if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
 pcall(undergroundController.SetRagebotIntegration, arg._enabled == true and arg._innerContext ~= nil)
+end
+if arg._undergroundHandoffPending == true then
+    ragebotUndergroundHandoffIsPending(arg)
 end
 local updateGate = ragebotPoseRestoreGateRead()
 if ragebotPoseRestoreGateIsActive()
@@ -74487,7 +74851,49 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
         and restoreVerifiedAt == restoreVerifiedAt
         and restoreVerifiedAt ~= math.huge and restoreVerifiedAt ~= -math.huge
         and os.clock() < holdUntil
-    characterController:SetServerCFrame(useVerifiedCounterHold and holdCFrame or cFrame)
+    local heldServerCFrame = useVerifiedCounterHold and holdCFrame or cFrame
+    if not useVerifiedCounterHold then
+        -- HoldPosition must pause Evasion/Translocate, but it must not bypass the
+        -- independent Underground baseline. Apply only Underground's weapon-aware
+        -- adjustment here; do not call _ApplyUndergroundOffset because that also
+        -- advances VoidSpam Hide/roll transforms and can reposition during a hold.
+        local undergroundController = rawget(_G, "__CrefyUndergroundController")
+        if type(undergroundController) == "table"
+            and type(undergroundController.ApplyToRagebotCFrame) == "function" then
+            local holdWeaponKind = "Other"
+            if arg._knifeActionExpected == true or arg._knifeCameraLocked == true then
+                holdWeaponKind = "Knife"
+            else
+                local context = arg._innerContext
+                local behaviors = context ~= nil and context.ItemBehaviors or nil
+                if behaviors ~= nil then
+                    local okMelee, melee = pcall(function() return behaviors:EquippedItemAsMelee() end)
+                    if okMelee and melee ~= nil then
+                        local okName, meleeName = pcall(function() return melee.Name end)
+                        if okName and type(meleeName) == "string" then
+                            holdWeaponKind = meleeName == "Knife" and "Knife" or "Melee"
+                        end
+                    else
+                        local okGun, gun = pcall(function() return behaviors:EquippedItemAsGun() end)
+                        if okGun and gun ~= nil then holdWeaponKind = "Gun" end
+                    end
+                end
+            end
+            local clientCFrame = nil
+            local clientOk, clientResult = pcall(function() return characterController:GetClientCFrame() end)
+            if clientOk and typeof(clientResult) == "CFrame" then clientCFrame = clientResult end
+            local adjustOk, adjusted = pcall(
+                undergroundController.ApplyToRagebotCFrame,
+                heldServerCFrame,
+                clientCFrame,
+                holdWeaponKind
+            )
+            if adjustOk and typeof(adjusted) == "CFrame" then
+                heldServerCFrame = adjusted
+            end
+        end
+    end
+    characterController:SetServerCFrame(heldServerCFrame)
     if arg._knifeExternalRiotCamera ~= true then
         local viewAngleSlot = (arg._knifeCameraLocked == true or arg._knifeActionExpected == true) and 20 or v86[9]
         local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
