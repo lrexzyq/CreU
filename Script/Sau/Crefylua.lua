@@ -11,10 +11,6 @@ print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId
 local K: { [string]: any } = { connections = {}, cleanups = {}, destroyed = false }
 getgenv().KiciaRebuild = K
 
--- The teleport loader holds its duplicate guard until this execution either
--- completes bootstrap or reports a bounded failure. The key is per queued
--- generation and destination place, so repeated queue entries cannot unload a
--- still-starting Crefy instance.
 local function markCrefyQueuedRerunBootState(success)
     local env = _G
     pcall(function()
@@ -39,9 +35,6 @@ local function markCrefyQueuedRerunBootState(success)
 end
 local RAGEBOT_LOCAL_PENDING_GLUE_TARGETS = setmetatable({}, { __mode = "k" })
 
--- Recover persisted mutations before any later module can abort initialization.
--- This is deliberately independent of the Ragebot controller so an early load
--- failure cannot leave Workspace or a target hitbox in a modified state.
 local function startupRecoverPersistedMutations()
     local storage = _G
     if type(getgenv) == "function" then
@@ -83,8 +76,7 @@ local function startupRecoverPersistedMutations()
     local queue = type(primaryQueue) == "table" and primaryQueue
         or (type(fallbackQueue) == "table" and fallbackQueue or nil)
     if type(queue) == "table" and type(fallbackQueue) == "table" and fallbackQueue ~= queue then
-        -- Older executions may have written the two environments separately.
-        -- Merge missing target snapshots before synchronizing the table references.
+
         for target, info in pairs(fallbackQueue) do
             if queue[target] == nil then queue[target] = info end
         end
@@ -138,8 +130,6 @@ local function startupRecoverPersistedMutations()
     if storage ~= _G then pcall(rawset, _G, queueKey, queue) end
     end
 
-    -- Recover persisted PhysicsRepRootRef mutations during bootstrap, without
-    -- depending on the later PartGlue module being initialized successfully.
     local sourceQueueKey = "__CrefyPendingPhysicsRepRootRefRestores"
     local primarySourceQueue = rawget(storage, sourceQueueKey)
     local fallbackSourceQueue = rawget(_G, sourceQueueKey)
@@ -215,12 +205,12 @@ local function startupRecoverPersistedMutations()
                     if parentOk and parent == nil then
                         sourceQueue[sourcePart] = nil
                     elseif info.OriginalReferenceKnown ~= true then
-                        -- Never guess the original hidden value when no valid snapshot exists.
+                         
                         stillPending = true
                     else
                         local readOk, currentReference = startupReadSourceReference(sourcePart)
                         if not readOk then
-                            -- Unknown ownership is not permission to overwrite a live value.
+                             
                             stillPending = true
                         else
                             local knownPendingTargetReference = info.PendingRollbackTargetReferenceKnown == true
@@ -228,8 +218,7 @@ local function startupRecoverPersistedMutations()
                             local matchesTrackedTransaction = currentReference == info.InstalledReference
                                 or knownPendingTargetReference
                             if not matchesTrackedTransaction then
-                                -- The value no longer matches any value recorded by this transaction;
-                                -- preserve another owner's value and retire only this stale snapshot.
+
                                 if sourceQueue[sourcePart] == info then sourceQueue[sourcePart] = nil end
                             else
                             local restored = false
@@ -248,7 +237,7 @@ local function startupRecoverPersistedMutations()
                             else
                                 stillPending = true
                             end
-                            end -- matchesTrackedTransaction
+                            end  
                         end
                     end
                 end
@@ -298,8 +287,6 @@ local function fakePositionFiniteNumber(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
--- One short-lived gate coordinates the Ragebot restore with independent movement
--- controllers. While active, those controllers must not overwrite the restore pose.
 local RAGEBOT_POSE_RESTORE_GATE_KEY = "__CrefyRagebotPoseRestoreGate"
 local function ragebotPoseRestoreGateStorage()
     if type(getgenv) == "function" then
@@ -390,10 +377,6 @@ local function ragebotPoseRestoreGateZeroMotion(rootPart, owner)
     return ok and zeroed == true
 end
 
--- Observe the combat RootPart (not HitboxHead, which PartGlue intentionally
--- moves during a shot) to detect replicated FakePosition oscillation.
--- This cannot reveal a position hidden entirely on another client's machine;
--- it only detects discontinuities visible in the replicated combat root.
 local function ragebotObserveFakePosition(rootPart, now)
     if rootPart == nil or not fakePositionFiniteNumber(now) then
         return false, false
@@ -428,9 +411,7 @@ local function ragebotObserveFakePosition(rootPart, now)
     end
 
     local dt = now - (tonumber(track.lastAt) or now)
-    -- The same combat root is observed by the controller and by both weapon
-    -- planners. Do not count two reads from the same frame as separate motion
-    -- samples; that can manufacture a FakePosition oscillation from one update.
+
     if dt >= 0 and dt < (1 / 120) then
         local lastDesyncAt = tonumber(track.lastDesyncAt) or -math.huge
         local sinceDesync = now - lastDesyncAt
@@ -461,19 +442,14 @@ local function ragebotObserveFakePosition(rootPart, now)
             end
             if track.lastVerticalSign ~= 0 and sign ~= track.lastVerticalSign then
                 track.flipCount = (tonumber(track.flipCount) or 0) + 1
-                -- Two sign changes can occur during an ordinary jump/landing.
-                -- Require a longer, sustained alternating sequence before treating
-                -- vertical motion alone as FakePosition oscillation.
-                -- Fix: 2 flips (not 3) là đủ để detect FakePosition oscillation
-                -- 3 quá conservative, hooker dừng oscillate trước khi switch Knife
+
                 if track.flipCount >= 2 and now - (tonumber(track.flipWindowStartedAt) or now) <= 0.65 then
                     detected = true
                 end
             end
             track.lastVerticalSign = sign
         else
-            -- A sample that does not match the narrow vertical-oscillation shape
-            -- breaks the sequence; intermediate deltas must not keep old flips alive.
+
             track.flipCount = 0
             track.lastVerticalSign = 0
             track.flipWindowStartedAt = now
@@ -489,16 +465,11 @@ local function ragebotObserveFakePosition(rootPart, now)
     if detected then track.lastDesyncAt = now end
     local lastDesyncAt = tonumber(track.lastDesyncAt) or -math.huge
     local recentlyDetected = now - lastDesyncAt <= 0.25
-    -- Keep a longer, weapon-gated threat memory. A counter script may stop
-    -- oscillating immediately before switching to Knife; the ordinary short
-    -- signal window alone can expire before that transition is visible.
+
     local recentKnifeThreat = now - lastDesyncAt <= 1.0
     return recentlyDetected, detected, recentKnifeThreat
 end
 
--- Detect Pure TP primarily from an abrupt replicated relative-position discontinuity
--- into the close-combat envelope. Overhead height and near-90-degree body tilt are
--- supporting evidence only; the detector never reads another client's hidden properties.
 local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     if targetRoot == nil or localRoot == nil or not fakePositionFiniteNumber(now) then
         return false
@@ -549,13 +520,11 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     local relativeDistance = relativeOffset.Magnitude
     local overhead = horizontalOffset <= 4.25 and verticalOffset >= 2.35 and verticalOffset <= 5.65
     local tilted = math.abs(upY) <= 0.48
-    -- Height and 90-degree body rotation are corroborating signs only. They are
-    -- deliberately not prerequisites for the primary, movement-based Pure TP test.
+
     local supportingSignature = overhead and tilted
 
     local track = RAGEBOT_PURE_TP_TRACKS[targetRoot]
-    -- A target root can survive while the local character respawns/rebinds. Never
-    -- compare against a head position sampled from a different local RootPart.
+
     if type(track) ~= "table" or track.localRoot ~= localRoot then
         RAGEBOT_PURE_TP_TRACKS[targetRoot] = {
             localRoot = localRoot,
@@ -574,8 +543,7 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
 
     local priorAt = tonumber(track.lastAt) or now
     local dt = now - priorAt
-    -- A duplicate/non-monotonic timestamp is not a new sample. Do not clear
-    -- triggeredWhileNear or reset the supporting window on a duplicate read.
+
     if dt <= 0 then return false end
     if dt > 0.45 then
         track.localRoot = localRoot
@@ -590,10 +558,6 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
         return false
     end
 
-    -- Relative movement includes motion from both characters. If our own RootPart
-    -- was teleported/dash-corrected, the target can appear to snap into the attack
-    -- envelope even while its replicated RootPart barely moved. Compare each side
-    -- independently before classifying the relative displacement as an enemy Pure TP.
     local priorTargetPosition = track.lastTargetPosition
     local priorLocalHeadPosition = track.lastLocalHeadPosition
     local targetDelta = typeof(priorTargetPosition) == "Vector3"
@@ -620,17 +584,14 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     if dt > 0 and dt <= 0.45 and targetVelocityValid then
         local targetDeltaMagnitude = targetDelta.Magnitude
         local targetResidual = (targetDelta - targetVelocity * dt).Magnitude
-        -- A longer sample window has more legitimate acceleration error. Require
-        -- a larger independent displacement before letting it override evidence
-        -- that the local character itself jumped/teleported between samples.
+
         local targetSnapDistance = dt <= 0.25 and 3.25 or 8.0
         local targetSnapResidual = dt <= 0.25 and 2.5 or 5.0
         targetIndependentSnap = targetDeltaMagnitude >= targetSnapDistance
             and fakePositionFiniteNumber(targetResidual) and targetResidual >= targetSnapResidual
     end
     if localMotionDiscontinuity and not targetIndependentSnap then
-        -- Re-baseline all positions together. Do not let the same local movement
-        -- trigger again through another observer call in the same controller tick.
+
         track.localRoot = localRoot
         track.lastTargetPosition = targetPosition
         track.lastLocalHeadPosition = localHeadPosition
@@ -652,9 +613,6 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
         or (math.abs(relativeDelta.Y) >= 2.25 and horizontalDelta <= 3.25)
     )
 
-    -- Where replicated velocities are trustworthy, compare observed relative
-    -- motion with the displacement those velocities predict. A TP creates a large
-    -- residual even when the target never rotates or is not exactly 3-4 studs high.
     local velocityResidualMagnitude = nil
     if typeof(targetVelocity) == "Vector3" and typeof(localVelocity) == "Vector3"
         and fakePositionFiniteNumber(targetVelocity.X) and fakePositionFiniteNumber(targetVelocity.Y)
@@ -695,13 +653,10 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     local stableSupportingSignature = supportingSignature and signatureSince ~= nil
         and now - signatureSince >= 0.055
     local supportingTP = supportingSignature and (tiltTransition or stableSupportingSignature)
-    -- The overhead/tilt signature can corroborate an abrupt motion, but standing
-    -- in that pose alone is not evidence of a teleport. Keep movement as mandatory.
+
     local movementBackedTP = rapidTPIntoCombat
         or (attackEnvelope and abruptRelativeMove and supportingTP)
-    -- Fix: reset triggeredWhileNear sớm hơn (6 studs thay vì 11)
-    -- Hooker có thể backstab nhiều lần liên tiếp trong combat range <11 studs
-    -- nếu không reset thì chỉ detect attack đầu tiên
+
     if relativeDistance > 6.0 then track.triggeredWhileNear = false end
     local canTriggerNear = track.triggeredWhileNear ~= true
     local detected = canTriggerNear and movementBackedTP
@@ -720,26 +675,16 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     return detected
 end
 
--- PhysicsRepRootRef is hidden and cannot reliably identify a remote user's client state.
--- This observer detects only visible, replicated effects; it must also avoid parts that
--- this script itself currently owns through PartGlue.
 local RAGEBOT_REP_ROOT_CONTACT_TRACKS = setmetatable({}, { __mode = "k" })
 
--- ============================================================
--- Knife Cooldown Tracker
--- Mục tiêu: tự học cooldown của từng hooker target dựa trên
--- khoảng thời gian giữa các lần hitboxDiscontinuity / anomalyProximity
--- Hooker default: _attackCooldown = 1.25s, _hitboxWindowUntil = 0.625s
--- Nhưng variant có thể spam liên tục hoặc dùng 1.35s
--- ============================================================
 local RAGEBOT_KNIFE_COOLDOWN_TRACKS = setmetatable({}, { __mode = "k" })
-local KNIFE_COOLDOWN_SAMPLES_MAX    = 6     -- giữ tối đa 6 mẫu gần nhất
-local KNIFE_COOLDOWN_DEFAULT        = 1.25  -- hooker default
-local KNIFE_COOLDOWN_MIN_PLAUSIBLE  = 0.18  -- spam variant tối thiểu
-local KNIFE_COOLDOWN_MAX_PLAUSIBLE  = 2.6   -- slow variant tối đa
--- Cửa sổ "sắp attack" trước thời điểm dự đoán
+local KNIFE_COOLDOWN_SAMPLES_MAX    = 6      
+local KNIFE_COOLDOWN_DEFAULT        = 1.25   
+local KNIFE_COOLDOWN_MIN_PLAUSIBLE  = 0.18   
+local KNIFE_COOLDOWN_MAX_PLAUSIBLE  = 2.6    
+ 
 local KNIFE_PREEMPT_LEAD            = 0.30
--- Cho phép trượt ±150ms so với thời điểm dự đoán
+ 
 local KNIFE_PREEMPT_SLACK           = 0.15
 
 local function ragebotKnifeCooldownTrack(targetRoot)
@@ -756,8 +701,6 @@ local function ragebotKnifeCooldownTrack(targetRoot)
     return t
 end
 
--- Ghi nhận một attack event (hitboxDiscontinuity hoặc anomalous proximity onset).
--- Cập nhật estimatedCooldown bằng median của các khoảng cách gần nhất.
 local function ragebotRecordKnifeAttack(targetRoot, now)
     if targetRoot == nil then return end
     local t = ragebotKnifeCooldownTrack(targetRoot)
@@ -776,11 +719,11 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
                 local med = sorted[math.ceil(#sorted / 2)]
                 t.estimatedCooldown = math.clamp(med,
                     KNIFE_COOLDOWN_MIN_PLAUSIBLE, KNIFE_COOLDOWN_MAX_PLAUSIBLE)
-                -- Ước tính hitboxWindow ≈ cooldown/2 (theo cấu trúc hooker)
+                 
                 t.hitboxWindowEst = t.estimatedCooldown * 0.5
             end
         elseif iv < KNIFE_COOLDOWN_MIN_PLAUSIBLE then
-            -- spam variant: cực ngắn, override về min
+             
             t.estimatedCooldown = KNIFE_COOLDOWN_MIN_PLAUSIBLE
             t.hitboxWindowEst   = KNIFE_COOLDOWN_MIN_PLAUSIBLE * 0.5
         end
@@ -788,8 +731,6 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
     t.lastAttackAt = now
 end
 
--- Trả về: predictedImminent (bool), estimatedCooldown, timeUntilNext
--- predictedImminent = true nếu predicted next attack đang trong cửa sổ [now, now+LEAD]
 local function ragebotKnifePredictImminent(targetRoot, now)
     local t = RAGEBOT_KNIFE_COOLDOWN_TRACKS[targetRoot]
     if type(t) ~= "table" then return false, KNIFE_COOLDOWN_DEFAULT, math.huge end
@@ -798,16 +739,14 @@ local function ragebotKnifePredictImminent(targetRoot, now)
     local cd   = tonumber(t.estimatedCooldown) or KNIFE_COOLDOWN_DEFAULT
     local since = now - last
     local timeUntil = cd - since
-    -- Cửa sổ dự đoán: từ LEAD giây trước đến SLACK giây sau thời điểm dự đoán
+     
     local imminent = timeUntil >= -KNIFE_PREEMPT_SLACK
         and timeUntil <= KNIFE_PREEMPT_LEAD
     return imminent, cd, timeUntil
 end
--- ============================================================
 
 local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
-    -- A target with an unresolved local restore snapshot must never be attributed
-    -- to the remote client, even if the owning strategy was replaced on reload.
+
     if targetHitbox ~= nil and RAGEBOT_LOCAL_PENDING_GLUE_TARGETS[targetHitbox] == true then
         return true
     end
@@ -818,7 +757,7 @@ local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
             local strategy = controller[strategyName]
             local partGlue = type(strategy) == "table" and strategy._partGlue or nil
             local glueInfo = type(partGlue) == "table" and partGlue._glueInfoByTargetPart or nil
-            -- Includes RestorePending records: never treat our own unresolved mutation as a remote signal.
+             
             if type(glueInfo) == "table" and glueInfo[targetHitbox] ~= nil then
                 return true
             end
@@ -829,8 +768,7 @@ local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
 end
 
 local function ragebotIsHookerAnchorPosition(position)
-    -- Matches the anchor range created by the included Hooker-like PartGlue code,
-    -- with a small tolerance instead of the previous very broad high-Y signature.
+
     return typeof(position) == "Vector3"
         and position.Y >= 99000 and position.Y <= 101000
         and position.X >= -101000 and position.X <= -9000
@@ -882,8 +820,7 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     local priorAt = type(track) == "table" and tonumber(track.lastAt) or nil
     local staleTrack = priorAt == nil or not fakePositionFiniteNumber(priorAt)
         or now < priorAt or now - priorAt > 1.0
-    -- Distance history is relative to the local character. Reset when its RootPart
-    -- changes so a respawn cannot look like a target snapped into the old position.
+
     if type(track) ~= "table" or track.hitbox ~= targetHitbox
         or track.localRoot ~= localRoot or staleTrack then
         local glueLikeNow = hitboxRootOffset >= 1000 or ragebotIsHookerAnchorPosition(hitboxPosition)
@@ -898,12 +835,11 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
             glueLikeSince = glueLikeNow and now or nil,
             persistentTriggerConsumed = false,
             lastTriggerAt = -math.huge,
-            -- [NEW] Anomalous proximity: hitbox gần victim nhưng root xa
-            -- Dùng để detect lần 2+ khi hitbox đã ở near-victim và KHÔNG trả về anchor
+
             anomalousSince = nil,
             anomalousTriggerConsumed = false,
         }
-        -- Require a follow-up sample; a single stale/static position is not enough.
+         
         return false
     end
 
@@ -931,31 +867,19 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     local hitboxDiscontinuity = dt > 0 and dt <= 0.35
         and fakePositionFiniteNumber(hitboxDelta) and hitboxDelta >= 500
         and fakePositionFiniteNumber(rootDelta) and rootDelta <= 24
-    -- Treat root-only close snaps as a weak fallback: require an extreme,
-    -- very rapid approach so ordinary dashes/knockback are less likely to trigger.
+
     local snappedIntoBody = dt > 0 and dt <= 0.12
         and fakePositionFiniteNumber(rootDelta) and rootDelta >= 18
         and priorDistance >= 12 and distanceToLocal <= 2
         and priorDistance - distanceToLocal >= 10
 
-    -- ── [NEW] Anomalous Proximity ────────────────────────────────────────────
-    -- Phát hiện: enemy hitbox bám sát victim (≤8 studs) trong khi root xa (≥20)
-    -- Đây là signature của PhysicsRepRootRef đang active khi hooker đã Acquire
-    -- về near-victim và KHÔNG trả hitbox về anchor giữa các lần attack.
-    -- condition:
-    --   hitboxToLocal ≤ 8   → hitbox trong tầm knife của victim
-    --   rootToLocal   ≥ 20  → root (hooker char) đứng xa victim
-    --   hitboxRootOffset ≥ 15 → hitbox tách khỏi root rõ ràng (không phải bình thường)
     local hitboxToLocal = fakePositionFiniteNumber(hitboxPosition.X)
         and (hitboxPosition - localPosition).Magnitude or math.huge
-    -- Fix: dùng relative threshold thay vì absolute rootToLocal >= 20.
-    -- Với absolute threshold, hooker ở gần (15 studs) không bị detect vì rootToLocal < 20.
-    -- Relative check: root phải xa hơn hitbox ≥8 studs → phát hiện đúng khi hooker
-    -- glue hitbox về phía victim dù ở bất kỳ khoảng cách nào.
+
     local anomalousProximityNow = fakePositionFiniteNumber(hitboxToLocal)
-        and hitboxToLocal <= 6.0                           -- trong tầm knife
-        and distanceToLocal >= hitboxToLocal + 8.0         -- root xa hơn hitbox ≥8 studs
-        and hitboxRootOffset >= 12.0                       -- hitbox cách xa root ≥12 studs
+        and hitboxToLocal <= 6.0                            
+        and distanceToLocal >= hitboxToLocal + 8.0          
+        and hitboxRootOffset >= 12.0                        
 
     if anomalousProximityNow then
         if not fakePositionFiniteNumber(track.anomalousSince) then
@@ -972,20 +896,15 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
         and fakePositionFiniteNumber(anomalousSinceVal)
         and now - anomalousSinceVal >= 0.06
         and track.anomalousTriggerConsumed ~= true
-    -- ────────────────────────────────────────────────────────────────────────
 
     local lastTriggerAt = tonumber(track.lastTriggerAt) or -math.huge
-    -- Fix: cooldown 0.5s (thay vì 0.75) để catch lần attack kế nhanh hơn.
-    -- Counter window vẫn 0.75s; ready chỉ ảnh hưởng đến việc re-detect.
+
     local ready = now - lastTriggerAt >= 0.50
 
-    -- Fix: reset persistentTriggerConsumed và anomalousTriggerConsumed
-    -- khi ready window đã qua để cho phép detect lại chu kỳ tấn công tiếp theo.
-    -- Nếu không reset thì lần 2+ không bao giờ fire persistentGlueLike/persistentAnomalous.
     if ready then
         if track.persistentTriggerConsumed == true and glueLikeNow then
             track.persistentTriggerConsumed = false
-            -- Restart persistent timer để fire sau 0.06s
+             
             if fakePositionFiniteNumber(track.glueLikeSince) then
                 track.glueLikeSince = now - 0.05
             end
@@ -1012,13 +931,11 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     if ready and detected then
         track.lastTriggerAt = now
         if glueLikeNow then track.persistentTriggerConsumed = true end
-        -- Lưu trạng thái TRƯỚC khi set consumed để check bên dưới chính xác
+         
         local anomalousFiringFirstTime = persistentAnomalousProximity
             and track.anomalousTriggerConsumed ~= true
         if anomalousProximityNow then track.anomalousTriggerConsumed = true end
-        -- Record attack vào cooldown tracker:
-        -- hitboxDiscontinuity = lần đầu (anchor→near-victim)
-        -- anomalousFiringFirstTime = lần 2+ (hitbox bám sát victim, lần đầu của mỗi chu kỳ)
+
         if hitboxDiscontinuity or anomalousFiringFirstTime then
             ragebotRecordKnifeAttack(targetRoot, now)
         end
@@ -1027,8 +944,6 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     return false
 end
 
--- Read the target's currently equipped melee item. nil means the item state was
--- unavailable; the counter must fail closed and preserve Translocate in that case.
 local function ragebotTargetKnifeState(target)
     if type(target) ~= "table" then return nil end
     local fighter = target.FighterState
@@ -1044,8 +959,6 @@ local function ragebotTargetKnifeState(target)
     return name == "Knife"
 end
 
--- Resolve a target wrapper against the current enemy roster. Wrappers returned by
--- GetTarget() are ephemeral tables, so fighter + alive-state identity is the stable key.
 local function ragebotResolveRepRootTarget(controller, target)
     if type(controller) ~= "table" or type(target) ~= "table" then return false end
     local fighter = target.FighterState
@@ -1098,7 +1011,7 @@ local function ragebotResolveRepRootTarget(controller, target)
         local okMelee, melee = pcall(function()
             return itemObserver:EquippedItemAsMelee()
         end)
-        -- The candidate is not attackable until the melee/deflect state is readable.
+         
         if not okMelee then return nil, nil, nil end
         if melee ~= nil then
             local okDeflecting, isDeflecting = pcall(function()
@@ -1116,8 +1029,7 @@ local function ragebotResolveRepRootTarget(controller, target)
 end
 
 local function ragebotFindRepRootContactTarget(controller, localRoot, now)
-    -- Counter only considers observable anomalies within a bounded combat radius.
-    -- A distant player's movement must not pause this client's Translocate.
+
     local MAX_COUNTER_DISTANCE = 180
     local okRoster, enemyByPlayer = pcall(function()
         local selection = controller._targetSelection
@@ -1151,10 +1063,7 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
         if ragebotIsLocallyGluedTarget(controller, candidate.hitbox) then
             RAGEBOT_REP_ROOT_CONTACT_TRACKS[candidate.root] = nil
         else
-            -- Keep sampling while the attacker holds Knife. A pure-TP/oscillation
-            -- script may stop moving immediately before the weapon-state transition
-            -- becomes visible; the one-second memory is consumed once if it later
-            -- becomes safe to enter the bounded counter window.
+
             local recentlyDesynced, recentKnifeThreat = false, false
             local okMotion, recentValue, ignoredDetected, recentKnifeValue = pcall(ragebotObserveFakePosition, candidate.root, now)
             if okMotion then
@@ -1163,23 +1072,13 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
             end
 
             local knifeState = ragebotTargetKnifeState(candidate.target)
-            -- Pure-TP detection bị xóa theo yêu cầu
-            -- (gây false positive và không cần thiết khi RepRoot đã đủ mạnh)
 
-            -- RepRoot/PartGlue effects are observable signatures, not a direct read of
-            -- another client's hidden PhysicsRepRootRef. A confirmed anomaly also starts
-            -- the response independently of the attacker's currently equipped weapon.
             if ragebotObserveRepRootContact(candidate.root, candidate.hitbox, localRoot, now) then
-                -- Ghi nhận attack vào cooldown tracker khi RepRoot fires
+                 
                 ragebotRecordKnifeAttack(candidate.root, now)
                 return candidate.target, "rep-root-contact"
             end
 
-            -- [NEW] Knife Cooldown Prediction:
-            -- Nếu target đang cầm Knife và cooldown tracker dự đoán attack SẮP xảy ra,
-            -- pre-activate counter ngay bây giờ để ragebot đã ở vị trí counter trước khi attack.
-            -- Điều này đặc biệt quan trọng cho lần attack 2+ khi hitboxDiscontinuity không còn fire
-            -- (hitbox đã ở near-victim từ attack trước).
             local knifeState2 = ragebotTargetKnifeState(candidate.target)
             if knifeState2 == true then
                 local imminentAttack, cooldownEst, timeUntilNext =
@@ -1189,14 +1088,9 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
                 end
             end
 
-            -- FakePosition alone is a weaker signal than Pure TP/RepRoot. A large
-            -- displacement from a distant player (dash, knockback, or server correction)
-            -- must not redirect the local Ragebot; only consume it near combat range.
             local fakePositionCounterInRange = candidate.distance <= 36
             if knifeState == false and fakePositionCounterInRange then
-                -- Consume one FakePosition event exactly once; a remembered event
-                -- can survive a short Knife transition without repeatedly refreshing
-                -- the response window on every Heartbeat.
+
                 local fakeTrack = RAGEBOT_FAKE_POSITION_TRACKS[candidate.root]
                 local lastDesyncAt = type(fakeTrack) == "table" and tonumber(fakeTrack.lastDesyncAt) or -math.huge
                 local eventUnconsumed = type(fakeTrack) == "table"
@@ -1215,12 +1109,8 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
     return nil
 end
 
-
 local rawget, rawset = rawget, rawset
 
--- Delayed cleanup must not mutate instances after a newer script execution has
--- replaced this build. A missing global owner is treated as indeterminate so a
--- final unload cleanup can still finish; a different live owner cancels stale work.
 local function ragebotCleanupStillCurrentScript()
     if type(getgenv) == "function" then
         local envOk, env = pcall(getgenv)
@@ -1280,9 +1170,6 @@ K.hudParent = hudParent
 
 function K.track(c) K.connections[#K.connections + 1] = c; return c end
 function K.onUnload(f) K.cleanups[#K.cleanups + 1] = f end
-
-
-
 
 local Signal = {}
 Signal.__index = Signal
@@ -1380,9 +1267,6 @@ end
 Trove.Destroy = Trove.Clean
 K.Trove = Trove
 
-
-
-
 local C = {
     [3] = "Toggle", [9] = 20, [12] = 12, [18] = "0", [26] = 4, [34] = true, [44] = "Enabled",
     [45] = 90, [48] = 2, [53] = 20, [55] = "Mode", [56] = 2, [62] = 0.1, [63] = 1, [68] = "table",
@@ -1392,9 +1276,6 @@ local C = {
     [170] = 9, [173] = 0.88, [175] = 5, [186] = 0, [192] = 30, [195] = 0.7,
 }
 K.C = C
-
-
-
 
 local v86 = {
     [2] = "ReactiveStore",
@@ -1586,12 +1467,8 @@ local v86 = {
     [200] = 26,
 }
 
-
 local tbl17: { [string]: any } = { cache = {} }
 local v102, v103, v107 = rawget, rawset, pcall
-
-
-
 
 local n25, n26 = 3870, 4800
 local flag2, flag3 = true, true
@@ -1627,7 +1504,6 @@ local _rawNewIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, 
 local _rawIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, "__index") or nil
 local v112 = type(_rawNewIndex) == "function" and clonefn(_rawNewIndex) or nil
 if type(v112) ~= "function" then
-
 
     v112 = function(instance, property, value)
         local directOk, directError = pcall(function()
@@ -1668,11 +1544,7 @@ if InstanceHandle == nil then
 end
 if InstanceHandle == nil then InstanceHandle = { new = function(x) return x end } end
 
-
-
-
 tbl17.k = function() return { new = function(name) return Trove.new(name) end } end
-
 
 do
     local UIS = UserInputService
@@ -1791,8 +1663,6 @@ do
     tbl17.w = function() return W end
 end
 
-
-
 do
     local P = {}
     function P.bind(trove, config, control, path, opts)
@@ -1817,7 +1687,6 @@ do
     end
     tbl17.P = function() return P end
 end
-
 
 do
     local Spring = {}
@@ -1903,12 +1772,7 @@ do
     tbl17.c5 = function() return Spring end
 end
 
-
-
 tbl17.ca = function() return nil end
-
-
-
 
 do
     local soft = "rbxasset://textures/particles/smoke_main.dds"
@@ -1953,8 +1817,6 @@ do
     }
     tbl17.hH = function() return W end
 end
-
-
 
 tbl17.iQ = function()
     return function(_, _, grid)
@@ -2037,8 +1899,6 @@ tbl17.iQ = function()
         side("Teammates", "Team", "right")
     end
 end
-
-
 
 tbl17.eZ = function()
     local Offline = {}
@@ -2573,7 +2433,6 @@ ForEachLeafValue = function(I,W,N)local P={};local function a(e,c)for E,p in e,n
 return tbl18
 end
 return nil
-
 
 end
 
@@ -7056,7 +6915,6 @@ if not (n26 >= 4814) then
 return
 end
 
-
 end)
 
 v118.connectDrag(trove, imageLabel2, fn39, fn38)
@@ -10374,7 +10232,6 @@ end
 return
 end
 
-
 end
 
 local function fn46(arg, parent, ctx)
@@ -11463,7 +11320,6 @@ rootFrame.LayoutOrder = layoutOrder
 rootFrame.Parent = parent
 return
 end
-
 
 end
 
@@ -16936,7 +16792,6 @@ arg._menu:Tween(indicator, { Position = udim2 })
 return
 end
 
-
 end
 
 return index2
@@ -17638,7 +17493,6 @@ local n34 = math.floor(v117.Y * n)
 return math.clamp(arg, v118, math.max(v118, n33)), math.clamp(arg2, v119, math.max(v119, n34))
 end
 return nil
-
 
 end,
 menuBounds = function(arg)
@@ -19143,207 +18997,12 @@ local function getEnvironmentValue(root, key)
     return nil
 end
 
-local function getPathValue(root, path)
-    if type(root) ~= "table" or type(path) ~= "table" then return nil end
-    local value = root
-    for _, key in ipairs(path) do
-        if type(value) ~= "table" then return nil end
-        value = rawget(value, key)
-    end
-    return value
-end
-
-local function setPathValue(root, path, wanted)
-    if type(root) ~= "table" or type(path) ~= "table" or #path == 0 then return false end
-    local node = root
-    for i = 1, #path - 1 do
-        local key = path[i]
-        local nextNode = rawget(node, key)
-        if type(nextNode) ~= "table" then
-            nextNode = {}
-            rawset(node, key, nextNode)
-        end
-        node = nextNode
-    end
-    rawset(node, path[#path], wanted)
-    return true
-end
-
-local function validUrl(value)
-    return type(value) == "string" and value:match("^https?://%S+$") ~= nil
-end
-
-local function tryReadableCrefyPath(path)
-    if type(path) ~= "string" or path == "" then return nil end
-    local env = getEnvironment()
-    local readFn = rawget(env, "readfile")
-    if type(readFn) ~= "function" then readFn = rawget(_G, "readfile") end
-    if type(readFn) ~= "function" then return nil end
-    local okRead, source = pcall(readFn, path)
-    if not okRead or type(source) ~= "string" or #source < 10000 then return nil end
-    if not source:find("Crefy Premium", 1, true) and not source:find("KiciaRebuild", 1, true) then
-        return nil
-    end
-    return path
-end
-
 local function resolveReloadSource()
-    local env = getEnvironment()
-    local urlKeys = { "CrefySourceUrl", "CrefyScriptUrl", "CrefyLoaderUrl", "__CrefySourceUrl", "CrevySourceUrl", "CrevyScriptUrl", "CrevyLoaderUrl", "__CrevySourceUrl" }
-    for _, key in ipairs(urlKeys) do
-        local value = getEnvironmentValue(env, key)
-        if not validUrl(value) then value = getEnvironmentValue(_G, key) end
-        if validUrl(value) then return value, nil end
-    end
-
-    local pathKeys = { "CrefySourcePath", "CrefyScriptPath", "CrefyFilePath", "__CrefySourcePath", "CrevySourcePath", "CrevyScriptPath", "CrevyFilePath", "__CrevySourcePath" }
-    for _, key in ipairs(pathKeys) do
-        local value = getEnvironmentValue(env, key)
-        if type(value) ~= "string" or value == "" then value = getEnvironmentValue(_G, key) end
-        if type(value) == "string" and value ~= "" then
-            -- An explicit path is user-supplied; retain it even if the executor
-            -- cannot read it until the next place has finished loading.
-            return nil, value
-        end
-    end
-
-    local sourceHint
-    pcall(function()
-        if type(debug) == "table" and type(debug.getinfo) == "function" then
-            local info = debug.getinfo(fn40, "S")
-            sourceHint = info and info.source or nil
-        end
-    end)
-    if type(sourceHint) == "string" then
-        local sourceUrlHint = sourceHint:match("(https?://[^%s\"']+)")
-        if validUrl(sourceUrlHint) then return sourceUrlHint, nil end
-        if sourceHint:sub(1, 1) == "@" then
-            local candidate = sourceHint:sub(2)
-            local readable = tryReadableCrefyPath(candidate)
-            if readable then return nil, readable end
-            local normalized = candidate:gsub("\\", "/")
-            if normalized ~= candidate then
-                readable = tryReadableCrefyPath(normalized)
-                if readable then return nil, readable end
-            end
-            -- debug source paths are more reliable than guessing a working
-            -- directory. Preserve a plausible Lua path for the post-teleport read.
-            if (candidate:lower():match("%.lua$") or candidate:lower():match("%.lua%.txt$")) then return nil, candidate end
-            if (normalized:lower():match("%.lua$") or normalized:lower():match("%.lua%.txt$")) then return nil, normalized end
-        elseif sourceHint:sub(1, 1) == "=" then
-            -- Some executors use "=url"; others expose a file-like source label.
-            local candidate = sourceHint:sub(2)
-            if validUrl(candidate) then return candidate, nil end
-            local readable = tryReadableCrefyPath(candidate)
-            if readable then return nil, readable end
-            local normalized = candidate:gsub("\\", "/")
-            if normalized ~= candidate then
-                readable = tryReadableCrefyPath(normalized)
-                if readable then return nil, readable end
-            end
-            if (candidate:lower():match("%.lua$") or candidate:lower():match("%.lua%.txt$")) then return nil, candidate end
-            if (normalized:lower():match("%.lua$") or normalized:lower():match("%.lua%.txt$")) then return nil, normalized end
-        end
-    end
-
-    local candidates = {
-        "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
-        "Crefylua.lua", "Crefylua.lua.txt", "Crefylua.txt",
-        "Crefylua_audited_fixed.lua", "Crefylua_audited_fixed_v2.lua", "Crefylua_audited_fixed_v2(1).lua",
-        "Crefylua_superdeep_audit.lua", "Crefylua_ragebot_underground_rerun_fixed.lua",
-        "scripts/Crefy.lua", "scripts/Crefy.lua.txt", "scripts/Crefy.txt",
-        "scripts/Crefylua.lua", "scripts/Crefylua.lua.txt", "scripts/Crefylua.txt",
-        "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
-        "workspace/Crefylua.lua", "workspace/Crefylua.lua.txt", "workspace/scripts/Crefylua.lua",
-        "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
-        "autoexec/Crefylua.lua", "autoexec/Crefylua.lua.txt",
-        "kiciarebuild/rivals/Crefy.lua", "kiciarebuild/rivals/Crefylua.lua",
-    }
-    for _, candidate in ipairs(candidates) do
-        local readable = tryReadableCrefyPath(candidate)
-        if readable then return nil, readable end
-    end
-
-    -- Search the executor's current file listing now, not only after teleport.
-    -- Embedding the resolved path into the queued payload avoids dependence on
-    -- the executor's default working directory in the destination place.
-    local listFn = getEnvironmentValue(env, "listfiles")
-    if type(listFn) ~= "function" then listFn = getEnvironmentValue(_G, "listfiles") end
-    if type(listFn) == "function" then
-        local folders = {
-            "", ".", "scripts", "workspace", "workspace/scripts", "autoexec",
-            "autoexec/scripts", "scripts/kiciarebuild", "kiciarebuild", "kiciarebuild/rivals",
-        }
-        for _, folder in ipairs(folders) do
-            local listOk, files = pcall(listFn, folder)
-            if listOk and type(files) == "table" then
-                for _, filePath in ipairs(files) do
-                    local normalized = tostring(filePath):lower():gsub("\\", "/")
-                    local basename = normalized:match("([^/]+)$") or normalized
-                    if basename:match("^crefy.*%.lua$")
-                        or basename:match("^crefy.*%.lua%.txt$")
-                        or basename:match("^crefy.*%.txt$") then
-                        local readable = tryReadableCrefyPath(tostring(filePath))
-                        if readable then return nil, readable end
-                    end
-                end
-            end
-        end
-    end
-    -- Some executors keep scripts several folders below their filesystem root.
-    -- Do a bounded recursive walk while the current executor session is still live.
-    if type(listFn) == "function" then
-        local pendingFolders = {
-            { Path = "", Depth = 0 }, { Path = ".", Depth = 0 },
-            { Path = "scripts", Depth = 0 }, { Path = "workspace", Depth = 0 },
-            { Path = "autoexec", Depth = 0 }, { Path = "autoexec/scripts", Depth = 0 },
-            { Path = "kiciarebuild", Depth = 0 },
-        }
-        local visitedFolders = {}
-        local scannedEntries = 0
-        local cursor = 1
-        while cursor <= #pendingFolders and scannedEntries < 2000 do
-            local folderInfo = pendingFolders[cursor]
-            cursor = cursor + 1
-            local folder = folderInfo.Path
-            local normalizedFolder = tostring(folder):lower():gsub("\\", "/")
-            if not visitedFolders[normalizedFolder] and folderInfo.Depth <= 4 then
-                visitedFolders[normalizedFolder] = true
-                local listOk, entries = pcall(listFn, folder)
-                if listOk and type(entries) == "table" then
-                    for _, entry in ipairs(entries) do
-                        scannedEntries = scannedEntries + 1
-                        local pathValue = tostring(entry)
-                        local lower = pathValue:lower():gsub("\\", "/")
-                        local basename = lower:match("([^/]+)$") or lower
-                        if basename:match("^crefy.*%.lua$")
-                            or basename:match("^crefy.*%.lua%.txt$")
-                            or basename:match("^crefy.*%.txt$") then
-                            local readable = tryReadableCrefyPath(pathValue)
-                            if readable then return nil, readable end
-                        elseif folderInfo.Depth < 4 and not basename:match("%.[%w]+$") then
-                            local nextFolder = pathValue
-                            local nextNormalized = nextFolder:lower():gsub("\\", "/")
-                            if not visitedFolders[nextNormalized] then
-                                pendingFolders[#pendingFolders + 1] = {
-                                    Path = nextFolder, Depth = folderInfo.Depth + 1
-                                }
-                            end
-                        end
-                        if scannedEntries >= 2000 then break end
-                    end
-                end
-            end
-        end
-    end
-    -- If no local source can be resolved now, the queued loader keeps a second
-    -- bounded discovery pass after teleport (some executors mount files late).
-    return nil, nil
+    return "https://raw.githubusercontent.com/lrexzyq/CreU/refs/heads/main/Script/Sau/Crefylua.lua"
 end
 
-local function makeQueuedLoader(sourceUrl, sourcePath, generation)
+local function makeQueuedLoader(sourceUrl, generation)
     local urlLiteral = string.format("%q", sourceUrl or "")
-    local pathLiteral = string.format("%q", sourcePath or "")
     local generationLiteral = string.format("%q", tostring(generation or ""))
     return [[
 local __env = _G
@@ -19377,8 +19036,7 @@ local function __getSetting(name)
 end
 if __getSetting("__CrefyAutoExecuteEnabled") == false then return end
 local __generation = ]] .. generationLiteral .. [[
-local __embeddedSourceUrl = ]] .. urlLiteral .. [[
-local __embeddedSourcePath = ]] .. pathLiteral .. [[
+local __url = ]] .. urlLiteral .. [[
 local __placeId = tostring(game.PlaceId)
 local __runKey = __generation .. ":" .. __placeId
 if __generation ~= "" then
@@ -19388,13 +19046,11 @@ end
 if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then return end
 if __getSetting("__CrefyAutoExecuteLastFailedRunKey") == __runKey then return end
 
--- If the general settings file is readable, it is authoritative. A malformed
--- or explicitly disabled setting must never execute a stale queued payload.
 local __readFile = __getFunction("readfile")
 local __stateFileReadable = false
 if type(__readFile) == "function" then
-    local __readOk, __stateText = pcall(__readFile, "kiciarebuild/rivals/general.json")
-    if __readOk and type(__stateText) == "string" then
+    local __stateOk, __stateText = pcall(__readFile, "kiciarebuild/rivals/general.json")
+    if __stateOk and type(__stateText) == "string" then
         __stateFileReadable = true
         local __decodeOk, __stateDoc = pcall(function()
             return game:GetService("HttpService"):JSONDecode(__stateText)
@@ -19414,43 +19070,24 @@ if type(__readFile) == "function" then
             warn("[Crefy] Re-run After Teleport cancelled: saved toggle value is invalid.")
             return
         end
-        -- Older Crefy builds stored this option only in the active Config path.
-        -- For a missing GeneralState field, require the live opt-in flag instead
-        -- of treating the legacy file as an explicit disable.
         if __savedToggle == nil and __getSetting("__CrefyAutoExecuteEnabled") ~= true then return end
     end
 end
--- Cho phép boot nếu user đã đặt CrefySourceUrl/Path rõ ràng,
--- kể cả khi settings file chưa đọc được (filesystem chưa mount sau teleport)
-local __hasExplicitSource =
-    (type(__embeddedSourceUrl) == "string" and __embeddedSourceUrl ~= "")
-    or (type(__embeddedSourcePath) == "string" and __embeddedSourcePath ~= "")
-    or (type(__getSetting("CrefySourceUrl")) == "string" and __getSetting("CrefySourceUrl") ~= "")
-    or (type(__getSetting("CrefySourcePath")) == "string" and __getSetting("CrefySourcePath") ~= "")
-    or (type(__getSetting("CrefyScriptUrl")) == "string" and __getSetting("CrefyScriptUrl") ~= "")
-    or (type(__getSetting("CrefyScriptPath")) == "string" and __getSetting("CrefyScriptPath") ~= "")
-    or (type(__getSetting("CrefyLoaderUrl")) == "string" and __getSetting("CrefyLoaderUrl") ~= "")
-    or (type(__getSetting("__CrefySourceUrl")) == "string" and __getSetting("__CrefySourceUrl") ~= "")
-    or (type(__getSetting("__CrefySourcePath")) == "string" and __getSetting("__CrefySourcePath") ~= "")
-    or (type(__getSetting("CrevySourceUrl")) == "string" and __getSetting("CrevySourceUrl") ~= "")
-    or (type(__getSetting("CrevySourcePath")) == "string" and __getSetting("CrevySourcePath") ~= "")
-    or (type(__getSetting("CrevyScriptUrl")) == "string" and __getSetting("CrevyScriptUrl") ~= "")
-    or (type(__getSetting("CrevyScriptPath")) == "string" and __getSetting("CrevyScriptPath") ~= "")
-    or (type(__getSetting("CrevyLoaderUrl")) == "string" and __getSetting("CrevyLoaderUrl") ~= "")
-    or (type(__getSetting("__CrevySourceUrl")) == "string" and __getSetting("__CrevySourceUrl") ~= "")
-    or (type(__getSetting("__CrevySourcePath")) == "string" and __getSetting("__CrevySourcePath") ~= "")
-    or (type(__getSetting("CrevyFilePath")) == "string" and __getSetting("CrevyFilePath") ~= "")
-local __canAutoDiscoverSource = type(__readFile) == "function"
-if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true
-    and not __hasExplicitSource and not __canAutoDiscoverSource then
-    -- Without a readable persisted opt-in or explicit source, require runtime opt-in.
+if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true then
+    warn("[Crefy] Re-run After Teleport cancelled: saved settings are unavailable and runtime opt-in is missing.")
     return
+end
+if type(__url) ~= "string" or not __url:match("^https?://%S+$") then
+    warn("[Crefy] Re-run After Teleport stopped: the configured source URL is invalid.")
+    return
+end
+for _, __key in ipairs({ "CrefySourceUrl", "CrefyScriptUrl", "CrevySourceUrl", "CrevyScriptUrl" }) do
+    pcall(rawset, __env, __key, __url)
+    pcall(rawset, _G, __key, __url)
 end
 
 local __existingFlight = __getSetting("__CrefyQueuedRerunInFlight")
 if __existingFlight ~= nil and __existingFlight ~= false then return end
--- Use a unique lock token as well as a stable run key: an old timeout callback
--- must never clear a newer retry for the same generation/place pair.
 local __lockToken = __runKey .. ":" .. tostring({})
 rawset(__env, "__CrefyQueuedRerunInFlight", __lockToken)
 rawset(_G, "__CrefyQueuedRerunInFlight", __lockToken)
@@ -19490,122 +19127,14 @@ local function __isCrefySource(value)
         and (value:find("Crefy Premium", 1, true) ~= nil
             or value:find("KiciaRebuild", 1, true) ~= nil)
 end
-local function __read(path)
-    if type(path) ~= "string" or path == "" or type(__readFile) ~= "function" then return nil end
-    local ok, value = pcall(__readFile, path)
-    if ok and __isCrefySource(value) then return value end
-    return nil
-end
 local function __runQueuedSource()
-    local __url = __embeddedSourceUrl
-    local __path = __embeddedSourcePath
-    local __envUrl = __getSetting("CrefySourceUrl") or __getSetting("CrefyScriptUrl") or __getSetting("CrevySourceUrl") or __getSetting("CrevyScriptUrl") or __getSetting("CrevyLoaderUrl") or __getSetting("__CrevySourceUrl")
-    if type(__envUrl) == "string" and __envUrl:match("^https?://%S+$") then __url = __envUrl end
-    local __envPath = __getSetting("CrefySourcePath") or __getSetting("CrefyScriptPath") or __getSetting("CrefyFilePath") or __getSetting("CrevySourcePath") or __getSetting("CrevyScriptPath") or __getSetting("CrevyFilePath") or __getSetting("__CrevySourcePath")
-    if type(__envPath) == "string" and __envPath ~= "" then __path = __envPath end
-
-    local __source
-    if type(__url) == "string" and __url:match("^https?://%S+$") then
-        local __httpOk, __value = pcall(function() return game:HttpGet(__url) end)
-        if __httpOk and __isCrefySource(__value) then
-            __source = __value
-        elseif __httpOk and type(__value) == "string" and #__value > 0 then
-            warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy; trying file paths.")
-        end
+    local __httpOk, __source = pcall(function() return game:HttpGet(__url) end)
+    if not __httpOk then
+        warn("[Crefy] Re-run After Teleport could not download the configured source URL: " .. tostring(__source))
+        return false
     end
-    if not __source then __source = __read(__path) end
-    local function __discoverLocalSource()
-        local __found = __read(__path)
-        if __found then return __found end
-        local __candidates = {
-            "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
-            "Crefylua.lua", "Crefylua.lua.txt", "Crefylua.txt",
-            "Crefylua_audited_fixed.lua", "Crefylua_audited_fixed_v2.lua", "Crefylua_audited_fixed_v2(1).lua",
-            "Crefylua_superdeep_audit.lua", "Crefylua_ragebot_underground_rerun_fixed.lua",
-            "scripts/Crefy.lua", "scripts/Crefy.lua.txt", "scripts/Crefy.txt",
-            "scripts/Crefylua.lua", "scripts/Crefylua.lua.txt", "scripts/Crefylua.txt",
-            "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
-            "workspace/Crefylua.lua", "workspace/Crefylua.lua.txt", "workspace/scripts/Crefylua.lua",
-            "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
-            "autoexec/Crefylua.lua", "autoexec/Crefylua.lua.txt",
-            "kiciarebuild/rivals/Crefy.lua", "kiciarebuild/rivals/Crefylua.lua",
-        }
-        for _, __candidatePath in ipairs(__candidates) do
-            __found = __read(__candidatePath)
-            if __found then return __found end
-        end
-
-        local __listFiles = __getFunction("listfiles")
-        if type(__listFiles) ~= "function" then return nil end
-        local __pendingFolders = {
-            { Path = "", Depth = 0 }, { Path = ".", Depth = 0 },
-            { Path = "scripts", Depth = 0 }, { Path = "workspace", Depth = 0 },
-            { Path = "workspace/scripts", Depth = 0 }, { Path = "autoexec", Depth = 0 },
-            { Path = "autoexec/scripts", Depth = 0 }, { Path = "scripts/kiciarebuild", Depth = 0 },
-            { Path = "kiciarebuild", Depth = 0 }, { Path = "kiciarebuild/rivals", Depth = 0 },
-        }
-        local __visitedFolders = {}
-        local __scannedEntries = 0
-        local __cursor = 1
-        while __cursor <= #__pendingFolders and __scannedEntries < 2000 and not __found do
-            local __folderInfo = __pendingFolders[__cursor]
-            __cursor = __cursor + 1
-            local __folder = __folderInfo.Path
-            local __normalizedFolder = tostring(__folder):lower():gsub("\\", "/")
-            if not __visitedFolders[__normalizedFolder] and __folderInfo.Depth <= 4 then
-                __visitedFolders[__normalizedFolder] = true
-                local __listOk, __entries = pcall(__listFiles, __folder)
-                if __listOk and type(__entries) == "table" then
-                    for _, __entry in ipairs(__entries) do
-                        __scannedEntries = __scannedEntries + 1
-                        local __pathValue = tostring(__entry)
-                        local __lower = __pathValue:lower():gsub("\\", "/")
-                        local __basename = __lower:match("([^/]+)$") or __lower
-                        if __basename:match("^crefy.*%.lua$")
-                            or __basename:match("^crefy.*%.lua%.txt$")
-                            or __basename:match("^crefy.*%.txt$") then
-                            __found = __read(__pathValue)
-                            if __found then break end
-                        elseif __folderInfo.Depth < 4 and not __basename:match("%.[%w]+$") then
-                            local __nextNormalized = __pathValue:lower():gsub("\\", "/")
-                            if not __visitedFolders[__nextNormalized] then
-                                __pendingFolders[#__pendingFolders + 1] = {
-                                    Path = __pathValue, Depth = __folderInfo.Depth + 1
-                                }
-                            end
-                        end
-                        if __scannedEntries >= 2000 then break end
-                    end
-                end
-            end
-        end
-        return __found
-    end
-
-    -- Some executors mount their filesystem a little after the queued payload
-    -- starts. Keep searching for a bounded window instead of permanently marking
-    -- this destination as failed after one early readfile/listfiles miss.
-    local __sourceSearchDeadline = os.clock() + 30
-    local __nextFullScanAt = 0
-    repeat
-        if not __source then
-            local __now = os.clock()
-            if __now >= __nextFullScanAt then
-                __source = __discoverLocalSource()
-                __nextFullScanAt = os.clock() + 1.5
-            else
-                __source = __read(__path)
-            end
-        end
-        if not __source and os.clock() < __sourceSearchDeadline then
-            local __wait = type(task) == "table" and task.wait or nil
-            if type(__wait) ~= "function" then break end
-            pcall(__wait, 0.5)
-            __source = __read(__path)
-        end
-    until __source or os.clock() >= __sourceSearchDeadline
-    if type(__source) ~= "string" or #__source == 0 then
-        warn("[Crefy] Re-run After Teleport failed: no readable source was found after bounded file search. The queue API accepted the job, but cannot execute an absent source. Store Crefylua.lua in an executor-readable folder or set getgenv().CrefySourcePath / CrefySourceUrl (legacy aliases: CrevySourcePath / CrevySourceUrl).")
+    if not __isCrefySource(__source) then
+        warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy.")
         return false
     end
     local __compiler = __getFunction("loadstring") or __getFunction("load")
@@ -19623,9 +19152,6 @@ local function __runQueuedSource()
         warn("[Crefy] Re-run After Teleport execution failed: " .. tostring(__runError))
         return false
     end
-
-    -- Crefy starts its client bootstrap asynchronously. Keep the duplicate
-    -- guard until it confirms boot, rather than clearing it after a fixed 3s.
     local __deadline = os.clock() + 240
     while os.clock() < __deadline and not __timedOut do
         if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then
@@ -19687,9 +19213,7 @@ local function applyRerunSetting(enabled, persist)
     end
 
     if enabled and persist == true and persistenceFailed then
-        -- The queued loader intentionally fails closed when it can read a
-        -- settings file that does not say true. Do not claim to arm rerun when
-        -- the opt-in could not be saved for a fresh executor environment.
+
         queueRegisteredForCurrentEnable = false
         return
     end
@@ -19701,21 +19225,14 @@ local function applyRerunSetting(enabled, persist)
         pcall(rawset, _G, "__CrefyAutoExecuteGeneration", currentGeneration)
     end
 
-    -- Fix: cũng re-queue nếu queueRegisteredForCurrentEnable == false
-    -- (xảy ra khi place change clear queue, hoặc executor reset)
     local needsRequeue = enabled and (wasEnabled ~= true or persist == true
         or queueRegisteredForCurrentEnable == false)
     if needsRequeue then
-        local sourceUrl, sourcePath = resolveReloadSource()
-        -- Compatibility bridge for older already-queued payloads that read "Crevy" (missing f).
-        -- New payloads embed these values; aliases only help old jobs when the executor preserves getgenv.
+        local sourceUrl = resolveReloadSource()
+
         if sourceUrl ~= nil then
             pcall(rawset, env, "CrevySourceUrl", sourceUrl)
             pcall(rawset, _G, "CrevySourceUrl", sourceUrl)
-        end
-        if sourcePath ~= nil then
-            pcall(rawset, env, "CrevySourcePath", sourcePath)
-            pcall(rawset, _G, "CrevySourcePath", sourcePath)
         end
         local queueFn, queueOwner
         local candidateNames = {
@@ -19734,9 +19251,7 @@ local function applyRerunSetting(enabled, persist)
             end
             if queueFn ~= nil then break end
         end
-        -- Some executor builds expose queue functions only on a provider table.
-        -- Probe known namespace tables with the same candidate names and retain
-        -- the owner for APIs implemented as methods.
+
         if queueFn == nil then
             local providerNames = { "syn", "fluxus", "krnl", "electron", "delta", "sunc", "executor" }
             for _, root in ipairs(roots) do
@@ -19762,7 +19277,8 @@ local function applyRerunSetting(enabled, persist)
         else
             local currentGeneration = tonumber(rawget(env, "__CrefyAutoExecuteGeneration")) or 0
             local nextGeneration = currentGeneration + 1
-            local payload = makeQueuedLoader(sourceUrl, sourcePath, nextGeneration)
+            
+            local payload = makeQueuedLoader(sourceUrl, nextGeneration)
             local okQueue, queueResult = pcall(queueFn, payload)
             if (not okQueue or queueResult == false) and queueOwner ~= nil then
                 okQueue, queueResult = pcall(queueFn, queueOwner, payload)
@@ -19771,9 +19287,7 @@ local function applyRerunSetting(enabled, persist)
                 pcall(rawset, env, "__CrefyAutoExecuteGeneration", nextGeneration)
                 pcall(rawset, _G, "__CrefyAutoExecuteGeneration", nextGeneration)
                 queueRegisteredForCurrentEnable = true
-                if sourceUrl == nil and sourcePath == nil then
-                    print("[Crefy] Re-run After Teleport queue accepted; this only confirms the queue API accepted the payload, not that source discovery will succeed. Store Crefylua.lua in an executor-readable folder or configure CrefySourcePath/CrefySourceUrl (legacy aliases CrevySourcePath/CrevySourceUrl).")
-                end
+                print("[Crefy] Re-run After Teleport queued; the hosted source will be downloaded after teleport.")
             else
                 queueRegisteredForCurrentEnable = false
                 warn("[Crefy] Failed to queue Re-run After Teleport: " .. tostring(queueResult))
@@ -19784,9 +19298,6 @@ local function applyRerunSetting(enabled, persist)
     end
 end
 
--- The persistent GeneralState flag survives a place change even when the user
--- does not save a separate Ragebot config profile. Mirror it into the control's
--- Config path before building the toggle so the visual state and runtime agree.
 local persistedEnabled = nil
 if stateData ~= nil and type(stateData.ReRunAfterTeleport) == "boolean" then
     persistedEnabled = stateData.ReRunAfterTeleport
@@ -19806,7 +19317,7 @@ if config ~= nil and type(arg3) == "table" then
 end
 local initialEnabled = configuredEnabled
 if persistedEnabled ~= nil then initialEnabled = persistedEnabled end
-applyRerunSetting(initialEnabled, false)
+applyRerunSetting(initialEnabled, persistedEnabled == nil and configuredEnabled == true)
 
 arg:AddToggle({
 Label = v86[142],
@@ -20384,7 +19895,6 @@ if not (n26 > 4823) then
 return v136
 end
 return nil
-
 
 end
 
@@ -23370,7 +22880,6 @@ if n29(1386) > -20 then
 return
 end
 
-
 end
 
 local function fn39(arg)
@@ -25649,7 +25158,6 @@ return b.c
 end
 return nil
 
-
 end
 end
 do
@@ -25965,7 +25473,6 @@ end
 
 return
 end
-
 
 end
 
@@ -27209,9 +26716,7 @@ local function ragebotRootDesyncWrite(rootPart, cf)
 end
 
 local function ragebotRootDesyncCharacterCanRestorePose(rootPart)
-    -- Restoring a cached CFrame is only appropriate while the owning character
-    -- is positively known to be alive. A missing model/Humanoid or read error is
-    -- an unknown lifecycle state, so destruction must not replay the cache.
+
     local ok, alive = pcall(function()
         local model = rootPart and rootPart:FindFirstAncestorOfClass("Model") or nil
         if model == nil then return false end
@@ -27229,9 +26734,7 @@ local function ragebotRootDesyncGatePose(rootPart)
     local gate = ragebotPoseRestoreGateRead()
     if type(gate) == "table" and rawget(gate, "active") == true then
         local gateRoot = rawget(gate, "rootPart")
-        -- This global gate belongs to one exact RootPart. Do not suspend unrelated
-        -- character controllers; they cannot overwrite the gated RootPart.
-        -- A missing gateRoot remains fail-closed because ownership is unknown.
+
         if gateRoot ~= nil and gateRoot ~= rootPart then return false, nil end
     end
     local readOk, pose = pcall(function()
@@ -27292,8 +26795,7 @@ index2.SetServerCFrame = function(arg, cframe)
     if not ragebotRootDesyncRootValid(rootPart) then
         arg._cframe = nil
         arg._oldCFrame = nil
-        -- Clearing a controller during character teardown is considered handled;
-        -- a non-nil movement request against a stale root must fail explicitly.
+
         return cframe == nil
     end
     arg._cframe = cframe
@@ -27417,8 +26919,7 @@ index2.HeartbeatUpdate = function(arg)
 end
 
 index2.Destroy = function(arg)
-    -- Do not replay this controller's old local pose over an active restore gate.
-    -- On death, the respawn pipeline owns position; a cached frame is not reusable.
+
     local rootPart = arg._rootPart
     local gateActive = ragebotPoseRestoreGateIsActive()
     local characterCanRestorePose = ragebotRootDesyncCharacterCanRestorePose(rootPart)
@@ -28579,8 +28080,7 @@ local function cameraPayloadHasTwoCharacters(payload)
     return okLength and characterCount == 2
 end
 local function sendCameraRotationPayload(payload)
-    -- Camera rotations are encoded as two UTF-8 code points (utf8.char), not
-    -- necessarily two bytes; values 128-255 occupy multiple bytes in Lua strings.
+
     if not cameraPayloadHasTwoCharacters(payload) then
         return false, "camera payload must contain exactly two valid UTF-8 characters"
     end
@@ -28594,8 +28094,7 @@ local function sendCameraRotationPayload(payload)
         end
     end)
     if okSend then return true end
-    -- The cloned method can be executor-specific; make one guarded direct-method
-    -- attempt before reporting failure. Neither error is allowed to abort Ragebot.
+
     local okDirect, directError = pcall(function() activeRemote:FireServer(payload, nil) end)
     if okDirect then return true end
     return false, tostring(sendError) .. "; direct fallback: " .. tostring(directError)
@@ -28647,19 +28146,14 @@ local function readCameraUpvalue(method, index)
         if okRead and type(values) == "table" then
             local value = values[index]
             if value ~= nil then return true, value end
-            -- Some executor implementations return named/partial upvalue tables.
-            -- If the numeric slot is absent, try debug.getupvalue before declaring
-            -- the current owner unreadable.
+
         end
     end
     if type(debug.getupvalue) == "function" then
         local okRead, first, second = pcall(debug.getupvalue, method, index)
         if okRead then
             if second ~= nil then return true, second end
-            -- Standard debug.getupvalue returns (name, value); a nil second
-            -- result is a readable nil upvalue, not the upvalue name itself.
-            -- A few executor APIs expose only the value, so accept non-string
-            -- first results as their single-value form.
+
             if type(first) == "string" then return true, nil end
             return first ~= nil, first
         end
@@ -28674,8 +28168,7 @@ if prior ~= nil then
     if current == prior.InstalledJointsUpdate then
         return v115.VoidOk
     end
-    -- Do not overwrite another module's newer wrapper. If our hook was replaced,
-    -- re-wrap the current method and retain that method as the restoration target.
+
     arg._jointsRestore = nil
 end
 local update = v102(clientFighterCharacterJoints, "Update")
@@ -28711,8 +28204,7 @@ local nextAuditAt = tonumber(arg._nextReplicationHookAuditAt) or 0
 if type(arg._replicationRestore) == "table"
     and arg._replicationRestore.Installed == true
     and auditNow < nextAuditAt then
-    -- This is called from angle updates, including each Heartbeat. Avoid dumping
-    -- closure upvalues every frame; periodically verify ownership instead.
+
     return v115.VoidOk
 end
 if arg._replicationRestore ~= nil then
@@ -28728,12 +28220,10 @@ if arg._replicationRestore ~= nil then
         return v115.VoidOk
     end
     if readOk and currentUtility == previousRestore.Utility then
-        -- Our earlier rollback already succeeded despite an uncertain return value.
+         
         arg._replicationRestore = nil
     elseif readOk and currentUtility ~= previousRestore.PatchedUtility then
-        -- Another owner replaced this upvalue. Preserve that newer value rather
-        -- than writing our stale snapshot over it; the current owner can be wrapped
-        -- afresh below if it still exposes the expected camera utility interface.
+
         arg._replicationRestore = nil
     elseif readOk and currentUtility == previousRestore.PatchedUtility
         and previousRestore.Installed ~= true then
@@ -28753,8 +28243,7 @@ if arg._replicationRestore ~= nil then
                 "camera-rotation utility restoration is still pending; retry was not verified")
         end
     else
-        -- Without a reliable read-back, neither stacking a second wrapper nor
-        -- overwriting an unknown upvalue is safe.
+
         arg._nextReplicationHookAuditAt = os.clock() + 0.10
         return v115.err("ViewAngleDriver", "setupvalue",
             "camera-rotation utility ownership could not be verified")
@@ -28819,8 +28308,7 @@ return v117.encodeCameraRotation(arg3)
 end }, { __index = v122 })
 local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
 if not okSetup then
-    -- Do not assume a failing setupvalue call is atomic. Attempt rollback and
-    -- preserve a pending snapshot if restoration cannot be verified.
+
     pcall(debug.setupvalue, v120, v121, v122)
     local rollbackVerified = false
     pcall(function()
@@ -28870,8 +28358,7 @@ if not verifyOk or wrapperInstalled ~= true then
         end
     end)
     if not rollbackVerified then
-        -- Preserve ownership of a possibly installed wrapper until Destroy() can
-        -- restore the original upvalue; never report the wrapper as installed.
+
         arg._replicationRestore = {
             CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122,
             PatchedUtility = patchedUtility, Installed = false,
@@ -28946,9 +28433,7 @@ if fullySuppressed then
 arg:_CancelRestore()
 return arg:_LoadReplicationHook()
 end
--- Releasing suppression must force a fresh send of the active winner. Otherwise
--- the slot can remain unchanged, _dirty stays false, and the Knife prime gate may
--- keep seeing the previous failed/suppressed flush forever.
+
 if arg._winning ~= nil then
     arg._dirty = true
 end
@@ -28982,8 +28467,7 @@ if winning == nil then
     end)
     local restoreTask
     restoreTask = task.delay(0.05 + ping, function()
-        -- Remove completed restore threads from the Trove so repeated camera-slot
-        -- transitions do not accumulate dead task handles for the lifetime of UI.
+
         if arg._restoreTask == restoreTask then arg._restoreTask = nil end
         arg._restoreTrove:Remove(restoreTask, true)
         if arg._winning ~= nil or arg._fullySuppressed then return end
@@ -29004,8 +28488,6 @@ if winning == nil then
     return false
 end
 
--- Do not clear _dirty before encoding and sending. The boolean result lets the
--- Knife prime gate distinguish a local FireServer success from a failed send.
 local okEncode, payload = pcall(fn36, winning)
 if not okEncode or not cameraPayloadHasTwoCharacters(payload) then
     arg._lastFlushSucceeded = false
@@ -29033,11 +28515,10 @@ if jointsRestore ~= nil then
         v103(clientFighterCharacterJoints, "Update", jointsRestore.JointsUpdateMethod)
         arg._jointsRestore = nil
     elseif currentUpdate == jointsRestore.JointsUpdateMethod then
-        -- The original method is already active; there is nothing left to undo.
+         
         arg._jointsRestore = nil
     else
-        -- A different owner replaced the method after our installation. Do not
-        -- overwrite that owner's newer hook with a stale function snapshot.
+
         arg._jointsRestore = nil
         warn("[ViewAngleDriver] Joints.Update ownership changed; skipped stale restore")
     end
@@ -29050,7 +28531,7 @@ local restoreOk, restoreError = false, "camera utility ownership could not be ve
 local readOk, currentUtility = readCameraUpvalue(
     replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex)
 if readOk and currentUtility == replicationRestore.Utility then
-    restoreOk = true -- already restored
+    restoreOk = true  
 elseif readOk and currentUtility == replicationRestore.PatchedUtility then
     if type(debug) == "table" and type(debug.setupvalue) == "function" then
         for attempt = 1, 3 do
@@ -29071,8 +28552,7 @@ elseif readOk and currentUtility == replicationRestore.PatchedUtility then
         end
     end
 elseif readOk then
-    -- Someone else replaced the upvalue after we installed our wrapper. Preserve
-    -- the newer owner rather than restoring the stale original utility over it.
+
     restoreOk = true
     restoreError = "ownership changed; stale restore skipped"
 else
@@ -29159,8 +28639,7 @@ end
 index2.SetServerCFrame = function(arg, arg2)
 local rootDesync = arg._rootDesync
 if rootDesync == nil then
--- Clearing an absent per-character controller is handled; a non-nil pose
--- cannot be accepted without a RootDesync instance.
+
 return arg2 == nil
 end
 local setMethod = rootDesync.SetServerCFrame
@@ -29746,8 +29225,6 @@ local reconciled = arg:_ReconcilePendingShots(now2, ammoSnapshot, useSnapshot ==
 if reconciled ~= true then return end
 local expectedAmmoRaw = arg._expectedAmmoRaw
 if not pendingAmmoNumber(expectedAmmoRaw) then return end
-
-
 
 local nextRequestAt = tonumber(arg._nextLikelyShotRequestAt) or 0
 if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then
@@ -31352,7 +30829,6 @@ return nil
 end
 return nil
 
-
 end
 
 local index2 = {}
@@ -32627,9 +32103,6 @@ stop = nil,
 }
 riotStateSet(riotStateKey, riotState)
 
-
-
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -32637,9 +32110,6 @@ local lp = Players.LocalPlayer
 local remote
 local nextRemoteResolveAt = 0
 local nextRemoteWarningAt = 0
-
-
-
 
 local RIOT_FIRE_HOOK_KEY = "__CrefyAlwaysBackstabRiotFireServerHook"
 local function riotFireHookRagebotEnabled()
@@ -32717,9 +32187,6 @@ end
 
 local function riotResolveRemote()
 
-
-
-
     local coreRemote
     local okCore, core = pcall(function()
         if type(tbl17.aS) == "function" then
@@ -32739,7 +32206,6 @@ local function riotResolveRemote()
             return coreRemote
         end
     end
-
 
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then return nil end
@@ -32806,18 +32272,11 @@ riotState.sendRagebotCamera = function(encoded)
     local now = os.clock()
     local lastAt = tonumber(riotState.ragebotBridgeLastFireAt) or 0
     if now - lastAt < (1 / 60) then
-        -- A fresh angle that arrives inside the 60 Hz gate is deferred, not a
-        -- transport failure. The caller retries every frame and must still
-        -- wait until this exact encoded angle has actually been sent.
+
         return true, lastAt, false
     end
     local activeRemote = remote
-    -- Use the cached cloned method when available. The regular method may be
-    -- wrapped by the camera-replication hook; Ragebot's explicit payload must not
-    -- be intercepted/replaced by the standalone Riot writer's hook state.
-    -- Roblox throws "Expected ':' not '.' calling member function FireServer" khi
-    -- dùng RemoteEvent.FireServer clone trên UnreliableRemoteEvent (khác C++ binding).
-    -- Fix: detect loại remote và dùng clone tương ứng.
+
     local isUnreliable = false
     pcall(function() isUnreliable = activeRemote:IsA("UnreliableRemoteEvent") end)
     local fireOk, fireError
@@ -32853,9 +32312,6 @@ local nextHookRetryAt = 0
 local nextHookScanAt = 0
 local nextHookWarningAt = 0
 
-
-
-
 local function ragebotOwnsCameraRotation()
     local controlState = riotStateGet("__CrefyRagebotControlState")
     if type(controlState) == "table" then
@@ -32863,7 +32319,6 @@ local function ragebotOwnsCameraRotation()
         if enabled == true then return true end
         if enabled == false then return false end
     end
-
 
     local targetState = riotStateGet("__CrefyRagebotTargetState")
     if type(targetState) == "table" and rawget(targetState, "active") == true then
@@ -32899,8 +32354,6 @@ local function restoreReplicationHook()
                 return false
             end
         end
-
-
 
     end
     hookTarget, hookOriginal, hookWrapper = nil, nil, nil
@@ -32949,9 +32402,6 @@ local function installReplicationHook()
         end
     end
 
-
-
-
     local apiOk, api = pcall(function() return tbl17.aS() end)
     local controllerOk, fighterController = pcall(function()
         return apiOk and type(api) == "table" and api.FighterController or nil
@@ -32993,11 +32443,9 @@ local function installReplicationHook()
     if hookTarget ~= nil then
         if not restoreReplicationHook() then return false end
 
-
     end
 
     local wrapper = function(...)
-
 
         if ragebotOwnsCameraRotation() then
             return original(...)
@@ -33009,8 +32457,6 @@ local function installReplicationHook()
     end
     local okWrite = pcall(rawset, target, "EncodeCameraRotation", wrapper)
     if not okWrite then return false end
-
-
 
     hookTarget, hookOriginal, hookWrapper = target, original, wrapper
     hookInstalled = true
@@ -33026,8 +32472,6 @@ local function installReplicationHook()
     end
     return true
 end
-
-
 
 hookInstalled = false
 riotState.hookInstalled = false
@@ -33065,8 +32509,7 @@ local function findNearest(triggerDistance, preferredCharacter)
     local myPos  = myRoot.Position
     local myTeam = lp:GetAttribute("TeamID")
     local myEnv  = lp:GetAttribute("EnvironmentID")
-    -- Team/environment attributes are authoritative filters for this game.
-    -- Do not select targets while the local roster is still initializing.
+
     if myTeam == nil or myEnv == nil then return nil end
 
     local best, bestDist = nil, math.huge
@@ -33139,9 +32582,7 @@ local function riotCharacterHasInventoryItem(character, wantedName)
 end
 
 local function findRiotTarget(triggerDistance)
-    -- When Ragebot is active and the selected target carries a Riot Shield,
-    -- use that same target instead of allowing the standalone Riot loop to
-    -- rotate toward a different nearby player.
+
     local controlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
     local targetState = riotStateGet("__CrefyRagebotTargetState")
     if type(controlState) == "table" and rawget(controlState, "enabled") == true
@@ -33184,8 +32625,7 @@ local function riotRagebotHasPriority()
             if age >= 0 and age <= 0.5
                 and riotCharacterWithinTriggerDistance(character, getConfiguredTriggerDistance())
                 and riotCharacterHasInventoryItem(character, "Riot Shield") then
-                -- Target carries the shield: let AlwaysBackstab.Riot own the
-                -- camera replication; Ragebot must not run a second camera writer.
+
                 return false
             end
         end
@@ -33223,7 +32663,6 @@ local function isLiveBasePart(part, expectedModel)
 end
 
 local function riotHeartbeatStep()
-
 
     if not riotState.enabled or riotRagebotHasPriority() then
         riotClearActiveTarget()
@@ -33265,8 +32704,7 @@ local function riotHeartbeatStep()
         riotClearActiveTarget()
         return
     end
-    -- Root orientation is stable for backstab checks; Head may pitch/roll and
-    -- produce a different encoded camera angle while the same target is moving.
+
     local head = targetChar:FindFirstChild("HumanoidRootPart")
     if not isLiveBasePart(head, targetChar) then
         head = targetChar:FindFirstChild("Head")
@@ -33275,8 +32713,6 @@ local function riotHeartbeatStep()
         riotClearActiveTarget()
         return
     end
-
-
 
     local pitch, yaw = head.CFrame:ToOrientation()
     if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge or yaw == math.huge or yaw == -math.huge then
@@ -33342,9 +32778,7 @@ local function riotStop()
     nextHookScanAt = 0
     nextHookWarningAt = 0
     riotState.retryAfter = 0
-    -- hookfunction is not safely/uniformly reversible across executors. Keep the
-    -- single installed wrapper pass-through, but detach its old state/remote so
-    -- stop and re-execute cannot retain an active target or stack another hook.
+
     local fireHookState = riotStateGet(RIOT_FIRE_HOOK_KEY)
     if type(fireHookState) == "table" and fireHookState.installed == true then
         fireHookState.remote = nil
@@ -33537,8 +32971,6 @@ arg:_ClearAnglePayload(characterController)
 end
 arg._lastBackstabMode = mode
 
-
-
 if mode == "Riot" then
 arg:_UpdateRiot(innerContext, itemModifiers.AlwaysBackstabTriggerDist)
 return
@@ -33552,7 +32984,6 @@ end
 arg._anglePayloadApplied = false
 return
 end
-
 
 local itemBehaviors = innerContext.ItemBehaviors
 local okEquippedMelee, equippedMelee = pcall(function()
@@ -36215,7 +35646,6 @@ end
 return (unpack(v118, v86[63], v118.n))
 end
 return nil
-
 
 end)
 
@@ -38915,7 +38345,6 @@ arg._proposed[arg2] = tbl18
 v119 = tbl18
 else
 
-
 v119 = v118
 end
 else
@@ -39918,7 +39347,6 @@ if not (n25 > 3892) then
 return setmetatable(tbl19, index2)
 end
 return nil
-
 
 end
 
@@ -42794,7 +42222,6 @@ tbl18:_ReloadEquippedSeasonCharms()
 return
 end
 
-
 end)
 
 return tbl18
@@ -43589,7 +43016,6 @@ if not (n26 <= 4781) then
 return v115.err("EmoteEquipWheel", "prototype_lookup", "EquipEmote.__index not found")
 end
 return nil
-
 
 end
 
@@ -45494,7 +44920,6 @@ end)
 return tbl18
 end
 return nil
-
 
 end
 
@@ -47592,7 +47017,6 @@ return index2
 end
 return nil
 
-
 end
 
 tbl17.fi = function()
@@ -47864,7 +47288,6 @@ if true then
 return v115(arg3, (arg + arg2) % 1)
 end
 return nil
-
 
 end,
 }
@@ -54909,8 +54332,6 @@ pcall(identitySetter, 8)
 end
 end
 
-
-
 local previousReference, previousReferenceKnown = nil, false
 local hiddenGetter = K.fn("gethiddenproperty") or K.fn("gethiddenprop")
 if type(hiddenGetter) == "function" then
@@ -54918,8 +54339,7 @@ if type(hiddenGetter) == "function" then
     if readOk then previousReference, previousReferenceKnown = value, true end
 end
 if not previousReferenceKnown then
-    -- Some executors expose gethiddenproperty but cannot read this field through
-    -- that API. Try the wrapper before deciding that rollback is impossible.
+
     local readOk, value = pcall(v116, arg, "PhysicsRepRootRef")
     if readOk then previousReference, previousReferenceKnown = value, true end
 end
@@ -54952,9 +54372,7 @@ if type(v104) == "function" then
     okSet, setError = writeAndVerifyReference(v104, arg2)
 end
 if not okSet and type(v117) == "function" and v117 ~= v104 then
-    -- PhysicsRepRootRef is a hidden engine property, not a public BasePart member.
-    -- Only try the ordinary property setter when direct property access is supported;
-    -- otherwise skip it instead of deliberately triggering an invalid-member error.
+
     local directPropertyAvailable = pcall(function()
         local _ = arg.PhysicsRepRootRef
     end)
@@ -55005,7 +54423,7 @@ local function partGlueGetSourceReferenceQueue(create)
     local queue = type(primaryQueue) == "table" and primaryQueue
         or (type(fallbackQueue) == "table" and fallbackQueue or nil)
     if type(queue) == "table" and type(fallbackQueue) == "table" and fallbackQueue ~= queue then
-        -- Preserve snapshots written by an older execution in the fallback env.
+         
         for sourcePart, info in pairs(fallbackQueue) do
             if queue[sourcePart] == nil then queue[sourcePart] = info end
         end
@@ -55045,15 +54463,11 @@ local function partGlueRestoreSourceReference(sourcePart, info)
     if sourceParent == nil then return true, "source instance was removed" end
 
     local readOk, currentReference = partGlueReadSourceReference(sourcePart)
-    -- Ownership must be known before rollback. A failed read is not permission
-    -- to overwrite a possibly newer value installed by another script.
+
     if not readOk then
         return false, "current PhysicsRepRootRef could not be read; preserving pending snapshot"
     end
-    -- Do not overwrite a value another script installed after our last successful
-    -- Acquire. A failed retarget may, however, leave the previous target's own
-    -- reference installed; persisted rollback records explicitly identify that
-    -- value as part of this transaction so it is not mistaken for an external owner.
+
     local installedMatches = currentReference == info.InstalledReference
     local pendingTargetMatches = info.PendingRollbackTargetReferenceKnown == true
         and currentReference == info.PendingRollbackTargetReference
@@ -55160,8 +54574,7 @@ local function partGluePersistPendingRestore(target, info)
     RAGEBOT_LOCAL_PENDING_GLUE_TARGETS[target] = true
     local existing = queue[target]
     if type(existing) == "table" and existing.RestoreToken ~= info.RestoreToken then
-        -- Preserve an already-persisted snapshot rather than replacing the older
-        -- rollback point with a possibly intermediate CFrame from a later owner.
+
         return
     end
     queue[target] = {
@@ -55255,10 +54668,7 @@ local function partGluePersistSourceReference(sourcePart, info)
     if type(queue) ~= "table" then return false end
     local existing = queue[sourcePart]
     if type(existing) == "table" and existing ~= info then
-        -- Preserve the earliest known baseline but keep the queue object aligned
-        -- with the currently tracked transaction. Refusing the write silently
-        -- left the queue and local map pointing at different snapshots, so a later
-        -- Acquire could mistake this script's own newer reference for an outside owner.
+
         if existing.OriginalReferenceKnown == true then
             info.OriginalReference = existing.OriginalReference
             info.OriginalReferenceKnown = true
@@ -55317,10 +54727,6 @@ local function partGlueRestoreTrackedSourceReference(glue, sourcePart, forceRele
     local info = type(map) == "table" and map[sourcePart] or nil
     if type(info) ~= "table" then return true end
 
-    -- A failed retarget can leave our new PhysicsRepRootRef installed after the
-    -- old target is still active. Preserve both possibilities explicitly: when
-    -- that old target remains the live owner, rollback to its reference first;
-    -- when it has already been released, restore the original pre-PartGlue value.
     local pendingInstalled = info.PendingRollbackInstalledReference
     local pendingTargetKnown = info.PendingRollbackTargetReferenceKnown == true
     if pendingInstalled ~= nil and pendingTargetKnown then
@@ -55372,8 +54778,6 @@ local function partGlueRestoreTrackedSourceReference(glue, sourcePart, forceRele
             return true
         end
 
-        -- The old target was released; the correct final destination is the
-        -- original reference, not a reference to a target whose glue is gone.
         if currentReference == pendingInstalled then
             info.InstalledReference = pendingInstalled
         elseif currentReference == pendingTargetReference then
@@ -55405,8 +54809,7 @@ end
 
 index2.Acquire = function(arg, arg2, arg3)
 if type(arg._sourceReferenceInfoBySourcePart) ~= "table" then arg._sourceReferenceInfoBySourcePart = {} end
--- A snapshot left by an earlier execution is the rollback baseline. Resolve it
--- (or safely prove another owner changed the value) before creating a new one.
+
 local persistedSourceQueue = partGlueGetSourceReferenceQueue(false)
 local persistedSourceInfo = type(persistedSourceQueue) == "table" and persistedSourceQueue[arg2] or nil
 local trackedSourceInfo = type(arg._sourceReferenceInfoBySourcePart) == "table"
@@ -55418,10 +54821,7 @@ local activeRetargetRollback = type(persistedSourceInfo) == "table"
     and trackedSourceInfo.PendingRollbackTargetReferenceKnown == true
     and trackedSourceInfo.PendingRollbackTargetPart ~= nil
     and trackedTarget == trackedSourceInfo.PendingRollbackTargetPart
--- A rollback record tied to a still-active prior target must be resolved by the
--- tracked helper below (new reference -> prior target reference). Restoring the
--- ultimate baseline here would leave _targetPartBySourcePart pointing at a glue
--- whose PhysicsRepRootRef had silently been reset.
+
 if type(persistedSourceInfo) == "table" and not activeRetargetRollback then
     local persistedRestoreOk, persistedRestored, persistedRestoreError = pcall(
         partGlueRestoreSourceReference, arg2, persistedSourceInfo
@@ -55482,11 +54882,7 @@ local function restoreSourceReference()
             end
         end
     end
-    -- Keep the earliest known baseline, but record that this acquisition may
-    -- still own the current reference. If the prior target is still active,
-    -- remember the intermediate rollback target too; otherwise a retry could
-    -- mistake our failed write for an external owner's value and discard the
-    -- only snapshot needed for cleanup.
+
     local tracked = arg._sourceReferenceInfoBySourcePart[arg2]
     if type(tracked) ~= "table" then
         tracked = {
@@ -55523,7 +54919,6 @@ end
 return nil
 end
 
-
 if v119 ~= nil then
 arg:_ReleaseGlue(v119)
 end
@@ -55548,9 +54943,7 @@ end
 arg._targetPartBySourcePart[arg2] = nil
 arg:_ReleaseGlue(arg3)
 local restored, restoreError = restoreSourceReference()
--- A former target was already released before the requested CFrame write. If
--- there is a tracked baseline reference, finish rollback all the way to that
--- original value instead of leaving the source pointing at the released target.
+
 if restored and type(arg._sourceReferenceInfoBySourcePart[arg2]) == "table" then
     local finalRestored, finalRestoreError = partGlueRestoreTrackedSourceReference(arg, arg2)
     if not finalRestored then
@@ -55639,9 +55032,6 @@ local originalAnchored = nil
 local originalPart1 = nil
 local originalPart1ToTarget = nil
 
--- Snapshot mutable target properties unconditionally. Acquire moves the target
--- CFrame whether or not a WeldConstraint exists, so restoration must not depend
--- on finding a weld.
 local readCFrameOk, cFrameValue = pcall(v116, arg2, "CFrame")
 if readCFrameOk and typeof(cFrameValue) == "CFrame" then originalCFrame = cFrameValue end
 if originalCFrame == nil then
@@ -55777,10 +55167,7 @@ index2.RetryPendingRestores = function(arg)
                     partGlueRestoreTrackedSourceReference, arg, sourcePart
                 )
                 if sourceRestoreOk and sourceRestored == true then
-                    -- A tracked rollback may only restore the reference to an old
-                    -- target which is still actively owned. Keep the baseline map
-                    -- until Free/Destroy releases that target; the helper clears it
-                    -- itself only when the final original reference is restored.
+
                     if sourceMap[sourcePart] == sourceInfo
                         and arg._targetPartBySourcePart[sourcePart] == nil then
                         sourceMap[sourcePart] = nil
@@ -55808,8 +55195,7 @@ index2.RetryPendingRestores = function(arg)
     local globalQueue = partGlueGetGlobalRestoreQueue(false)
     if type(globalQueue) == "table" then
         for target, pendingInfo in pairs(globalQueue) do
-            -- Local ownership takes precedence; _SetupGlue adopts and clears a
-            -- global snapshot before creating a new local ownership record.
+
             if arg._glueInfoByTargetPart[target] == nil and type(pendingInfo) == "table" then
                 local restoreCallOk, restored = pcall(fn37, target, pendingInfo)
                 if restoreCallOk and restored == true then
@@ -56025,7 +55411,7 @@ end
 
 index2._ClearMover = function(arg)
 local mover = arg._mover
--- Clear the reference first so cleanup remains idempotent if Destroy raises.
+ 
 arg._mover = nil
 if type(mover) ~= "table" then return end
 pcall(function()
@@ -56443,7 +55829,6 @@ if not (3861 > n25) then
 arg:_BindCamera()
 return
 end
-
 
 end)
 
@@ -57768,7 +57153,6 @@ local silentAim2 = data.SilentAim
 local fov = silentAim2.Fov
 local targetConditions = silentAim2.TargetConditions
 
-
 local headOnlyHitboxesByClass = {
 Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
 Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
@@ -58414,7 +57798,6 @@ arg:_OnPlayed(arg2)
 return
 end
 
-
 end),
 Destroying = arg2.Destroying:Connect(function()
 arg:_ForgetSound(arg2)
@@ -58867,7 +58250,6 @@ arg._tripmineDataByHitbox[hitbox] = nil
 trove:Remove(connection)
 return
 end
-
 
 end)
 
@@ -61017,7 +60399,6 @@ arg:_BindColorShift()
 arg:_BindFog()
 return
 end
-
 
 end
 
@@ -63736,9 +63117,7 @@ local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a co
         if type(restore) == "function" then
             local ok, result = pcall(restore)
             if not ok or result == false then
-                -- Keep retrying briefly even if Ragebot's planner is disabled;
-                -- relying only on its next update could leave the 90-degree
-                -- roll or Hide translation in place indefinitely.
+
                 task.spawn(function()
                     local deadline = os.clock() + 2
                     while retryToken == voidSpamRestoreRetryToken and os.clock() < deadline do
@@ -64249,7 +63628,6 @@ return false
 end
 return nil
 
-
 end)
 
 fn51(v141, v140, function()
@@ -64668,8 +64046,7 @@ function UndergroundRootDesync.new(rootPart)
     }, UndergroundRootDesync)
     RunService:BindToRenderStep(self._boundId, Enum.RenderPriority.First.Value, function()
         if ragebotPoseRestoreGateIsActive() then
-            -- Do not replay a stale Underground client pose over the Ragebot's
-            -- verified restore/hold. The gate setter writes the approved pose directly.
+
             self._oldCFrame = nil
             self._cframe = nil
             return
@@ -64694,10 +64071,7 @@ end
 
 function UndergroundRootDesync:SetServerCFrame(cf)
     if cf == nil then
-        -- A clear must discard both the pending transform and its old-pose cache.
-        -- Otherwise RenderStep may replay that cache if the restore gate changes
-        -- state before the next frame. Callers that need a fresh baseline must
-        -- explicitly capture the current RootPart CFrame after this reset.
+
         self._cframe = nil
         self._oldCFrame = nil
         return true
@@ -64720,8 +64094,7 @@ function UndergroundRootDesync:SetServerCFrame(cf)
         return false
     end
     if ragebotPoseRestoreGateIsActive() then
-        -- The restore transaction owns RootPart while the gate is active.
-        -- Underground may not substitute its own/stale CFrame for the gate pose.
+
         self._cframe = nil
         self._oldCFrame = nil
         local rootPart = self._rootPart
@@ -64773,8 +64146,7 @@ function UndergroundRootDesync:HeartbeatUpdate()
     self._oldCFrame = current
     local okWrite = pcall(function() rootPart.CFrame = cf end)
     if not okWrite then
-        -- Do not let a destroyed/replaced root throw from Heartbeat. Clear the
-        -- pending write; a fresh controller is created for the next character.
+
         self._cframe = nil
         local parentOk, hasParentAfter = pcall(function() return rootPart.Parent ~= nil end)
         if not parentOk or not hasParentAfter then
@@ -64798,8 +64170,7 @@ end
 
 function UndergroundRootDesync:Destroy(skipPositionRestore)
     local rootPart = self._rootPart
-    -- While Ragebot owns the restore gate, this controller's cached client pose
-    -- may predate the approved restore snapshot. Never replay it over that pose.
+
     local gateActive = ragebotPoseRestoreGateIsActive()
     local gate = gateActive and ragebotPoseRestoreGateRead() or nil
     local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
@@ -64807,7 +64178,7 @@ function UndergroundRootDesync:Destroy(skipPositionRestore)
     local restoreCFrame = self._oldCFrame
     if gateActive or skipPositionRestore == true then restoreCFrame = nil end
     pcall(function() RunService:UnbindFromRenderStep(self._boundId) end)
-    -- On death, cleanup must not replay the pre-Underground pose and teleport the character.
+     
     if skipPositionRestore ~= true and rootPart ~= nil and restoreCFrame ~= nil then
         pcall(function()
             if rootPart.Parent ~= nil then rootPart.CFrame = restoreCFrame end
@@ -65021,7 +64392,7 @@ local function undergroundRaycastIgnoringHumanoidModels(origin, direction, param
         if alreadyExcluded then return nil end
         filter[#filter + 1] = humanoidModel
     end
-    -- Fail closed rather than treating a humanoid/NPC hit as valid ground.
+     
     return nil
 end
 
@@ -65042,9 +64413,7 @@ local function undergroundProbeSurface(char, root)
     if not bounds then
         return nil
     end
-    -- The character's live bounding box may be on the hidden Ragebot pose while
-    -- clientCF represents the visible pose. Reproject its corners from the live
-    -- RootPart frame into clientCF before comparing them with raycast surfaces.
+
     local liveRootCFrame = root.CFrame
     if typeof(liveRootCFrame) ~= 'CFrame' then return nil end
     local boxCFrame, boxSize = bounds[1], bounds[2]
@@ -65251,7 +64620,7 @@ local function undergroundRestore(preferredClientCFrame, skipPositionRestore)
     if root and not skipPoseWrite and gateOwnsRoot then
         pcall(function()
             if restoreGateActive then
-                -- Underground cleanup may only touch the exact RootPart bound to the gate.
+                 
                 if typeof(gatedPose) == "CFrame" then root.CFrame = gatedPose end
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
@@ -65298,12 +64667,7 @@ local function undergroundServerCFrame(char, root)
         return nil
     end
     local boxCFrame, boxSize = bounds[1], bounds[2]
-    -- GetBoundingBox is measured from the live character model, while
-    -- currentRoot can be the cached/client pose during Ragebot desync. Using
-    -- currentRoot:PointToObjectSpace(worldCorner) mixes two different origins;
-    -- after Ragebot stops, the vertical delta can be counted as character height
-    -- and produce an enormous negative target Y. Normalize geometry against the
-    -- live RootPart, then apply only its local shape to the intended pose rotation.
+
     local liveRootCFrame
     local liveRootReadOk = pcall(function() liveRootCFrame = root.CFrame end)
     if not liveRootReadOk or typeof(liveRootCFrame) ~= "CFrame" then
@@ -65440,8 +64804,7 @@ startUnderground = function()
     end
     undergroundDeathConn = humanoid.Died:Connect(function()
         if undergroundEnabled then
-            -- Died cleanup disconnects Underground but must not restore the saved
-            -- surface pose, which looks like an automatic TP on death.
+
             undergroundRequested = false
             stopUnderground(true)
         end
@@ -65451,9 +64814,7 @@ startUnderground = function()
         local currentHealth = tonumber(newHealth)
         if currentHealth == nil or currentHealth ~= currentHealth
             or currentHealth == math.huge or currentHealth == -math.huge then return end
-        -- A nonfatal NPC/player hit must not shut Underground off. The old handler
-        -- stopped on every HealthChanged decrease, making Underground appear random
-        -- when an NPC landed a hit. Death remains handled by Humanoid.Died below.
+
         if currentHealth <= 0 then
             undergroundRequested = false
             stopUnderground(true)
@@ -65469,9 +64830,7 @@ startUnderground = function()
         local currentRoot = undergroundGetRoot(currentChar)
         local currentHumanoid = undergroundGetHumanoid(currentChar)
         if not currentChar or not currentRoot or not currentHumanoid then
-            -- A missing/transitional character is not safe to control or restore.
-            -- Preserve the user's request here so CharacterAdded can restart on a
-            -- valid new character. Damage/death paths explicitly clear the request.
+
             stopUnderground(true)
             return
         end
@@ -65484,7 +64843,7 @@ startUnderground = function()
             return
         end
         if currentChar ~= undergroundSnapshotCharacter then
-            -- Never apply an old character's CFrame to a respawn/replacement.
+             
             stopUnderground(true)
             return
         end
@@ -65608,8 +64967,7 @@ if lp then
 undergroundRespawnConnection = lp.CharacterAdded:Connect(function(newCharacter)
 if not undergroundRequested then return end
 task.spawn(function()
-    -- The old Heartbeat may still be connected when CharacterAdded fires. Let it
-    -- observe the character switch and restore the old snapshot before retrying.
+
     if undergroundSnapshotCharacter ~= nil and undergroundSnapshotCharacter ~= newCharacter then
         pcall(stopUnderground, true)
     end
@@ -65645,12 +65003,92 @@ local shouldIntegrate = undergroundEnabled and undergroundRagebotRequested
 if shouldIntegrate == undergroundRagebotIntegrated then return true end
 
 if shouldIntegrate then
-    -- Publish integrated state only when Ragebot actually takes ownership.
-    undergroundRagebotIntegrated = true
+
+    local char = undergroundGetCharacter()
+    local root = undergroundGetRoot(char)
+    local humanoid = undergroundGetHumanoid(char)
+    if not (root and root.Parent and char == undergroundSnapshotCharacter
+        and humanoid ~= nil and humanoid.Health > 0) then
+        return false
+    end
+
+    local function validIntegrationPose(cf)
+        if typeof(cf) ~= "CFrame" then return false end
+        local components = { cf:GetComponents() }
+        for _, component in ipairs(components) do
+            if type(component) ~= "number" or component ~= component
+                or component == math.huge or component == -math.huge then
+                return false
+            end
+        end
+        local pos = cf.Position
+        return math.abs(pos.X) <= 100000 and math.abs(pos.Y) <= 100000
+            and math.abs(pos.Z) <= 100000
+    end
+
+    local livePose
+    local liveReadOk = pcall(function() livePose = root.CFrame end)
+    local livePoseIsValid = liveReadOk and validIntegrationPose(livePose)
+    local cachedPose = undergroundLastClientCFrame
+    local gateActive = ragebotPoseRestoreGateIsActive()
+    local gate = gateActive and ragebotPoseRestoreGateRead() or nil
+    local gatePose = type(gate) == "table" and rawget(gate, "pose") or nil
+    local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
+    local approvedGatePose = gateActive and gateRoot == root and validIntegrationPose(gatePose)
+
+    if gateActive and not approvedGatePose then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Ragebot start hand-off is waiting for an approved RootPart pose.")
+        end
+        return false
+    end
+
+    local handoffPose
+    if approvedGatePose then
+        handoffPose = gatePose
+    elseif validIntegrationPose(cachedPose) then
+        handoffPose = cachedPose
+    elseif undergroundDesync then
+        local okClient, clientPose = pcall(function() return undergroundDesync:GetClientCFrame() end)
+        if okClient and validIntegrationPose(clientPose) then handoffPose = clientPose end
+    end
+    if handoffPose == nil and livePoseIsValid then handoffPose = livePose end
+    if handoffPose == nil then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] No valid client pose available to start Ragebot; keeping Underground active.")
+        end
+        return false
+    end
+
+    local distance = livePoseIsValid and (livePose.Position - handoffPose.Position).Magnitude or math.huge
+    local writeOk, writeError = pcall(function()
+        root.CFrame = handoffPose
+        if distance > 2 then
+
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
+    local verifyOk, verifiedPose = pcall(function() return root.CFrame end)
+    if not writeOk or not verifyOk or not validIntegrationPose(verifiedPose)
+        or (verifiedPose.Position - handoffPose.Position).Magnitude > 3 then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Ragebot start pose hand-off could not be verified; Underground remains active. " .. tostring(writeError or verifiedPose))
+        end
+        return false
+    end
+
+    undergroundLastClientCFrame = verifiedPose
+     
     if undergroundDesync then
         pcall(function() undergroundDesync:Destroy(true) end)
         undergroundDesync = nil
     end
+    undergroundLastServerCFrame = nil
+    undergroundRagebotIntegrated = true
     return true
 end
 
@@ -65664,12 +65102,10 @@ local root = undergroundGetRoot(char)
 local humanoid = undergroundGetHumanoid(char)
 if not (root and root.Parent and char == undergroundSnapshotCharacter
     and humanoid ~= nil and humanoid.Health > 0) then
-    -- Keep integrated=true so the next Ragebot update retries this hand-off.
-    -- Marking it false here would make the old early-return prevent all retries.
+
     return false
 end
 
--- Stop the previous Heartbeat/RenderStep writer before selecting a pose.
 if undergroundDesync then
     pcall(function() undergroundDesync:Destroy(true) end)
     undergroundDesync = nil
@@ -65703,8 +65139,6 @@ local approvedRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
 local approvedPoseIsValid = gateActive and approvedRoot == root
     and validUndergroundPose(approvedPose)
 
--- An active restore gate owns the RootPart. Never fall back to the live/deep pose
--- when the gate has not yet published an approved pose; retry next update instead.
 if gateActive and not approvedPoseIsValid then
     if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
         undergroundNextTransitionWarningAt = os.clock() + 5
@@ -65717,7 +65151,7 @@ local handoffPose
 if approvedPoseIsValid then
     handoffPose = approvedPose
 elseif not gateActive and cachedPoseIsValid then
-    -- The cached client pose beats a finite but potentially hidden Ragebot pose.
+     
     handoffPose = cachedPose
 elseif livePoseIsValid then
     handoffPose = livePose
@@ -65757,7 +65191,7 @@ if needsPoseWrite then
 end
 
 undergroundLastClientCFrame = handoffPose
--- The pose hand-off is now valid. Only now publish standalone Underground mode.
+ 
 undergroundRagebotIntegrated = false
 undergroundLastServerCFrame = nil
 undergroundAdaptiveScanAt = 0
@@ -65780,9 +65214,7 @@ end
 if typeof(clientCFrame) == "CFrame" then
 undergroundLastClientCFrame = clientCFrame
 end
--- Underground positioning is weapon-specific: Gun and Knife stay at the
--- planned CFrame; only non-Knife melee uses the legacy -3.8-stud adjustment.
--- Unknown weapon kinds fail neutral rather than shifting a gun by accident.
+
 local offset = weaponKind == "Melee"
     and Vector3.new(0, UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET, 0)
     or Vector3.zero
@@ -65792,15 +65224,13 @@ return adjusted
 end
 _G.__CrefyUndergroundController = undergroundController
 local undergroundCleanup = function()
--- Script reload/unload is cleanup, not a request to teleport back to an old pose.
+ 
 undergroundController.Stop(true)
 end
 _G.__LuaHookUndergroundStandaloneCleanup = undergroundCleanup
 if type(K) == "table" and type(K.onUnload) == "function" then
 K.onUnload(function()
-    -- This callback is registered before the local restore function is declared
-    -- later in the file. Resolve the published hook at callback time instead of
-    -- referencing an out-of-scope local (which would resolve as a nil global).
+
     local restoreKey = "__CrefyRestoreVoidSpamTransform"
     local restoreFn = rawget(_G, restoreKey)
     local restoreOk, restoreResult = false, nil
@@ -65812,9 +65242,7 @@ K.onUnload(function()
             rawset(_G, restoreKey, nil)
         end
     else
-        -- Keep the current global hook while retrying. The old controller can
-        -- survive briefly through reload; the newer script may also replace the
-        -- hook, so every retry resolves the active function again.
+
         task.spawn(function()
             local deadline = os.clock() + 2
             local restored = false
@@ -67620,7 +67048,6 @@ return tbl18
 end
 return nil
 
-
 end
 
 index2._SetEnabled = function(arg, enabled)
@@ -68350,8 +67777,6 @@ local function distanceTo(fighter)
     return distance
 end
 
--- A currently invincible or actively deflecting locked target should not
--- monopolize target selection while another enemy is available.
 local function isExplicitlyProtected(fighter)
     if fighter == nil then return false end
     local okInvincible, isInvincible = pcall(fighter.IsInvincible, fighter)
@@ -68405,9 +67830,6 @@ local function rememberTarget(fighter, player)
     return fn37(fighter)
 end
 
-
-
-
 local lockedFighter = arg._lockedFighter
 local lockedPlayer = arg._lockedPlayer
 if lockedFighter ~= nil and lockedPlayer ~= nil then
@@ -68433,7 +67855,6 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
         end
         arg._lockedUnavailableSince = nil
-
 
         if lockedFighter.IsEnemy ~= true then
             arg._lockedUnattackableSince = nil
@@ -68464,7 +67885,6 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
     if okLock then
         lockStatus, lockedTarget, lockedDistance = status, targetValue, distanceValue
 
-
         arg._lockedReadFailureSince = nil
     else
         local failureStatus = lockTimeoutStatus("_lockedReadFailureSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
@@ -68483,8 +67903,6 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         return lockedTarget
     end
 end
-
-
 
 if prioritizeHackers then
     local okPlayers, hackerPlayers = pcall(function()
@@ -68741,9 +68159,6 @@ index2.new = function(arg)
 return setmetatable({ _partGlue = arg, _shootLock = v116.new() }, index2)
 end
 
-
-
-
 local RAGEBOT_VOID_SPAM_STATE_KEY = "__CrefyRagebotVoidSpamState"
 local function ragebotVoidSpamState()
     local state = rawget(_G, RAGEBOT_VOID_SPAM_STATE_KEY)
@@ -68773,8 +68188,7 @@ local function ragebotVoidSpamState()
     sanitizeClock("attackWindowExpiresAt", 5)
     if state.phase ~= "hide" then state.phase = "attack" end
     if state.cycleModelVersion ~= 2 then
-        -- Old versions interpreted Attack as a per-shot cooldown and entered Hide
-        -- after every request. Start a fresh, unambiguous phase cycle on upgrade.
+
         state.cycleModelVersion = 2
         state.cycleInitialized = false
         state.phaseStartedAt = 0
@@ -68801,8 +68215,7 @@ local function ragebotVoidSpamState()
     if type(state.awaitingShotAck) ~= "boolean" then state.awaitingShotAck = false end
     if not isFiniteClock(state.pendingShotDeadline)
         or state.pendingShotDeadline > now + 2 then
-        -- Invalid/far-future deadlines must resolve immediately, never pin the
-        -- shared state in ACK-wait after re-execution or partial state corruption.
+
         state.pendingShotDeadline = 0
     end
     return state
@@ -68848,7 +68261,6 @@ local function ragebotVoidSpamConfig()
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
     attack = math.clamp(attack, 0.01, 1)
 
-
     if config.Attack ~= attack then
         pcall(function() config.Attack = attack end)
     end
@@ -68863,9 +68275,6 @@ end
 
 local ragebotFiniteNumber
 
--- Attack is a continuous phase window, not the delay between individual shots.
--- Hide is a separate phase window; actual shot cadence remains controlled by
--- the weapon/ShootLock. ACK tracking is informational and never changes phases.
 local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if type(state) ~= "table" then state = ragebotVoidSpamState() end
     if not ragebotFiniteNumber(now) then now = os.clock() end
@@ -68904,9 +68313,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     end
 
     if now >= phaseEnd then
-        -- Start the newly observed phase from this update's clock. This ensures
-        -- even a very short Hide window is actually applied for its full duration
-        -- instead of being skipped when the update arrives a few milliseconds late.
+
         state.phaseStartedAt = now
         if state.phase == "attack" then
             state.phase = "hide"
@@ -68928,7 +68335,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.fakePositionTargetReady = false
         end
     end
-    state.nextAttackAt = 0 -- legacy field; no longer a shot-rate gate
+    state.nextAttackAt = 0  
     return state.phase
 end
 
@@ -68942,8 +68349,7 @@ local function ragebotVoidSpamConfirmShot()
         ragebotVoidSpamReset(state)
         return
     end
-    -- ACK only confirms request/ammo progress. It must not end Attack early or
-    -- start Hide after a single shot; the phase scheduler owns both transitions.
+
 end
 
 local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfter)
@@ -68958,8 +68364,6 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfte
         return
     end
 
-    -- Keep only the latest bounded ACK record. It is not allowed to gate later
-    -- shots or make the server position enter Hide during the Attack phase.
     state.awaitingShotAck = true
     state.pendingShotItem = item
     state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
@@ -68973,8 +68377,8 @@ local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
-    state.nextAttackAt = 0 -- legacy field; not used as a firing interval
-    -- Keep phase/activeUntil unchanged: an ACK timeout is not a phase change.
+    state.nextAttackAt = 0  
+     
     return result
 end
 
@@ -69010,15 +68414,11 @@ local function ragebotVoidSpamPollShotAck(state, item, now, attack)
     if not okCount or not ragebotFiniteNumber(currentRequestCount) then
         return "pending"
     end
-    -- This state tracks exactly one request. If the counter moved after the saved
-    -- baseline, an ammo decrement could belong to another shot; wait for this
-    -- request's bounded timeout rather than misattributing that decrement.
+
     if currentRequestCount ~= pendingRequestCount then
         return "pending"
     end
-    -- Ammo-free items cannot prove a server-side shot via an ammo decrement.
-    -- Keep them pending until the bounded ACK deadline instead of misclassifying
-    -- a valid no-ammo item as an immediate failure.
+
     if ragebotFiniteNumber(ammoBefore) then
         local okAmmo, currentAmmo = pcall(function() return item:GetAmmo() end)
         if okAmmo and ragebotFiniteNumber(currentAmmo) and currentAmmo >= 0 and currentAmmo < ammoBefore then
@@ -69039,21 +68439,13 @@ local function ragebotVoidSpamCancelShot()
     if not enabled then
         ragebotVoidSpamReset(state)
     end
-    -- A failed request clears its ACK bookkeeping, but cannot manufacture a
-    -- Hide window or reset the remaining Attack window.
+
 end
-
-
-
-
 
 ragebotFiniteNumber = function(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
--- Keep target identity tied to the live FighterState throughout planning. PartGlue
--- can relocate the local hitbox to its encoded anchor, so its post-Acquire Position
--- is not an independent server-side Head-position measurement.
 local RAGE_SHOT_ORIGIN_ABOVE = {
     ["\0"] = -9e37,
     ["\1"] = 0,
@@ -69103,7 +68495,6 @@ local RAGE_VOID_SPAM_HITPOINT = {
     ["\5"] = 0,
 }
 
-
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
 local aliveState = arg3 ~= nil and arg3.AliveState or nil
 local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
@@ -69122,8 +68513,6 @@ arg._shootLock:Reset()
 return arg5 and arg5.CFrame or nil, nil
 end
 
-
-
 local shieldAimState = v117(arg3.FighterState)
 local flag19 = shieldAimState ~= "Below"
 local ragebot = v115.Data.Ragebot
@@ -69132,8 +68521,7 @@ if voidSpamEnabledReloadGate then
     local okReloading, isReloading = pcall(function()
         return arg4:IsReloading()
     end)
-    -- Fail closed if reload status is temporarily unreadable: never let a stale
-    -- Void Spam phase keep positioning/attacking while the gun may be reloading.
+
     if not okReloading or type(isReloading) ~= "boolean" or isReloading then
         ragebotVoidSpamReset(ragebotVoidSpamState())
         arg:ClearTeleport()
@@ -69146,11 +68534,6 @@ if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
 arg:ClearTeleport()
 end
 
--- Resolve observed FakePosition oscillation using the replicated fighter root.
--- Never sample HitboxHead here: PartGlue places that part at its encoded anchor,
--- which would make our own shot setup look like enemy desync. On detection,
--- release/rebuild the local glue reference so a cached anchor cannot follow a
--- stale transform. Keep pending Void Spam ACK/Hide intact while doing this.
 local desyncRecentlyDetected = ragebotObserveFakePosition(targetRoot, os.clock())
 if desyncRecentlyDetected then
     local nowForGlue = os.clock()
@@ -69192,7 +68575,7 @@ local voidSpamEnabled, voidSpamAttack, voidSpamHide = ragebotVoidSpamConfig()
 if voidSpamEnabled then
     local state = ragebotVoidSpamState()
     local now = os.clock()
-    -- Polling an ACK must never pause the continuous Attack window.
+     
     ragebotVoidSpamPollShotAck(state, arg4, now, voidSpamAttack)
     ragebotVoidSpamAdvancePhase(state, now, voidSpamAttack, voidSpamHide)
     if state.phase == "hide" and now < (tonumber(state.activeUntil) or 0) then
@@ -69200,8 +68583,7 @@ if voidSpamEnabled then
         state.attackWindowExpiresAt = 0
         return n, nil
     end
-    -- Attack defines a phase duration, not a minimum interval between shots.
-    -- The weapon's own cadence and ShootLock decide when another shot is legal.
+
     if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
         return n, nil
     end
@@ -69279,8 +68661,7 @@ if voidSpamEnabledNow then
     local activeUntil = tonumber(state.activeUntil) or 0
     if not ragebotFiniteNumber(activeUntil) then activeUntil = 0 end
     if state.phase == "hide" and callbackNow < activeUntil then
-        -- Reject stale attack plans only when the scheduled Hide window is active.
-        -- A delayed ammo ACK alone must not pause the Attack phase.
+
         return false
     end
 end
@@ -69309,17 +68690,11 @@ local okSend, sendError = pcall(function()
             if not okAmmoBased or isAmmoBased ~= false then
                 error("ammo snapshot unavailable for an ammo-based weapon")
             end
-            -- Known ammo-free item: send, but do not invent an ammo ACK.
+             
             requestedAmmoBefore = nil
         end
     end
 
-
-
-    -- Keep payload direction synchronized with the state used to build this
-    -- plan. Re-reading shield state here can switch the payload after the CFrame
-    -- was planned, producing an internally inconsistent shot (the V47 behavior
-    -- used the captured flag19 for both planning and firing).
     local aimDirectionMode = type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
     if aimDirectionMode ~= "Up" and aimDirectionMode ~= "Down" and aimDirectionMode ~= "Part" then
         aimDirectionMode = "Part"
@@ -69331,7 +68706,7 @@ local okSend, sendError = pcall(function()
     elseif aimDirectionMode == "Down" then
         shotDirectionAbove = false
     else
-        -- Part preserves the original shield-aware behavior exactly.
+         
         shotDirectionAbove = flag19
     end
     local encodedShotOrigin = shotDirectionAbove and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
@@ -69388,9 +68763,6 @@ arg._shootLock:Reset()
 end
 end
 
--- Publish the VoidSpam helpers for the separate Ragebot controller factory.
--- Lua local functions do not cross the factory's lexical scope, so the controller
--- must resolve these through this explicit shared API instead of calling nil globals.
 local voidSpamApi = {
     ApiVersion = 4,
     State = ragebotVoidSpamState,
@@ -69542,10 +68914,6 @@ arg:ResetState()
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
 end
 
--- Use the same replicated combat-root observer for Knife and other melee weapons.
--- When target motion indicates a fresh FakePosition/discontinuity, rebuild the
--- glue without resetting knife cooldown/prime windows. A pending Void Spam ACK
--- suppresses this refresh so it cannot interfere with the active Hide interval.
 local meleeDesyncRecentlyDetected = ragebotObserveFakePosition(rootPart, os.clock())
 if meleeDesyncRecentlyDetected then
     local nowForGlue = os.clock()
@@ -69589,9 +68957,7 @@ if not orientationOk or not fakePositionFiniteNumber(v121)
 end
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
 if typeof(v120) ~= "CFrame" then
--- Acquire can fail transiently while PartGlue restores its PhysicsRepRootRef.
--- Keep Knife's target angle alive during this short failure instead of replacing
--- it with the general defensive angle while the backstab sequence is primed.
+
 if not isKnifeItem then arg:ResetState() end
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil,
     isKnifeItem and fn37(v121, v122) or nil, nil, false, nil
@@ -69660,8 +69026,7 @@ local function refreshBackstabConfirmation(expectedTarget)
     local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
     if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
         and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
-        -- Health change is the best local confirmation available that the server
-        -- accepted the attack. Stop retries, but retain the target cooldown.
+
         arg._hitboxWindowConfirmed = true
         arg._hitboxWindowUntil = -1
         arg._nextKnifeWindowAttackAt = 0
@@ -69673,8 +69038,7 @@ if arg._lastKnifeTarget ~= hitboxHead then
     local previousWindowTarget = arg._hitboxWindowTarget
     if previousWindowTarget ~= nil and previousWindowTarget ~= hitboxHead then
         refreshBackstabConfirmation(previousWindowTarget)
-        -- A target switch must not strand an unconfirmed attempt behind the
-        -- 1.25s cooldown. Preserve cooldown only when health change confirmed it.
+
         if arg._hitboxWindowConfirmed ~= true and arg._attackCooldownTarget == previousWindowTarget then
             arg._attackCooldown = -1
             arg._attackCooldownTarget = nil
@@ -69700,7 +69064,6 @@ else
 arg._lastKnifeTarget = nil
 end
 
-
 if not isKnife then
 arg:InvalidateKnifeState()
 end
@@ -69710,21 +69073,15 @@ and arg._hitboxWindowConfirmed ~= true
 and now2 < arg._hitboxWindowUntil
 and arg._hitboxWindowTarget == hitboxHead
 
-
-
-
 if isKnife and arg._knifePrimeTarget == hitboxHead
 and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil then
--- Keep refreshing the live target orientation while the initial angle packet
--- is being primed. Never restart the timer just because an anti-aim target
--- changes yaw; that would postpone every HeavyAttack indefinitely.
+
 arg._knifePrimePitch = v121
 arg._knifePrimeYaw = v122
 end
 
 if isKnife and arg._knifePrimeTarget == hitboxHead and now2 < arg._knifePrimeUntil then
--- The camera angle is flushed every update. Wait only for the first packet's
--- minimum lead time, while continuing to use the freshest orientation.
+
 return n, fn37(v121, v122), nil
 end
 
@@ -69751,17 +69108,13 @@ arg:_AbortBackstabAttempt(hitboxHead)
 end
 end
 elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitboxWindowUntil then
-    -- Inspect health at the end of the retry window, rather than stopping retries
-    -- on any early health change (which could come from another player).
+
     refreshBackstabConfirmation(hitboxHead)
     if arg._hitboxWindowConfirmed == true then
-        -- Keep the confirmed target identity until target switch/reset so its
-        -- cooldown cannot be mistaken for an unconfirmed stale attempt.
+
         arg._nextKnifeWindowAttackAt = 0
     else
-        -- A non-throwing remote call is not server acknowledgement. If no health
-        -- change arrived during the retry window, release the cooldown and prime
-        -- a fresh attempt instead of silently suppressing this target for 1.25s.
+
         arg:_AbortBackstabAttempt(hitboxHead)
     end
 end
@@ -69777,9 +69130,7 @@ end
 meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
 if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
     if isKnife then
-        -- A locked Knife must keep its target angle and local attack pose. The old
-        -- generic evade CFrame could move the player away during the prime window,
-        -- then restore the target angle only after the backstab timing had passed.
+
         return n, fn37(v121, v122), nil
     end
     return fn36(), nil, nil
@@ -69843,8 +69194,7 @@ end
 
 index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
 local now2 = os.clock()
--- Sau khi backstab: một lần retry ngắn (0.08s window) thay vì 0.625s liên tục
--- Tránh tình trạng backstab spam → hooker manual timing bắt được nhịp cố định
+
 arg._hitboxWindowUntil = now2 + 0.08
 arg._hitboxWindowTarget = targetHitbox
 arg._hitboxWindowAliveState = targetAliveState
@@ -69856,8 +69206,7 @@ end
 arg._hitboxWindowInitialHealth = baselineHealth
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = now2 + 0.08
--- Random cooldown [0.625, 1.65]: hooker không thể manual-timing được vì
--- không biết khi nào mình sẽ backstab lại
+
 local randomCooldown = 0.625 + math.random() * (1.65 - 0.625)
 arg._attackCooldown = now2 + randomCooldown
 arg._attackCooldownTarget = targetHitbox
@@ -70813,8 +70162,6 @@ if type(data) ~= "table" then return nil end
 return rawget(data, "Ammo") ~= nil
 end)
 
-
-
 if not okFallback or type(fallbackBased) ~= "boolean" then return false end
 if fallbackBased == false then return false end
 ammoBased = fallbackBased
@@ -70980,9 +70327,7 @@ local v116 = tbl17.jz()
 local cameraArbiter = tbl17.co()
 tbl17.cF()
 local v117 = tbl17.jD()
--- The planner and the CFrame applier live in separate factories. Use their
--- shared helpers only when the API explicitly matches this schema; older,
--- unversioned executor globals fall back to the local implementation.
+
 local function ragebotGetVoidSpamApiFunction(name)
     local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
     if type(api) ~= "table" or api.ApiVersion ~= 4 then return nil end
@@ -71050,7 +70395,7 @@ local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
         state.nextAttackAt = 0
-        -- ACK failure must not end the Attack phase or manufacture a Hide phase.
+         
     end
     return result or "failed"
 end
@@ -71207,10 +70552,6 @@ local function ragebotClearPersistedDestroyHeight()
     end
 end
 
-
-
-
-
 local function ragebotSafeEstimatedDelay(callback)
     if type(callback) ~= "function" then return 0 end
     local ok, value = pcall(callback)
@@ -71342,7 +70683,6 @@ local function ragebotSafeClearReloadTransport(owner)
         local clearOk = pcall(clearFn, owner)
         if clearOk then return end
     end
-
 
     for _, field in ipairs({
         "_reloadGun", "_reloadReadyAt", "_reloadAcknowledgementDeadline",
@@ -71538,8 +70878,7 @@ _reloadReadFailureSince = nil,
 _reloadReadRetryAt = nil,
 _nextReloadReadWarningAt = 0,
 _lastAimServerCFrame = nil,
--- Keep the latest grounded local pose so disabling Ragebot can recover if a
--- transient TP/VoidSpam pose leaves the live RootPart below the map.
+
 _lastSafeGroundCFrame = nil,
 _lastSafeGroundRootPart = nil,
 _lastSafeGroundAt = nil,
@@ -71615,9 +70954,7 @@ if type(priorGate) == "table" and ragebotPoseRestoreGateIsActive()
         end
     end
 end
--- Never let a stale, unadoptable gate with no valid transaction block movement
--- forever after an abrupt script stop. A current matching transaction above is
--- already owned by tbl18 and is deliberately left alone.
+
 local gateAfterAdoption = ragebotPoseRestoreGateRead()
 if stalePriorGate and type(gateAfterAdoption) == "table"
     and rawget(gateAfterAdoption, "owner") == priorOwner
@@ -71714,10 +71051,8 @@ callResult = result
 end
 end
 
-
 if okCall then
--- A fresh successful claim/release changes which controller owns the camera.
--- A prime timestamp from the previous owner must never authorize a Knife strike.
+
 arg._knifeCameraPrimeTarget = nil
 arg._knifeCameraPrimeAt = nil
 arg._knifeCameraPrimeAngles = nil
@@ -71758,7 +71093,7 @@ local function ragebotRequestVoidSpamTransformRestore()
 
     local oldToken = tonumber(state._voidSpamRestoreRetryToken) or 0
     if oldToken ~= oldToken or oldToken == math.huge or oldToken == -math.huge then oldToken = 0 end
-    -- Avoid creating/cancelling one retry worker on every planner update.
+     
     if state._voidSpamRestoreRetryScheduledToken == oldToken then return false end
 
     local token = oldToken + 1
@@ -71810,8 +71145,6 @@ if enabled then
         return
     end
 
-    -- Preserve the pre-override value across script re-execution so a failed
-    -- unload restore cannot cause the next version to snapshot our own override.
     ragebotPersistOriginalDestroyHeight()
     local targetDestroyHeight = 0 / 0
     local heightSetOk, heightWriteError = ragebotTrySetInstanceProperty(
@@ -71820,7 +71153,6 @@ if enabled then
         targetDestroyHeight
     )
     if not heightSetOk then
-
 
         local finiteFallbackHeight = -1000000000
         local fallbackOk, fallbackError = ragebotTrySetInstanceProperty(
@@ -71844,7 +71176,6 @@ if enabled then
         ragebotPublishControlState(true)
     else
 
-
         arg._enabled = false
         ragebotPublishControlState(false)
         local restoreOk, restoreError = ragebotTrySetInstanceProperty(
@@ -71867,15 +71198,10 @@ if enabled then
     end
 else
 
-
     arg._enabled = false
-    -- Turning off Ragebot must release VoidSpam's independent roll/offset even
-    -- when the planner stops before another _ApplyUndergroundOffset call.
+
     ragebotRequestVoidSpamTransformRestore()
-    -- Hand Underground back to its standalone controller BEFORE restoring the
-    -- game's FallenPartsDestroyHeight. Otherwise the server-position override
-    -- can be released while the character is still at Ragebot's hidden/deep pose,
-    -- allowing the void kill to win the race against Underground's next Heartbeat.
+
     local undergroundHandoffPending = false
     local undergroundController = rawget(_G, "__CrefyUndergroundController")
     if type(undergroundController) == "table"
@@ -71950,9 +71276,7 @@ else
     local mustRestore = wasEnabled or overrideActive or restorePending
     if mustRestore then
         if ragebotUndergroundHandoffIsPending(arg) then
-            -- Do not remove the void-death protection while Underground still
-            -- owns no verified client pose; a hidden RootPart could die before
-            -- the next controller update gets a chance to finish the hand-off.
+
             arg._destroyHeightOverrideActive = true
             arg._destroyHeightRestorePending = true
             ragebotScheduleDestroyHeightRestoreRetry(arg)
@@ -71984,8 +71308,6 @@ end
 end
 
 local function ragebotMarkActiveLifecycle(arg)
-
-
 
     arg._resetApplied = false
     arg._resetContext = nil
@@ -72029,10 +71351,6 @@ local function ragebotClearPendingRestoreTransaction(owner)
     end
 end
 
--- Used only when Ragebot is disabled or its context/character is no longer valid.
--- It restores the exact original RootPart without running combat callbacks. If the
--- character/root was replaced, it retires the stale transaction instead of applying
--- the old CFrame to the replacement.
 local function ragebotAdvanceInactiveRestore(owner)
     if type(owner) ~= "table" or owner._repRootCounterRestorePending ~= true then return true end
     local restorePose = owner._repRootCounterRestoreCFrame
@@ -72061,11 +71379,11 @@ local function ragebotAdvanceInactiveRestore(owner)
             and restoreRoot:IsDescendantOf(workspace)
     end)
     if not rootValidOk then
-        -- A failed validity read is unknown state, not proof the snapshot is obsolete.
+         
         return false
     end
     if not rootValid then
-        -- A removed original root cannot receive this pose. Do not keep a gate alive forever.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
@@ -72073,7 +71391,7 @@ local function ragebotAdvanceInactiveRestore(owner)
     local liveHealth = nil
     pcall(function() liveHealth = liveHumanoid and liveHumanoid.Health or nil end)
     if contextAlive == false or (type(liveHealth) == "number" and liveHealth <= 0) then
-        -- Never replay a combat snapshot after death; the spawn pipeline owns the new pose.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
@@ -72081,17 +71399,17 @@ local function ragebotAdvanceInactiveRestore(owner)
     local belongsToCurrentCharacter = false
     pcall(function() belongsToCurrentCharacter = restoreRoot:IsDescendantOf(liveCharacter) end)
     if not belongsToCurrentCharacter then
-        -- A respawn/replacement invalidates the old snapshot; never teleport the new avatar to it.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
     if contextRoot ~= nil and contextRoot ~= restoreRoot then
-        -- A live context now identifies a different root. Do not transplant an old pose.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
     if typeof(restorePose) ~= "CFrame" then
-        -- No trustworthy snapshot remains. Release only this owner's gate; do not invent a pose.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
@@ -72108,8 +71426,6 @@ local function ragebotAdvanceInactiveRestore(owner)
     if not gateOk then return false end
     ragebotPoseRestoreGateZeroMotion(restoreRoot, owner)
 
-    -- Read first. A setter followed immediately by a getter can only prove the
-    -- local setter/cache echoed its own write, not that the pose remained stable.
     local serverOk, serverPose = pcall(controller.GetServerCFrame, controller)
     local rootOk, rootPose = pcall(function() return restoreRoot.CFrame end)
     local matches = serverOk and rootOk
@@ -72128,8 +71444,7 @@ local function ragebotAdvanceInactiveRestore(owner)
             )
             owner._repRootCounterRestoreLastSampleAt = now
         end
-        -- Samples arriving too quickly are ignored without moving the sample
-        -- origin; the next sufficiently separated sample can still complete it.
+
     else
         owner._repRootCounterRestoreStableFrames = 0
         owner._repRootCounterRestoreLastSampleAt = nil
@@ -72171,8 +71486,7 @@ local function ragebotScheduleAbandonedRestoreRetry(owner)
             return
         end
         if attempts >= 40 then owner._restoreOwnerAbandoned = true end
-        -- Keep a low-frequency retry after the initial burst. Stopping the retry
-        -- while retaining an immortal gate would strand every movement controller.
+
         local retryDelay = attempts < 40 and 0.05 or 0.25
         local scheduleOk = pcall(task.delay, retryDelay, retry)
         if not scheduleOk then
@@ -72293,8 +71607,6 @@ end
 return
 end
 
--- A verified hold is valid only for the exact RootPart whose read-back passed.
--- If that part is replaced later, discard the stale hold before planner execution.
 if arg._repRootCounterRestorePending ~= true
     and arg._repRootCounterHoldRootPart ~= nil
     and arg._repRootCounterHoldRootPart ~= rootPart then
@@ -72305,8 +71617,6 @@ if arg._repRootCounterRestorePending ~= true
     ragebotPoseRestoreGateSet(arg, false, 0, nil)
 end
 
--- CFrame restoration alone does not clear momentum left by AutoStrafe/Flight.
--- Only the controller that owns the active gate may damp this character's motion.
 if arg._repRootCounterRestorePending == true or ragebotPoseRestoreGateIsActive() then
     ragebotPoseRestoreGateZeroMotion(rootPart, arg)
 end
@@ -72319,9 +71629,7 @@ end
 if typeof(clientCFrame) ~= "CFrame" then
     if arg._repRootCounterRestorePending == true then
         ragebotPoseRestoreGateSet(arg, true, nil, arg._repRootCounterRestoreCFrame, rootPart)
-        -- A transient controller read failure must not clear the restore gate.
-        -- Use the live local RootPart pose only as this update's planner input;
-        -- the original restore snapshot remains authoritative for the restore step.
+
         local fallbackOk, fallbackCFrame = pcall(function()
             if rootPart == nil or not rootPart:IsA("BasePart")
                 or not rootPart:IsDescendantOf(workspace) then
@@ -72346,8 +71654,6 @@ if typeof(clientCFrame) ~= "CFrame" then
     end
 end
 
--- Remember a recent grounded pose from the real local RootPart (not a planned
--- Ragebot destination). This is a disable-time safety snapshot, not a combat pose.
 pcall(function()
     local humanoid = localCharacter and localCharacter:FindFirstChildWhichIsA("Humanoid", true)
     if humanoid == nil or humanoid.Health <= 0 or humanoid.FloorMaterial == Enum.Material.Air then
@@ -72367,8 +71673,6 @@ pcall(function()
     arg._lastSafeGroundAt = os.clock()
 end)
 
--- Poll the pending ACK on every valid controller update, not only when the
--- hitscan planner runs. Translocate returns early and must not bypass the deadline.
 local pendingVoidSpamState = ragebotVoidSpamState()
 local phaseEnabledForUpdate, phaseAttackForUpdate, phaseHideForUpdate = ragebotVoidSpamConfig()
 local phaseNowForUpdate = os.clock()
@@ -72380,8 +71684,7 @@ if pendingVoidSpamState.awaitingShotAck == true then
         ragebotVoidSpamResolveUnconfirmedShot(pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, "failed")
     end
 end
--- Keep the phase clock live even when no target is available or a strategy
--- returns early; otherwise the first target after an idle gap can enter Hide.
+
 if phaseEnabledForUpdate then
     ragebotVoidSpamAdvancePhase(
         pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, phaseHideForUpdate
@@ -72389,14 +71692,11 @@ if phaseEnabledForUpdate then
 end
 
 local mode = v115.Data.Ragebot.Evasion.Mode
--- On entry into Translocate, release any PartGlue state created by the normal
--- hitscan/melee planners before observing target hitboxes. These mutations are
--- local to this script and otherwise can look like an opponent's displaced hitbox.
+
 local previousEvasionMode = arg._lastEvasionMode
 local enteredTranslocate = previousEvasionMode ~= mode and mode == "Translocate"
 if previousEvasionMode ~= mode then
-    -- A mode change must not discard the counter target while its restore gate
-    -- is still pending. The target is revalidated before combat resumes.
+
     if arg._repRootCounterRestorePending ~= true then
         arg._repRootCounterTarget = nil
         arg._repRootCounterKind = nil
@@ -72404,7 +71704,7 @@ if previousEvasionMode ~= mode then
         arg._repRootCounterActionAt = nil
         arg._repRootCounterStationaryUntil = 0
     end
-    -- Gun shoot window expires on mode change (TP resumed)
+     
     arg._gunShootWindowUntil = 0
     if mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker" then
         local strategyNames = { "_hitscanStrategy", "_meleeStrategy" }
@@ -72420,16 +71720,14 @@ if previousEvasionMode ~= mode then
             end
         end
         table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
-        -- Knife cooldown history vẫn giữ khi mode thay đổi
-        -- vì cooldown là thuộc tính của TARGET, không phải mode của mình
+
     end
 end
 arg._lastEvasionMode = mode
 local okAction, actionResult = pcall(v128.getAction, innerContext)
 if okAction and actionResult ~= nil then
     if type(actionResult) ~= "table" then
-        -- The planner accepts nil as a legitimate no-action state, but false,
-        -- numbers and strings are not action objects. Do not coerce them to nil.
+
         okAction = false
         actionResult = "GetAction returned invalid result type: " .. type(actionResult)
     else
@@ -72437,8 +71735,7 @@ if okAction and actionResult ~= nil then
         local supportedType = shapeOk and (actionType == "Attack" or actionType == "Melee"
             or actionType == "Reload" or actionType == "Swap")
         if not supportedType then
-            -- An unknown/malformed action table must not fall through as a no-op
-            -- and be interpreted by Evasion as permission to TP.
+
             okAction = false
             actionResult = "GetAction returned an unsupported action type: " .. tostring(actionType)
         end
@@ -72452,9 +71749,7 @@ arg._nextGetActionWarningAt = warningNow + 5
 warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
 end
 elseif actionResult == nil then
--- nil is permitted by the planner, but it previously looked identical to a
--- successful action selection in the console. Emit a throttled diagnostic so
--- executor-specific state/action gaps can be distinguished from attack failures.
+
 local warningNow = os.clock()
 if warningNow >= (arg._nextNoActionWarningAt or 0) then
 arg._nextNoActionWarningAt = warningNow + 5
@@ -72480,7 +71775,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         local storedKnifeState = ragebotTargetKnifeState(storedCounterTarget)
         local storedKind = arg._repRootCounterKind
         local confirmedTPOrRepRoot = storedKind == "rep-root-contact"
-        -- knife-cooldown-predict cũng là confirmed (target đang cầm knife + đã track cooldown)
+         
         local confirmedKnifePrediction = storedKind == "knife-cooldown-predict"
             and storedKnifeState == true
         local restorePendingNow = arg._repRootCounterRestorePending == true
@@ -72497,13 +71792,9 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
             repRootCounterActive = true
             repRootCounterTarget = storedCounterTarget
         end
-        -- While restoration is pending, preserve even a temporarily unreadable
-        -- target wrapper but do not make it attackable. The post-restore resolver
-        -- will revalidate the live roster and weapon policy before resuming it.
+
     end
 
-    -- Observe all currently attackable enemies, nearest first, instead of only the
-    -- ordinary selected target. This permits a bounded response to a non-selected attacker.
     if not repRootCounterActive
         and arg._repRootCounterRestorePending ~= true
         and nowForRepRoot >= (tonumber(arg._repRootRestoreRetryAt) or 0) then
@@ -72519,16 +71810,13 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         if detectedTarget ~= nil then
             local detectedKnifeState = ragebotTargetKnifeState(detectedTarget)
             local confirmedTPOrRepRoot = detectedKind == "rep-root-contact"
-            -- [NEW] knife-cooldown-predict: target đang cầm Knife và được confirm qua cooldown tracker
+             
             local confirmedKnifePrediction = detectedKind == "knife-cooldown-predict"
                 and detectedKnifeState == true
             if detectedKnifeState == false or confirmedTPOrRepRoot or confirmedKnifePrediction then
                 arg._repRootCounterTarget = detectedTarget
                 arg._repRootCounterKind = detectedKind
-                -- [NEW] Dynamic counter window:
-                -- Nếu có cooldown estimate cho target này, extend window để cover cả lần attack kế.
-                -- Ví dụ: hooker cooldown 1.25s → window = max(0.75, 1.25 + 0.35) = 1.60s
-                -- Với spam variant (0.18s): window = max(0.75, 0.18 + 0.35) = 0.75s (không đổi)
+
                 local detectedRoot = nil
                 pcall(function()
                     local aliveState = detectedTarget.AliveState
@@ -72537,7 +71825,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                 local baseWindow = 0.75
                 if detectedRoot ~= nil then
                     local _, cdEst, _ = ragebotKnifePredictImminent(detectedRoot, nowForRepRoot)
-                    -- Chỉ extend khi estimate đáng tin (đã có ít nhất 2 mẫu thực tế)
+                     
                     local cdTrack = RAGEBOT_KNIFE_COOLDOWN_TRACKS[detectedRoot]
                     local sampleCount = type(cdTrack) == "table"
                         and type(cdTrack.intervals) == "table"
@@ -72548,12 +71836,9 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                 end
                 arg._repRootCounterUntil = nowForRepRoot + baseWindow
                 arg._repRootCounterActionAt = nil
-                -- Cửa sổ đứng yên ngắn: chỉ 0.20s để fire một backstab
-                -- Sau đó character TP ngay, tránh đứng yên cả baseWindow → hooker tắt ragebot = chết
+
                 arg._repRootCounterStationaryUntil = nowForRepRoot + 0.20
-                -- Snapshot the pre-Translocate client pose. If the controller has
-                -- no readable client pose for this update, fall back to the current
-                -- live RootPart pose instead of leaving an invalid nil snapshot.
+
                 local restoreSnapshot = clientCFrame
                 if typeof(restoreSnapshot) ~= "CFrame" then
                     local snapshotOk, rootSnapshot = pcall(function()
@@ -72600,8 +71885,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                     end
                 end
             else
-                -- FakePosition alone does not suspend evasion when the target is
-                -- Knife-equipped or its current weapon state cannot be verified.
+
                 arg._repRootCounterTarget = nil
                 arg._repRootCounterKind = nil
                 arg._repRootCounterUntil = 0
@@ -72610,8 +71894,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         end
     end
 else
-    -- Reload or a temporary mode change should not erase a target whose pose
-    -- restoration is still pending. Once restored, the target is revalidated.
+
     if arg._repRootCounterRestorePending ~= true then
         arg._repRootCounterTarget = nil
         arg._repRootCounterKind = nil
@@ -72620,19 +71903,13 @@ else
     end
 end
 
--- Restore the saved pose before running any combat planner/action. The initial
--- target window is 0.10-0.25s; if local controller/RootPart read-back misses the
--- deadline, retry and keep planner/weapon callbacks gated. This is not an
--- independent acknowledgement from the authoritative game server.
 if arg._repRootCounterRestorePending == true then
     local restoreCFrame = arg._repRootCounterRestoreCFrame
     local nowRestore = os.clock()
     local deadlineRestore = tonumber(arg._repRootCounterRestoreDeadline) or nowRestore
     local savedRestoreRoot = arg._repRootCounterRestoreRootPart
     if savedRestoreRoot ~= rootPart then
-        -- The snapshot is associated with a different or unknown RootPart.
-        -- Never apply a stale pose across a character/root replacement. Re-baseline
-        -- against the current RootPart and keep the update gate closed until stable.
+
         local replacementPoseOk, replacementPose = pcall(function()
             if rootPart == nil or not rootPart:IsA("BasePart")
                 or not rootPart:IsDescendantOf(workspace) then
@@ -72652,9 +71929,7 @@ if arg._repRootCounterRestorePending == true then
             arg._repRootCounterRestorePending = true
             arg._repRootCounterRestoreLastSampleAt = nil
             local replacementGateOk = ragebotPoseRestoreGateSet(arg, true, nil, replacementPose, rootPart)
-            -- The original pose belongs to a different RootPart and cannot be
-            -- proven restored. Re-baseline safely, but never resume the old
-            -- counter target from that replacement-root transaction.
+
             arg._repRootCounterTarget = nil
             arg._repRootCounterKind = nil
             arg._repRootCounterUntil = 0
@@ -72673,15 +71948,12 @@ if arg._repRootCounterRestorePending == true then
             )
             arg._repRootRestoreRetryAt = nil
         end
-        -- If the replacement RootPart is not yet valid, leave restore pending;
-        -- this returns before planner/WeaponAction and retries next update.
+
         ragebotMarkActiveLifecycle(arg)
         return
     end
     if typeof(restoreCFrame) ~= "CFrame" then
-        -- If a pending state lost its snapshot, do not retry a nil/invalid pose
-        -- forever. Re-baseline to this live RootPart, then require the same stable
-        -- read-back gate before allowing planner/weapon callbacks again.
+
         local fallbackSnapshotOk, fallbackSnapshot = pcall(function()
             if rootPart == nil or not rootPart:IsA("BasePart")
                 or not rootPart:IsDescendantOf(workspace) then
@@ -72768,8 +72040,7 @@ if arg._repRootCounterRestorePending == true then
         and ragebotCFrameMatches(serverRestoreCFrame, restoreCFrame)
     local rootPoseMatches = okRootRestore
         and ragebotCFrameMatches(rootRestoreCFrame, restoreCFrame)
-    -- Verify what remained from the previous frame before issuing another write.
-    -- If the read-back misses, write once and defer verification until a later Update.
+
     local restoreReadbackMatches = validRestoreCFrame and controllerPoseMatches and rootPoseMatches
     local okSetRestore = true
     local setRestoreError = nil
@@ -72799,14 +72070,8 @@ if arg._repRootCounterRestorePending == true then
             or nil
     end
 
-    -- A single synchronous read-back can merely reflect the local setter. Require
-    -- two consecutive Update samples before allowing the planner/weapon callbacks.
     if restoreReadbackMatches and arg._repRootCounterRestoreStableFrames >= 2 then
-        -- Clear the restore gate only after controller and local RootPart read-back
-        -- agree across consecutive updates. This is local verification, not a server ACK.
-        -- Keep the restored pose as a short stationary anchor so normal weapon
-        -- planning (including ShootLock and HeavyAttack callbacks) can continue
-        -- without immediately reintroducing a Translocate/defensive CFrame move.
+
         arg._repRootCounterRestorePending = false
         arg._repRootCounterRestoreVerifiedAt = nowRestore
         arg._repRootCounterHoldRootPart = rootPart
@@ -72841,8 +72106,7 @@ if arg._repRootCounterRestorePending == true then
                 repRootCounterTarget = targetToResume
                 arg._repRootCounterUntil = math.max(priorCounterUntil, responseUntil)
             else
-                -- Never resume a stale or no-longer-attackable target after a long
-                -- restore. Drop only the target state; the verified pose hold remains.
+
                 arg._repRootCounterTarget = nil
                 arg._repRootCounterKind = nil
                 arg._repRootCounterUntil = 0
@@ -72859,10 +72123,7 @@ if arg._repRootCounterRestorePending == true then
         ragebotMarkActiveLifecycle(arg)
         return
     else
-        -- Fail closed: the 0.10-0.25s target is the expected restore window, not
-        -- permission to attack from an unverified pose. Keep retrying the exact
-        -- restore and keep TP/combat planning gated until RootPart verifies.
-        -- A successful later retry reopens the normal planner and weapon callbacks.
+
         local priorBlockUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
         if not fakePositionFiniteNumber(priorBlockUntil) then priorBlockUntil = 0 end
         arg._repRootTranslocateBlockUntil = math.max(priorBlockUntil, nowRestore + 0.75)
@@ -72881,10 +72142,6 @@ if arg._repRootCounterRestorePending == true then
     end
 end
 
--- Weapon-action selection is a prerequisite for every movement/attack planner.
--- A thrown GetAction call is not equivalent to a legitimate nil/no-action result:
--- fail closed for this update so Translocate/Random cannot TP on an unknown weapon
--- state and no stale Knife callback can fire after a transient controller error.
 if not okAction then
     pcall(function() characterController:SetServerCFrame(nil) end)
     pcall(function() characterController:SendViewAngles(20, nil) end)
@@ -72934,18 +72191,12 @@ if ragebotPoseRestoreGateIsActive()
     return
 end
 
--- Gun shoot window: block Translocate trong 0.1244s sau khi bắn
--- → character snap về clientCFrame, tiếp tục bắn từ vị trí đó
--- → hooker đang track TP position sẽ bị lừa vì character đột ngột ở clientCFrame
--- Random/ProjectileBreaker được handle bởi gun branch trong _Plan (v131 = arg6)
 local gunShootWindowActive = os.clock() < (tonumber(arg._gunShootWindowUntil) or 0)
 
 if okAction and mode == "Translocate" and arg._reloadGun == nil
     and (v130 == nil or v130.Type ~= "Reload")
     and not repRootCounterActive and not repRootTranslocateBlocked
     and not gunShootWindowActive then
-
-
 
 ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 arg._knifeActionExpected = false
@@ -72992,8 +72243,7 @@ end
 
 local target
 if repRootCounterActive then
-    -- Keep the one-shot counter response bound to the same target that caused
-    -- the close-snap event; do not switch to a different target mid-window.
+
     target = repRootCounterTarget
 else
     local okTarget, resultTarget = pcall(arg._targetSelection.GetTarget, arg._targetSelection)
@@ -73086,9 +72336,7 @@ if arg._repRootCounterRestorePending ~= true
     and os.clock() < counterHoldUntil
     and arg._repRootCounterHoldRootPart == rootPart
     and typeof(counterHoldCFrame) == "CFrame" then
-    -- Pin only movement: preserve ShouldSkipDefense, ViewAngles, IsAimPose and
-    -- WeaponAction exactly as the ordinary planner produced them. This keeps
-    -- ShootLock, HeavyAttack, reload and their normal angle-routing behavior.
+
     v131.CFrame = counterHoldCFrame
 end
 local okApply, applyError = pcall(arg._ApplyPlan, arg, v131, target, innerContext)
@@ -73166,8 +72414,7 @@ if arg._knifeActionExpected == true and type(weaponAction) == "function" then
             or type(primedAt) ~= "number" or primedAt ~= primedAt
             or primedAt == math.huge or primedAt == -math.huge
             or os.clock() - primedAt < 0.06 then
-            -- Require the first valid camera packet to have had its minimum lead time.
-            -- Angle changes after that are flushed each update and must not starve attacks.
+
             weaponAction = nil
         end
     end
@@ -73176,16 +72423,12 @@ end
 if weaponAction ~= nil then
 if type(weaponAction) == "function" then
 
-
-
 local actionOk, actionError = pcall(weaponAction)
 if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
 end
 
--- A non-throwing callback can be Swap/Equip or a no-op. Only a verified
--- ShotRequestCount increment is treated as a confirmed gun-request event.
 local shotRequestAdvanced = false
 local countAfter = nil
 if actionOk and v132 ~= nil and shotRequestCount ~= nil then
@@ -73197,12 +72440,9 @@ if actionOk and v132 ~= nil and shotRequestCount ~= nil then
         and countAfter > shotRequestCount
 end
 if shotRequestAdvanced and repRootCounterActive and target == repRootCounterTarget then
-    -- A successful shot confirms the normal planner is active, but must not
-    -- immediately cancel the defensive response window. The previous code set
-    -- the deadline to `now`, which made Translocate resume on the next update.
+
     arg._repRootCounterActionAt = os.clock()
-    -- Backstab đã fire → reset stationaryUntil ngay để character bắt đầu TP
-    -- Không giữ đứng yên thêm vì đã backstab xong rồi
+
     arg._repRootCounterStationaryUntil = 0
 end
 
@@ -73212,7 +72452,6 @@ local okAmmoAfter, ammoAfter = pcall(function() return v132:GetAmmo() end)
 local observedEmpty = okAmmoAfter and type(ammoAfter) == "number" and ammoAfter == ammoAfter
 and ammoAfter ~= math.huge and ammoAfter ~= -math.huge and ammoAfter <= 0
 if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 and observedEmpty then
-
 
 local now2 = os.clock()
 arg._reloadGun = v132
@@ -73233,11 +72472,6 @@ end
 end
 end
 end
-
-
-
-
-
 
 local function ragebotInventoryHasItem(innerContext, wantedName)
     if type(wantedName) ~= "string" or wantedName == "" then return false end
@@ -73276,15 +72510,11 @@ local function ragebotShouldUseRiotKnifeRotation(item, innerContext, target)
     if type(modifiers) ~= "table" or rawget(modifiers, "AlwaysBackstab") ~= true then return false end
     local mode = rawget(modifiers, "AlwaysBackstabMode")
     if mode == "Knife" then
-        -- `item` is the concrete Knife selected from ItemBehaviors:GetItems();
-        -- do not fail closed because a separate observer snapshot is one frame stale.
+
         return true
     end
     if mode == "Riot" then
-        -- If the external Riot loop is not selected (for example, the target has no
-        -- shield or its camera stream has not become operational), Ragebot must keep
-        -- a complete internal backstab path instead of falling through to ordinary
-        -- melee angles while still blocking the standalone camera owner.
+
         return true
     end
     return false
@@ -73342,9 +72572,7 @@ local function ragebotUsesExternalRiotCamera(item, target, owner)
     local targetKey = aliveState ~= nil and aliveState.HitboxHead or targetModel
     local now = os.clock()
     local shared = ragebotStateGet("__SilentCamTargetRotationExactReplication_v1")
-    -- The standalone Riot camera loop deliberately stops while Ragebot owns
-    -- the camera. Do not wait through its startup grace period when it is
-    -- explicitly disabled; use Ragebot's internal Knife camera path immediately.
+
     if type(shared) ~= "table" or rawget(shared, "enabled") ~= true then
         if type(owner) == "table" then
             owner._externalRiotCameraWaitTarget = nil
@@ -73367,9 +72595,6 @@ local function ragebotUsesExternalRiotCamera(item, target, owner)
         return true
     end
 
-    -- Allow the independent Riot loop a short startup window to acquire its remote
-    -- and begin sending. If it never becomes operational, use Ragebot's internal
-    -- backstab angles rather than suppressing HeavyAttack indefinitely.
     if type(owner) ~= "table" then return true end
     if owner._externalRiotCameraWaitTarget ~= targetKey then
         owner._externalRiotCameraWaitTarget = targetKey
@@ -73443,9 +72668,6 @@ local function ragebotBuildRiotKnifeViewAngles(target)
     local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
     if hitbox == nil then return nil end
 
-    -- Match the very same combat RootPart used by the melee payload builder.
-    -- Choosing Model.HumanoidRootPart independently can send camera yaw for a
-    -- different part on rigs with a custom replicated combat root.
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, candidatePart = pcall(function()
         if anglePart == nil or not anglePart:IsA("BasePart")
@@ -73496,8 +72718,7 @@ local function ragebotRiotBridgeFallbackReady(owner, targetKey, now)
         owner._riotCameraBridgeFallbackStartedAt = now
         return false
     end
-    -- The internal normalized angle payload is already being sent by Ragebot.
-    -- If the bridge cannot transmit a fresh value, do not block melee forever.
+
     return now - startedAt >= 0.35
 end
 
@@ -73536,8 +72757,7 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
         return ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
     local callOk, sendOk, sentAt, didSend, sendFailure = pcall(sender, encoded)
-    -- Keep `now` in this function scope: the post-send and dedupe paths compare
-    -- against the latest monotonic time, not a branch-local variable.
+
     local now = os.clock()
     if not callOk or sendOk ~= true or type(sentAt) ~= "number" or not ragebotRiotFiniteNumber(sentAt) then
         local now = os.clock()
@@ -73550,9 +72770,7 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
         return ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
     if didSend == true then
-        -- Only a genuinely transmitted fresh packet resets the fallback timer.
-        -- A successful call that was deduplicated is not proof that this target's
-        -- current angle reached the bridge and must not restart the timer forever.
+
         owner._riotCameraBridgeFallbackTarget = nil
         owner._riotCameraBridgeFallbackStartedAt = nil
         if owner._riotCameraBridgeStartedAt == nil then
@@ -73608,9 +72826,7 @@ local counterTarget = arg._repRootCounterTarget
 local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "table"
     and (counterTarget == arg4 or (counterTarget.FighterState ~= nil
         and counterTarget.FighterState == arg4.FighterState))
--- stationaryCounterResponse: đứng yên CHỈ trong cửa sổ 0.20s (_repRootCounterStationaryUntil)
--- để fire một backstab. Sau đó TP đi ngay dù counterUntil chưa hết.
--- Điều này ngăn hooker tắt ragebot → backstab trong khi mình đang đứng yên cả 1-1.6s.
+
 local stationaryUntil = tonumber(arg._repRootCounterStationaryUntil) or 0
 local stationaryCounterResponse = arg._enabled == true and os.clock() < stationaryUntil
     and (counterKind == "rep-root-contact"
@@ -73633,8 +72849,7 @@ if externalRiotCamera then
     arg._knifeCameraPrimeAt = nil
     arg._knifeCameraPrimeAngles = nil
 else
-    -- Leaving external Riot ownership invalidates its ACK-like camera prime;
-    -- otherwise a later re-entry to the same target could reuse an old timestamp.
+
     arg._externalRiotCameraTarget = nil
     arg._externalRiotCameraStartedAt = nil
     arg._externalRiotCameraStartCount = nil
@@ -73660,11 +72875,7 @@ arg._meleeStrategy:ResetState()
 if stationaryCounterResponse and typeof(arg6) == "CFrame" then
     return { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
 end
--- If a valid target is already selected but GetAction produced no action,
--- do not run Random/Translocate evasion as a substitute for an attack. A plain
--- CFrame is insufficient here because _ApplyPlan can still replace it with a
--- defensive/evasion pose. HoldPosition is handled explicitly by _ApplyPlan.
--- Repositioning is paused for this update while action selection retries.
+
 if arg4 ~= nil and typeof(arg6) == "CFrame" then
     return { CFrame = arg6, HoldPosition = true }
 end
@@ -73698,9 +72909,7 @@ end
 if arg4 == nil then
 arg._hitscanStrategy:ResetState()
 arg._meleeStrategy:ResetState()
--- If target selection returned a candidate but validation rejected it (for
--- example, the target/local EnvironmentID was unavailable), don't teleport as
--- though an attack were running. Hold the known client pose and retry next tick.
+
 if arg8 == true and (arg3.Type == "Attack" or arg3.Type == "Melee")
     and typeof(arg6) == "CFrame" then
     local warningNow = os.clock()
@@ -73730,31 +72939,25 @@ arg._hitscanStrategy:ResetState()
 return fn36()
 end
 local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg5, flag19, arg6)
--- ── Gun Shoot Window ──────────────────────────────────────────────────────────
--- Luồng đúng:
---   1. Bắn bình thường ở vị trí TP (frame có v132 ~= nil, CFrame KHÔNG bị override)
---   2. Ngay sau đó: snap về clientCFrame trong 0.1244s (window starts NEXT frame)
---   3. Trong window: tiếp tục bắn nếu có v132, renew window; CFrame = clientCFrame
---   4. Sau 0.1244s: Translocate tiếp tục bình thường
--- gunShootWindowActive đã được tính ở Update scope (dùng lại, không tính lại)
+
 local nowGun = os.clock()
 
 if gunShootWindowActive then
-    -- Đang trong window 0.1244s: snap về clientCFrame, bắn tiếp nếu có
+     
     if typeof(arg6) == "CFrame" then
         v131 = arg6
     end
     if v132 ~= nil then
-        -- Renew window khi bắn thêm trong window
+         
         arg._gunShootWindowUntil = nowGun + 0.1244444445
     end
 else
     if v132 ~= nil then
-        -- Bắn ở TP position frame này, window bắt đầu từ FRAME SAU
+         
         arg._gunShootWindowUntil = nowGun + 0.1244444445
     end
 end
--- ─────────────────────────────────────────────────────────────────────────────
+ 
 return { CFrame = v131, WeaponAction = v132, ShouldForceCrouch = true, IsAimPose = v132 ~= nil }
 end
 
@@ -73762,13 +72965,8 @@ if item.__type == "Melee" then
 arg._hitscanStrategy:ResetState()
 local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
 
-
-
-
 if arg._knifeExternalRiotCamera == true then
-    -- Standalone AlwaysBackstab.Riot owns the remote camera stream for a shielded
-    -- target. Do not race it with Ragebot's separate angle payload; wait for fresh,
-    -- repeated sends from that module before allowing HeavyAttack.
+
     v132 = nil
     if type(v133) == "function" and not ragebotPrimeExternalRiotCamera(arg, arg4) then
         v133 = nil
@@ -73824,8 +73022,7 @@ if reloadGun ~= nil and (
     or ((reloadActionType == "Attack" or reloadActionType == "Melee" or reloadActionType == "Reload")
         and reloadActionItem ~= reloadGun)
 ) then
-    -- A swap can temporarily expose no equipped gun. Clear the old reload
-    -- transport from the action identity before querying that transient state.
+
     ragebotSafeClearReloadTransport(arg)
     reloadGun = nil
 end
@@ -74131,8 +73328,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         setFn = controller.SetServerCFrame
     end)
     if not methodsOk then setFn = nil end
-    -- A destroyed CharacterController may no longer have its RootDesync setter.
-    -- The identity-checked RootPart remains the final recovery fallback below.
 
     local currentRoot = ragebotVoidSpamControllerRoot(controller)
     if typeof(currentRoot) ~= "Instance" then return false end
@@ -74151,9 +73346,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         end)
         if not oldRootReadOk then return false end
         if snapshotRoot ~= currentRoot then
-            -- Never transfer a stale roll/offset to a replacement character.
-            -- The old root is no longer controller-owned; retire only this stale
-            -- transaction rather than moving the new character to an old pose.
+
             ragebotClearVoidSpamTransformSnapshot(state)
             return true
         end
@@ -74163,10 +73356,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         end
     end
 
-    -- GetServerCFrame can return RootDesync's cached _cframe instead of the
-    -- actual RootPart pose. Read the real part before deciding whether the
-    -- pitch/roll/offset remains applied; otherwise a cache-only setter can pass
-    -- a false-positive verification when _oldCFrame is nil.
     local currentReadOk, currentCFrame = pcall(function() return currentRoot.CFrame end)
     if not currentReadOk or typeof(currentCFrame) ~= "CFrame" then return false end
 
@@ -74183,14 +73372,8 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local nearOutputPosition = deltaOutput <= normalTolerance
     local nearBasePosition = deltaBase <= normalTolerance
 
-    -- Legacy transactions created before RootPart identity was stored can be
-    -- adopted only if the current part still matches the captured pose closely.
-    -- Do not apply old snapshots across a respawn merely because the controller
-    -- object itself survived reload.
     if snapshotRoot == nil then
-        -- Legacy snapshots cannot prove RootPart identity. Adopt only when both
-        -- position and orientation closely match the saved output or base pose;
-        -- being merely far below the base is not enough to identify this root.
+
         local outputOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, lastOutputCFrame)
         local baseOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, baseCFrame)
         local exactLegacyPoseMatches = (nearOutputPosition and outputOrientationMatches)
@@ -74199,8 +73382,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         state.voidSpamRootPart = currentRoot
     end
 
-    -- Another restore transaction owns pose changes while the gate is active.
-    -- Let it finish first, then retry the Void Spam cleanup against the real pose.
     if ragebotPoseRestoreGateIsActive() then return false end
 
     local outputScore = ragebotCFrameOrientationScore(currentCFrame, lastOutputCFrame)
@@ -74210,14 +73391,12 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local rotationIsStillRolled = outputScore > baseScore + 0.15
     local rotationAlreadyRestored = baseScore > outputScore + 0.15
     if not rotationIsStillRolled and not rotationAlreadyRestored then
-        -- Another controller supplied an orientation that cannot be attributed
-        -- safely to either snapshot. Keep the recovery record and retry later.
+
         return false
     end
 
     if largeHideOffset and not nearOutputPosition and not nearBasePosition and not hideOffsetStillVisible then
-        -- Do not remove only the roll and then discard the sole recovery record
-        -- while a large Hide translation is still ambiguous.
+
         return false
     end
 
@@ -74229,8 +73408,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     elseif nearBasePosition then
         restoredPosition = currentPos
     elseif not largeHideOffset then
-        -- For a normal offset the character likely moved after the snapshot.
-        -- Preserve the newer location while still removing our own side roll.
+
         restoredPosition = currentPos
     elseif hideOffsetStillVisible then
         restoredPosition = currentPos - fakeOffset
@@ -74240,8 +73418,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local restoredRotation = currentCFrame.Rotation
     local rotationNeedsCorrection = false
     if rotationIsStillRolled then
-        -- Void Spam applies a local -90° pitch plus +90° Z roll. Remove the
-        -- exact local transform so a newer legitimate yaw is preserved.
+
         restoredRotation = (currentCFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90)):Inverse()).Rotation
         rotationNeedsCorrection = true
     end
@@ -74267,15 +73444,12 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
             setterOk, setterResult = pcall(setFn, controller, restoredCFrame)
         end
         if not setterOk or setterResult == false then
-            -- Fall back to the actual RootPart only if the wrapper no longer has
-            -- a RootDesync owner. A live owner rejecting the write remains a
-            -- hard failure; do not bypass it or another active restore gate.
+
             local rootDesyncPresent = false
             pcall(function() rootDesyncPresent = controller._rootDesync ~= nil end)
             if rootDesyncPresent or ragebotPoseRestoreGateIsActive() then return false end
         end
-        -- SetServerCFrame may only update RootDesync._cframe when _oldCFrame is
-        -- nil. Explicitly restore this same, identity-checked RootPart as well.
+
         if ragebotPoseRestoreGateIsActive() then return false end
         local rootStillCurrent = ragebotVoidSpamControllerRoot(controller) == currentRoot
         if not rootStillCurrent then return false end
@@ -74288,8 +73462,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
             return false
         end
 
-        -- Reconcile same-root RootDesync caches before clearing the snapshot; either
-        -- cache can replay the rolled/hidden pose after this function returns.
         local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
             controller, currentRoot, lastOutputCFrame, baseCFrame, restoredCFrame,
             fakeOffset, normalTolerance
@@ -74303,11 +73475,6 @@ end
 
 pcall(rawset, _G, "__CrefyRestoreVoidSpamTransform", ragebotRestoreVoidSpamTransform)
 
--- The previous execution's unload hook may have been too old to restore the
--- transform (or its callback may have failed before this version could publish
--- its recovery hook). Once the compatible restore function exists, immediately
--- retry any persisted Void Spam transform before the new planner can overwrite
--- its recovery snapshot. Failure keeps the snapshot and schedules a bounded retry.
 do
     local staleVoidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
     if type(staleVoidSpamState) == "table"
@@ -74331,7 +73498,7 @@ if voidSpamConfigured and arg._enabled == true then
             return behaviors:EquippedItemAsGun()
         end)
         if not okGun then
-            -- Missing reload visibility must not leave an old transform active.
+             
             voidSpamReloading = true
         elseif equippedGun ~= nil then
             reloadCandidate = equippedGun
@@ -74341,9 +73508,7 @@ if voidSpamConfigured and arg._enabled == true then
         reloadCandidate = arg._reloadGun
     end
     if reloadCandidate == nil then
-        -- A missing equipped-gun reference is not proof that the weapon is ready.
-        -- During equip/respawn/context transitions this used to fail open and let
-        -- a stale Hide/roll transform continue without a readable reload state.
+
         voidSpamReloading = true
     else
         local okReloading, isReloading = pcall(function()
@@ -74365,9 +73530,7 @@ if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload
     and voidSpamState.voidSpamTransformApplied == true then
     ragebotRequestVoidSpamTransformRestore()
 end
--- Clear the phase scheduler while disabled, missing a usable frame, or reloading.
--- Keep the transform snapshot/retry transaction until its actual pose and caches
--- are verified restored.
+
 if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload)
     and type(voidSpamState) == "table" then
     voidSpamState.activeUntil = 0
@@ -74402,8 +73565,6 @@ if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "func
     undergroundIntegrated = okIntegrated and integrated == true
 end
 
--- The base snapshot excludes Void Spam's own offset/roll, but retains the
--- independent legacy Underground adjustment if that controller is active.
 local voidSpamBaseCFrame = cframe
 local voidSpamPositionOffset = Vector3.zero
 local weaponKind = "Other"
@@ -74428,7 +73589,6 @@ elseif itemBehaviors ~= nil then
     end
 end
 
--- Fix: void spam không dùng Y offset (+4) nữa, giữ nguyên (0,0,0)
 local RAGEBOT_VOID_SPAM_Y_OFFSET = 0
 local RAGEBOT_UNDERGROUND_Y_OFFSET = -3.8
 if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
@@ -74452,16 +73612,13 @@ local function applyVoidSpamSideRoll(value, baseValue)
         if voidSpamState._voidSpamTransformRestorePending == true then
             local restored = ragebotRequestVoidSpamTransformRestore()
             if not restored or voidSpamState._voidSpamTransformRestorePending == true then
-                -- Keep the unresolved snapshot and do not stack a new roll/Hide
-                -- offset on top of a pose whose previous owner has not been restored.
+
                 return base
             end
         end
-        -- Fix: không lật người 90°, giữ orientation gốc
+         
         local rolled = value
-        -- Fix: vì offset = 0 và không có rotation, KHÔNG đánh dấu voidSpamTransformApplied
-        -- Nếu đánh dấu, restore logic sẽ retry mãi vì cacheIsThisVoidSpamOutput luôn false
-        -- (orientation của output == base → không phân biệt được → warn liên tục)
+
         local fakeOffset = value.Position - base.Position
         local hasActualTransform = fakeOffset.Magnitude > 0.01
             or not ragebotCFrameOrientationMatches(value, base)
@@ -74477,7 +73634,7 @@ local function applyVoidSpamSideRoll(value, baseValue)
             voidSpamState.voidSpamController = characterController
             voidSpamState.voidSpamRootPart = ragebotVoidSpamControllerRoot(characterController)
         else
-            -- Không có transform thực sự → không cần restore
+             
             voidSpamState.voidSpamTransformApplied = false
         end
         return rolled
@@ -74507,11 +73664,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
     local fakePositionActive = voidSpamState.phase == "hide"
         and activeUntilValid and now < activeUntil
     if fakePositionActive then
-        -- Hide shares Evasion Random's BaseRadius / RadiusRandomFactor / Character
-        -- Origin settings, but deliberately does not reuse Evasion's far-axis
-        -- sentinel (1,073,741,824 studs), which can send the character out of-map.
-        -- Keep one random destination for the entire Hide phase so frame updates
-        -- cannot make the character jitter around a continuously changing point.
+
         local hidePosition = cframe.Position
         local hideYOffset = undergroundIntegrated and 0 or -24
         local targetX = tonumber(voidSpamState.fakePositionTargetX)
@@ -74526,9 +73679,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
             and voidSpamState.fakePositionHideUndergroundIntegrated == undergroundIntegrated
             and cachedYOffsetValid
         if voidSpamState.fakePositionTargetReady == true and targetIsFinite and cachedHideStateCompatible then
-            -- Keep the safe fallback stable for the entire Hide phase. Without
-            -- persisting this value, an unsafe-location fallback used 0 studs
-            -- for one frame and reverted to -24 studs on the next frame.
+
             hideYOffset = cachedHideYOffset
         else
             targetIsFinite = false
@@ -74596,20 +73747,14 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
                         CFrame.new(destination), Vector3.new(6, 8, 6), overlapParams
                     )
                 end)
-                -- If world queries fail, fail closed rather than accepting a point
-                -- that cannot be checked against known kill/out-of-bounds parts.
+
                 if not overlapOk or type(overlappingParts) ~= "table" then return false end
                 for _, part in ipairs(overlappingParts) do
                     if isUnsafeHidePart(part) then return false end
                 end
 
-                -- A point over a void or a kill floor is a common source of Hide
-                -- self-kills. Require a nearby landing surface and reject tagged
-                -- kill/out-of-bounds surfaces before committing the phase target.
                 local rayOk, rayResult = pcall(function()
-                    -- Probe downward from the current elevation, not the lowered
-                    -- Hide elevation (-24): probing from below the floor falsely
-                    -- rejects every safe destination on ordinary solid maps.
+
                     return workspace:Raycast(
                         Vector3.new(x, hidePosition.Y + 6, z),
                         Vector3.new(0, -120, 0),
@@ -74638,16 +73783,11 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
 
             targetX, targetZ = pickSafeDestination(anchorX, anchorZ)
             if (targetX == nil or targetZ == nil) and not anchorFromCharacter then
-                -- Character Origin off still prefers the world-origin ring, but
-                -- if that area has no safe landing point, retry around the live
-                -- character instead of teleporting into an unmapped/kill region.
+
                 targetX, targetZ = pickSafeDestination(hidePosition.X, hidePosition.Z)
             end
             if targetX == nil or targetZ == nil then
-                -- Last-resort safe fallback: keep the horizontal position rather
-                -- than selecting an unchecked point. If even the current location
-                -- is unsafe/unknown at the lowered Hide height, disable the -24
-                -- vertical move for this phase to avoid entering a kill floor.
+
                 targetX, targetZ = hidePosition.X, hidePosition.Z
                 if not isSafeHideDestination(targetX, targetZ) then
                     hideYOffset = 0
@@ -74667,8 +73807,6 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
         if panicX ~= panicX or panicX == math.huge or panicX == -math.huge then panicX = 0 end
         if panicZ ~= panicZ or panicZ == math.huge or panicZ == -math.huge then panicZ = 0 end
 
-        -- Underground has precedence over Void Spam's vertical Hide offset.
-        -- Its existing -3.8-stud baseline stays intact; Hide only randomizes X/Z.
         cframe = cframe + Vector3.new(panicX, hideYOffset, panicZ)
         voidSpamState.fakePositionActive = true
     else
@@ -74732,9 +73870,7 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     local arbiter = owner._cameraArbiter
     if type(arbiter) == "table" and type(arbiter.claim) == "function"
         and owner._knifeCameraLocked ~= true then
-        -- Do not begin/retain camera prime while another owner may still control
-        -- the winning angle payload. _SetKnifeCameraLock clears this timer when
-        -- it eventually acquires ownership.
+
         owner._knifeCameraPrimeTarget = nil
         owner._knifeCameraPrimeAt = nil
         owner._knifeCameraPrimeAngles = nil
@@ -74765,8 +73901,6 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
         owner._knifeCameraPrimeAngles = nil
     end
 
-    -- A prime timer is meaningful only after the driver confirms that the current
-    -- winning angle payload was actually passed to FireServer without an error.
     local okFlush, flushed = pcall(function() return characterController:FlushViewAngles() end)
     if not okFlush or flushed ~= true then
         owner._knifeCameraPrimeAt = nil
@@ -74780,10 +73914,10 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     local primeAtValid = type(primeAt) == "number" and primeAt == primeAt
         and primeAt ~= math.huge and primeAt ~= -math.huge
     if baseline == nil or not primeAtValid then
-        -- Start lead-time only after a successful camera send for this target.
+         
         owner._knifeCameraPrimeAt = os.clock()
     end
-    -- A rapidly changing yaw is not a reason to restart the lead-time clock.
+     
     owner._knifeCameraPrimeAngles = { Pitch = pitch, Yaw = yaw }
     return true
 end
@@ -74837,9 +73971,6 @@ end)
 local holdRootMatches = arg._repRootCounterHoldRootPart ~= nil
     and currentHoldRootPart == arg._repRootCounterHoldRootPart
 
--- Honor HoldPosition before the nil-target fast path. Target validation can
--- reject a candidate and set arg3=nil; handling HoldPosition later would skip
--- this branch and still apply the Underground offset to that update.
 if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
     local holdCFrame = arg._repRootCounterHoldCFrame
     local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
@@ -74853,10 +73984,7 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
         and os.clock() < holdUntil
     local heldServerCFrame = useVerifiedCounterHold and holdCFrame or cFrame
     if not useVerifiedCounterHold then
-        -- HoldPosition must pause Evasion/Translocate, but it must not bypass the
-        -- independent Underground baseline. Apply only Underground's weapon-aware
-        -- adjustment here; do not call _ApplyUndergroundOffset because that also
-        -- advances VoidSpam Hide/roll transforms and can reposition during a hold.
+
         local undergroundController = rawget(_G, "__CrefyUndergroundController")
         if type(undergroundController) == "table"
             and type(undergroundController.ApplyToRagebotCFrame) == "function" then
@@ -74920,8 +74048,7 @@ if useVerifiedCounterHold then
     end
 else
     local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
-    -- Planner/context transitions can briefly provide no CFrame. Never pass nil
-    -- into SetServerCFrame; let the next valid plan own the next server pose.
+
     if typeof(safeFallbackCFrame) == "CFrame" then
         characterController:SetServerCFrame(safeFallbackCFrame)
     end
@@ -75016,8 +74143,7 @@ local function ragebotRestoreRecentGroundPoseIfFallen(owner)
     local safeY = safeCFrame.Position.Y
     if not readOk or not fakePositionFiniteNumber(currentY)
         or not fakePositionFiniteNumber(safeY) then return false end
-    -- A 12-stud drop can be a normal jump/fall. Recover only near the game's
-    -- configured destroy-height boundary, and only for the same live RootPart.
+
     local destroyHeight = fallenPartsDestroyHeight
     if not ragebotIsFiniteDestroyHeight(destroyHeight) then
         local heightOk, currentHeight = pcall(function() return workspace.FallenPartsDestroyHeight end)
@@ -75025,14 +74151,12 @@ local function ragebotRestoreRecentGroundPoseIfFallen(owner)
         destroyHeight = currentHeight
     end
     local rescueThreshold = destroyHeight + 125
-    -- The saved point itself must be comfortably above the destroy boundary;
-    -- otherwise it may be a legitimate low-altitude play area, not a safe floor.
+
     if not fakePositionFiniteNumber(rescueThreshold)
         or safeY <= rescueThreshold + 50
         or currentY >= safeY - 12
         or currentY > rescueThreshold then return false end
-    -- Keep position restore independent from optional momentum damping so a
-    -- velocity setter failure cannot turn a successful CFrame restore into failure.
+
     local poseWriteOk, poseWriteError = pcall(function()
         safeRoot.CFrame = safeCFrame
     end)
@@ -75066,8 +74190,7 @@ if keepRestoreTransaction then
 else
     ragebotPoseRestoreGateSet(arg, false, 0, nil)
 end
--- These weak-key histories are session observations, not durable controller state.
--- Clear them on every reset/disable/context removal so re-enable starts clean.
+
 table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
 table.clear(RAGEBOT_FAKE_POSITION_TRACKS)
 table.clear(RAGEBOT_PURE_TP_TRACKS)
@@ -75101,7 +74224,6 @@ local sameReset = rawget(arg, "_resetApplied") == true
     and rawget(arg, "_resetController") == resetController
 
 if not sameReset then
-
 
     arg._resetApplied = true
     arg._resetContext = resetContext
@@ -75196,16 +74318,12 @@ if not sameReset then
     end
 end
 
-
-
 if rawget(arg, "_knifeCameraLocked") ~= false then
     ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 end
 
 if resetController == nil then
-    -- Context/controller can disappear briefly while the live character and saved
-    -- RootPart still exist. Do not skip near-void recovery solely because the
-    -- server-CFrame controller is unavailable.
+
     if not keepRestoreTransaction then
         pcall(ragebotRestoreRecentGroundPoseIfFallen, arg)
     end
@@ -75221,8 +74339,7 @@ if not keepRestoreTransaction and rawget(arg, "_resetServerCFrameCleared") ~= tr
         if ok and result ~= false then arg._resetServerCFrameCleared = true end
     end
 end
--- If clearing the server pose reveals that the actual RootPart is far below
--- the most recent grounded pose, restore only that same live character/root.
+
 if not keepRestoreTransaction then
     pcall(ragebotRestoreRecentGroundPoseIfFallen, arg)
 end
@@ -75246,8 +74363,7 @@ index2.Destroy = function(arg)
 
 pcall(function() arg:SetEnabled(false) end)
 pcall(function() arg:_Reset() end)
--- Destroy/Unload must use the same two-sample restore verifier as the live Update
--- path. A single synchronous read-back can only reflect the setter itself.
+
 if arg._repRootCounterRestorePending == true then
     arg._restoreOwnerAbandoned = true
     ragebotScheduleAbandonedRestoreRetry(arg)
@@ -76019,9 +75135,7 @@ _startItemUsed = false,
 _lastCrouching = false,
 _lastSliding = false,
 _lastPositionSampleTime = 0,
--- Fix: _startTime phải được set ngay khi bắt đầu record, không phải lazily.
--- Nếu không set ở đây, _SamplePosition sẽ return early cho đến khi có input đầu tiên,
--- dẫn đến Positions array rỗng khi player đứng yên lúc bắt đầu replay.
+
 _startTime = os.clock(),
 _recording = {
 MapName = arg,
@@ -76065,7 +75179,7 @@ arg:_SamplePosition()
 end
 
 index2._SamplePosition = function(arg)
--- Fix: không cần kiểm tra _startTime == nil vì đã được init trong constructor
+ 
 if arg._rootPart == nil or arg._rootPart.Parent == nil then
 return
 end
@@ -76120,7 +75234,6 @@ end
 if true then
 return
 end
-
 
 end
 
@@ -76391,7 +75504,6 @@ if startLookRotation ~= nil and not v115.isBlockedFor("MovementRecorder.Replay",
 local v120 = v116.get()
 if v120 == nil or typeof(v120) ~= "Vector2" then
 
-
 flag19 = false
 else
 local alignSpeed = tonumber(v117.Data.Movement.MovementRecorder.LookAlignSpeed) or 180
@@ -76445,7 +75557,6 @@ local moveVector = fn36(vector.Unit)
 if typeof(moveVector) == "Vector3" then
 arg._moveHook:SetMoveVector(moveVector)
 else
-
 
 arg._moveHook:SetMoveVector(Vector3.zero)
 end
@@ -76568,7 +75679,6 @@ local lookRotation = arg._lookRotation
 local currentRotation = v116.get()
 if currentRotation ~= nil then
 if v115.isBlockedFor("MovementRecorder.Replay", 0) then
-
 
 arg._lookRotation = currentRotation
 else
@@ -77199,7 +76309,6 @@ end
 
 return
 end
-
 
 end
 
@@ -78341,13 +77450,7 @@ tbl17.hN = function() return nil end
 tbl17.hM = function() return nil end
 tbl17.jx = function() return nil end
 
-
 local LITHIUM_LOGO_B64 = "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"
-
-
-
-
-
 
 local GlobalTrove = tbl17.n()
 tbl17.w().ensureStorageDirectories("kiciarebuild/rivals")
@@ -78359,8 +77462,6 @@ tbl17.w().ensureStorageDirectories("kiciarebuild/cache")
 for _, sub in ipairs({ "cosmetics/states", "crosshair_textures", "esp_images", "movement_recorder" }) do
     tbl17.w().ensureStorageDirectories("kiciarebuild/rivals/" .. sub)
 end
-
-
 
 do
     local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -78388,7 +77489,6 @@ do
 
     end
 end
-
 
 tbl17.b().use({ Report = function(_, e)
     local detail = type(e) == "table" and (e.Detail or e.Operation) or e
@@ -78449,8 +77549,7 @@ end
 function K.Unload()
     if K.destroyed then return end
     K.destroyed = true
-    -- Keep any active restore gate in place while cleanup callbacks run; otherwise
-    -- Underground cleanup can replay a stale cached CFrame during unload.
+
     for _, f in ipairs(K.cleanups) do pcall(f) end
     pcall(function() GlobalTrove:Destroy() end)
     local restoreGate = ragebotPoseRestoreGateRead()
@@ -78460,8 +77559,7 @@ function K.Unload()
             and rawget(restoreGateOwner, "_repRootCounterRestorePending") == true
             and ragebotPoseRestoreGateIsActive()
         if ownerPending then
-            -- Do not release a gate whose restore is still unverified. Destroy's
-            -- bounded retry or the next controller instance must resolve it.
+
             pcall(function() restoreGateOwner._restoreOwnerAbandoned = true end)
         else
             ragebotPoseRestoreGateSet(restoreGateOwner, false, 0, nil)
@@ -78469,8 +77567,6 @@ function K.Unload()
     end
     if getgenv().KiciaRebuild == K then getgenv().KiciaRebuild = nil end
 end
-
-
 
 task.spawn(function()
 if K.destroyed then return end
@@ -78514,9 +77610,6 @@ pcall(K.Unload)
 return
 end
 
-
-
-
 print("[Crefy Premium] waiting for client to come alive ...")
 local _wt1 = os.clock()
 local _clientReady = false
@@ -78540,8 +77633,7 @@ end
 task.wait(1)
 end
 if K.destroyed then return end
--- Revalidate readiness after the wait rather than booting unconditionally when
--- the 45-second deadline expires. The UI/player may also have changed meanwhile.
+
 local _finalCharacter = _lp.Character
 local _finalPlayerGui = _lp:FindFirstChild("PlayerGui")
 local _finalSpawnedOk = _finalCharacter ~= nil
