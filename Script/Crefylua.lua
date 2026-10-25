@@ -8,6 +8,38 @@ end
 if not game:IsLoaded() then game.Loaded:Wait() end
 print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId))
 
+-- Auto-detect script source path/URL và lưu vào getgenv() để re-run after teleport
+-- có thể tìm thấy source mà không cần user set CrefySourcePath/Url thủ công.
+-- Chỉ set nếu user chưa set sẵn.
+pcall(function()
+    local genv = (type(getgenv) == "function" and getgenv()) or _G
+    local hasPath = type(rawget(genv, "CrefySourcePath")) == "string"
+        or type(rawget(_G, "CrefySourcePath")) == "string"
+    local hasUrl  = type(rawget(genv, "CrefySourceUrl")) == "string"
+        or type(rawget(_G, "CrefySourceUrl")) == "string"
+    if hasPath or hasUrl then return end  -- đã có, không override
+
+    local ok, info = pcall(debug.getinfo, 1, "S")
+    if not ok or type(info) ~= "table" then return end
+    local src = info.source
+    if type(src) ~= "string" or src == "" then return end
+    if src:sub(1, 1) == "@" then
+        -- Script load từ file: "@path/to/file.lua"
+        local path = src:sub(2)
+        if type(path) == "string" and #path > 0 then
+            pcall(rawset, genv, "CrefySourcePath", path)
+            pcall(rawset, _G,   "CrefySourcePath", path)
+        end
+    elseif src:sub(1, 1) == "=" then
+        -- Script load từ URL: "=https://..."
+        local url = src:sub(2)
+        if type(url) == "string" and url:match("^https?://") then
+            pcall(rawset, genv, "CrefySourceUrl", url)
+            pcall(rawset, _G,   "CrefySourceUrl", url)
+        end
+    end
+end)
+
 local K: { [string]: any } = { connections = {}, cleanups = {}, destroyed = false }
 getgenv().KiciaRebuild = K
 
@@ -19531,7 +19563,10 @@ local function applyRerunSetting(enabled, persist)
         if type(queueFn) ~= "function" then
             warn("[Crefy] Re-run After Teleport is enabled, but this executor exposes no queue_on_teleport API.")
             queueRegisteredForCurrentEnable = false
-        else
+        elseif not queueRegisteredForCurrentEnable then
+            -- elseif được restore: tránh re-queue khi đã đăng ký rồi
+            -- needsRequeue có thể true vì queueRegisteredForCurrentEnable == false,
+            -- nhưng khi đã true thì bỏ qua để tránh queue trùng lặp
             local currentGeneration = tonumber(rawget(env, "__CrefyAutoExecuteGeneration")) or 0
             local nextGeneration = currentGeneration + 1
             local payload = makeQueuedLoader(sourceUrl, sourcePath, nextGeneration)
@@ -64643,37 +64678,48 @@ local function undergroundGetClientCFrame(root)
     return nil
 end
 
+-- Fix: char:GetBoundingBox() bao gồm cả HitboxHead đang ở vị trí anchor (Y=100000).
+-- Điều này làm boxSize.Y ≈ 100000, khiến highestTransformedY ≈ 99995,
+-- rồi targetRootY = surfaceY - depth - 99995 ≈ -99998 → character bị tp xuống Y≈-100000.
+-- Fix: tính bounding box thủ công, loại bỏ các part cách root >20 studs (outlier/anchor).
+local UNDERGROUND_BOUNDS_MAX_PART_OFFSET = 20  -- studs; HitboxHead ở Y=100000 sẽ bị loại
 local function undergroundCharacterBounds(char)
-    if not char or char.Parent == nil then
-        return nil
-    end
-    local ok, boxCFrame, boxSize = pcall(function()
-        return char:GetBoundingBox()
-    end)
-    if not ok or typeof(boxCFrame) ~= 'CFrame' or typeof(boxSize) ~= 'Vector3' then
-        return nil
-    end
-    local minY = math.huge
-    local maxY = -math.huge
-    for x = -1, 1, 2 do
-        for y = -1, 1, 2 do
-            for z = -1, 1, 2 do
-                local corner = boxCFrame:PointToWorldSpace(Vector3.new(
-                    boxSize.X * 0.5 * x,
-                    boxSize.Y * 0.5 * y,
-                    boxSize.Z * 0.5 * z
-                ))
-                minY = math.min(minY, corner.Y)
-                maxY = math.max(maxY, corner.Y)
+    if not char or char.Parent == nil then return nil end
+    local rootPart = char:FindFirstChildOfClass("BasePart") -- fallback
+    local humanoidRoot = char:FindFirstChild("HumanoidRootPart")
+    if humanoidRoot and humanoidRoot:IsA("BasePart") then rootPart = humanoidRoot end
+    local rootY = rootPart and rootPart.Position.Y or nil
+
+    local minX, minY, minZ = math.huge,  math.huge,  math.huge
+    local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+
+    for _, part in char:GetDescendants() do
+        if part:IsA("BasePart") then
+            local partY = part.Position.Y
+            -- Loại bỏ part quá xa root theo Y (HitboxHead anchor, PartGlue anchor)
+            if rootY == nil or math.abs(partY - rootY) <= UNDERGROUND_BOUNDS_MAX_PART_OFFSET then
+                local pos = part.Position
+                local hs  = part.Size * 0.5
+                if pos.X - hs.X < minX then minX = pos.X - hs.X end
+                if pos.Y - hs.Y < minY then minY = pos.Y - hs.Y end
+                if pos.Z - hs.Z < minZ then minZ = pos.Z - hs.Z end
+                if pos.X + hs.X > maxX then maxX = pos.X + hs.X end
+                if pos.Y + hs.Y > maxY then maxY = pos.Y + hs.Y end
+                if pos.Z + hs.Z > maxZ then maxZ = pos.Z + hs.Z end
             end
         end
     end
-    if minY == math.huge or maxY == -math.huge then
-        return nil
-    end
+
+    if minX == math.huge then return nil end
+    local cx = (minX + maxX) * 0.5
+    local cy = (minY + maxY) * 0.5
+    local cz = (minZ + maxZ) * 0.5
+    local sx = maxX - minX
+    local sy = maxY - minY
+    local sz = maxZ - minZ
     return {
-        boxCFrame,
-        boxSize,
+        CFrame.new(cx, cy, cz),
+        Vector3.new(sx, sy, sz),
         minY,
         maxY,
     }
@@ -65241,10 +65287,18 @@ startUnderground = function()
                 undergroundDesync:SetServerCFrame(serverCF)
             end
         else
-            undergroundLastServerCFrame = nil
-            if undergroundDesync then
+            -- Fix: khi probe thất bại (NPC chặn raycast, floor không tìm được):
+            -- KHÔNG dùng currentRoot.CFrame (bị vật lý NPC đẩy lên) làm _oldCFrame.
+            -- Giữ lại undergroundLastServerCFrame và tiếp tục apply nó.
+            -- Nếu không có fallback thì mới để physics kiểm soát.
+            local fallback = undergroundLastServerCFrame
+            if fallback ~= nil and undergroundDesync then
+                undergroundDesync:SetServerCFrame(fallback)
+                -- KHÔNG clear undergroundLastServerCFrame
+            elseif undergroundDesync then
                 undergroundDesync:SetServerCFrame(nil)
                 undergroundDesync._oldCFrame = currentRoot.CFrame
+                undergroundLastServerCFrame = nil
             end
         end
         if undergroundDesync then
@@ -71118,6 +71172,10 @@ _repRootTranslocateBlockUntil = 0,
 _repRootRestoreRetryAt = nil,
 _repRootCounterStationaryUntil = 0,
 _gunShootWindowUntil = 0,
+-- Gun counter cycle: khi detector thấy hooker TP vào người
+-- → 0.1244s clientCFrame → TP đi → đợi 3.14159s → lặp lại cho đến khi không còn detect
+_gunCounterCycleActive = false,
+_gunCounterCycleNextWindowAt = 0,
 _resetApplied = false,
 _resetContext = nil,
 _resetController = nil,
@@ -71903,8 +71961,10 @@ if previousEvasionMode ~= mode then
         arg._repRootCounterActionAt = nil
         arg._repRootCounterStationaryUntil = 0
     end
-    -- Gun shoot window expires on mode change (TP resumed)
+    -- Gun shoot window + counter cycle expire on mode change
     arg._gunShootWindowUntil = 0
+    arg._gunCounterCycleActive = false
+    arg._gunCounterCycleNextWindowAt = 0
     if mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker" then
         local strategyNames = { "_hitscanStrategy", "_meleeStrategy" }
         for _, strategyName in ipairs(strategyNames) do
@@ -72424,7 +72484,49 @@ if ragebotPoseRestoreGateIsActive()
     return
 end
 
--- Gun shoot window: block Translocate trong 0.1244s sau khi bắn
+-- ── Gun Counter Cycle ─────────────────────────────────────────────────────────
+-- Khi detector phát hiện hooker TP vào người (repRootCounterActive) + đang cầm gun:
+--   1. Bắt đầu cycle ngay: mở 0.1244s window (snap về clientCFrame, bắn)
+--   2. Sau 0.1244s: Translocate tiếp tục → TP đi
+--   3. Nếu hooker vẫn attack: sau 3.14159s → mở 0.1244s window tiếp
+--   4. Lặp cho đến khi repRootCounter hết hoặc hooker dừng detect
+-- ─────────────────────────────────────────────────────────────────────────────
+do
+    local nowCycle = os.clock()
+    local gunCycleActive  = arg._gunCounterCycleActive == true
+    local gunCycleNextAt  = tonumber(arg._gunCounterCycleNextWindowAt) or 0
+    local gunWindowNow    = nowCycle < (tonumber(arg._gunShootWindowUntil) or 0)
+
+    -- Xác định xem có đang cầm gun không (kiểm tra action trước _Plan)
+    local actionItemNow = type(v130) == "table" and rawget(v130, "Item") or nil
+    local isGunEquipped = type(actionItemNow) == "table"
+        and rawget(actionItemNow, "__type") == "Gun"
+
+    if repRootCounterActive and isGunEquipped then
+        if not gunCycleActive then
+            -- Phát hiện lần đầu: kích hoạt cycle và mở window ngay
+            arg._gunCounterCycleActive = true
+            arg._gunCounterCycleNextWindowAt = nowCycle  -- fire immediately
+            gunCycleActive = true
+            gunCycleNextAt = nowCycle
+        end
+        -- Khi đến lượt mở window tiếp theo (và window trước đã kết thúc)
+        if nowCycle >= gunCycleNextAt and not gunWindowNow then
+            -- Mở 0.1244s snap window
+            arg._gunShootWindowUntil = nowCycle + 0.1244444445
+            -- Lên lịch window tiếp theo: sau window (0.1244) + thời gian bay đi (3.14159s)
+            arg._gunCounterCycleNextWindowAt = nowCycle + 0.1244444445 + 3.14159265358979
+        end
+    else
+        -- Detector không còn phát hiện hoặc không cầm gun: dừng cycle
+        -- Không xóa _gunShootWindowUntil để window đang mở được hoàn thành
+        if gunCycleActive and not gunWindowNow then
+            arg._gunCounterCycleActive = false
+        end
+    end
+end
+
+-- Gun shoot window: block Translocate trong 0.1244s sau khi bắn hoặc cycle trigger
 -- → character snap về clientCFrame, tiếp tục bắn từ vị trí đó
 -- → hooker đang track TP position sẽ bị lừa vì character đột ngột ở clientCFrame
 -- Random/ProjectileBreaker được handle bởi gun branch trong _Plan (v131 = arg6)
@@ -74458,6 +74560,8 @@ if not sameReset then
         arg._repRootCounterStationaryUntil = 0
     end
     arg._gunShootWindowUntil = 0
+    arg._gunCounterCycleActive = false
+    arg._gunCounterCycleNextWindowAt = 0
     arg._lastEvasionMode = nil
 
     local targetSelection = rawget(arg, "_targetSelection")
