@@ -64843,8 +64843,19 @@ startUnderground = function()
             return
         end
         if currentChar ~= undergroundSnapshotCharacter then
-             
             stopUnderground(true)
+            return
+        end
+        local activeRestoreGate = ragebotPoseRestoreGateIsActive()
+        local activeRestoreGateData = activeRestoreGate and ragebotPoseRestoreGateRead() or nil
+        local activeRestoreGateRoot = type(activeRestoreGateData) == "table"
+            and rawget(activeRestoreGateData, "rootPart") or nil
+        if activeRestoreGate and activeRestoreGateRoot == currentRoot then
+            if undergroundDesync then
+                undergroundDesync._cframe = nil
+                undergroundDesync._oldCFrame = nil
+            end
+            undergroundLastServerCFrame = nil
             return
         end
         if undergroundRagebotIntegrated then
@@ -64977,6 +64988,34 @@ end)
 end)
 end
 local undergroundController = {}
+local undergroundRagebotDisableRetryActive = false
+local function scheduleUndergroundRagebotDisableRetry()
+    if undergroundRagebotDisableRetryActive or not undergroundEnabled
+        or undergroundRagebotRequested or not undergroundRagebotIntegrated then
+        return
+    end
+    if type(task) ~= "table" or type(task.spawn) ~= "function"
+        or type(task.wait) ~= "function" then
+        return
+    end
+    undergroundRagebotDisableRetryActive = true
+    task.spawn(function()
+        while undergroundEnabled and not undergroundRagebotRequested and undergroundRagebotIntegrated do
+            task.wait(0.1)
+            local controller = rawget(_G, "__CrefyUndergroundController")
+            local retry = type(controller) == "table" and controller.SetRagebotIntegration or nil
+            if type(retry) == "function" then
+                local retryOk, retryResult = pcall(retry, false)
+                if retryOk and retryResult ~= false and not undergroundRagebotIntegrated then
+                    break
+                end
+            else
+                break
+            end
+        end
+        undergroundRagebotDisableRetryActive = false
+    end)
+end
 undergroundController.Start = function()
 undergroundRequested = true
 local ok, result = pcall(startUnderground)
@@ -64997,7 +65036,7 @@ end
 undergroundController.IsRagebotIntegrated = function()
 return undergroundEnabled == true and undergroundRagebotIntegrated == true
 end
-undergroundController.SetRagebotIntegration = function(active)
+undergroundController.SetRagebotIntegration = function(active, preferredClientPose)
 undergroundRagebotRequested = active == true
 local shouldIntegrate = undergroundEnabled and undergroundRagebotRequested
 if shouldIntegrate == undergroundRagebotIntegrated then return true end
@@ -65031,23 +65070,17 @@ if shouldIntegrate then
     local livePoseIsValid = liveReadOk and validIntegrationPose(livePose)
     local cachedPose = undergroundLastClientCFrame
     local gateActive = ragebotPoseRestoreGateIsActive()
-    local gate = gateActive and ragebotPoseRestoreGateRead() or nil
-    local gatePose = type(gate) == "table" and rawget(gate, "pose") or nil
-    local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
-    local approvedGatePose = gateActive and gateRoot == root and validIntegrationPose(gatePose)
 
-    if gateActive and not approvedGatePose then
+    if gateActive then
         if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
             undergroundNextTransitionWarningAt = os.clock() + 5
-            warn("[Underground] Ragebot start hand-off is waiting for an approved RootPart pose.")
+            warn("[Underground] Ragebot start hand-off is waiting for the active restore gate to finish; preserving the last client pose.")
         end
         return false
     end
 
     local handoffPose
-    if approvedGatePose then
-        handoffPose = gatePose
-    elseif validIntegrationPose(cachedPose) then
+    if validIntegrationPose(cachedPose) then
         handoffPose = cachedPose
     elseif undergroundDesync then
         local okClient, clientPose = pcall(function() return undergroundDesync:GetClientCFrame() end)
@@ -65114,8 +65147,6 @@ end
 local livePose
 local liveReadOk = pcall(function() livePose = root.CFrame end)
 local cachedPose = undergroundLastClientCFrame
-local snapshotPose = type(undergroundSnapshot) == "table"
-    and undergroundSnapshot.character == char and undergroundSnapshot.rootCFrame or nil
 local function validUndergroundPose(cf)
     if typeof(cf) ~= "CFrame" then return false end
     local components = { cf:GetComponents() }
@@ -65129,41 +65160,84 @@ local function validUndergroundPose(cf)
     return math.abs(pos.X) <= 100000 and math.abs(pos.Y) <= 100000
         and math.abs(pos.Z) <= 100000
 end
-local livePoseIsValid = liveReadOk and validUndergroundPose(livePose)
-local cachedPoseIsValid = validUndergroundPose(cachedPose)
-local snapshotPoseIsValid = validUndergroundPose(snapshotPose)
 local gateActive = ragebotPoseRestoreGateIsActive()
 local gate = gateActive and ragebotPoseRestoreGateRead() or nil
 local approvedPose = type(gate) == "table" and rawget(gate, "pose") or nil
 local approvedRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
+local gateOwner = type(gate) == "table" and rawget(gate, "owner") or nil
+local gateUntilAt = type(gate) == "table" and rawget(gate, "untilAt") or nil
+local preferredPoseIsValid = not gateActive and validUndergroundPose(preferredClientPose)
+if preferredPoseIsValid then
+    cachedPose = preferredClientPose
+    undergroundLastClientCFrame = preferredClientPose
+end
+local livePoseIsValid = liveReadOk and validUndergroundPose(livePose)
+local cachedPoseIsValid = validUndergroundPose(cachedPose)
 local approvedPoseIsValid = gateActive and approvedRoot == root
     and validUndergroundPose(approvedPose)
+local canRepairGateFromPreferredPose = gateActive and approvedRoot == root
+    and type(gateOwner) == "table" and cachedPoseIsValid
 
-if gateActive and not approvedPoseIsValid then
+if gateActive and not approvedPoseIsValid and not canRepairGateFromPreferredPose then
     if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
         undergroundNextTransitionWarningAt = os.clock() + 5
-        warn("[Underground] Ragebot restore gate is active without an approved pose; hand-off deferred safely.")
+        warn("[Underground] Ragebot restore gate has no approved pose for this RootPart; hand-off deferred safely.")
     end
+    scheduleUndergroundRagebotDisableRetry()
     return false
 end
 
 local handoffPose
-if approvedPoseIsValid then
-    handoffPose = approvedPose
-elseif not gateActive and cachedPoseIsValid then
-     
+if preferredPoseIsValid then
+    handoffPose = preferredClientPose
+elseif cachedPoseIsValid then
     handoffPose = cachedPose
-elseif livePoseIsValid then
+elseif not gateActive and livePoseIsValid then
     handoffPose = livePose
-elseif snapshotPoseIsValid then
-    handoffPose = snapshotPose
 end
 if handoffPose == nil then
     if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
         undergroundNextTransitionWarningAt = os.clock() + 5
         warn("[Underground] No valid client pose available for Ragebot hand-off; retrying.")
     end
+    scheduleUndergroundRagebotDisableRetry()
     return false
+end
+
+if gateActive then
+    if type(gateOwner) ~= "table" then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Restore gate owner is unavailable; preserving the current pose until it can be handed off safely.")
+        end
+        scheduleUndergroundRagebotDisableRetry()
+        return false
+    end
+    if gateOwner._repRootCounterRestorePending == true then
+        if gateOwner._repRootCounterRestoreRootPart ~= root then
+            if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+                undergroundNextTransitionWarningAt = os.clock() + 5
+                warn("[Underground] Pending restore belongs to a different RootPart; hand-off deferred safely.")
+            end
+            scheduleUndergroundRagebotDisableRetry()
+            return false
+        end
+        gateOwner._repRootCounterRestoreCFrame = handoffPose
+        gateOwner._repRootCounterHoldCFrame = handoffPose
+        gateOwner._repRootCounterRestoreStableFrames = 0
+        gateOwner._repRootCounterRestoreLastSampleAt = nil
+    elseif gateOwner._repRootCounterHoldRootPart == root then
+        gateOwner._repRootCounterHoldCFrame = handoffPose
+    end
+    local gateUpdated = ragebotPoseRestoreGateSet(gateOwner, true, gateUntilAt, handoffPose, root)
+    if not gateUpdated then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Could not update the active restore gate to the current hand-off pose; retrying safely.")
+        end
+        scheduleUndergroundRagebotDisableRetry()
+        return false
+    end
 end
 
 local needsPoseWrite = not livePoseIsValid
@@ -65186,6 +65260,7 @@ if needsPoseWrite then
             undergroundNextTransitionWarningAt = os.clock() + 5
             warn("[Underground] Client-pose hand-off could not be verified; retrying. " .. tostring(writeError or verifiedPose))
         end
+        scheduleUndergroundRagebotDisableRetry()
         return false
     end
 end
@@ -65211,7 +65286,7 @@ undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame, weap
 if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
 return cframe
 end
-if typeof(clientCFrame) == "CFrame" then
+if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
 undergroundLastClientCFrame = clientCFrame
 end
 
@@ -71101,13 +71176,22 @@ local function ragebotRequestVoidSpamTransformRestore()
     state._voidSpamRestoreRetryScheduledToken = token
     if type(task) == "table" and type(task.spawn) == "function" and type(task.wait) == "function" then
         task.spawn(function()
-            local deadline = os.clock() + 3
-            while os.clock() < deadline
-                and type(state) == "table"
+            local startedAt = os.clock()
+            local warnedPending = false
+            while type(state) == "table"
                 and state._voidSpamRestoreRetryToken == token
                 and state._voidSpamRestoreRetryScheduledToken == token
-                and state.voidSpamTransformApplied == true do
-                task.wait(0.05)
+                and state.voidSpamTransformApplied == true
+                and ragebotCleanupStillCurrentScript() do
+                local elapsed = os.clock() - startedAt
+                task.wait(elapsed < 3 and 0.05 or 0.25)
+                if type(state) ~= "table"
+                    or state._voidSpamRestoreRetryToken ~= token
+                    or state._voidSpamRestoreRetryScheduledToken ~= token
+                    or state.voidSpamTransformApplied ~= true
+                    or not ragebotCleanupStillCurrentScript() then
+                    break
+                end
                 local currentRestore = rawget(_G, "__CrefyRestoreVoidSpamTransform")
                 if type(currentRestore) ~= "function" then currentRestore = restore end
                 local retryOk, retryResult = pcall(currentRestore)
@@ -71117,14 +71201,13 @@ local function ragebotRequestVoidSpamTransformRestore()
                     end
                     return
                 end
+                if not warnedPending and os.clock() - startedAt >= 3 then
+                    warnedPending = true
+                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot preserved and retries continue at reduced rate.")
+                end
             end
             if type(state) == "table" and state._voidSpamRestoreRetryScheduledToken == token then
                 state._voidSpamRestoreRetryScheduledToken = nil
-                if state._voidSpamRestoreRetryToken == token
-                    and state.voidSpamTransformApplied == true
-                    and os.clock() >= deadline then
-                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot kept for a later retry.")
-                end
             end
         end)
     else
@@ -71138,6 +71221,36 @@ enabled = enabled == true
 local wasEnabled = arg._enabled == true
 local overrideActive = arg._destroyHeightOverrideActive == true
 local restorePending = arg._destroyHeightRestorePending == true
+local disableClientPose = nil
+if not enabled then
+    local context = arg._innerContext
+    local characterController = type(context) == "table" and context.CharacterController or nil
+    if characterController ~= nil then
+        local poseReadOk, pose = pcall(function()
+            return characterController:GetClientCFrame()
+        end)
+        if poseReadOk and typeof(pose) == "CFrame" then
+            local componentsOk, components = pcall(function() return { pose:GetComponents() } end)
+            local poseValid = componentsOk and type(components) == "table"
+            if poseValid then
+                for _, component in ipairs(components) do
+                    if type(component) ~= "number" or component ~= component
+                        or component == math.huge or component == -math.huge then
+                        poseValid = false
+                        break
+                    end
+                end
+            end
+            if poseValid then
+                local position = pose.Position
+                poseValid = math.abs(position.X) <= 100000
+                    and math.abs(position.Y) <= 100000
+                    and math.abs(position.Z) <= 100000
+            end
+            if poseValid then disableClientPose = pose end
+        end
+    end
+end
 
 if enabled then
     if wasEnabled and overrideActive and not restorePending then
@@ -71206,7 +71319,9 @@ else
     local undergroundController = rawget(_G, "__CrefyUndergroundController")
     if type(undergroundController) == "table"
         and type(undergroundController.SetRagebotIntegration) == "function" then
-        local transitionOk, transitionResult = pcall(undergroundController.SetRagebotIntegration, false)
+        local transitionOk, transitionResult = pcall(
+            undergroundController.SetRagebotIntegration, false, disableClientPose
+        )
         local transitionError = not transitionOk and transitionResult or nil
         undergroundHandoffPending = not transitionOk or transitionResult == false
         if type(undergroundController.IsRagebotIntegrated) == "function" then
