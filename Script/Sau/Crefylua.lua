@@ -50,10 +50,33 @@ local function startupRecoverPersistedMutations()
     local savedHeight = rawget(storage, destroyHeightKey)
     if not validSavedHeight(savedHeight) then savedHeight = rawget(_G, destroyHeightKey) end
     local stillPending = false
+    local function startupPoseRestoreIsPending()
+        local gateKey = "__CrefyRagebotPoseRestoreGate"
+        local gate = rawget(storage, gateKey)
+        if type(gate) ~= "table" then gate = rawget(_G, gateKey) end
+        if type(gate) ~= "table" then
+            local owner = rawget(storage, "KiciaRebuild")
+            if type(owner) ~= "table" then owner = rawget(_G, "KiciaRebuild") end
+            return type(owner) == "table"
+                and rawget(owner, "_repRootCounterRestorePending") == true
+        end
+        local active = rawget(gate, "active") == true
+        local untilAt = tonumber(rawget(gate, "untilAt"))
+        local gateStillActive = active
+            and (untilAt == nil or untilAt ~= untilAt
+                or untilAt == math.huge or untilAt == -math.huge
+                or os.clock() < untilAt)
+        local owner = rawget(gate, "owner")
+        local ownerStillRestoring = type(owner) == "table"
+            and rawget(owner, "_repRootCounterRestorePending") == true
+        return gateStillActive or ownerStillRestoring
+    end
     if validSavedHeight(savedHeight) then
         local currentOk, currentHeight = pcall(function() return workspace.FallenPartsDestroyHeight end)
         local heightRestored = currentOk and currentHeight == savedHeight
-        if not heightRestored then
+        if not heightRestored and startupPoseRestoreIsPending() then
+            stillPending = true
+        elseif not heightRestored then
             local heightOk = pcall(function()
                 workspace.FallenPartsDestroyHeight = savedHeight
             end)
@@ -61,12 +84,11 @@ local function startupRecoverPersistedMutations()
                 return workspace.FallenPartsDestroyHeight
             end)
             heightRestored = heightOk and heightReadOk and actualHeight == savedHeight
+            if not heightRestored then stillPending = true end
         end
         if heightRestored then
             pcall(rawset, storage, destroyHeightKey, nil)
             pcall(rawset, _G, destroyHeightKey, nil)
-        else
-            stillPending = true
         end
     end
 
@@ -105,15 +127,15 @@ local function startupRecoverPersistedMutations()
                 if typeof(originalCFrame) ~= "CFrame" or type(info.OriginalAnchored) ~= "boolean" then
                     error("pending PartGlue snapshot is incomplete")
                 end
-                target.CFrame = originalCFrame
                 local weld = info.Weld
                 if weld ~= nil and originalPart1 ~= nil then weld.Part1 = originalPart1 end
+                target.CFrame = originalCFrame
                 target.Anchored = info.OriginalAnchored
                 if target.CFrame ~= originalCFrame or target.Anchored ~= info.OriginalAnchored then
-                    error("pending PartGlue property read-back mismatch")
+                    error("pending PartGlue final property read-back mismatch")
                 end
                 if weld ~= nil and originalPart1 ~= nil and weld.Part1 ~= originalPart1 then
-                    error("pending PartGlue weld read-back mismatch")
+                    error("pending PartGlue final weld read-back mismatch")
                 end
                 return true
             end)
@@ -158,11 +180,12 @@ local function startupRecoverPersistedMutations()
     end
 
     if type(sourceQueue) == "table" then
-        local hiddenGetter = startupResolveFunction("gethiddenproperty") or startupResolveFunction("gethiddenprop")
-        local hiddenSetter = startupResolveFunction("sethiddenproperty")
-        local hiddenSetterAlias = startupResolveFunction("sethiddenprop")
-        local identityGetter = startupResolveFunction("getthreadidentity") or startupResolveFunction("getidentity")
-        local identitySetter = startupResolveFunction("setthreadidentity") or startupResolveFunction("setidentity")
+        local hiddenGetter = startupResolveFunction("gethiddenproperty") or startupResolveFunction("gethiddenprop") or startupResolveFunction("get_hidden_property") or startupResolveFunction("get_hidden_prop")
+        local hiddenPropertiesGetter = startupResolveFunction("gethiddenproperties") or startupResolveFunction("gethiddenprops") or startupResolveFunction("get_hidden_properties") or startupResolveFunction("get_hidden_props")
+        local hiddenSetter = startupResolveFunction("sethiddenproperty") or startupResolveFunction("sethiddenprop") or startupResolveFunction("set_hidden_property") or startupResolveFunction("set_hidden_prop")
+        local hiddenSetterAlias = startupResolveFunction("sethiddenprop") or startupResolveFunction("set_hidden_prop")
+        local identityGetter = startupResolveFunction("getthreadidentity") or startupResolveFunction("getidentity") or startupResolveFunction("get_thread_identity") or startupResolveFunction("get_thread_context") or startupResolveFunction("getthreadcontext")
+        local identitySetter = startupResolveFunction("setthreadidentity") or startupResolveFunction("setidentity") or startupResolveFunction("set_thread_identity") or startupResolveFunction("set_thread_context") or startupResolveFunction("setthreadcontext")
         local oldIdentity = nil
         local identityWasChanged = false
         if type(identityGetter) == "function" and type(identitySetter) == "function" then
@@ -185,6 +208,13 @@ local function startupRecoverPersistedMutations()
             if type(hiddenGetter) == "function" then
                 local readOk, value = pcall(hiddenGetter, sourcePart, "PhysicsRepRootRef")
                 if readOk then return true, value end
+            end
+            if type(hiddenPropertiesGetter) == "function" then
+                local propertiesOk, properties = pcall(hiddenPropertiesGetter, sourcePart)
+                if propertiesOk and type(properties) == "table" then
+                    local value = rawget(properties, "PhysicsRepRootRef")
+                    if value ~= nil then return true, value end
+                end
             end
             return pcall(function() return sourcePart.PhysicsRepRootRef end)
         end
@@ -224,7 +254,7 @@ local function startupRecoverPersistedMutations()
                             local restored = false
                             for _, writer in ipairs(writers) do
                                 local writeOk, writeResult = pcall(writer, sourcePart, "PhysicsRepRootRef", info.OriginalReference)
-                                if writeOk and writeResult ~= false then
+                                if writeOk then
                                     local verifyOk, actual = startupReadSourceReference(sourcePart)
                                     if verifyOk and actual == info.OriginalReference then
                                         restored = true
@@ -1144,9 +1174,9 @@ function K.fn(name)
     return type(v) == "function" and v or nil
 end
 
-local getthreadidentity_ = K.fn("getthreadidentity") or K.fn("getidentity")
-local setthreadidentity_ = K.fn("setthreadidentity") or K.fn("setidentity")
-local _sethiddenproperty = K.fn("sethiddenproperty") or K.fn("sethiddenprop")
+local getthreadidentity_ = K.fn("getthreadidentity") or K.fn("getidentity") or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext")
+local setthreadidentity_ = K.fn("setthreadidentity") or K.fn("setidentity") or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext")
+local _sethiddenproperty = K.fn("sethiddenproperty") or K.fn("sethiddenprop") or K.fn("set_hidden_property") or K.fn("set_hidden_prop")
 local gethui_ = K.fn("gethui")
 local function identity(n)
     if not setthreadidentity_ then return function() end end
@@ -1213,7 +1243,7 @@ Trove.__index = Trove
 function Trove.new(name) return setmetatable({ _name = name, _items = {} }, Trove) end
 local function cleanItem(o)
     local t = typeof(o)
-    if t == "RBXScriptConnection" then o:Disconnect()
+    if t == "RBXScriptConnection" then pcall(function() o:Disconnect() end)
     elseif t == "Instance" then pcall(function() o:Destroy() end)
     elseif t == "thread" then pcall(task.cancel, o)
     elseif type(o) == "function" then pcall(o)
@@ -1260,9 +1290,12 @@ end
 function Trove:Clean()
     local items = self._items
     self._items = {}
+    local wasCleaning = self._cleaning == true
     self._cleaning = true
-    for i = #items, 1, -1 do cleanItem(items[i]) end
-    self._cleaning = false
+    for i = #items, 1, -1 do
+        pcall(cleanItem, items[i])
+    end
+    self._cleaning = wasCleaning
 end
 Trove.Destroy = Trove.Clean
 K.Trove = Trove
@@ -1475,8 +1508,8 @@ local flag2, flag3 = true, true
 local function n29(...) return 0 end
 local cloneref = K.fn("cloneref") or function(x) return x end
 local gethui = K.fn("gethui") or function() return game:GetService("CoreGui") end
-local getthreadidentity = K.fn("getthreadidentity") or K.fn("getidentity") or function() return 8 end
-local setthreadidentity = K.fn("setthreadidentity") or K.fn("setidentity") or function() end
+local getthreadidentity = K.fn("getthreadidentity") or K.fn("getidentity") or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext") or function() return 8 end
+local setthreadidentity = K.fn("setthreadidentity") or K.fn("setidentity") or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext") or function() end
 
 local function clonefn(f)
     local c = K.fn("clonefunction")
@@ -1488,7 +1521,7 @@ local function clonefn(f)
 end
 local fireServer = clonefn(Instance.new("RemoteEvent").FireServer)
 local fireServer2 = clonefn(Instance.new("UnreliableRemoteEvent").FireServer)
-local v104 = clonefn(K.fn("sethiddenproperty") or K.fn("sethiddenprop"))
+local v104 = clonefn(K.fn("sethiddenproperty") or K.fn("sethiddenprop") or K.fn("set_hidden_property") or K.fn("set_hidden_prop"))
 local v108 = clonefn(K.fn("setfflag")) or function() end
 local v109 = clonefn(K.fn("isexecutorclosure")) or function() return false end
 local v110 = clonefn(K.fn("setrawmetatable")) or setmetatable
@@ -3762,7 +3795,13 @@ end
 arg._isTooltipWired = true
 
 ctx.Menu:AttachTooltip(ctx.Trove, frame, function()
-return arg._tooltip
+local tooltip = arg._tooltip
+local translator = rawget(_G, "__CrefyTranslateTooltipText")
+if type(translator) == "function" then
+    local ok, translated = pcall(translator, tooltip)
+    if ok and translated ~= nil then return translated end
+end
+return tooltip
 end)
 end
 
@@ -18648,6 +18687,1079 @@ local tbl18 = {
 { Key = "ToggleBackgroundUnselected", Label = "Toggle Background" },
 }
 
+local CREFY_LANGUAGE_TRANSLATIONS = {
+    ["Settings"] = "Cài đặt",
+    ["Menu preferences, config management, and theme customization."] = "Tùy chỉnh menu, quản lý cấu hình và đổi giao diện.",
+    ["General"] = "Chung",
+    ["Config Profiles"] = "Bộ cấu hình",
+    ["Theme"] = "Giao diện",
+    ["Menu"] = "Menu",
+    ["Language"] = "Ngôn ngữ",
+    ["Show Keybinds"] = "Hiện danh sách phím tắt",
+    ["Show Watermark"] = "Hiện watermark",
+    ["Watermark"] = "Watermark",
+    ["Hide Floating Menu Button"] = "Ẩn nút mở menu nổi",
+    ["Edit On-screen Keybinds"] = "Chỉnh vị trí danh sách phím trên màn hình",
+    ["Theme Colors"] = "Màu giao diện",
+    ["Accent"] = "Màu điểm nhấn",
+    ["Background"] = "Nền",
+    ["Element Background"] = "Nền thành phần",
+    ["Outline"] = "Viền",
+    ["Selected Tab"] = "Tab đang chọn",
+    ["Text"] = "Chữ",
+    ["Toggle Circle"] = "Nút gạt",
+    ["Toggle Background"] = "Nền nút gạt",
+    ["Whole-Menu Profiles"] = "Cấu hình toàn bộ menu",
+    ["Transfer"] = "Nhập và xuất",
+    ["Automation"] = "Tự động hóa",
+    ["Config Name"] = "Tên cấu hình",
+    ["Create Config"] = "Tạo cấu hình",
+    ["Configs"] = "Các cấu hình",
+    ["Export Config"] = "Xuất cấu hình",
+    ["Import (paste config)"] = "Nhập (dán cấu hình)",
+    ["Import Config"] = "Nhập cấu hình",
+    ["Auto Save"] = "Tự lưu",
+    ["Profile to Auto Save"] = "Cấu hình cần tự lưu",
+    ["Auto Load"] = "Tự tải",
+    ["Profile to Auto Load"] = "Cấu hình cần tự tải",
+    ["Startup"] = "Khởi động",
+    ["Notifications"] = "Thông báo",
+    ["Enable Notifications"] = "Bật thông báo",
+    ["Re-run After Teleport"] = "Tự chạy lại sau khi dịch chuyển",
+    ["Silent Load"] = "Tải không hiện thông báo",
+    ["Unload Crefy"] = "Tắt Crefy",
+    ["Show Notifications"] = "Hiện thông báo",
+    ["Enabled"] = "Bật",
+    ["Disabled"] = "Tắt",
+    ["Enable"] = "Bật",
+    ["Disable"] = "Tắt",
+    ["On"] = "Bật",
+    ["Off"] = "Tắt",
+    ["Always"] = "Luôn bật",
+    ["Toggle"] = "Bật / tắt",
+    ["Hold"] = "Giữ để dùng",
+    ["Tap"] = "Chạm",
+    ["None"] = "Không",
+    ["Default"] = "Mặc định",
+    ["Random"] = "Ngẫu nhiên",
+    ["Manual"] = "Thủ công",
+    ["Automatic"] = "Tự động",
+    ["Auto"] = "Tự động",
+    ["On Empty"] = "Khi hết đạn",
+    ["Reload"] = "Nạp đạn",
+    ["Swap"] = "Đổi vũ khí",
+    ["SwapOrReload"] = "Đổi súng hoặc nạp đạn",
+    ["Ragebot"] = "Ragebot",
+    ["Underground"] = "Ẩn dưới lòng đất",
+    ["Silent Aim"] = "Silent Aim",
+    ["Aim & Fire"] = "Ngắm và bắn",
+    ["Aim Mode"] = "Chế độ ngắm",
+    ["Target Filters"] = "Lọc mục tiêu",
+    ["Target Lock"] = "Khóa mục tiêu",
+    ["Activation"] = "Kích hoạt",
+    ["Activation Rules"] = "Điều kiện bật tính năng",
+    ["Aim Point"] = "Điểm ngắm",
+    ["Hitbox Selection"] = "Chọn vùng trúng đạn",
+    ["Closest to Crosshair"] = "Gần tâm ngắm nhất",
+    ["Weighted Random"] = "Ngẫu nhiên theo trọng số",
+    ["Prioritize Hackers"] = "Tấn công mấy thằng hack trước",
+    ["Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work."] = "Ragebot sẽ nhắm và tấn công những người bị Hacker Detector phát hiện dùng hack trước. Nhớ bật Hacker Detector thì mục này mới hoạt động.",
+    ["Enable Ragebot"] = "Bật Ragebot",
+    ["Primary Enabled"] = "Bật vũ khí chính",
+    ["Secondary Enabled"] = "Bật vũ khí phụ",
+    ["Melee Enabled"] = "Bật vũ khí cận chiến",
+    ["Weapon Strategy"] = "Cách dùng vũ khí",
+    ["Swap or Reload"] = "Đổi súng hoặc nạp đạn",
+    ["Translocate"] = "Dịch chuyển",
+    ["Up"] = "Lên",
+    ["Down"] = "Xuống",
+    ["Part"] = "Giữ hướng bắn theo mục tiêu",
+    ["Projectile Breaker"] = "Né đạn",
+    ["Weapon Priority"] = "Ưu tiên vũ khí",
+    ["Primary"] = "Vũ khí chính",
+    ["Secondary"] = "Vũ khí phụ",
+    ["Melee"] = "Cận chiến",
+    ["Knife"] = "Dao",
+    ["Gun"] = "Súng",
+    ["Stability"] = "Độ ổn định",
+    ["Shoot Frames"] = "Số khung hình giữ lệnh bắn",
+    ["Reaction Delay (s)"] = "Độ trễ phản ứng (giây)",
+    ["Switch Delay (s)"] = "Độ trễ khi đổi mục tiêu (giây)",
+    ["Reposition Interval (s)"] = "Khoảng nghỉ giữa các lần đổi vị trí (giây)",
+    ["Forward Depth"] = "Khoảng dịch về phía trước",
+    ["Forward Frequency"] = "Tần suất dịch về phía trước",
+    ["Upward Depth"] = "Khoảng dịch lên trên",
+    ["Upward Frequency"] = "Tần suất dịch lên trên",
+    ["Fallback Character Origin"] = "Lấy vị trí nhân vật làm điểm dự phòng",
+    ["Fallback Radius"] = "Bán kính dự phòng",
+    ["Fallback Random Factor"] = "Mức ngẫu nhiên dự phòng",
+    ["Reduce Recoil"] = "Giảm độ giật",
+    ["Recoil Reduction (%)"] = "Tỉ lệ giảm độ giật (%)",
+    ["Remove Spread"] = "Loại bỏ độ tản đạn",
+    ["Automatic Fire"] = "Tự động bắn",
+    ["Aim Speed Override"] = "Tùy chỉnh tốc độ ngắm",
+    ["Fire Cooldown Override"] = "Điều chỉnh thời gian chờ giữa các phát bắn",
+    ["Aim Cooldown Override"] = "Điều chỉnh thời gian chờ ngắm",
+    ["Melee Cooldown Override"] = "Điều chỉnh thời gian chờ cận chiến",
+    ["Dash Cooldown Override"] = "Điều chỉnh thời gian chờ giữa các lần lướt",
+    ["Always Backstab"] = "Luôn đánh lén từ phía sau",
+    ["Always Backstab Mode"] = "Cách đánh sau lưng",
+    ["Trigger Distance (studs)"] = "Khoảng cách kích hoạt (stud)",
+    ["Extend Melee Range"] = "Tăng tầm đánh cận chiến",
+    ["Range"] = "Phạm vi",
+    ["Fuse Override"] = "Tùy chỉnh ngòi nổ",
+    ["Explode On"] = "Kích nổ khi",
+    ["Impact"] = "Va chạm",
+    ["Throw"] = "Ném",
+    ["Remove Fuse"] = "Bỏ thời gian chờ trước khi nổ",
+    ["Visuals"] = "Hiển thị",
+    ["ESP"] = "ESP",
+    ["Box"] = "Khung",
+    ["Health Bar"] = "Thanh máu",
+    ["Ammo Bar"] = "Thanh đạn",
+    ["Chams"] = "Làm nổi bật nhân vật",
+    ["Tracer"] = "Đường nối đến mục tiêu",
+    ["Distance"] = "Khoảng cách",
+    ["Name"] = "Tên",
+    ["Font"] = "Phông chữ",
+    ["Font Size"] = "Cỡ chữ",
+    ["Text Size"] = "Cỡ chữ",
+    ["Text Case"] = "Kiểu chữ hoa/thường",
+    ["Standard"] = "Bình thường",
+    ["UPPERCASE"] = "CHỮ HOA",
+    ["lowercase"] = "chữ thường",
+    ["Scale With Distance"] = "Tự đổi kích thước theo khoảng cách",
+    ["Reference Distance"] = "Khoảng cách tham chiếu",
+    ["Color"] = "Màu",
+    ["Color Mode"] = "Chế độ màu",
+    ["Solid"] = "Một màu",
+    ["Gradient"] = "Chuyển sắc",
+    ["Reactive"] = "Thay đổi theo tình huống",
+    ["Style"] = "Kiểu",
+    ["Full"] = "Toàn khung",
+    ["Corner"] = "Góc khung",
+    ["Show Indicator"] = "Hiện dấu báo",
+    ["Use Display Names"] = "Hiện tên hiển thị",
+    ["Manage Custom Sounds"] = "Quản lý âm thanh tùy chỉnh",
+    ["Enable Hit Feedback"] = "Bật hiệu ứng khi trúng đòn",
+    ["Enable Elimination Feedback"] = "Bật hiệu ứng khi hạ gục",
+    ["Play Hit Sound"] = "Phát âm thanh khi trúng đòn",
+    ["Play Elimination Sound"] = "Phát âm thanh khi hạ gục",
+    ["Mute Game Hit Sound"] = "Tắt tiếng báo trúng đòn của game",
+    ["Sound"] = "Âm thanh",
+    ["Volume"] = "Âm lượng",
+    ["Pitch"] = "Cao độ",
+    ["Duration"] = "Thời lượng",
+    ["Notification"] = "Thông báo",
+    ["Enable Hit Notification"] = "Bật thông báo khi trúng đòn",
+    ["Enable Elimination Notification"] = "Bật thông báo khi hạ gục",
+    ["Create"] = "Tạo",
+    ["Delete"] = "Xóa",
+    ["Refresh List"] = "Làm mới danh sách",
+    ["Delete Selected Config"] = "Xóa cấu hình đã chọn",
+    ["Confirm"] = "Xác nhận",
+    ["Cancel"] = "Hủy",
+    ["Save"] = "Lưu",
+    ["Load"] = "Tải",
+    ["Search"] = "Tìm kiếm",
+    ["Copied your current config to the clipboard"] = "Đã sao chép cấu hình hiện tại vào bộ nhớ tạm",
+    ["Box Fit"] = "Cách căn khung",
+    ["Flags"] = "Thông tin kèm theo",
+    ["Flag Font"] = "Phông chữ thông tin kèm theo",
+    ["Flag Font Size"] = "Cỡ chữ thông tin kèm theo",
+    ["Flag Text Case"] = "Kiểu chữ của thông tin kèm theo",
+    ["Flag Surround"] = "Ký tự bao quanh thông tin",
+    ["Text Surround"] = "Ký tự bao quanh chữ",
+    ["Kind"] = "Loại",
+    ["Fill"] = "Tô nền",
+    ["Shape"] = "Hình dạng",
+    ["From"] = "Từ",
+    ["To"] = "Đến",
+    ["Outline Thickness"] = "Độ dày viền",
+    ["Alpha Range"] = "Khoảng độ trong suốt",
+    ["Show in list"] = "Hiện trong danh sách",
+    ["Load Selected Config"] = "Tải cấu hình đã chọn",
+    ["Save to Selected Config"] = "Lưu vào cấu hình đã chọn",
+    ["Manipulation Check"] = "Kiểm tra thao tác",
+    ["First Ban Choices"] = "Những lựa chọn cấm ở lượt đầu",
+    ["Second Ban Choices"] = "Những lựa chọn cấm ở lượt hai",
+    ["Use Map-Specific Loadouts"] = "Dùng bộ trang bị riêng cho từng bản đồ",
+    ["Use Fallback Loadouts"] = "Dùng bộ trang bị dự phòng",
+    ["Loadout Priority (1 highest)"] = "Ưu tiên bộ trang bị (1 là cao nhất)",
+    ["Pickup Types"] = "Các loại vật phẩm cần nhặt",
+    ["Queue"] = "Hàng đợi",
+    ["Maps to Vote For"] = "Bản đồ muốn bỏ phiếu chọn",
+    ["Notify"] = "Thông báo",
+    ["Moderator Responses"] = "Cách xử lý khi phát hiện quản trị viên",
+    ["Mod Friends"] = "Bạn bè là quản trị viên",
+    ["Auto Trigger"] = "Tự kích hoạt",
+    ["Team Trigger"] = "Kích hoạt theo đội",
+    ["Match Flow"] = "Diễn biến trận đấu",
+    ["Auto Loadout"] = "Tự động chọn bộ trang bị",
+    ["In-Match Automation"] = "Tự động thao tác trong trận",
+    ["Detection"] = "Phát hiện",
+    ["Show Targeting Circle"] = "Hiện vòng ngắm mục tiêu",
+    ["Radius (px)"] = "Bán kính (px)",
+    ["Animated"] = "Có chuyển động",
+    ["Animation Speed (deg/s)"] = "Tốc độ chuyển động (độ/giây)",
+    ["Allowed Hitboxes"] = "Các vùng có thể nhắm trúng",
+    ["Surface Reduction (%)"] = "Mức thu nhỏ vùng trúng đạn (%)",
+    ["Preserve Depth"] = "Giữ nguyên độ sâu",
+    ["Linear Speed"] = "Tốc độ tuyến tính",
+    ["AI Speed"] = "Tốc độ AI",
+    ["Spring Speed"] = "Tốc độ đàn hồi",
+    ["Enable Target Lock"] = "Bật khóa mục tiêu",
+    ["Lock Mode"] = "Chế độ khóa",
+    ["Activation Chance (%)"] = "Tỉ lệ kích hoạt (%)",
+    ["Release Delay (s)"] = "Thời gian chờ trước khi nhả khóa (giây)",
+    ["Elimination Sound"] = "Âm thanh hạ gục",
+    ["Elimination Volume"] = "Âm lượng khi hạ gục",
+    ["Elimination Pitch"] = "Cao độ khi hạ gục",
+    ["Enable Elimination Chams"] = "Bật hiệu ứng làm nổi nhân vật khi hạ gục",
+    ["Elimination Chams Duration"] = "Thời gian hiệu ứng sau khi hạ gục",
+    ["Elimination Chams Material"] = "Chất liệu hiệu ứng khi hạ gục",
+    ["Enable Elimination Flash"] = "Bật hiệu ứng chớp khi hạ gục",
+    ["Elimination Flash Duration"] = "Thời gian chớp khi hạ gục",
+    ["Elimination Notification Text"] = "Nội dung thông báo hạ gục",
+    ["Headshot Sound"] = "Âm thanh khi bắn trúng đầu",
+    ["Headshot Volume"] = "Âm lượng khi bắn trúng đầu",
+    ["Headshot Pitch"] = "Cao độ âm thanh khi bắn trúng đầu",
+    ["Body Hit Sound"] = "Âm thanh khi bắn trúng thân",
+    ["Body Hit Volume"] = "Âm lượng khi bắn trúng thân",
+    ["Body Hit Pitch"] = "Cao độ âm thanh khi bắn trúng thân",
+    ["Enable Hit Chams"] = "Bật hiệu ứng làm nổi nhân vật khi trúng đạn",
+    ["Hit Chams Duration"] = "Thời gian hiệu ứng khi trúng đạn",
+    ["Hit Chams Material"] = "Chất liệu hiệu ứng khi trúng đạn",
+    ["Enable Hit Flash"] = "Bật hiệu ứng chớp khi trúng đạn",
+    ["Hit Flash Duration"] = "Thời gian chớp khi trúng đạn",
+    ["Hit Notification Text"] = "Nội dung thông báo khi bắn trúng",
+    ["Utilize Health Lead"] = "Dự đoán theo lượng máu mục tiêu",
+    ["This option is currently not connected to active Ragebot behavior."] = "Mục này hiện chưa được Ragebot sử dụng.",
+    ["Void Spam"] = "Tấn công rồi ẩn vị trí",
+    ["Attack"] = "Thời gian tấn công",
+    ["Hide"] = "Thời gian ẩn vị trí",
+    ["Evasion Mode"] = "Kiểu né đòn",
+    ["Character Origin"] = "Vị trí nhân vật",
+    ["Base Radius"] = "Bán kính cơ bản",
+    ["Random Factor"] = "Mức ngẫu nhiên",
+    ["Hitscan"] = "Hướng đạn",
+    ["Shoot"] = "Bắn",
+    ["Shot Delay (ms)"] = "Độ trễ phát bắn (ms)",
+    ["Cooldown (ms)"] = "Thời gian hồi (ms)",
+    ["Flick Duration (ms)"] = "Thời gian lia tâm ngắm nhanh (ms)",
+    ["Curvature"] = "Độ cong đường ngắm",
+    ["Humanness"] = "Độ tự nhiên khi ngắm",
+    ["Open Aimbot Targeting"] = "Mở cài đặt ngắm tự động",
+    ["Combat"] = "Chiến đấu",
+    ["Aimbot"] = "Aimbot",
+    ["Fire Assist"] = "Hỗ trợ bắn",
+    ["Weapon Handling"] = "Điều khiển vũ khí",
+    ["Hit Feedback"] = "Hiệu ứng khi trúng đòn",
+    ["Hold a weapon, then click the pin next to a setting to give that weapon its own value."] = "Cầm vũ khí lên rồi bấm biểu tượng ghim cạnh một tùy chọn để đặt giá trị riêng cho vũ khí đó.",
+    ["Season"] = "Mùa giải",
+    ["Rank"] = "Hạng",
+    ["Leaderboard Rank (optional, e.g. 1)"] = "Thứ hạng trên bảng xếp hạng (không bắt buộc, ví dụ: 1)",
+    ["Apply To"] = "Áp dụng cho",
+    ["Search Skins"] = "Tìm skin",
+    ["Search Wraps"] = "Tìm lớp áo...",
+    ["Inverted Wrap"] = "Lật lớp áo",
+    ["Player ESP"] = "ESP người chơi",
+    ["Anti Katana"] = "Chống Katana",
+    ["Auto Weapon Ban"] = "Tự động cấm vũ khí",
+    ["Setup"] = "Thiết lập",
+    ["Slot Editor"] = "Chỉnh ô trang bị",
+    ["Auto Pickup"] = "Tự động nhặt vật phẩm",
+    ["Auto Queue"] = "Tự động vào hàng chờ",
+    ["Auto Respawn"] = "Tự động hồi sinh",
+    ["Auto Map Vote"] = "Tự động bỏ phiếu bản đồ",
+    ["Hacker Detector"] = "Phát hiện hack",
+    ["Moderator Detector"] = "Phát hiện admin",
+    ["Subspace Tripmines"] = "Mìn Subspace",
+    ["Targeting"] = "Ngắm mục tiêu",
+    ["Targeting FOV"] = "Góc nhìn ngắm (FOV)",
+    ["Manage Sounds"] = "Quản lý âm thanh",
+    ["Add a Sound"] = "Thêm âm thanh",
+    ["Remove a Sound"] = "Xóa âm thanh",
+    ["Remove selected sound?"] = "Xóa âm thanh đã chọn?",
+    ["Triggerbot"] = "Tự động bắn",
+    ["Cooldowns"] = "Thời gian hồi chiêu",
+    ["Grenades"] = "Lựu đạn",
+    ["Flickbot"] = "Flickbot",
+    ["Skin Catalog"] = "Danh mục skin",
+    ["Wrap Catalog"] = "Danh mục lớp áo",
+    ["Rank Charm Override"] = "Đổi phụ kiện theo hạng",
+    ["Charm Catalog"] = "Danh mục phụ kiện",
+    ["Finisher Catalog"] = "Danh mục kết liễu",
+    ["Cosmetic Runtime"] = "Quản lý đồ trang trí đang dùng",
+    ["Unlock All"] = "Mở khóa toàn bộ",
+    ["Community"] = "Cộng đồng",
+    ["Library"] = "Thư viện",
+    ["Animation Player"] = "Trình phát hoạt ảnh",
+    ["Character Appearance"] = "Tùy chỉnh nhân vật",
+    ["Device Spoof"] = "Giả lập loại thiết bị",
+    ["Ground"] = "Trên mặt đất",
+    ["Air"] = "Trên không trung",
+    ["Recorder"] = "Công cụ ghi lại chuyển động",
+    ["Markers"] = "Mốc đánh dấu",
+    ["Record / Replay"] = "Ghi lại / phát lại",
+    ["Playback Alignment"] = "Căn chỉnh lúc phát lại",
+    ["Save Recording"] = "Lưu dữ liệu ghi lại",
+    ["Recording Library"] = "Danh sách bản ghi",
+    ["Camera FOV"] = "FOV camera",
+    ["Gameplay Overlays"] = "Các lớp thông tin hiển thị trong game",
+    ["Stretched Resolution"] = "Kéo giãn độ phân giải",
+    ["Third Person"] = "Góc nhìn thứ ba",
+    ["Manage Images"] = "Quản lý hình ảnh",
+    ["Add an Image"] = "Thêm hình ảnh",
+    ["Remove an Image"] = "Xóa hình ảnh",
+    ["Remove selected image?"] = "Xóa hình ảnh đã chọn?",
+    ["Crosshair"] = "Tâm ngắm",
+    ["Motion & Effects"] = "Chuyển động và hiệu ứng",
+    ["Activation & Filtering"] = "Kích hoạt và bộ lọc",
+    ["Viewmodel Position"] = "Vị trí vũ khí trên màn hình",
+    ["Motion & Animation"] = "Chuyển động và hoạt ảnh",
+    ["Bullet Tracers"] = "Vệt đạn",
+    ["Advanced Tracers"] = "Vệt đạn nâng cao",
+    ["Suppressions"] = "Hiệu ứng đạn áp sát",
+    ["Lighting Override"] = "Tùy chỉnh ánh sáng",
+    ["Time & Exposure"] = "Thời gian và phơi sáng",
+    ["Shadows & Quality"] = "Bóng đổ và chất lượng",
+    ["Ambient Colors"] = "Màu ánh sáng môi trường",
+    ["Fog & Atmosphere"] = "Sương mù và khí quyển",
+    ["Tone & Color"] = "Tông màu và màu sắc",
+    ["Focus & Motion"] = "Lấy nét và chuyển động",
+    ["Light Effects"] = "Hiệu ứng ánh sáng",
+    ["Manage Skyboxes"] = "Quản lý bầu trời",
+    ["Add a Skybox"] = "Thêm bầu trời",
+    ["Remove a Skybox"] = "Xóa bầu trời",
+    ["Remove selected skybox?"] = "Xóa bầu trời đã chọn?",
+    ["Skybox"] = "Bầu trời",
+    ["Ambient Sound"] = "Âm thanh môi trường",
+    ["Weather"] = "Thời tiết",
+    ["Lightning"] = "Sét",
+    ["Speed"] = "Tốc độ",
+    ["Thickness"] = "Độ dày",
+    ["Intensity"] = "Cường độ",
+    ["Preset"] = "Thiết lập sẵn",
+    ["Glow"] = "Phát sáng",
+    ["Multiplier"] = "Hệ số nhân",
+    ["Brightness"] = "Độ sáng",
+    ["Size"] = "Kích thước",
+    ["Text Color"] = "Màu chữ",
+    ["Follow Target"] = "Bám theo mục tiêu",
+    ["Follow Speed"] = "Tốc độ bám theo",
+    ["Follow Damper"] = "Độ giảm dao động khi bám",
+    ["Snap Distance"] = "Khoảng cách bắt dính",
+    ["Sound Source"] = "Nguồn âm thanh",
+    ["Offset"] = "Độ lệch",
+    ["Image"] = "Hình ảnh",
+    ["Atmosphere"] = "Khí quyển",
+    ["Spread"] = "Độ tản",
+    ["Height"] = "Chiều cao",
+    ["Jaggedness"] = "Độ ngoằn ngoèo",
+    ["Sparks"] = "Tia lửa",
+    ["Explosion"] = "Vụ nổ",
+    ["Match flow, loadouts, in-match automation, and detection."] = "Quản lý trận đấu, bộ trang bị, tác vụ tự động và phát hiện đối tượng.",
+    ["Automate queueing, voting, bans, and respawns."] = "Tự động vào trận, bỏ phiếu, cấm lựa chọn và hồi sinh.",
+    ["Configure map-specific and fallback loadouts."] = "Thiết lập bộ trang bị riêng cho từng bản đồ và bộ dự phòng.",
+    ["Automate pickups, counters, and tripmines."] = "Tự nhặt vật phẩm và tự xử lý các cơ chế phản công, mìn.",
+    ["Detect hackers and moderators."] = "Phát hiện người chơi gian lận và quản trị viên.",
+    ["Add or remove custom sounds."] = "Thêm hoặc xóa âm thanh tùy chỉnh.",
+    ["Enter a name and sound source."] = "Nhập tên và nguồn âm thanh.",
+    ["Select a sound to remove."] = "Chọn âm thanh muốn xóa.",
+    ["Aim assistance, fire control, weapon handling, feedback, and ragebot."] = "Các tính năng ngắm bắn, quản lý vũ khí, phản hồi khi trúng đòn và Ragebot.",
+    ["Camera-based aim assistance and target locking."] = "Hỗ trợ ngắm bằng camera và khóa mục tiêu.",
+    ["Redirect projectiles toward targets without moving the camera."] = "Điều hướng đạn về phía mục tiêu mà không xoay camera.",
+    ["Aggressive targeting, weapon priority, and evasive movement."] = "Tự chọn mục tiêu để tấn công, ưu tiên vũ khí và né đòn.",
+    ["Automatic firing and fast camera flicks."] = "Tự động bắn và xoay camera nhanh.",
+    ["Aim, firing, cooldown, melee, and grenade behavior."] = "Thiết lập ngắm, bắn, thời gian hồi, cận chiến và lựu đạn.",
+    ["Sound, visual, flash, and notification feedback."] = "Tùy chỉnh âm thanh, hình ảnh, hiệu ứng chớp và thông báo.",
+    ["Manage cosmetic runtime, catalogs, and cosmetic presets."] = "Quản lý đồ đang dùng, danh mục và các bộ trang trí đã lưu.",
+    ["Create, load, automate, and delete whole cosmetic loadouts."] = "Tạo, tải, tự động áp dụng hoặc xóa cả bộ trang trí.",
+    ["Enable cosmetic features, unlock cosmetics, reroll, and share your active look."] = "Bật tính năng chỉnh đồ trang trí, mở khóa vật phẩm, đổi ngẫu nhiên và chia sẻ bộ đang dùng.",
+    ["Browse and apply weapon skin variants."] = "Xem và áp dụng các mẫu skin vũ khí.",
+    ["Browse weapon wraps and control inverted patterns."] = "Xem lớp áo vũ khí và bật/tắt chế độ lật họa tiết.",
+    ["Browse weapon charms and optionally override rank charms."] = "Xem phụ kiện gắn trên vũ khí hoặc chọn phụ kiện riêng theo hạng.",
+    ["Browse and apply weapon finishers."] = "Xem và áp dụng hiệu ứng kết liễu.",
+    ["Movement, character appearance, and identity."] = "Di chuyển, tùy chỉnh nhân vật và thông tin nhận dạng.",
+    ["Ground and air movement."] = "Di chuyển trên mặt đất và trên không.",
+    ["Record, replay, and manage movement routes."] = "Ghi lại, phát lại và quản lý lộ trình di chuyển.",
+    ["Animations and character appearance."] = "Hoạt ảnh và tùy chỉnh nhân vật.",
+    ["Presented device and player identity."] = "Thông tin thiết bị và danh tính hiển thị của người chơi.",
+    ["Add or remove custom images."] = "Thêm hoặc xóa hình ảnh tùy chỉnh.",
+    ["Enter a name and image source."] = "Nhập tên và nguồn hình ảnh.",
+    ["Select an image to remove."] = "Chọn hình ảnh muốn xóa.",
+    ["Player information, crosshair, weapon, camera, and sound visuals."] = "Thông tin người chơi, tâm ngắm, vũ khí, camera và hiệu ứng âm thanh.",
+    ["Player overlays, team-specific styling, and a synchronized preview."] = "Thông tin hiển thị trên người chơi, màu sắc riêng cho từng đội và phần xem trước đồng bộ.",
+    ["Crosshair lines, images, text, motion, and target-follow effects."] = "Đường ngắm, hình ảnh, chữ, chuyển động và hiệu ứng bám mục tiêu.",
+    ["Viewmodel position, materials, motion, and projectile effects."] = "Vị trí vũ khí trên màn hình, chất liệu, chuyển động và hiệu ứng đường đạn.",
+    ["Third person, camera field of view, overlays, and screen scaling."] = "Góc nhìn thứ ba, góc nhìn camera (FOV), lớp phủ và tỉ lệ màn hình.",
+    ["Visualize footsteps and other sounds by source and loudness."] = "Hiển thị vị trí nguồn phát và âm lượng của tiếng bước chân cùng các âm thanh khác.",
+    ["Add or remove custom skyboxes."] = "Thêm hoặc xóa bầu trời tùy chỉnh.",
+    ["Enter a name and six face textures."] = "Nhập tên và hình ảnh cho cả sáu mặt.",
+    ["Select a skybox to remove."] = "Chọn bầu trời muốn xóa.",
+    ["Lighting, post-processing, sky, and ambient sound."] = "Ánh sáng, hậu kỳ hình ảnh, bầu trời và âm thanh môi trường.",
+    ["Override time, exposure, shadows, ambient light, fog, and atmosphere."] = "Chỉnh thời gian trong game, độ phơi sáng, bóng đổ, ánh sáng môi trường, sương mù và khí quyển.",
+    ["Tune tone, focus, motion, and light effects."] = "Điều chỉnh tông màu, lấy nét, chuyển động và hiệu ứng ánh sáng.",
+    ["Choose a skybox, ambient sound, weather, and lightning."] = "Chọn bầu trời, âm thanh môi trường, thời tiết và hiệu ứng sét.",
+    ["Distance from screen center for the Crosshair side. Negative is above, positive below."] = "Khoảng cách từ tâm màn hình đến tâm ngắm. Số âm là lên trên, số dương là xuống dưới.",
+    ["Cycles between a continuous attack window and a short hidden server-position window."] = "Luân phiên giữa khoảng thời gian tấn công và khoảng ngắn ẩn vị trí trên máy chủ.",
+    ["Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second."] = "Thời gian của đợt tấn công. Súng vẫn bắn theo nhịp vốn có. Phạm vi: 0,01–1 giây.",
+    ["Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds."] = "Thời gian ẩn vị trí trên máy chủ sau đợt tấn công. Phạm vi: 0,01–1 giây; mặc định: 0,25 giây.",
+    ["Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction."] = "Lên: ép hướng bắn lên trên. Xuống: ép hướng bắn xuống dưới. Theo mục tiêu: giữ hướng bắn phù hợp với mục tiêu.",
+    ["Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive."] = "Kết hợp độ lệch vị trí của Underground với cơ chế điều khiển CFrame phía máy chủ của Ragebot. Ragebot tắt thì Underground vẫn chạy riêng.",
+    ["Applies the choices from the Skins, Wraps, Charms, and Finishers catalogs."] = "Áp dụng các lựa chọn trong danh mục skin, lớp áo, phụ kiện và hiệu ứng kết liễu.",
+    ["How fast the camera turns to the recording's starting look angle"] = "Tốc độ camera xoay về góc nhìn lúc bắt đầu bản ghi.",
+    ["How smoothened camera look is"] = "Độ mượt khi camera xoay nhìn.",
+    ["Once this close to the start, position is considered aligned"] = "Khi đã đủ gần điểm bắt đầu, vị trí sẽ được xem là khớp.",
+    ["Drags the crosshair toward the aimbot / silent aim target"] = "Kéo tâm ngắm về phía mục tiêu của Aimbot / Silent Aim.",
+    ["Degrees per second"] = "Độ mỗi giây",
+    ["Pulses the gap outward by the range below"] = "Làm khoảng cách giữa các vạch nở ra theo giá trị bên dưới.",
+    ["Static tilt of the whole crosshair"] = "Độ nghiêng cố định của toàn bộ tâm ngắm.",
+    ["Pixels below the crosshair"] = "Số pixel lệch xuống dưới tâm ngắm.",
+    ["A custom label beneath the crosshair"] = "Dòng chữ tùy chỉnh bên dưới tâm ngắm.",
+    ["Atmosphere color."] = "Màu khí quyển.",
+    ["Atmosphere decay color."] = "Màu sương khí quyển khi tan dần.",
+    ["Indoor ambient color."] = "Màu ánh sáng môi trường trong nhà.",
+    ["Outdoor ambient color."] = "Màu ánh sáng môi trường ngoài trời.",
+    ["Top color shift."] = "Điều chỉnh màu phía trên.",
+    ["Bottom color shift."] = "Điều chỉnh màu phía dưới.",
+    ["Strike lightning during rain and blizzards."] = "Tạo sét khi trời mưa hoặc có bão tuyết.",
+    ["Colour or gradient of the lightning bolts."] = "Màu hoặc dải màu của tia sét.",
+    ["Average seconds between strikes."] = "Khoảng thời gian trung bình giữa các lần sét đánh (giây).",
+    ["Farthest a strike can land from the camera."] = "Khoảng cách xa nhất từ camera đến điểm sét đánh.",
+    ["Length of each bolt from cloud to ground."] = "Chiều dài tia sét từ mây xuống mặt đất.",
+    ["Core thickness of the bolts."] = "Độ dày lõi tia sét.",
+    ["How jagged and erratic the bolts look."] = "Độ ngoằn ngoèo của tia sét.",
+    ["Maximum forks that split off each bolt."] = "Số nhánh tối đa của mỗi tia sét.",
+    ["Brightness of the light flash at the impact."] = "Độ sáng của chớp sáng khi sét đánh trúng.",
+    ["Sparks that crackle off the bolt as it strikes."] = "Tia lửa bắn ra khi sét đánh.",
+    ["Colour or gradient of the sparks."] = "Màu hoặc dải màu của tia lửa.",
+    ["How many sparks each strike throws off."] = "Số tia lửa tạo ra mỗi lần sét đánh.",
+    ["Thickness of the sparks."] = "Độ dày của tia lửa.",
+    ["How far sparks fly from the bolt."] = "Khoảng cách tia lửa bay khỏi tia sét.",
+    ["How fast sparks shoot out and fade."] = "Tốc độ tia lửa bắn ra rồi mờ dần.",
+    ["How jagged the sparks look."] = "Độ ngoằn ngoèo của tia lửa.",
+    ["Burst of arcs that erupts where the bolt lands."] = "Chùm tia điện bùng lên tại điểm sét đánh.",
+    ["Colour or gradient of the explosion."] = "Màu hoặc dải màu của vụ nổ.",
+    ["Size of the impact burst."] = "Kích thước hiệu ứng tại điểm va chạm.",
+    ["How many arcs radiate from the impact."] = "Số tia điện tỏa ra từ điểm va chạm.",
+    ["Play a thunder crack with each strike, delayed and quietened by distance."] = "Phát tiếng sấm mỗi khi có sét. Tiếng sẽ đến trễ và nhỏ dần khi ở xa.",
+    ["Loudness of a strike landing right beside you."] = "Âm lượng khi sét đánh ngay gần bạn.",
+    ["Lag the crack by the strike's distance, like real thunder. Off plays it instantly."] = "Tạo độ trễ cho tiếng sấm tùy theo khoảng cách như ngoài đời. Tắt mục này để phát tiếng ngay lập tức.",
+    ["Roblox sound id or local file path for the crack. Leave empty for the default thunder."] = "Nhập ID âm thanh Roblox hoặc đường dẫn tệp âm thanh. Để trống để dùng tiếng sấm mặc định.",
+    ["No matches"] = "Không tìm thấy kết quả",
+    ["Loading catalog"] = "Đang tải danh mục",
+    ["No items available"] = "Chưa có mục nào",
+    ["The catalog could not be loaded."] = "Không thể tải danh mục.",
+    ["This catalog does not have any items yet."] = "Danh mục này hiện chưa có mục nào.",
+    ["Clear filter"] = "Xóa bộ lọc",
+    ["No results"] = "Không có kết quả",
+    ["Select an option"] = "Chọn một tùy chọn",
+    ["Type to search"] = "Nhập để tìm kiếm",
+    ["Search..."] = "Tìm kiếm...",
+    ["Search skins..."] = "Tìm skin...",
+    ["Search wraps..."] = "Tìm lớp áo...",
+    ["Search charms..."] = "Tìm phụ kiện...",
+    ["Search finishers..."] = "Tìm hiệu ứng kết liễu...",
+    ["Loading..."] = "Đang tải...",
+    ["Unavailable"] = "Không khả dụng",
+    ["Empty"] = "Trống",
+    ["No Matches"] = "Không tìm thấy kết quả",
+    ["Selected"] = "Đã chọn",
+    ["Select"] = "Chọn",
+    ["Remove"] = "Gỡ bỏ",
+    ["Apply"] = "Áp dụng",
+    ["Reset"] = "Đặt lại",
+    ["Open"] = "Mở",
+    ["Close"] = "Đóng",
+    ["Back"] = "Quay lại",
+    ["Next"] = "Tiếp theo",
+    ["Previous"] = "Trước đó",
+    ["Options"] = "Tùy chọn",
+    ["Profile"] = "Bộ cấu hình",
+    ["Profiles"] = "Các bộ cấu hình",
+    ["Choose a profile"] = "Chọn bộ cấu hình",
+    ["No config selected"] = "Chưa chọn cấu hình",
+    ["Enter config name"] = "Nhập tên cấu hình",
+    ["Paste config here"] = "Dán cấu hình vào đây",
+    ["Copy"] = "Sao chép",
+    ["Copied"] = "Đã sao chép",
+    ["Failed"] = "Thất bại",
+    ["Success"] = "Thành công",
+    ["Are you sure?"] = "Chắc chắn chứ?",
+    ["This cannot be undone."] = "Thao tác này không thể hoàn tác.",
+    ["Enabled features"] = "Tính năng đang bật",
+    ["Hold to activate"] = "Giữ để kích hoạt",
+    ["Press to toggle"] = "Nhấn để bật/tắt",
+    ["Use default"] = "Dùng mặc định",
+    ["Custom"] = "Tùy chỉnh",
+    ["Player"] = "Người chơi",
+    ["Players"] = "Người chơi",
+    ["Team"] = "Đội",
+    ["Enemies"] = "Đối thủ",
+    ["All players"] = "Tất cả người chơi",
+    ["Friendly"] = "Đồng đội",
+    ["Enemy"] = "Đối thủ",
+    ["Head"] = "Đầu",
+    ["Body"] = "Thân người",
+    ["Closest"] = "Gần nhất",
+    ["Farthest"] = "Xa nhất",
+    ["Ascending"] = "Tăng dần",
+    ["Descending"] = "Giảm dần",
+    ["Enabled only"] = "Chỉ mục đang bật",
+    ["Show"] = "Hiện",
+    ["Show All"] = "Hiện tất cả",
+    ["Hide All"] = "Ẩn tất cả",
+    ["Reset to Default"] = "Khôi phục mặc định",
+    ["Waiting..."] = "Đang chờ...",
+    ["Ready"] = "Sẵn sàng",
+    ["Error"] = "Lỗi",
+    ["Warning"] = "Cảnh báo",
+    ["Information"] = "Thông tin",
+    ["Please wait..."] = "Vui lòng chờ...",
+    ["Enter a search term"] = "Nhập từ cần tìm",
+    ["Nothing selected"] = "Chưa chọn mục nào",
+    ["Are you sure you want to delete this?"] = "Bạn có chắc muốn xóa mục này không?",
+    ["Delete this item?"] = "Xóa mục này nhé?",
+    ["This action cannot be undone."] = "Không thể hoàn tác thao tác này.",
+    ["Cosmetic Preset Library"] = "Thư viện bộ trang trí",
+    ["Cosmetic Preset Name"] = "Tên bộ trang trí",
+    ["Cosmetic Rarities to Unlock"] = "Độ hiếm muốn mở khóa",
+    ["Cosmetic Types to Unlock"] = "Loại đồ trang trí muốn mở khóa",
+    ["Cosmetic features are paused until cosmetic changes are enabled."] = "Các tính năng đồ trang trí đang tạm dừng. Hãy bật mục cho phép đổi đồ trang trí để tiếp tục.",
+    ["Auto Load Cosmetic Preset"] = "Tự động áp dụng bộ trang trí",
+    ["Auto Save Cosmetic Preset"] = "Tự động lưu bộ trang trí",
+    ["No Cosmetic Presets yet. Enter a name to create one."] = "Chưa có bộ trang trí nào. Nhập tên để tạo bộ mới.",
+    ["No saved recordings yet. Record a route, then save it to build your library."] = "Chưa có bản ghi nào. Hãy ghi lại đường đi rồi lưu để lần sau dùng lại.",
+    ["Align Snap Distance"] = "Khoảng cách căn chỉnh",
+    ["Animation"] = "Hoạt ảnh",
+    ["Avatar"] = "Ảnh đại diện",
+    ["Back Face"] = "Mặt sau",
+    ["Behind Offset"] = "Khoảng lùi về phía sau",
+    ["Bloom"] = "Quầng sáng",
+    ["Bolt"] = "Tia sét",
+    ["Bolts"] = "Số tia sét",
+    ["Bottom Line"] = "Vạch dưới",
+    ["Branches"] = "Số nhánh",
+    ["Camera & Screen"] = "Camera & màn hình",
+    ["Casual Win %"] = "Tỉ lệ thắng thường (%)",
+    ["Casual Wins"] = "Số trận thắng thường",
+    ["Character Chams Material"] = "Chất liệu hiệu ứng làm nổi nhân vật",
+    ["Charms"] = "Phụ kiện",
+    ["Charm"] = "Phụ kiện",
+    ["Clock Time"] = "Giờ trong ngày",
+    ["Color Correction"] = "Hiệu chỉnh màu",
+    ["Color Grading"] = "Chỉnh tông màu",
+    ["Color Shift"] = "Lệch màu",
+    ["Contrast"] = "Độ tương phản",
+    ["Cosmetics"] = "Đồ trang trí",
+    ["Cosmetic"] = "Đồ trang trí",
+    ["Count"] = "Số lượng",
+    ["Create Cosmetic Preset"] = "Tạo bộ trang trí",
+    ["Crosshair Image Selection"] = "Chọn hình cho tâm ngắm",
+    ["Crosshair Image Size"] = "Kích thước hình tâm ngắm",
+    ["Crosshair Image Transparency"] = "Độ trong suốt của hình tâm ngắm",
+    ["Crosshair Offset"] = "Độ lệch tâm ngắm",
+    ["Crosshair Outline"] = "Viền tâm ngắm",
+    ["Crosshair Outline Thickness"] = "Độ dày viền tâm ngắm",
+    ["Crosshair Rotation Speed"] = "Tốc độ xoay tâm ngắm",
+    ["Crosshair Spread"] = "Độ giãn tâm ngắm",
+    ["Crosshair Spread Range"] = "Khoảng giãn tâm ngắm",
+    ["Crosshair Style"] = "Kiểu tâm ngắm",
+    ["Crosshair Text Color"] = "Màu chữ trên tâm ngắm",
+    ["Crosshair Text Content"] = "Nội dung chữ trên tâm ngắm",
+    ["Crosshair Text Font"] = "Phông chữ trên tâm ngắm",
+    ["Crosshair Text Offset"] = "Độ lệch chữ trên tâm ngắm",
+    ["Crosshair Text Outline"] = "Viền chữ trên tâm ngắm",
+    ["Crosshair Text Outline Thickness"] = "Độ dày viền chữ trên tâm ngắm",
+    ["Crosshair Text Size"] = "Cỡ chữ trên tâm ngắm",
+    ["Custom Animation ID"] = "ID hoạt ảnh tùy chỉnh",
+    ["Custom Sound (ID or URL)"] = "Âm thanh tùy chỉnh (ID hoặc URL)",
+    ["Delay"] = "Độ trễ",
+    ["Delete Recording"] = "Xóa bản ghi",
+    ["Delete Selected Cosmetic Preset"] = "Xóa bộ trang trí đã chọn",
+    ["Density"] = "Mật độ",
+    ["Depth of Field"] = "Độ sâu trường ảnh",
+    ["Diffuse Scale"] = "Cường độ khuếch tán ánh sáng",
+    ["Disable Global Shadows"] = "Tắt bóng đổ toàn cảnh",
+    ["Display Name"] = "Tên hiển thị",
+    ["Down Face"] = "Mặt dưới",
+    ["Emission"] = "Cường độ phát sáng",
+    ["Enable Ambient Sound"] = "Bật âm thanh môi trường",
+    ["Enable Animation Player"] = "Bật trình phát hoạt ảnh",
+    ["Enable Bullet Tracers"] = "Hiện đường đạn",
+    ["Enable Camera FOV"] = "Bật chỉnh góc nhìn camera",
+    ["Enable Character Chams"] = "Làm nổi bật nhân vật",
+    ["Enable Cosmetic Changes"] = "Cho phép đổi đồ trang trí",
+    ["Enable Crosshair"] = "Bật tâm ngắm tùy chỉnh",
+    ["Enable Crosshair Text"] = "Bật chữ trên tâm ngắm",
+    ["Enable Device Spoof"] = "Bật giả lập thiết bị",
+    ["Enable Lighting Override"] = "Bật tùy chỉnh ánh sáng",
+    ["Enable Lightning"] = "Bật hiệu ứng sét",
+    ["Enable Movement Recorder"] = "Bật ghi lại chuyển động",
+    ["Enable Skybox"] = "Bật bầu trời tùy chỉnh",
+    ["Enable Sound ESP"] = "Bật ESP âm thanh",
+    ["Enable Stretched Resolution"] = "Bật kéo giãn độ phân giải",
+    ["Enable Viewmodel Position"] = "Bật chỉnh vị trí vũ khí trên màn hình",
+    ["Enable Weather"] = "Bật thời tiết",
+    ["End"] = "Kết thúc",
+    ["Environment Diffuse Scale"] = "Cường độ khuếch tán ánh sáng môi trường",
+    ["Environment Specular Scale"] = "Cường độ phản chiếu môi trường",
+    ["Event Currency"] = "Tiền sự kiện",
+    ["Expand Damper"] = "Độ hãm khi giãn",
+    ["Expand Speed"] = "Tốc độ giãn",
+    ["Expand Tracers"] = "Kéo dài đường đạn",
+    ["Export to Clipboard"] = "Sao chép vào bộ nhớ tạm",
+    ["Exposure"] = "Phơi sáng",
+    ["Exposure Compensation"] = "Bù sáng",
+    ["Fade Time"] = "Thời gian mờ dần",
+    ["Far Intensity"] = "Cường độ ở xa",
+    ["Favorite Map"] = "Bản đồ yêu thích",
+    ["Field of View"] = "Góc nhìn (FOV)",
+    ["Filled"] = "Tô kín",
+    ["Finishers"] = "Hiệu ứng kết liễu",
+    ["Flash"] = "Độ sáng chớp",
+    ["Focus Distance"] = "Khoảng lấy nét",
+    ["Fog"] = "Sương mù",
+    ["Fog End"] = "Điểm kết thúc sương mù",
+    ["Fog Start"] = "Điểm bắt đầu sương mù",
+    ["Follow Target Mode"] = "Cách bám theo mục tiêu",
+    ["Force"] = "Lực nhảy",
+    ["Front Face"] = "Mặt trước",
+    ["Geographic Latitude"] = "Vĩ độ địa lý",
+    ["Glare"] = "Lóa sáng",
+    ["Haze"] = "Mù nhẹ",
+    ["Hide ADS Vignette"] = "Ẩn hiệu ứng tối viền khi ngắm",
+    ["Hide Burn Effect"] = "Ẩn hiệu ứng cháy",
+    ["Hide Equip Animation"] = "Ẩn hoạt ảnh rút vũ khí",
+    ["Hide Flashbang Effect"] = "Ẩn hiệu ứng lựu đạn choáng",
+    ["Hide Game Tracers"] = "Ẩn đường đạn của game",
+    ["Hide Hitmarker"] = "Ẩn dấu báo trúng đạn",
+    ["Hide Muzzle Flash"] = "Ẩn tia lửa đầu nòng",
+    ["Hide Recorder Notifications"] = "Ẩn thông báo ghi hình",
+    ["Hide Recorder UI"] = "Ẩn giao diện ghi hình",
+    ["Hide Reload Animation"] = "Ẩn hoạt ảnh nạp đạn",
+    ["Hide Scope Overlay"] = "Ẩn lớp phủ ống ngắm",
+    ["Hide Scope Reticle"] = "Ẩn tâm ngắm trong ống ngắm",
+    ["Hide Shoot Animation"] = "Ẩn hoạt ảnh bắn",
+    ["Hide Sprint Animation"] = "Ẩn hoạt ảnh chạy nhanh",
+    ["Highlight"] = "Làm nổi bật",
+    ["Identity Spoofing"] = "Giả mạo thông tin người chơi",
+    ["Image Source"] = "Nguồn hình ảnh",
+    ["Import (paste cosmetics)"] = "Nhập (dán dữ liệu đồ trang trí)",
+    ["Import Cosmetics"] = "Nhập đồ trang trí",
+    ["In Focus Radius"] = "Bán kính vùng lấy nét",
+    ["Infinite Double Jumps"] = "Nhảy đôi vô hạn",
+    ["Interval"] = "Khoảng thời gian",
+    ["Keys"] = "Phím",
+    ["Latitude"] = "Vĩ độ",
+    ["Leaderboard Rank"] = "Hạng trên bảng xếp hạng",
+    ["Left Face"] = "Mặt trái",
+    ["Left Line"] = "Vạch trái",
+    ["Level"] = "Cấp độ",
+    ["Lighting"] = "Ánh sáng",
+    ["Lighting Style"] = "Kiểu ánh sáng",
+    ["Line Gap"] = "Khoảng cách giữa các vạch",
+    ["Line Length"] = "Độ dài vạch",
+    ["Line Thickness"] = "Độ dày vạch",
+    ["Lines"] = "Các vạch",
+    ["Load Selected Cosmetic Preset"] = "Tải bộ trang trí đã chọn",
+    ["Look Align Speed"] = "Tốc độ căn hướng nhìn",
+    ["Look Smoothness"] = "Độ mượt khi xoay camera",
+    ["Manipulate"] = "Điều chỉnh",
+    ["Map"] = "Bản đồ",
+    ["Minimum Volume"] = "Âm lượng tối thiểu",
+    ["Mode"] = "Chế độ",
+    ["Motion"] = "Chuyển động",
+    ["Motion Blur"] = "Nhòe chuyển động",
+    ["Movement"] = "Di chuyển",
+    ["Movement Recorder"] = "Ghi lại chuyển động",
+    ["Nametag Status"] = "Trạng thái nhãn tên",
+    ["Near Intensity"] = "Cường độ ở gần",
+    ["Open Distance"] = "Khoảng cách mở",
+    ["Overview"] = "Tổng quan",
+    ["Ping"] = "Ping",
+    ["Post Processing"] = "Hiệu ứng hậu kỳ",
+    ["Presented Platform"] = "Nền tảng giả lập",
+    ["Presets"] = "Mẫu cài đặt",
+    ["Prioritize Lighting Quality"] = "Ưu tiên chất lượng ánh sáng",
+    ["Ranked ELO"] = "Điểm ELO xếp hạng",
+    ["Ranked Win %"] = "Tỉ lệ thắng xếp hạng (%)",
+    ["Ranked Wins"] = "Số trận thắng xếp hạng",
+    ["Rate"] = "Tần suất xuất hiện",
+    ["Ray Check"] = "Kiểm tra vật cản",
+    ["Recording"] = "Bản ghi",
+    ["Recording Name"] = "Tên bản ghi",
+    ["Remove Camera Shake"] = "Tắt rung camera",
+    ["Remove Camera Sway"] = "Tắt chuyển động lắc của camera",
+    ["Remove Weapon Motion"] = "Tắt chuyển động vũ khí",
+    ["Render Distance"] = "Khoảng cách hiển thị",
+    ["Replay Selected Recording"] = "Phát lại bản ghi đã chọn",
+    ["Reroll Random Cosmetics"] = "Đổi ngẫu nhiên các món trang trí",
+    ["Retry Loading Charm Catalog"] = "Tải lại danh mục phụ kiện",
+    ["Retry Loading Wrap Catalog"] = "Tải lại danh mục lớp áo",
+    ["Right Face"] = "Mặt phải",
+    ["Right Line"] = "Vạch phải",
+    ["Roll"] = "Góc nghiêng",
+    ["Rotate Crosshair"] = "Xoay tâm ngắm",
+    ["Rotation"] = "Góc xoay",
+    ["Saturation"] = "Độ bão hòa màu",
+    ["Save or Overwrite Recording"] = "Lưu bản ghi hoặc ghi đè bản cũ",
+    ["Save to Selected Cosmetic Preset"] = "Lưu vào bộ trang trí đã chọn",
+    ["Search Charms"] = "Tìm phụ kiện",
+    ["Search Finishers"] = "Tìm hiệu ứng kết liễu",
+    ["Sensitivity"] = "Độ nhạy",
+    ["Shadow Color"] = "Màu bóng đổ",
+    ["Shadow Softness"] = "Độ mềm của bóng",
+    ["Share Skins"] = "Chia sẻ skin",
+    ["Show Active Cosmetics"] = "Hiện đồ trang trí đang dùng",
+    ["Show Replica"] = "Hiện bản sao nhân vật",
+    ["Skins"] = "Skin",
+    ["Sky & Weather"] = "Bầu trời & thời tiết",
+    ["Softness"] = "Độ mềm",
+    ["Sound ESP"] = "ESP âm thanh",
+    ["Sound ID"] = "ID âm thanh",
+    ["Sound Types"] = "Loại âm thanh",
+    ["Specular Scale"] = "Cường độ phản chiếu",
+    ["Spread Speed"] = "Tốc độ giãn",
+    ["Start"] = "Bắt đầu",
+    ["Strip Character Chams Textures"] = "Bỏ họa tiết của hiệu ứng làm nổi nhân vật",
+    ["Sun Rays"] = "Tia nắng",
+    ["Texture Length"] = "Độ dài họa tiết",
+    ["Texture Speed"] = "Tốc độ họa tiết",
+    ["Threshold"] = "Ngưỡng",
+    ["Time"] = "Thời gian",
+    ["Top Line"] = "Vạch trên",
+    ["Tracer Lifetime"] = "Thời gian tồn tại của đường đạn",
+    ["Tracer Style"] = "Kiểu đường đạn",
+    ["Tracer Width"] = "Độ dày đường đạn",
+    ["Unlock All Cosmetics"] = "Mở khóa toàn bộ đồ trang trí",
+    ["Up Face"] = "Mặt trên",
+    ["Upward Velocity"] = "Vận tốc hướng lên",
+    ["Use Custom Loadout"] = "Dùng bộ trang bị tùy chỉnh",
+    ["Visual Chams"] = "Hiệu ứng làm nổi nhân vật",
+    ["Weapon Visuals"] = "Hiển thị vũ khí",
+    ["Wind Angle"] = "Hướng gió",
+    ["Wind Strength"] = "Cường độ gió",
+    ["Winstreak"] = "Số trận thắng liên tiếp",
+    ["Wireframe"] = "Khung lưới",
+    ["World"] = "Thế giới",
+    ["Wraps"] = "Lớp áo",
+    ["Wrap"] = "Lớp áo",
+    ["X Offset"] = "Độ lệch X",
+    ["X Scale"] = "Tỉ lệ X",
+    ["Y Offset"] = "Độ lệch Y",
+    ["Y Scale"] = "Tỉ lệ Y",
+    ["Yaw"] = "Góc quay ngang",
+    ["Z Offset"] = "Độ lệch Z",
+    ["Auto Lock"] = "Tự khóa",
+    ["Closest Point"] = "Điểm gần nhất",
+    ["Head %"] = "Tỉ lệ đầu (%)",
+    ["Manual Only"] = "Chỉ thủ công",
+    ["Not Deflecting"] = "Không đỡ đạn",
+    ["Not Reloading"] = "Không nạp đạn",
+    ["Not Shielded"] = "Không có khiên",
+    ["On All Targets"] = "Với mọi mục tiêu",
+    ["On Best Target"] = "Với mục tiêu phù hợp nhất",
+    ["Scoped In"] = "Đang ngắm qua ống ngắm",
+    ["Toggle Lock"] = "Bật/tắt khóa mục tiêu",
+    ["Within FOV"] = "Trong góc nhìn",
+    ["Elimination Feedback"] = "Hiệu ứng khi hạ gục",
+    ["Evasion"] = "Né tránh",
+    ["Id / File name / Url"] = "ID / tên tệp / đường dẫn",
+    ["Id / Url"] = "ID / đường dẫn",
+    ["Ping Value"] = "Mức ping",
+    ["Status"] = "Trạng thái",
+    ["User ID"] = "ID người chơi",
+    ["Value"] = "Giá trị",
+    ["Win %"] = "Tỉ lệ thắng (%)",
+    ["my recording"] = "bản ghi của tôi",
+    [" is hacking"] = " đang dùng hack",
+    ["99"] = "99",
+    ["Clear Search"] = "Xóa nội dung tìm kiếm",
+    ["Done"] = "Xong",
+    ["Eliminated %DNAME% (%NAME%)"] = "Đã hạ %DNAME% (%NAME%)",
+    ["Hit %DNAME% (%NAME%) for %DMG% in %PART%"] = "Bắn trúng %DNAME% (%NAME%), gây %DMG% sát thương vào %PART%",
+    ["Input"] = "Nhập",
+    ["KEYBINDS"] = "PHÍM TẮT",
+    ["Key: "] = "Phím: ",
+    ["Key: ..."] = "Phím: ...",
+    ["Keybind"] = "Phím tắt",
+    ["No matches."] = "Không có kết quả.",
+    ["All"] = "Tất cả",
+    ["All Weapons"] = "Tất cả vũ khí",
+    ["Ammo"] = "Đạn",
+    ["AutoLock"] = "Tự khóa",
+    ["Blizzard"] = "Bão tuyết",
+    ["Bottom"] = "Dưới cùng",
+    ["Camera Look"] = "Theo hướng camera",
+    ["Center"] = "Ở giữa",
+    ["Circle"] = "Hình tròn",
+    ["ClosestToCrosshair"] = "Gần tâm ngắm nhất",
+    ["Cross"] = "Dấu cộng",
+    ["Crosshair + Text"] = "Tâm ngắm + chữ",
+    ["Diamond"] = "Hình thoi",
+    ["Dynamic"] = "Động",
+    ["Feet"] = "Bàn chân",
+    ["Footsteps"] = "Tiếng bước chân",
+    ["Health"] = "Máu",
+    ["High"] = "Cao",
+    ["Kick"] = "Đá khỏi trận",
+    ["Legacy"] = "Cổ điển",
+    ["Low"] = "Thấp",
+    ["ManualOnly"] = "Chỉ thủ công",
+    ["Medium"] = "Vừa",
+    ["Mouse"] = "Chuột",
+    ["OnAllTargets"] = "Mọi mục tiêu",
+    ["OnBestTarget"] = "Mục tiêu phù hợp nhất",
+    ["Origin"] = "Vị trí gốc",
+    ["Other"] = "Khác",
+    ["ProjectileBreaker"] = "Né đạn",
+    ["Rain"] = "Mưa",
+    ["Realistic"] = "Chân thực",
+    ["Retro"] = "Hoài cổ",
+    ["Self"] = "Bản thân",
+    ["Snow"] = "Tuyết",
+    ["Soft"] = "Nhẹ",
+    ["Static"] = "Cố định",
+    ["Surface"] = "Bề mặt",
+    ["ToLobby"] = "Đưa về sảnh",
+    ["ToggleLock"] = "Bật/tắt khóa",
+    ["Top"] = "Trên cùng",
+    ["Under Feet"] = "Dưới chân",
+    ["Local Player"] = "Người chơi của bạn",
+    ["Other Player"] = "Người chơi khác",
+    ["Arms"] = "Tay nhân vật",
+    ["Held Item"] = "Vũ khí đang cầm",
+    ["Arms Chams"] = "Hiệu ứng làm nổi tay nhân vật",
+    ["Held Item Chams"] = "Hiệu ứng làm nổi vũ khí đang cầm",
+    ["Arms Chams Material"] = "Chất liệu hiệu ứng trên tay nhân vật",
+    ["Held Item Chams Material"] = "Chất liệu hiệu ứng trên vũ khí đang cầm",
+    ["Strip Arms Textures"] = "Bỏ họa tiết trên tay nhân vật",
+    ["Strip Held Item Textures"] = "Bỏ họa tiết trên vũ khí đang cầm",
+    ["Arms Highlight"] = "Làm nổi bật tay nhân vật",
+    ["Held Item Highlight"] = "Làm nổi bật vũ khí đang cầm",
+    ["Arms Render Above"] = "Hiển thị tay nhân vật đè lên vật thể",
+    ["Held Item Render Above"] = "Hiển thị vũ khí đè lên vật thể",
+    ["Arms Fill Transparency"] = "Độ trong suốt phần tô của tay nhân vật",
+    ["Held Item Fill Transparency"] = "Độ trong suốt phần tô của vũ khí",
+    ["Arms Outline"] = "Viền tay nhân vật",
+    ["Held Item Outline"] = "Viền vũ khí đang cầm",
+    ["Arms Outline Transparency"] = "Độ trong suốt viền tay nhân vật",
+    ["Held Item Outline Transparency"] = "Độ trong suốt viền vũ khí",
+    ["Arms Wireframe"] = "Hiện khung lưới trên tay nhân vật",
+    ["Held Item Wireframe"] = "Hiện khung lưới trên vũ khí",
+    ["Arms Wireframe Width"] = "Độ dày khung lưới trên tay nhân vật",
+    ["Held Item Wireframe Width"] = "Độ dày khung lưới trên vũ khí",
+    ["Local Player Name"] = "Tên của bạn",
+    ["Local Player Display Name"] = "Tên hiển thị của bạn",
+    ["Local Player Avatar"] = "Ảnh đại diện của bạn",
+    ["Local Player Winstreak"] = "Số trận thắng liên tiếp của bạn",
+    ["Local Player Level"] = "Cấp độ của bạn",
+    ["Local Player Casual Wins"] = "Số trận thắng thường của bạn",
+    ["Local Player Ranked Wins"] = "Số trận thắng xếp hạng của bạn",
+    ["Local Player Casual Win %"] = "Tỉ lệ thắng thường (%) của bạn",
+    ["Local Player Ranked Win %"] = "Tỉ lệ thắng xếp hạng (%) của bạn",
+    ["Local Player Ranked ELO"] = "Điểm ELO xếp hạng của bạn",
+    ["Local Player Leaderboard Rank"] = "Hạng trên bảng xếp hạng của bạn",
+    ["Local Player Favorite Map"] = "Bản đồ yêu thích của bạn",
+    ["Local Player Nametag Status"] = "Trạng thái nhãn tên của bạn",
+    ["Local Player Influencer"] = "Nhà sáng tạo nội dung của bạn",
+    ["Local Player Roblox Employee"] = "Nhân viên Roblox của bạn",
+    ["Local Player Nosniy Games Team"] = "Đội Nosniy Games của bạn",
+    ["Local Player Ping"] = "Ping của bạn",
+    ["Local Player Keys"] = "Phím của bạn",
+    ["Local Player Event Currency"] = "Tiền sự kiện của bạn",
+    ["Other Player Name"] = "Tên của người chơi khác",
+    ["Other Player Display Name"] = "Tên hiển thị của người chơi khác",
+    ["Other Player Avatar"] = "Ảnh đại diện của người chơi khác",
+    ["Other Player Winstreak"] = "Số trận thắng liên tiếp của người chơi khác",
+    ["Other Player Level"] = "Cấp độ của người chơi khác",
+    ["Other Player Casual Wins"] = "Số trận thắng thường của người chơi khác",
+    ["Other Player Ranked Wins"] = "Số trận thắng xếp hạng của người chơi khác",
+    ["Other Player Casual Win %"] = "Tỉ lệ thắng thường (%) của người chơi khác",
+    ["Other Player Ranked Win %"] = "Tỉ lệ thắng xếp hạng (%) của người chơi khác",
+    ["Other Player Ranked ELO"] = "Điểm ELO xếp hạng của người chơi khác",
+    ["Other Player Leaderboard Rank"] = "Hạng trên bảng xếp hạng của người chơi khác",
+    ["Other Player Favorite Map"] = "Bản đồ yêu thích của người chơi khác",
+    ["Other Player Nametag Status"] = "Trạng thái nhãn tên của người chơi khác",
+    ["Other Player Influencer"] = "Nhà sáng tạo nội dung của người chơi khác",
+    ["Other Player Roblox Employee"] = "Nhân viên Roblox của người chơi khác",
+    ["Other Player Nosniy Games Team"] = "Đội Nosniy Games của người chơi khác",
+    ["Other Player Ping"] = "Ping của người chơi khác",
+    ["Other Player Keys"] = "Phím của người chơi khác",
+    ["Other Player Event Currency"] = "Tiền sự kiện của người chơi khác",
+    ["Character"] = "Nhân vật",
+    ["Influencer"] = "Nhà sáng tạo nội dung",
+    ["Roblox Employee"] = "Nhân viên Roblox",
+    ["Nosniy Games Team"] = "Đội ngũ Nosniy Games",
+    ["Shimmer"] = "Lấp lánh",
+    ["Perimeter"] = "Viền",
+    ["PingPong"] = "Qua lại",
+    ["Crosshair Rotation"] = "Xoay tâm ngắm",
+    ["Cosmetic changes are disabled. Enable them on Overview."] = "Tính năng đổi đồ trang trí đang tắt. Hãy bật trong mục Tổng quan.",
+    ["Custom loadout is ready."] = "Bộ trang trí đã sẵn sàng.",
+    ["Custom loadout is disabled. Enable it on Overview."] = "Bộ trang trí đang tắt. Hãy bật trong mục Tổng quan.",
+    ["Wrap previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước lớp áo. Thử lại khi tài nguyên đã sẵn sàng.",
+    ["Charm previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước phụ kiện. Thử lại khi tài nguyên đã sẵn sàng.",
+    ["Skin previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước skin. Thử lại khi tài nguyên đã sẵn sàng.",
+    ["Finisher previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước hiệu ứng kết liễu. Thử lại khi tài nguyên đã sẵn sàng.",
+}
+local crefyLanguageOriginals = setmetatable({}, { __mode = "k" })
+local crefyLanguageConnections = setmetatable({}, { __mode = "k" })
+local crefyLanguageState = { Language = "English" }
+local function crefyTranslateTextValue(text)
+    if type(text) ~= "string" then return text end
+    local translated = CREFY_LANGUAGE_TRANSLATIONS[text]
+    if translated ~= nil then return translated end
+    local prefix, suffix = string.match(text, "^(.-) Allowed Hitboxes$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Vùng ngắm của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Mode$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Chế độ " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Speed$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Tốc độ " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Fade Color$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Màu mờ dần của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Perimeter Gradient$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Dải màu viền của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Ping Pong Rotation$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Tốc độ xoay qua lại của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Background Color$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Màu nền của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Main Color$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Màu chính của " .. translatedPrefix
+    end
+    return text
+end
+local function crefyTranslateTooltipText(text)
+    if type(text) ~= "string" then return text end
+    if crefyLanguageState.Language ~= "Tiếng Việt" then return text end
+    return crefyTranslateTextValue(text)
+end
+rawset(_G, "__CrefyTranslateTooltipText", crefyTranslateTooltipText)
+K.onUnload(function()
+    if rawget(_G, "__CrefyTranslateTooltipText") == crefyTranslateTooltipText then
+        rawset(_G, "__CrefyTranslateTooltipText", nil)
+    end
+end)
+local function crefyTranslateGuiObject(object, language, menu)
+    local isTextObject = false
+    pcall(function()
+        isTextObject = object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox")
+    end)
+    if not isTextObject then return end
+    local okText, currentText = pcall(function() return object.Text end)
+    if not okText then return end
+    local okPlaceholder, currentPlaceholder = pcall(function() return object.PlaceholderText end)
+    local original = crefyLanguageOriginals[object]
+    if original == nil then
+        original = { Text = currentText, PlaceholderText = okPlaceholder and currentPlaceholder or nil }
+        crefyLanguageOriginals[object] = original
+    else
+        if original.LastAppliedText ~= nil and currentText ~= original.LastAppliedText then
+            original.Text = currentText
+        end
+        if okPlaceholder and original.LastAppliedPlaceholder ~= nil
+            and currentPlaceholder ~= original.LastAppliedPlaceholder then
+            original.PlaceholderText = currentPlaceholder
+        end
+    end
+    if crefyLanguageConnections[object] == nil then
+        local connections = {}
+        local function scheduleRetranslate()
+            task.defer(function()
+                local activeLanguage = type(menu) == "table" and menu._crefyLanguage or language
+                crefyTranslateGuiObject(object, activeLanguage or "English", menu)
+            end)
+        end
+        local textConnectionOk, textConnection = pcall(function()
+            return object:GetPropertyChangedSignal("Text"):Connect(scheduleRetranslate)
+        end)
+        if textConnectionOk and textConnection ~= nil then
+            connections[#connections + 1] = textConnection
+        end
+        if okPlaceholder then
+            local placeholderConnectionOk, placeholderConnection = pcall(function()
+                return object:GetPropertyChangedSignal("PlaceholderText"):Connect(scheduleRetranslate)
+            end)
+            if placeholderConnectionOk and placeholderConnection ~= nil then
+                connections[#connections + 1] = placeholderConnection
+            end
+        end
+        crefyLanguageConnections[object] = connections
+    end
+    language = language == "Tiếng Việt" and "Tiếng Việt" or "English"
+    local targetText = original.Text
+    if language == "Tiếng Việt" then
+        targetText = crefyTranslateTextValue(original.Text)
+    end
+    original.LastAppliedText = targetText
+    if currentText ~= targetText then
+        pcall(function() object.Text = targetText end)
+    end
+    if okPlaceholder and original.PlaceholderText ~= nil then
+        local targetPlaceholder = original.PlaceholderText
+        if language == "Tiếng Việt" then
+            targetPlaceholder = crefyTranslateTextValue(original.PlaceholderText)
+        end
+        original.LastAppliedPlaceholder = targetPlaceholder
+        if currentPlaceholder ~= targetPlaceholder then
+            pcall(function() object.PlaceholderText = targetPlaceholder end)
+        end
+    end
+end
+local function crefyApplyLanguage(menu, language)
+    language = language == "Tiếng Việt" and "Tiếng Việt" or "English"
+    crefyLanguageState.Language = language
+    if type(menu) ~= "table" then return end
+    local chrome = menu._chrome
+    local window = type(chrome) == "table" and chrome.Window or nil
+    local menuFrame = type(window) == "table" and window.MenuFrame or nil
+    if menuFrame == nil then return end
+    if menu._crefyLanguageFrame ~= menuFrame then
+        if menu._crefyLanguageConnection ~= nil then
+            pcall(function() menu._crefyLanguageConnection:Disconnect() end)
+        end
+        menu._crefyLanguageFrame = menuFrame
+        local connectOk, connection = pcall(function()
+            return menuFrame.DescendantAdded:Connect(function(object)
+                task.defer(function()
+                    crefyTranslateGuiObject(object, menu._crefyLanguage or "English", menu)
+                end)
+            end)
+        end)
+        if connectOk then menu._crefyLanguageConnection = connection end
+    end
+    menu._crefyLanguage = language
+    for _, object in ipairs(menuFrame:GetDescendants()) do
+        crefyTranslateGuiObject(object, language, menu)
+    end
+end
+
 local function fn36(arg, arg2, arg3)
 local v120 = arg3:AddSection({ Title = "Menu", Side = "left" })
 local stateData = arg:GetStateData()
@@ -18709,6 +19821,29 @@ OnChanged = arg2.SetMenuPillHidden,
 })
 
 v120:AddButton({ Label = "Edit On-screen Keybinds", OnClick = arg2.EnterMobileButtonDragMode })
+end
+
+local languageSection = arg3:AddSection({ Title = "Language", Side = "right" })
+local selectedLanguage = stateData ~= nil and stateData.Language == "Tiếng Việt" and "Tiếng Việt" or "English"
+local languageDropdown = languageSection:AddDropdown({
+    Label = "Language",
+    Options = { "English", "Tiếng Việt" },
+    Default = selectedLanguage,
+    CloseOnSelect = true,
+})
+crefyApplyLanguage(arg, selectedLanguage)
+if languageDropdown ~= nil and type(languageDropdown.OnChanged) == "function" then
+    languageDropdown:OnChanged(function(value)
+        local nextLanguage = value == "Tiếng Việt" and "Tiếng Việt" or "English"
+        if stateData ~= nil then
+            stateData.Language = nextLanguage
+            local saveOk, saveResult = pcall(function() return arg:SaveState() end)
+            if not saveOk or saveResult == false or (type(saveResult) == "table" and saveResult.Ok == false) then
+                warn("[Crefy] Could not save language preference; it will apply for this session only.")
+            end
+        end
+        crefyApplyLanguage(arg, nextLanguage)
+    end)
 end
 end
 
@@ -54318,53 +55453,97 @@ local v117 = v112
 local random2 = math.random
 local cframe = CFrame.new(math.random(-100000, -10000), 100000, random2(-100000, 10000))
 
+local function partGlueWithTemporaryIdentity(callback)
+    local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
+        or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext")
+    local identitySetter = K.fn("setthreadidentity") or K.fn("setidentity")
+        or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext")
+    local oldIdentity = nil
+    local identityChanged = false
+    if type(identityGetter) == "function" and type(identitySetter) == "function" then
+        local getOk, identityValue = pcall(identityGetter)
+        if getOk and identityValue ~= nil then
+            oldIdentity = identityValue
+            identityChanged = pcall(identitySetter, 8)
+        end
+    end
+    local results = table.pack(pcall(callback))
+    if identityChanged and type(identitySetter) == "function" then
+        pcall(identitySetter, oldIdentity)
+    end
+    if not results[1] then return false, results[2] end
+    return true, table.unpack(results, 2, results.n)
+end
+
+local function partGlueReadSourceReference(sourcePart)
+    local runOk, readOk, value = partGlueWithTemporaryIdentity(function()
+        local hiddenGetter = K.fn("gethiddenproperty") or K.fn("gethiddenprop")
+            or K.fn("get_hidden_property") or K.fn("get_hidden_prop")
+        if type(hiddenGetter) == "function" then
+            local getterOk, getterValue = pcall(hiddenGetter, sourcePart, "PhysicsRepRootRef")
+            if getterOk then return true, getterValue end
+        end
+        local hiddenPropertiesGetter = K.fn("gethiddenproperties") or K.fn("gethiddenprops")
+            or K.fn("get_hidden_properties") or K.fn("get_hidden_props")
+        if type(hiddenPropertiesGetter) == "function" then
+            local propertiesOk, properties = pcall(hiddenPropertiesGetter, sourcePart)
+            if propertiesOk and type(properties) == "table" then
+                local propertyValue = rawget(properties, "PhysicsRepRootRef")
+                if propertyValue ~= nil then return true, propertyValue end
+            end
+        end
+        local directOk, directValue = pcall(function()
+            return sourcePart.PhysicsRepRootRef
+        end)
+        if directOk then return true, directValue end
+        return false, directValue
+    end)
+    if not runOk then return false, readOk end
+    return readOk, value
+end
+
+local function partGlueWriteSourceReferenceVerified(sourcePart, writer, value)
+    if type(writer) ~= "function" then return false, "setter unavailable" end
+    local runOk, callOk, callResult = partGlueWithTemporaryIdentity(function()
+        return pcall(writer, sourcePart, "PhysicsRepRootRef", value)
+    end)
+    if not runOk then return false, tostring(callOk) end
+    local readOk, actualValue = partGlueReadSourceReference(sourcePart)
+    if readOk and actualValue == value then return true end
+    if not callOk then
+        return false, "setter threw: " .. tostring(callResult) .. (readOk and "; read-back mismatch" or "; read-back unavailable")
+    end
+    if not readOk then return false, "PhysicsRepRootRef read-back unavailable" end
+    if callResult == false then
+        return false, "setter returned false and read-back did not match (false may indicate a non-hidden property on some executors)"
+    end
+    return false, "PhysicsRepRootRef read-back mismatch"
+end
+
 local function fn36(arg, arg2)
 local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
+    or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext")
 local identitySetter = K.fn("setthreadidentity") or K.fn("setidentity")
+    or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext")
 local oldIdentity = nil
 local restoreIdentity = false
-if identityGetter ~= nil and identitySetter ~= nil then
-local okIdentity, identityValue = pcall(identityGetter)
-if okIdentity and identityValue ~= nil then
-oldIdentity = identityValue
-restoreIdentity = true
-pcall(identitySetter, 8)
-end
+if type(identityGetter) == "function" and type(identitySetter) == "function" then
+    local okIdentity, identityValue = pcall(identityGetter)
+    if okIdentity and identityValue ~= nil then
+        oldIdentity = identityValue
+        restoreIdentity = pcall(identitySetter, 8)
+    end
 end
 
-local previousReference, previousReferenceKnown = nil, false
-local hiddenGetter = K.fn("gethiddenproperty") or K.fn("gethiddenprop")
-if type(hiddenGetter) == "function" then
-    local readOk, value = pcall(hiddenGetter, arg, "PhysicsRepRootRef")
-    if readOk then previousReference, previousReferenceKnown = value, true end
-end
-if not previousReferenceKnown then
-
-    local readOk, value = pcall(v116, arg, "PhysicsRepRootRef")
-    if readOk then previousReference, previousReferenceKnown = value, true end
-end
+local previousReadOk, previousReference = partGlueReadSourceReference(arg)
+local previousReferenceKnown = previousReadOk == true
 if not previousReferenceKnown then
     if restoreIdentity then pcall(identitySetter, oldIdentity) end
     return false, "original PhysicsRepRootRef could not be read; refusing an un-restorable mutation"
 end
 
-local function readReferenceForVerification()
-    local getter = K.fn("gethiddenproperty") or K.fn("gethiddenprop")
-    if type(getter) == "function" then
-        local readOk, value = pcall(getter, arg, "PhysicsRepRootRef")
-        if readOk then return true, value end
-    end
-    return pcall(v116, arg, "PhysicsRepRootRef")
-end
 local function writeAndVerifyReference(writer, value)
-    if type(writer) ~= "function" then return false, "setter unavailable" end
-    local callOk, callResult = pcall(writer, arg, "PhysicsRepRootRef", value)
-    if not callOk or callResult == false then
-        return false, tostring(callOk and "setter returned false" or callResult)
-    end
-    local readOk, readValue = readReferenceForVerification()
-    if readOk and readValue == value then return true end
-    return false, "PhysicsRepRootRef read-back mismatch/unavailable"
+    return partGlueWriteSourceReferenceVerified(arg, writer, value)
 end
 
 local okSet, setError = false, "sethiddenproperty/sethiddenprop API unavailable"
@@ -54372,7 +55551,6 @@ if type(v104) == "function" then
     okSet, setError = writeAndVerifyReference(v104, arg2)
 end
 if not okSet and type(v117) == "function" and v117 ~= v104 then
-
     local directPropertyAvailable = pcall(function()
         local _ = arg.PhysicsRepRootRef
     end)
@@ -54387,10 +55565,10 @@ if not okSet and type(v117) == "function" and v117 ~= v104 then
         setError = tostring(setError) .. "; direct property fallback skipped (PhysicsRepRootRef is not a public member of this Part)"
     end
 end
-if restoreIdentity then pcall(identitySetter, oldIdentity) end
+
 if not okSet then
     local restored, restoreError = false, "no setter could safely restore the original reference"
-    local currentReadOk, currentReference = readReferenceForVerification()
+    local currentReadOk, currentReference = partGlueReadSourceReference(arg)
     if not currentReadOk then
         restoreError = "current PhysicsRepRootRef unreadable; rollback write skipped to avoid overwriting another owner"
     elseif currentReference == previousReference then
@@ -54406,8 +55584,10 @@ if not okSet then
         end
     end
     if not restored then setError = tostring(setError) .. "; original reference restore unverified: " .. tostring(restoreError) end
+    if restoreIdentity then pcall(identitySetter, oldIdentity) end
     return false, setError
 end
+if restoreIdentity then pcall(identitySetter, oldIdentity) end
 return true, nil, previousReference, previousReferenceKnown
 end
 
@@ -54434,15 +55614,6 @@ local function partGlueGetSourceReferenceQueue(create)
         if storage ~= _G then pcall(rawset, _G, PARTGLUE_PENDING_SOURCE_REFERENCE_KEY, queue) end
     end
     return queue
-end
-
-local function partGlueReadSourceReference(sourcePart)
-    local hiddenGetter = K.fn("gethiddenproperty") or K.fn("gethiddenprop")
-    if type(hiddenGetter) == "function" then
-        local hiddenOk, hiddenValue = pcall(hiddenGetter, sourcePart, "PhysicsRepRootRef")
-        if hiddenOk then return true, hiddenValue end
-    end
-    return pcall(v116, sourcePart, "PhysicsRepRootRef")
 end
 
 local function partGlueRestoreSourceReference(sourcePart, info)
@@ -54480,14 +55651,9 @@ local function partGlueRestoreSourceReference(sourcePart, info)
     if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
     local lastError = "no PhysicsRepRootRef setter available"
     for _, writer in ipairs(writers) do
-        local writeOk, result = pcall(writer, sourcePart, "PhysicsRepRootRef", info.OriginalReference)
-        if writeOk and result ~= false then
-            local verifyOk, actualReference = partGlueReadSourceReference(sourcePart)
-            if verifyOk and actualReference == info.OriginalReference then return true end
-            lastError = "PhysicsRepRootRef restore could not be verified"
-        else
-            lastError = tostring(writeOk and "setter returned false" or result)
-        end
+        local writeOk, result = partGlueWriteSourceReferenceVerified(sourcePart, writer, info.OriginalReference)
+        if writeOk then return true end
+        lastError = tostring(result)
     end
     return false, lastError
 end
@@ -54498,15 +55664,9 @@ local allRestored = true
 local originalCFrame = arg2.OriginalCFrame
 local originalPart1 = arg2.OriginalPart1
 local originalPart1ToTarget = arg2.OriginalPart1ToTarget
+local weld = arg2.Weld
 if typeof(originalCFrame) ~= "CFrame" or type(arg2.OriginalAnchored) ~= "boolean" then
     return false
-end
-
-if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
-local okOriginalCFrame, computedCFrame = pcall(function()
-return originalPart1.CFrame * originalPart1ToTarget
-end)
-if okOriginalCFrame then originalCFrame = computedCFrame end
 end
 
 local function restoreProperty(instance, property, value)
@@ -54518,25 +55678,38 @@ local function restoreProperty(instance, property, value)
     if type(v117) == "function" then writers[#writers + 1] = v117 end
     if type(v104) == "function" and v104 ~= v117 then writers[#writers + 1] = v104 end
     for _, writer in ipairs(writers) do
-        local ok, result = pcall(writer, instance, property, value)
-        if ok and result ~= false and verify() then return true end
+        local ok = pcall(writer, instance, property, value)
+        if ok and verify() then return true end
     end
     local directOk = pcall(function() instance[property] = value end)
     return directOk and verify()
 end
 
-if originalCFrame ~= nil and not restoreProperty(arg, v86[127], originalCFrame) then
-allRestored = false
+if weld ~= nil and originalPart1 ~= nil then
+    if not restoreProperty(weld, "Part1", originalPart1) then allRestored = false end
 end
 
-local weld = arg2.Weld
-if weld ~= nil and originalPart1 ~= nil and not restoreProperty(weld, "Part1", originalPart1) then
-allRestored = false
+if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
+    local okOriginalCFrame, computedCFrame = pcall(function()
+        return originalPart1.CFrame * originalPart1ToTarget
+    end)
+    if okOriginalCFrame and typeof(computedCFrame) == "CFrame" then
+        originalCFrame = computedCFrame
+    else
+        allRestored = false
+    end
 end
 
-local originalAnchored = arg2.OriginalAnchored
-if originalAnchored ~= nil and not restoreProperty(arg, "Anchored", originalAnchored) then
-allRestored = false
+if not restoreProperty(arg, v86[127], originalCFrame) then allRestored = false end
+if not restoreProperty(arg, "Anchored", arg2.OriginalAnchored) then allRestored = false end
+
+local finalCFrameOk, finalCFrame = pcall(function() return arg.CFrame end)
+local finalAnchoredOk, finalAnchored = pcall(function() return arg.Anchored end)
+if not finalCFrameOk or finalCFrame ~= originalCFrame then allRestored = false end
+if not finalAnchoredOk or finalAnchored ~= arg2.OriginalAnchored then allRestored = false end
+if weld ~= nil and originalPart1 ~= nil then
+    local finalPart1Ok, finalPart1 = pcall(function() return weld.Part1 end)
+    if not finalPart1Ok or finalPart1 ~= originalPart1 then allRestored = false end
 end
 return allRestored
 end
@@ -54702,14 +55875,9 @@ local function partGlueTryWriteSourceReference(sourcePart, referenceValue)
     if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
     local lastError = "no PhysicsRepRootRef setter available"
     for _, writer in ipairs(writers) do
-        local writeOk, writeResult = pcall(writer, sourcePart, "PhysicsRepRootRef", referenceValue)
-        if writeOk and writeResult ~= false then
-            local readOk, actualReference = partGlueReadSourceReference(sourcePart)
-            if readOk and actualReference == referenceValue then return true end
-            lastError = "PhysicsRepRootRef rollback read-back mismatch/unavailable"
-        else
-            lastError = tostring(writeOk and "setter returned false" or writeResult)
-        end
+        local writeOk, writeError = partGlueWriteSourceReferenceVerified(sourcePart, writer, referenceValue)
+        if writeOk then return true end
+        lastError = tostring(writeError)
     end
     return false, lastError
 end
@@ -54846,7 +56014,21 @@ if type(sourceRefInfoBefore) == "table" and sourceRefInfoBefore.RestorePending =
     if not restored then return nil end
 end
 local v118 = arg._glueInfoByTargetPart[arg3]
-local reference = v118 and v118.Reference or InstanceHandle.new(arg3)
+local reference = v118 and v118.Reference or nil
+if reference == nil then
+    local referenceOk, constructedReference = pcall(function()
+        return InstanceHandle.new(arg3)
+    end)
+    if not referenceOk or constructedReference == nil then
+        local warningNow = os.clock()
+        if warningNow >= (arg._nextAcquireWarningAt or 0) then
+            arg._nextAcquireWarningAt = warningNow + 5
+            warn("[PartGlue] Acquire skipped safely: InstanceHandle.new is unavailable or failed: " .. tostring(constructedReference))
+        end
+        return nil
+    end
+    reference = constructedReference
+end
 local okReference, referenceError, previousReference, previousReferenceKnown = fn36(arg2, reference)
 if not okReference then
 local warningNow = os.clock()
@@ -54872,14 +56054,9 @@ local function restoreSourceReference()
         if type(v104) == "function" then writers[#writers + 1] = v104 end
         if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
         for _, writer in ipairs(writers) do
-            local writeOk, writeResult = pcall(writer, arg2, "PhysicsRepRootRef", previousReference)
-            if writeOk and writeResult ~= false then
-                local readOk, readValue = partGlueReadSourceReference(arg2)
-                if readOk and readValue == previousReference then return true end
-                lastError = "PhysicsRepRootRef rollback read-back mismatch/unavailable"
-            else
-                lastError = tostring(writeOk and "setter returned false" or writeResult)
-            end
+            local writeOk, writeError = partGlueWriteSourceReferenceVerified(arg2, writer, previousReference)
+            if writeOk then return true end
+            lastError = tostring(writeError)
         end
     end
 
@@ -63093,7 +64270,7 @@ return id.c
 end
 end
 do
-local function fn35()local I= tbl17 .gR(); tbl17 .aE();local W= tbl17 .h6();local function l(N)W(N,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);if not I.IsArcadeServer then N:AddToggle({Label="Utilize Health Lead",Config={"Ragebot","UtilizeHealthLead"}});end;end;return function(I)l(I:AddSection({Title="Activation",Side="left"}));local l,W=I:AddSection({Title="Weapon Strategy",Side="left"}),{"Primary","Secondary","Melee"};for I,I_149 in W,nil,nil do l:AddToggle({Label=string.format("%s Enabled",tostring(I_149)),Config={"Ragebot","Weapons","Enabled",I_149}});end;end;end
+local function fn35()local I= tbl17 .gR(); tbl17 .aE();local W= tbl17 .h6();local function l(N)W(N,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);if not I.IsArcadeServer then N:AddToggle({Label="Utilize Health Lead",Tooltip="This option is currently not connected to active Ragebot behavior.",Config={"Ragebot","UtilizeHealthLead"}});end;end;return function(I)l(I:AddSection({Title="Activation",Side="left"}));local l,W=I:AddSection({Title="Weapon Strategy",Side="left"}),{"Primary","Secondary","Melee"};for I,I_149 in W,nil,nil do l:AddToggle({Label=string.format("%s Enabled",tostring(I_149)),Config={"Ragebot","Weapons","Enabled",I_149}});end;end;end
 
 tbl17.ie = function()
 local ie = tbl17.cache.ie
@@ -63107,7 +64284,7 @@ return ie.c
 end
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
     if enabled == false then
@@ -64785,22 +65962,19 @@ startUnderground = function()
 
     undergroundLastServerCFrame = initialServerCF
     undergroundEnabled = true
-    undergroundRagebotIntegrated = undergroundRagebotRequested == true
-    if undergroundRagebotIntegrated then
-        if undergroundDesync then
-            pcall(function() undergroundDesync:Destroy(true) end)
-            undergroundDesync = nil
-        end
-    else
-        undergroundDesync = UndergroundRootDesync.new(root)
-        if not undergroundDesync:SetServerCFrame(initialServerCF) then
-            undergroundDesync:Destroy(true)
-            undergroundDesync = nil
-            undergroundEnabled = false
-            undergroundSnapshot = nil
-            undergroundSnapshotCharacter = nil
-            return false
-        end
+    undergroundRagebotIntegrated = false
+    if undergroundDesync then
+        pcall(function() undergroundDesync:Destroy(true) end)
+        undergroundDesync = nil
+    end
+    undergroundDesync = UndergroundRootDesync.new(root)
+    if not undergroundDesync:SetServerCFrame(initialServerCF) then
+        pcall(function() undergroundDesync:Destroy(true) end)
+        undergroundDesync = nil
+        undergroundEnabled = false
+        undergroundSnapshot = nil
+        undergroundSnapshotCharacter = nil
+        return false
     end
     undergroundDeathConn = humanoid.Died:Connect(function()
         if undergroundEnabled then
@@ -67746,9 +68920,13 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.bM()
 
-local function fn36(arg, player)
-if arg == nil or not arg.IsEnemy then
+local function fn36(arg, player, localEnvironmentId)
+if arg == nil or not arg.IsEnemy or localEnvironmentId == nil then
 return false
+end
+local environmentOk, targetEnvironmentId = pcall(function() return arg.EnvironmentId end)
+if not environmentOk or targetEnvironmentId ~= localEnvironmentId then
+    return false
 end
 local okInvincible, isInvincible = pcall(function() return arg:IsInvincible() end)
 if not okInvincible or isInvincible then
@@ -67805,6 +68983,15 @@ end)
 return ok and target or nil
 end
 
+local function getLocalEnvironmentId(fighters)
+    local ok, environmentId = pcall(function()
+        local localState = fighters and fighters.LocalState or nil
+        return localState and localState.EnvironmentId or nil
+    end)
+    if ok then return environmentId end
+    return nil
+end
+
 local index2 = {}
 index2.__index = index2
 
@@ -67815,6 +69002,7 @@ end
 index2.GetTarget = function(arg)
 local prioritizeHackers = v115.Data.Ragebot.PrioritizeHackers == true
 local Players = game:GetService("Players")
+local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
 local localPosition = nil
 local okLocalPosition, localPositionValue = pcall(function()
     local localPlayer = Players.LocalPlayer
@@ -67884,6 +69072,11 @@ local function clearLockedTarget()
     resetLockedTargetTimers()
 end
 
+if localEnvironmentId == nil then
+    clearLockedTarget()
+    return nil
+end
+
 local function lockTimeoutStatus(field, timeout)
     local now = os.clock()
     local started = arg[field]
@@ -67905,8 +69098,33 @@ local function rememberTarget(fighter, player)
     return fn37(fighter)
 end
 
+local prioritizedHacker, prioritizedHackerDistance, prioritizedHackerPlayer = nil, math.huge, nil
+if prioritizeHackers then
+    local okPlayers, hackerPlayers = pcall(function()
+        return arg._playerTags:GetPlayersWith("Hacker")
+    end)
+    if okPlayers and type(hackerPlayers) == "table" then
+        for _, player in ipairs(hackerPlayers) do
+            local fighter = arg._fighters.StateByPlayer[player]
+            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
+                local distance = distanceTo(fighter)
+                if distance ~= nil and distance < prioritizedHackerDistance then
+                    prioritizedHacker = fighter
+                    prioritizedHackerDistance = distance
+                    prioritizedHackerPlayer = player
+                end
+            end
+        end
+    end
+end
+
 local lockedFighter = arg._lockedFighter
 local lockedPlayer = arg._lockedPlayer
+if lockedFighter ~= nil and lockedPlayer ~= nil
+    and prioritizeHackers and prioritizedHacker ~= nil
+    and not isHacker(lockedPlayer) and prioritizedHackerPlayer ~= lockedPlayer then
+    return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
+end
 if lockedFighter ~= nil and lockedPlayer ~= nil then
     local lockStatus = "hold"
     local lockedTarget = nil
@@ -67936,6 +69154,9 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
             return lockTimeoutStatus("_lockedEnemyMismatchSince", LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT)
         end
         arg._lockedEnemyMismatchSince = nil
+        if localEnvironmentId ~= nil and lockedFighter.EnvironmentId ~= localEnvironmentId then
+            return "release", nil, nil
+        end
 
         local distance = distanceTo(lockedFighter)
         if distance == nil then
@@ -67944,7 +69165,7 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         if isExplicitlyProtected(lockedFighter) then
             return "release", nil, nil
         end
-        if not fn36(lockedFighter, lockedPlayer) then
+        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId) then
             return lockTimeoutStatus("_lockedUnattackableSince", LOCKED_TARGET_UNATTACKABLE_TIMEOUT)
         end
         arg._lockedUnattackableSince = nil
@@ -67979,30 +69200,13 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
     end
 end
 
-if prioritizeHackers then
-    local okPlayers, hackerPlayers = pcall(function()
-        return arg._playerTags:GetPlayersWith("Hacker")
-    end)
-    if okPlayers and type(hackerPlayers) == "table" then
-        local bestHacker, bestHackerDistance, bestHackerPlayer = nil, math.huge, nil
-        for _, player in hackerPlayers do
-            local fighter = arg._fighters.StateByPlayer[player]
-            if fighter ~= nil and fn36(fighter, player) then
-                local distance = distanceTo(fighter)
-                if distance ~= nil and distance < bestHackerDistance then
-                    bestHacker, bestHackerDistance, bestHackerPlayer = fighter, distance, player
-                end
-            end
-        end
-        if bestHacker ~= nil then
-            return rememberTarget(bestHacker, bestHackerPlayer)
-        end
-    end
+if prioritizedHacker ~= nil then
+    return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
 end
 
 local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
 for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
-    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player) then
+    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
         local distance = distanceTo(fighter)
         if distance ~= nil and distance < bestTargetDistance then
             bestTarget, bestTargetDistance, bestTargetPlayer = fighter, distance, player
@@ -68027,8 +69231,12 @@ arg._lockedReadFailureSince = nil
 end
 
 index2.HasTargets = function(arg)
+local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
+if localEnvironmentId == nil then
+    return false
+end
 for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116, player) then
+if fn36(v116, player, localEnvironmentId) then
 return true
 end
 end
