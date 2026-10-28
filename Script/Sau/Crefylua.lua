@@ -64504,7 +64504,6 @@ return function(J, B)
     HitFeedbackExtra(J, feedbackGrid, soundStorage)
 end
 end
-end
 
 tbl17.ij = function()
 local ij = tbl17.cache.ij
