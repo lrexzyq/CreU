@@ -4946,7 +4946,7 @@ searchInput.Text = ""
 fn44(arg, "")
 
 panel2.FocusTrove:Add(task.defer(function()
-if panel2.Popup:IsOpen() then
+if panel2.Popup:IsOpen() and arg.SearchAutoFocus then
 searchInput:CaptureFocus()
 end
 
@@ -5160,6 +5160,7 @@ Kind = "Dropdown",
 Row = arg2,
 Multi = arg5,
 Search = arg4.Search == true,
+SearchAutoFocus = arg4.SearchAutoFocus ~= false,
 Inline = arg4.Inline == true,
 CloseOnSelect = arg4.CloseOnSelect == true,
 MaxWidth = arg4.MaxWidth or 300,
@@ -22389,7 +22390,7 @@ return bd.c
 end
 end
 do
-local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
+local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,TargetPlayer="Auto",TargetOffset={X=0,Y=0,Z=0},AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
 local be = tbl17.cache.be
@@ -64294,7 +64295,7 @@ return ie.c
 end
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
     if enabled == false then
@@ -64325,7 +64326,7 @@ end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
@@ -64358,7 +64359,152 @@ return ii.c
 end
 end
 do
-local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});if W.IsArcadeServer then  tbl17 .ie()(k);else  tbl17 .ih()(k);end;D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
+local function fn35()
+local I, W, N, P = tbl17.aU(), tbl17.gR(), tbl17.aW(), tbl17.aY()
+tbl17.aE()
+tbl17.hN()
+local StoreProfiles, AimbotProfiles, SoundStorageBuilder, SilentAimProfiles, FireAssistProfiles, HitFeedbackMain, HitFeedbackExtra, WeaponHandling, Icons =
+    tbl17.h0(), tbl17.h7(), tbl17.h8(), tbl17.h9(), tbl17.ia(), tbl17.ic(), tbl17.ib(), tbl17.id(),
+    { Combat="rbxassetid://99199363807265", CameraAim="rbxassetid://83752373575368", SilentAim="rbxassetid://109514269737059", FireAssist="rbxassetid://81854854241463", WeaponHandling="rbxassetid://128279962545721", HitFeedback="rbxassetid://140427675871522", Ragebot="rbxassetid://125012650497883" }
+
+local function buildOther(grid)
+    local Players = game:GetService("Players")
+    local section = grid:AddSection({ Title = "Other", Side = "left" })
+
+    section:AddToggle({
+        Label = "Prioritize Hackers",
+        Tooltip = "Targets players identified by Hacker Detector before the selected player.",
+        Config = { "Ragebot", "PrioritizeHackers" },
+    })
+
+    local playerOptionsCache = { "Auto" }
+    local playerOptionsDirty = true
+    local playerOptionsRefreshQueued = false
+
+    local function getPlayerOptions()
+        if playerOptionsDirty then
+            local currentPlayers = {}
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= Players.LocalPlayer and player.Parent == Players then
+                    currentPlayers[#currentPlayers + 1] = {
+                        Name = player.Name,
+                        SortName = string.lower(player.Name),
+                    }
+                end
+            end
+            table.sort(currentPlayers, function(a, b)
+                if a.SortName == b.SortName then
+                    return a.Name < b.Name
+                end
+                return a.SortName < b.SortName
+            end)
+
+            local options = { "Auto" }
+            for _, entry in ipairs(currentPlayers) do
+                options[#options + 1] = entry.Name
+            end
+            playerOptionsCache = options
+            playerOptionsDirty = false
+        end
+        return playerOptionsCache
+    end
+
+    local playerDropdown = section:AddDropdown({
+        Label = "Player",
+        Tooltip = "Select a player. Auto uses the normal Ragebot target selection.",
+        Options = getPlayerOptions(),
+        Search = true,
+        SearchAutoFocus = false,
+        CloseOnSelect = true,
+        Config = { "Ragebot", "TargetPlayer" },
+    })
+
+    local function refreshPlayerOptions()
+        playerDropdown:SetOptions(getPlayerOptions())
+        if playerDropdown.Value == nil then
+            playerDropdown:Set("Auto")
+        end
+    end
+
+    local function schedulePlayerOptionsRefresh()
+        playerOptionsDirty = true
+        if playerOptionsRefreshQueued then
+            return
+        end
+        playerOptionsRefreshQueued = true
+        task.defer(function()
+            playerOptionsRefreshQueued = false
+            if not playerOptionsDirty then
+                return
+            end
+            refreshPlayerOptions()
+        end)
+    end
+
+    playerDropdown:Connect(Players.PlayerAdded, schedulePlayerOptionsRefresh)
+    playerDropdown:Connect(Players.PlayerRemoving, schedulePlayerOptionsRefresh)
+
+    section:AddDropdown({
+        Label = "Hitscan",
+        Tooltip = "Up: force shots upward; Down: force shots downward; Part: use the target-aware direction.",
+        Options = { "Up", "Down", "Part" },
+        Config = { "Ragebot", "AimDirection" },
+    })
+
+    section:AddToggle({
+        Label = "Underground",
+        Tooltip = "Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",
+        Config = { "Underground", "Enabled" },
+        OnChanged = function(enabled)
+            local controller = rawget(_G, "__CrefyUndergroundController")
+            if type(controller) ~= "table" then return end
+            local ok, result = pcall(function()
+                if enabled then return controller.Start() else return controller.Stop() end
+            end)
+            if not ok then warn("[Underground] Toggle failed: " .. tostring(result)) end
+        end,
+    })
+
+    section:AddSlider({ Label = "Offset X", Min = -20, Max = 20, Step = 0.1, Config = { "Ragebot", "TargetOffset", "X" } })
+    section:AddSlider({ Label = "Offset Y", Min = -20, Max = 20, Step = 0.1, Config = { "Ragebot", "TargetOffset", "Y" } })
+    section:AddSlider({ Label = "Offset Z", Min = -20, Max = 20, Step = 0.1, Config = { "Ragebot", "TargetOffset", "Z" } })
+end
+
+return function(J, B)
+    local combat = B:AddTab({ Label = "Combat", Icon = Icons.Combat, Description = "Aim assistance, fire control, weapon handling, feedback, and ragebot." })
+
+    local aimbotTab = combat:AddTab({ Label = "Aimbot", Icon = Icons.CameraAim, Description = "Camera-based aim assistance and target locking." })
+    local aimbotGrid, aimbotSpec = aimbotTab:Grid({ Columns = 2 }), table.clone(I.BuildSpec)
+    aimbotSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    StoreProfiles(J.StoreProfiles, AimbotProfiles(aimbotGrid, aimbotSpec))
+
+    local silentTab = combat:AddTab({ Label = "Silent Aim", Icon = Icons.SilentAim, Description = "Redirect projectiles toward targets without moving the camera." })
+    local silentGrid, silentSpec = silentTab:Grid({ Columns = 2 }), table.clone(N.BuildSpec)
+    silentSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    StoreProfiles(J.StoreProfiles, SilentAimProfiles(silentGrid, silentSpec))
+
+    local ragebotTab = combat:AddTab({ Label = "Ragebot", Icon = Icons.Ragebot, Description = "Aggressive targeting, weapon priority, and evasive movement." })
+    local mainTab = ragebotTab:AddTab({ Label = "Main", Description = "Ragebot activation, weapon selection, and evasion." })
+    local mainGrid = mainTab:Grid({ Columns = 2 })
+    if W.IsArcadeServer then tbl17.ie()(mainGrid) else tbl17.ih()(mainGrid) end
+
+    local otherTab = ragebotTab:AddTab({ Label = "Other", Description = "Target priority, player selection, hitscan, Underground, and target offsets." })
+    buildOther(otherTab:Grid({ Columns = 1 }))
+
+    local fireAssistTab = combat:AddTab({ Label = "Fire Assist", Icon = Icons.FireAssist, Description = "Automatic firing and fast camera flicks." })
+    local fireGrid, fireSpec = fireAssistTab:Grid({ Columns = 2 }), table.clone(P.BuildSpec)
+    fireSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    StoreProfiles(J.StoreProfiles, FireAssistProfiles(fireGrid, fireSpec))
+    tbl17.ii()(fireGrid, function() aimbotTab:Open() end)
+
+    WeaponHandling((combat:AddTab({ Label = "Weapon Handling", Icon = Icons.WeaponHandling, Description = "Aim, firing, cooldown, melee, and grenade behavior." }):Grid({ Columns = 2 })))
+    local feedbackTab = combat:AddTab({ Label = "Hit Feedback", Icon = Icons.HitFeedback, Description = "Sound, visual, flash, and notification feedback." })
+    local feedbackGrid, soundStorage = feedbackTab:Grid({ Columns = 2 }), SoundStorageBuilder(B, J.SfxSoundStorage)
+    HitFeedbackMain(J, feedbackGrid, soundStorage)
+    HitFeedbackExtra(J, feedbackGrid, soundStorage)
+end
+end
+end
 
 tbl17.ij = function()
 local ij = tbl17.cache.ij
@@ -65188,8 +65334,8 @@ local UNDERGROUND_PLAYER_SEPARATION = 2.5
 local UNDERGROUND_OTHER_THRESHOLD = 0.75
 local UNDERGROUND_ADAPTIVE_SCAN_INTERVAL = 0.20
 local UNDERGROUND_CACHE_MOVE_DISTANCE = 10
-local UNDERGROUND_DOWN_FLOOR_MAX_GAP = 8
-local UNDERGROUND_NEAR_FLOOR_GAP = 3
+local UNDERGROUND_DOWN_FLOOR_MAX_GAP = 10
+local UNDERGROUND_NEAR_FLOOR_GAP = 10
 local UNDERGROUND_UP_SURFACE_MIN_GAP = 0.6
 local UNDERGROUND_UP_SURFACE_MAX_GAP = 96
 local undergroundRaycastParams = RaycastParams.new()
@@ -65526,63 +65672,6 @@ local function undergroundSameEnvironment(localPlayer, localChar, localFloorPart
     return localFloorPart == otherFloorPart
 end
 
-local function undergroundRaycastIgnoringHumanoidModels(origin, direction, params)
-    local baseFilter = params.FilterDescendantsInstances
-    local filter = {}
-    if type(baseFilter) == "table" then
-        for _, instance in ipairs(baseFilter) do filter[#filter + 1] = instance end
-    end
-    for _ = 1, 32 do
-        params.FilterDescendantsInstances = filter
-        local raycastOk, result = pcall(function()
-            return Workspace:Raycast(origin, direction, params)
-        end)
-        if not raycastOk then return nil end
-        if result == nil then return nil end
-        local current = result.Instance
-        local humanoidModel = nil
-        while current ~= nil and current ~= Workspace do
-            if current:IsA("Model") then
-                local hasCharacterController = false
-                local okController, controller = pcall(function()
-                    return current:FindFirstChildWhichIsA("Humanoid", true)
-                        or current:FindFirstChildWhichIsA("AnimationController", true)
-                end)
-                if okController and controller ~= nil then hasCharacterController = true end
-                if not hasCharacterController then
-                    local okRootSignature, rootSignature = pcall(function()
-                        return current:FindFirstChild("HumanoidRootPart", true)
-                            or current:FindFirstChild("RootPart", true)
-                    end)
-                    local okHeadSignature, headSignature = pcall(function()
-                        return current:FindFirstChild("Head", true)
-                    end)
-                    if okRootSignature and rootSignature ~= nil and okHeadSignature and headSignature ~= nil then
-                        hasCharacterController = true
-                    end
-                end
-                if hasCharacterController then
-                    humanoidModel = current
-                    break
-                end
-            end
-            current = current.Parent
-        end
-        if humanoidModel == nil then return result end
-        local alreadyExcluded = false
-        for _, excluded in ipairs(filter) do
-            if excluded == humanoidModel then
-                alreadyExcluded = true
-                break
-            end
-        end
-        if alreadyExcluded then return nil end
-        filter[#filter + 1] = humanoidModel
-    end
-     
-    return nil
-end
-
 local function undergroundProbeSurface(char, root)
     if not char or char.Parent ~= Workspace or not root or not root.Parent
         or not root:IsDescendantOf(char) then
@@ -65601,29 +65690,11 @@ local function undergroundProbeSurface(char, root)
         return nil
     end
 
-    local liveRootCFrame = root.CFrame
-    if typeof(liveRootCFrame) ~= 'CFrame' then return nil end
-    local boxCFrame, boxSize = bounds[1], bounds[2]
-    local minY = math.huge
-    local maxY = -math.huge
-    for x = -1, 1, 2 do
-        for y = -1, 1, 2 do
-            for z = -1, 1, 2 do
-                local corner = boxCFrame:PointToWorldSpace(Vector3.new(
-                    boxSize.X * 0.5 * x,
-                    boxSize.Y * 0.5 * y,
-                    boxSize.Z * 0.5 * z
-                ))
-                local localCorner = liveRootCFrame:PointToObjectSpace(corner)
-                local intendedCorner = clientCF:PointToWorldSpace(localCorner)
-                minY = math.min(minY, intendedCorner.Y)
-                maxY = math.max(maxY, intendedCorner.Y)
-            end
-        end
-    end
-    if minY == math.huge or maxY == -math.huge
-        or type(minY) ~= 'number' or type(maxY) ~= 'number'
-        or minY ~= minY or maxY ~= maxY then
+    local minY = bounds[3]
+    local maxY = bounds[4]
+    if type(minY) ~= 'number' or type(maxY) ~= 'number'
+        or minY ~= minY or maxY ~= maxY
+        or minY == math.huge or maxY == math.huge then
         return nil
     end
 
@@ -65640,12 +65711,8 @@ local function undergroundProbeSurface(char, root)
     end
     params.FilterDescendantsInstances = raycastFilter
 
-    local down = undergroundRaycastIgnoringHumanoidModels(
-        pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params
-    )
-    local up = undergroundRaycastIgnoringHumanoidModels(
-        pos + Vector3.new(0, -0.15, 0), Vector3.new(0, 96, 0), params
-    )
+    local down = Workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params)
+    local up = Workspace:Raycast(pos + Vector3.new(0, -0.15, 0), Vector3.new(0, 96, 0), params)
 
     local downGap = math.huge
     local upGap = math.huge
@@ -69010,7 +69077,10 @@ return setmetatable({ _fighters = arg, _playerTags = arg2 }, index2)
 end
 
 index2.GetTarget = function(arg)
-local prioritizeHackers = v115.Data.Ragebot.PrioritizeHackers == true
+local ragebotTargetConfig = type(v115.Data) == "table" and type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local prioritizeHackers = ragebotTargetConfig.PrioritizeHackers == true
+local selectedTargetName = type(ragebotTargetConfig.TargetPlayer) == "string" and ragebotTargetConfig.TargetPlayer or "Auto"
+if selectedTargetName == "" then selectedTargetName = "Auto" end
 local Players = game:GetService("Players")
 local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
 local localPosition = nil
@@ -69082,6 +69152,11 @@ local function clearLockedTarget()
     resetLockedTargetTimers()
 end
 
+if arg._lastConfiguredTargetName ~= selectedTargetName then
+    clearLockedTarget()
+    arg._lastConfiguredTargetName = selectedTargetName
+end
+
 if localEnvironmentId == nil then
     clearLockedTarget()
     return nil
@@ -69130,6 +69205,12 @@ end
 
 local lockedFighter = arg._lockedFighter
 local lockedPlayer = arg._lockedPlayer
+if selectedTargetName ~= "Auto" and prioritizedHacker == nil
+    and lockedPlayer ~= nil and lockedPlayer.Name ~= selectedTargetName then
+    clearLockedTarget()
+    lockedFighter = nil
+    lockedPlayer = nil
+end
 if lockedFighter ~= nil and lockedPlayer ~= nil
     and prioritizeHackers and prioritizedHacker ~= nil
     and not isHacker(lockedPlayer) and prioritizedHackerPlayer ~= lockedPlayer then
@@ -69212,6 +69293,30 @@ end
 
 if prioritizedHacker ~= nil then
     return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
+end
+
+if selectedTargetName ~= "Auto" then
+    local selectedPlayer = nil
+    local okSelectedPlayer, selectedPlayerValue = pcall(function()
+        return Players:FindFirstChild(selectedTargetName)
+    end)
+    if okSelectedPlayer and selectedPlayerValue ~= nil and selectedPlayerValue.Parent == Players then
+        selectedPlayer = selectedPlayerValue
+    end
+    if selectedPlayer ~= nil then
+        local selectedFighter = arg._fighters.EnemyByPlayer[selectedPlayer]
+        if selectedFighter ~= nil
+            and fn36(selectedFighter, selectedPlayer, localEnvironmentId)
+            and distanceTo(selectedFighter) ~= nil
+            and not isExplicitlyProtected(selectedFighter) then
+            local selectedTarget = fn37(selectedFighter)
+            if selectedTarget ~= nil then
+                return rememberTarget(selectedFighter, selectedPlayer)
+            end
+        end
+    end
+    clearLockedTarget()
+    return nil
 end
 
 local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
@@ -69311,6 +69416,19 @@ local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
+local function ragebotConfiguredTargetOffset()
+    local data = type(v115) == "table" and v115.Data or nil
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    local offset = type(ragebot) == "table" and ragebot.TargetOffset or nil
+    local function component(name)
+        local value = type(offset) == "table" and tonumber(offset[name]) or 0
+        if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+            return 0
+        end
+        return math.clamp(value, -20, 20)
+    end
+    return Vector3.new(component("X"), component("Y"), component("Z"))
+end
 local function ragebotSafeEstimatedDelay(callback)
 if type(callback) ~= "function" then return 0 end
 local ok, value = pcall(callback)
@@ -70004,7 +70122,16 @@ local okSend, sendError = pcall(function()
     end
     local encodedShotOrigin = shotDirectionAbove and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
     local encodedShotDirection = shotDirectionAbove and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
-    local shotHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
+    local targetOffset = ragebotConfiguredTargetOffset()
+    local baseHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
+    local shotHitpoint = {
+        ["\0"] = (tonumber(baseHitpoint["\0"]) or 0) + targetOffset.X,
+        ["\1"] = (tonumber(baseHitpoint["\1"]) or 0) + targetOffset.Y,
+        ["\2"] = (tonumber(baseHitpoint["\2"]) or 0) + targetOffset.Z,
+        ["\3"] = tonumber(baseHitpoint["\3"]) or 0,
+        ["\4"] = tonumber(baseHitpoint["\4"]) or 0,
+        ["\5"] = tonumber(baseHitpoint["\5"]) or 0,
+    }
     arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, shotHitpoint)
     local afterCount = arg4.ShotRequestCount
     if not ragebotFiniteNumber(afterCount) or afterCount <= beforeCount then
@@ -70097,6 +70224,19 @@ local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -v86[195], 0.05)
 local vector2 = Vector3.new(v86[186], -3.85, 0.05)
+local function ragebotConfiguredMeleeOffset()
+    local data = type(v115) == "table" and v115.Data or nil
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    local offset = type(ragebot) == "table" and ragebot.TargetOffset or nil
+    local function component(name)
+        local value = type(offset) == "table" and tonumber(offset[name]) or 0
+        if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+            return 0
+        end
+        return math.clamp(value, -20, 20)
+    end
+    return Vector3.new(component("X"), component("Y"), component("Z"))
+end
 
 local tbl18 = {
 ["\0"] = -9e37,
@@ -70257,11 +70397,12 @@ return gluedOurPart ~= nil and gluedOurPart.CFrame or nil,
 end
 arg._gluedOurPart = gluedOurPart
 local n
+local targetOffset = ragebotConfiguredMeleeOffset()
 
 if flag19 then
-n = v120 + v119
+n = v120 + v119 + targetOffset
 else
-n = v118(v120.Position + v119, hitboxHead.Position)
+n = v118(v120.Position + v119, hitboxHead.Position + targetOffset)
 end
 
 local n33 = flag19 and -1.5707963267948966 or 1.5707963267948966
@@ -73545,7 +73686,13 @@ if not okAction then
     arg._knifeCameraPrimeTarget = nil
     arg._knifeCameraPrimeAt = nil
     arg._knifeCameraPrimeAngles = nil
-    ragebotResetRiotCameraPrime(arg)
+    arg._riotCameraBridgeTarget = nil
+    arg._riotCameraBridgeStartedAt = nil
+    arg._riotCameraBridgeLastSentAt = 0
+    arg._riotCameraBridgeLastEncoded = nil
+    arg._riotCameraBridgeSendCount = 0
+    arg._riotCameraBridgeFallbackTarget = nil
+    arg._riotCameraBridgeFallbackStartedAt = nil
     pcall(function() arg._ApplyForcedCrouch(false) end)
     local meleeStrategy = rawget(arg, "_meleeStrategy")
     if type(meleeStrategy) == "table" and type(meleeStrategy.ResetState) == "function" then
@@ -73864,6 +74011,7 @@ else
 if os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Ignored non-function WeaponAction callback")
+end
 end
 end
 end
@@ -74202,7 +74350,6 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
     return false
 end
 
-end
 
 index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
 if arg4 ~= nil then
@@ -75690,7 +75837,13 @@ if not sameReset then
     arg._externalRiotCameraStartCount = nil
     arg._externalRiotCameraPrimed = false
     arg._externalRiotCameraPrimeAt = nil
-    ragebotResetRiotCameraPrime(arg)
+    arg._riotCameraBridgeTarget = nil
+    arg._riotCameraBridgeStartedAt = nil
+    arg._riotCameraBridgeLastSentAt = 0
+    arg._riotCameraBridgeLastEncoded = nil
+    arg._riotCameraBridgeSendCount = 0
+    arg._riotCameraBridgeFallbackTarget = nil
+    arg._riotCameraBridgeFallbackStartedAt = nil
     ragebotSafeDeactivateTargetState(arg)
     ragebotSafeClearReloadTransport(arg)
     arg._lastTargetWorld = nil
