@@ -55659,14 +55659,20 @@ local function partGlueRestoreSourceReference(sourcePart, info)
 end
 
 local function fn37(arg, arg2)
-if arg == nil or type(arg2) ~= "table" then return false end
+if arg == nil or type(arg2) ~= "table" then return false, "target or snapshot unavailable" end
 local allRestored = true
+local errors = {}
 local originalCFrame = arg2.OriginalCFrame
 local originalPart1 = arg2.OriginalPart1
 local originalPart1ToTarget = arg2.OriginalPart1ToTarget
 local weld = arg2.Weld
-if typeof(originalCFrame) ~= "CFrame" or type(arg2.OriginalAnchored) ~= "boolean" then
-    return false
+local originalAnchored = arg2.OriginalAnchored
+local function fail(reason)
+    allRestored = false
+    errors[#errors + 1] = reason
+end
+if typeof(originalCFrame) ~= "CFrame" or type(originalAnchored) ~= "boolean" then
+    return false, "snapshot is missing original CFrame/Anchored"
 end
 
 local function restoreProperty(instance, property, value)
@@ -55686,7 +55692,7 @@ local function restoreProperty(instance, property, value)
 end
 
 if weld ~= nil and originalPart1 ~= nil then
-    if not restoreProperty(weld, "Part1", originalPart1) then allRestored = false end
+    if not restoreProperty(weld, "Part1", originalPart1) then fail("weld Part1 restore failed") end
 end
 
 if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
@@ -55696,22 +55702,23 @@ if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
     if okOriginalCFrame and typeof(computedCFrame) == "CFrame" then
         originalCFrame = computedCFrame
     else
-        allRestored = false
+        fail("original weld offset could not be recomputed")
     end
 end
 
-if not restoreProperty(arg, v86[127], originalCFrame) then allRestored = false end
-if not restoreProperty(arg, "Anchored", arg2.OriginalAnchored) then allRestored = false end
+if not restoreProperty(arg, v86[127], originalCFrame) then fail("target CFrame write/read-back failed") end
+if not restoreProperty(arg, "Anchored", originalAnchored) then fail("target Anchored write/read-back failed") end
 
 local finalCFrameOk, finalCFrame = pcall(function() return arg.CFrame end)
 local finalAnchoredOk, finalAnchored = pcall(function() return arg.Anchored end)
-if not finalCFrameOk or finalCFrame ~= originalCFrame then allRestored = false end
-if not finalAnchoredOk or finalAnchored ~= arg2.OriginalAnchored then allRestored = false end
+if not finalCFrameOk or finalCFrame ~= originalCFrame then fail("final target CFrame mismatch") end
+if not finalAnchoredOk or finalAnchored ~= originalAnchored then fail("final target Anchored mismatch") end
 if weld ~= nil and originalPart1 ~= nil then
     local finalPart1Ok, finalPart1 = pcall(function() return weld.Part1 end)
-    if not finalPart1Ok or finalPart1 ~= originalPart1 then allRestored = false end
+    if not finalPart1Ok or finalPart1 ~= originalPart1 then fail("final weld Part1 mismatch") end
 end
-return allRestored
+if allRestored then return true end
+return false, table.concat(errors, "; ")
 end
 
 local PARTGLUE_PENDING_RESTORE_KEY = "__CrefyPendingPartGlueRestores"
@@ -56296,7 +56303,7 @@ local v118 = arg._glueInfoByTargetPart[arg2]
 if v118 == nil then return end
 v118.RefCount = math.max((tonumber(v118.RefCount) or 1) - 1, 0)
 if v118.RefCount > 0 then return end
-local restoreCallOk, restored = pcall(fn37, arg2, v118)
+local restoreCallOk, restored, restoreError = pcall(fn37, arg2, v118)
 if restoreCallOk and restored == true then
     arg._glueInfoByTargetPart[arg2] = nil
     v118.RestorePending = false
@@ -56306,12 +56313,13 @@ if restoreCallOk and restored == true then
 end
 v118.RestorePending = true
 v118.RefCount = 0
+v118.LastRestoreError = tostring(restoreCallOk and restoreError or restored)
 partGluePersistPendingRestore(arg2, v118)
 schedulePendingRestoreRetry(arg, arg2, v118)
 local warningNow = os.clock()
 if warningNow >= (arg._nextRestoreWarningAt or 0) then
     arg._nextRestoreWarningAt = warningNow + 5
-    warn("[PartGlue] Restore incomplete; retaining record for cleanup retry")
+    warn("[PartGlue] Restore incomplete; retaining record for cleanup retry: " .. v118.LastRestoreError)
 end
 end
 
@@ -56322,7 +56330,7 @@ index2.RetryPendingRestores = function(arg)
     arg._nextPendingRestoreRetryAt = now + 0.1
     for target, info in pairs(arg._glueInfoByTargetPart) do
         if type(info) == "table" and (info.RestorePending == true or (tonumber(info.RefCount) or 0) <= 0) then
-            local restoreCallOk, restored = pcall(fn37, target, info)
+            local restoreCallOk, restored, restoreError = pcall(fn37, target, info)
             if restoreCallOk and restored == true then
                 arg._glueInfoByTargetPart[target] = nil
                 info.RestorePending = false
@@ -56331,6 +56339,7 @@ index2.RetryPendingRestores = function(arg)
             else
                 info.RestorePending = true
                 info.RefCount = 0
+                info.LastRestoreError = tostring(restoreCallOk and restoreError or restored)
                 partGluePersistPendingRestore(target, info)
                 schedulePendingRestoreRetry(arg, target, info)
             end
@@ -56389,7 +56398,7 @@ end
 
 index2.Destroy = function(arg)
 for target, info in pairs(arg._glueInfoByTargetPart) do
-    local restoreCallOk, restored = pcall(fn37, target, info)
+    local restoreCallOk, restored, restoreError = pcall(fn37, target, info)
     if restoreCallOk and restored == true then
         arg._glueInfoByTargetPart[target] = nil
         info.RestorePending = false
@@ -56398,9 +56407,10 @@ for target, info in pairs(arg._glueInfoByTargetPart) do
     else
         info.RestorePending = true
         info.RefCount = 0
+        info.LastRestoreError = tostring(restoreCallOk and restoreError or restored)
         partGluePersistPendingRestore(target, info)
         schedulePendingRestoreRetry(arg, target, info)
-        warn("[PartGlue] Destroy could not fully restore a target; bounded cleanup retries scheduled")
+        warn("[PartGlue] Destroy could not fully restore a target; bounded cleanup retries scheduled: " .. info.LastRestoreError)
     end
 end
 local sourceMap = arg._sourceReferenceInfoBySourcePart
@@ -71426,9 +71436,63 @@ local v115 = tbl17.bG()
 tbl17.cU()
 tbl17.cX()
 
-local function fn36(arg)
-local index2 = arg.Index
-return index2 == v86[63] and "Primary" or index2 == 2 and "Secondary" or index2 == 3 and "Melee" or nil
+local function fn36(item, context)
+local function categoryForSlot(slot)
+slot = tonumber(slot)
+if slot == 1 then return "Primary" end
+if slot == 2 then return "Secondary" end
+if slot == 3 then return "Melee" end
+return nil
+end
+
+local itemInner = nil
+pcall(function() itemInner = item and item.Inner or nil end)
+local fighterState = nil
+local fighterInner = nil
+local rawItems = nil
+pcall(function() fighterState = context and context.FighterState or nil end)
+pcall(function() fighterInner = fighterState and fighterState.Inner or nil end)
+pcall(function()
+if fighterState ~= nil and type(fighterState.GetItems) == "function" then
+rawItems = fighterState:GetItems()
+end
+end)
+if type(rawItems) ~= "table" or next(rawItems) == nil then
+local innerItems = nil
+pcall(function() innerItems = fighterInner and fighterInner.Items or nil end)
+if type(innerItems) == "table" and next(innerItems) ~= nil then
+rawItems = innerItems
+end
+end
+
+if type(rawItems) == "table" then
+for slotKey, candidate in pairs(rawItems) do
+local category = categoryForSlot(slotKey)
+if category ~= nil then
+local matches = candidate == item or (itemInner ~= nil and candidate == itemInner)
+if not matches and candidate ~= nil then
+local candidateInner = nil
+pcall(function() candidateInner = candidate.Inner end)
+matches = candidateInner == item or (itemInner ~= nil and candidateInner == itemInner)
+end
+if matches then return category end
+end
+end
+end
+
+local index2 = nil
+pcall(function() index2 = item and item.Index or nil end)
+local category = categoryForSlot(index2)
+if category ~= nil then return category end
+
+local data = nil
+pcall(function() data = item and item.Data or nil end)
+local itemIndex = nil
+if type(data) == "table" then
+pcall(function() itemIndex = data.ItemIndex end)
+if itemIndex == nil then pcall(function() itemIndex = data.Index end) end
+end
+return categoryForSlot(itemIndex)
 end
 
 local function fn37(arg)
@@ -71484,9 +71548,12 @@ local huge2 = math.huge
 local flag19 = false
 local v116 = nil
 local v117 = nil
+local inventoryItemCount = 0
+local unreadableAmmoCount = 0
 
 for _, v118 in arg.ItemBehaviors:GetItems(), nil, nil do
-local v119 = fn36(v118)
+inventoryItemCount += 1
+local v119 = fn36(v118, arg)
 
 if not (v119 == nil or not fn37(v119)) then
 flag19 = v86[34]
@@ -71497,6 +71564,7 @@ local ammoBased = false
 if v118.__type == "Gun" then
 local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
 if not okAmmoState then
+unreadableAmmoCount += 1
 continue
 end
 ammoBased = readAmmoBased
@@ -71526,7 +71594,7 @@ end
 end
 
 if not flag19 then
-return nil
+return nil, string.format("no enabled weapon matched Primary/Secondary/Melee slots (items=%d); check slot mapping and weapon toggles", inventoryItemCount)
 end
 
 if v116 ~= nil then
@@ -71534,7 +71602,7 @@ local flag20 = false
 if v116.__type == "Gun" then
 local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
 if not okAmmoState then
-return nil
+return nil, "selected gun ammo state could not be read; waiting for a valid weapon state"
 end
 if ammoBased then
 flag20 = currentAmmo == v86[186]
@@ -71552,7 +71620,7 @@ return { Type = "Swap", Item = v116 }
 end
 
 if onEmpty == "Swap" then
-return nil
+return nil, "On Empty is set to Swap, but no other enabled weapon is available"
 end
 
 if v117 ~= nil then
@@ -71562,7 +71630,10 @@ end
 return { Type = "Swap", Item = v117 }
 end
 
-return nil
+if unreadableAmmoCount > 0 then
+return nil, string.format("ammo state was unreadable for %d enabled gun(s); no safe action was selected", unreadableAmmoCount)
+end
+return nil, "all enabled weapon choices are empty, unavailable, or waiting for ammo/reserve state"
 end }
 end
 
@@ -73047,7 +73118,7 @@ if previousEvasionMode ~= mode then
     end
 end
 arg._lastEvasionMode = mode
-local okAction, actionResult = pcall(v128.getAction, innerContext)
+local okAction, actionResult, actionReason = pcall(v128.getAction, innerContext)
 if okAction and actionResult ~= nil then
     if type(actionResult) ~= "table" then
 
@@ -73065,19 +73136,12 @@ if okAction and actionResult ~= nil then
     end
 end
 local v130 = okAction and actionResult or nil
+local noWeaponAction = okAction and actionResult == nil
 if not okAction then
 local warningNow = os.clock()
 if warningNow >= (arg._nextGetActionWarningAt or 0) then
 arg._nextGetActionWarningAt = warningNow + 5
 warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
-end
-elseif actionResult == nil then
-
-local warningNow = os.clock()
-if warningNow >= (arg._nextNoActionWarningAt or 0) then
-arg._nextNoActionWarningAt = warningNow + 5
-warn("[Ragebot] No weapon action selected; if a valid target exists, movement will hold this update and retry")
-end
 end
 
 local repRootCounterActive = false
@@ -73632,6 +73696,15 @@ if repRootCounterActive then
 end
 arg._lastTargetWorld = nil
 ragebotSafeDeactivateTargetState(arg)
+end
+
+if targetPartsValid and noWeaponAction then
+local warningNow = os.clock()
+if warningNow >= (arg._nextNoActionWarningAt or 0) then
+arg._nextNoActionWarningAt = warningNow + 5
+local detail = type(actionReason) == "string" and actionReason ~= "" and (" (" .. actionReason .. ")") or ""
+warn("[Ragebot] No weapon action selected for a valid target" .. detail .. "; movement will hold this update and retry")
+end
 end
 
 local safeDt = tonumber(arg2) or 0
@@ -76160,20 +76233,76 @@ local recordingByName = arg._recordingByName
 table.clear(recordingByName)
 table.clear(arg._recordingNamesByMap)
 
-for _, v120 in arg._store:List(), nil, nil do
-local v121 = arg._store:Load(v120)
+local invalidRecordCount = 0
+local listOk, listValue, state, control = pcall(function()
+return arg._store:List()
+end)
+if not listOk then
+warn("[MovementRecorder] Could not list saved recordings: " .. tostring(listValue))
+arg.Reloaded:Fire()
+return
+end
 
-if v121.Ok then
-local value = v121.Value
-value.Name = v120
-recordingByName[v120] = value
-table.insert(arg:_GetOrCreateNamesForMap(value.MapName), v120)
+local function loadOne(recordName)
+if type(recordName) ~= "string" or recordName == "" then
+invalidRecordCount = invalidRecordCount + 1
+return
+end
+
+local loadOk, result = pcall(function()
+return arg._store:Load(recordName)
+end)
+if not loadOk or type(result) ~= "table" or result.Ok ~= true or type(result.Value) ~= "table" then
+invalidRecordCount = invalidRecordCount + 1
+return
+end
+
+local value = result.Value
+local validRecording = type(value.MapName) == "string"
+    and value.MapName ~= ""
+    and typeof(value.StartCFrame) == "CFrame"
+    and typeof(value.DisplayPosition) == "Vector3"
+    and type(value.Keypoints) == "table"
+    and #value.Keypoints > 0
+    and type(value.Positions) == "table"
+if not validRecording then
+invalidRecordCount = invalidRecordCount + 1
+return
+end
+
+if type(value.LoadoutRequirementSet) ~= "table" then
+value.LoadoutRequirementSet = {}
+end
+value.Name = recordName
+recordingByName[recordName] = value
+local namesForMap = arg:_GetOrCreateNamesForMap(value.MapName)
+if not table.find(namesForMap, recordName) then
+ table.insert(namesForMap, recordName)
 end
 end
 
+local iterationOk, iterationError = pcall(function()
+if type(listValue) == "table" then
+for _, recordName in ipairs(listValue) do
+loadOne(recordName)
+end
+elseif type(listValue) == "function" then
+for _, recordName in listValue, state, control do
+loadOne(recordName)
+end
+else
+error("recording list returned unsupported type " .. type(listValue), 0)
+end
+end)
+
+if not iterationOk then
+warn("[MovementRecorder] Saved recording list stopped early: " .. tostring(iterationError))
+end
+if invalidRecordCount > 0 then
+warn("[MovementRecorder] Skipped " .. tostring(invalidRecordCount) .. " invalid saved recording(s)")
+end
 arg.Reloaded:Fire()
 end
-
 index2._GetOrCreateNamesForMap = function(arg, arg2)
 local tbl18 = arg._recordingNamesByMap[arg2]
 
@@ -76186,6 +76315,17 @@ return tbl18
 end
 
 index2.Save = function(arg, name, arg2)
+if type(name) ~= "string" or name:match("^%s*$") then
+return v117.err("RecordedMovements", "Save", "Recording name is empty or invalid")
+end
+if type(arg2) ~= "table"
+    or type(arg2.MapName) ~= "string" or arg2.MapName == ""
+    or typeof(arg2.StartCFrame) ~= "CFrame"
+    or typeof(arg2.DisplayPosition) ~= "Vector3"
+    or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0
+    or type(arg2.Positions) ~= "table" then
+return v117.err("RecordedMovements", "Save", "Recording data is invalid")
+end
 local v120 = arg._store:Save(name, arg2)
 if not v120.Ok then
 return v117.err("RecordedMovements", "Save", v120.Error.Detail)
@@ -76195,14 +76335,21 @@ local v121 = arg._recordingByName[name]
 if v121 == nil or v121.MapName ~= arg2.MapName then
 if v121 ~= nil then
 local v122 = arg._recordingNamesByMap[v121.MapName]
-table.remove(v122, table.find(v122, name))
-
+if type(v122) == "table" then
+local namePosition = table.find(v122, name)
+if namePosition ~= nil then
+ table.remove(v122, namePosition)
+end
 if #v122 == 0 then
 arg._recordingNamesByMap[v121.MapName] = nil
 end
 end
+end
 
-table.insert(arg:_GetOrCreateNamesForMap(arg2.MapName), name)
+local namesForMap = arg:_GetOrCreateNamesForMap(arg2.MapName)
+if not table.find(namesForMap, name) then
+ table.insert(namesForMap, name)
+end
 end
 
 arg2.Name = name
@@ -76260,7 +76407,10 @@ local v121 = arg._recordingByName[arg2]
 if v121 ~= nil then
 arg._recordingByName[arg2] = nil
 local v122 = arg:_GetOrCreateNamesForMap(v121.MapName)
-table.remove(v122, table.find(v122, arg2))
+local recordingPosition = table.find(v122, arg2)
+if recordingPosition ~= nil then
+ table.remove(v122, recordingPosition)
+end
 
 if #v122 == 0 then
 arg._recordingNamesByMap[v121.MapName] = nil
@@ -76327,12 +76477,40 @@ end
 index2.new = function(arg, arg2)
 local tbl18 = { _errorReporter = v115.new(), _restore = nil }
 setmetatable(tbl18, index2)
-tbl18._errorReporter:ReportResult(tbl18:_Install(arg, arg2))
+local installOk, installResult = pcall(function()
+return tbl18:_Install(arg, arg2)
+end)
+if installOk then
+pcall(function() tbl18._errorReporter:ReportResult(installResult) end)
+else
+tbl18._hookSkippedReason = "QuickAttack hook setup failed; input fallback will record quick attacks"
+end
 return tbl18
 end
 
 index2._Install = function(arg, arg2, arg3)
-for _, v119 in debug.getupvalues(arg2.QuickAttack) do
+local quickAttack = nil
+local quickAttackReadOk = pcall(function()
+quickAttack = arg2 ~= nil and arg2.QuickAttack or nil
+end)
+if not quickAttackReadOk or type(quickAttack) ~= "function" then
+arg._hookSkippedReason = "QuickAttack method is unavailable; input fallback will record quick attacks"
+return v116.VoidOk
+end
+
+local debugLibrary = debug
+if type(debugLibrary) ~= "table" or type(debugLibrary.getupvalues) ~= "function" then
+arg._hookSkippedReason = "getupvalues is unavailable; input fallback will record quick attacks"
+return v116.VoidOk
+end
+
+local okUpvalues, upvalues = pcall(debugLibrary.getupvalues, quickAttack)
+if not okUpvalues or type(upvalues) ~= "table" then
+arg._hookSkippedReason = "QuickAttack upvalues could not be read; input fallback will record quick attacks"
+return v116.VoidOk
+end
+
+for _, v119 in pairs(upvalues) do
 if type(v119) ~= "table" then
 continue
 end
@@ -76341,24 +76519,37 @@ for k, v120 in v119, nil, nil do
 if typeof(v120) ~= "Instance" or not v117(v120, v118) then
 continue
 end
-arg._restore = { Bundle = v119, Key = k, Original = v120 }
-v119[k] = fn36(arg3)
+local replacement = fn36(arg3)
+local writeOk = pcall(function() v119[k] = replacement end)
+local readOk, installedValue = pcall(function() return v119[k] end)
+if writeOk and readOk and installedValue == replacement then
+arg._restore = { Bundle = v119, Key = k, Original = v120, Replacement = replacement }
+return v116.VoidOk
+end
+pcall(function() v119[k] = v120 end)
+arg._hookSkippedReason = "ReplicatedStorage upvalue could not be safely replaced; input fallback will record quick attacks"
 return v116.VoidOk
 end
 end
 
-return v116.err("QuickAttackHook", "upvalue_scan", "Failed to find ReplicatedStorage upvalue")
+arg._hookSkippedReason = "ReplicatedStorage upvalue was not found; input fallback will record quick attacks"
+return v116.VoidOk
 end
 
 index2.Destroy = function(arg)
 local restore = arg._restore
+arg._restore = nil
 
 if restore ~= nil then
-arg._restore = nil
+pcall(function()
+local current = restore.Bundle[restore.Key]
+if current == restore.Replacement then
 restore.Bundle[restore.Key] = restore.Original
 end
+end)
+end
 
-arg._errorReporter:Destroy()
+pcall(function() arg._errorReporter:Destroy() end)
 end
 
 return index2
@@ -76428,6 +76619,9 @@ end
 end
 local displayWorldPosition = fn37()
 if displayWorldPosition == nil then
+if arg3 == nil or arg3.RootPart == nil then
+error("Movement Recorder requires a live RootPart", 0)
+end
 displayWorldPosition = arg3.RootPart.Position
 end
 local equipped = arg5:GetEquipped()
@@ -76473,14 +76667,40 @@ Positions = {},
 }
 
 setmetatable(tbl18, index2)
-
-tbl18._quickAttackHook = v116.new(arg4, function(arg7)
+local initializeOk, initializeError = pcall(function()
+local hookOk, quickAttackHook = pcall(function()
+return v116.new(arg4, function(arg7)
 tbl18:_Record({ Kind = "QuickAttack", AttackType = arg7 })
 end)
+end)
+tbl18._quickAttackHook = hookOk and quickAttackHook or nil
+local quickAttackHookInstalled = false
+if type(tbl18._quickAttackHook) == "table" then
+pcall(function()
+local restore = tbl18._quickAttackHook._restore
+quickAttackHookInstalled = type(restore) == "table"
+    and restore.Bundle ~= nil and restore.Key ~= nil
+    and restore.Bundle[restore.Key] == restore.Replacement
+end)
+end
 
 tbl18._jumpConnection = v118.InputBegan:Connect(function(input, gameProcessed)
-if not gameProcessed and v117(inputLibrary.InputIs, inputLibrary, input, "Jump") then
+if gameProcessed then
+return
+end
+if v117(inputLibrary.InputIs, inputLibrary, input, "Jump") then
 tbl18:_Record({ Kind = "Jump" })
+return
+end
+if not quickAttackHookInstalled then
+if v117(inputLibrary.InputIs, inputLibrary, input, "QuickMelee") then
+tbl18:_Record({ Kind = "QuickAttack", AttackType = "Melee" })
+return
+end
+if v117(inputLibrary.InputIs, inputLibrary, input, "QuickUtility") then
+tbl18:_Record({ Kind = "QuickAttack", AttackType = "Utility" })
+return
+end
 end
 end)
 
@@ -76489,6 +76709,11 @@ tbl18:_RecordItemInput(arg7)
 end)
 
 arg6:SetEnabled(true)
+end)
+if not initializeOk then
+pcall(function() tbl18:Destroy() end)
+error(initializeError, 0)
+end
 return tbl18
 end
 
@@ -76581,6 +76806,10 @@ index2._RecordItemInput = function(arg, arg2)
 if arg2 == nil or type(arg2.ObjectId) ~= "string" or type(arg2.Type) ~= "string" or arg2.Type == "" then
 return
 end
+local inputTypeLower = string.lower(arg2.Type)
+if inputTypeLower == "quickmelee" or inputTypeLower == "quickutility" then
+return
+end
 if arg._itemBehaviors == nil then
 return
 end
@@ -76629,9 +76858,18 @@ return arg._recording
 end
 
 index2.Destroy = function(arg)
-arg._inputBinding:Destroy()
-arg._quickAttackHook:Destroy()
-arg._jumpConnection:Disconnect()
+local inputBinding = arg._inputBinding
+if inputBinding ~= nil then
+pcall(function() inputBinding:Destroy() end)
+end
+local quickAttackHook = arg._quickAttackHook
+if quickAttackHook ~= nil then
+pcall(function() quickAttackHook:Destroy() end)
+end
+local jumpConnection = arg._jumpConnection
+if jumpConnection ~= nil then
+pcall(function() jumpConnection:Disconnect() end)
+end
 end
 
 return index2
@@ -76791,15 +77029,18 @@ return nil
 end
 
 index2.new = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
-v115.claim("MovementRecorder.Replay", v86[91])
 local recording = type(arg5) == "table" and arg5 or {}
 local startEquippedIndex = recording.StartEquippedIndex
-
-if startEquippedIndex ~= nil then
-task.spawn(v119, arg2.EquipItem, arg2, startEquippedIndex)
+local startLookRotation = fn41(arg4, recording.Keypoints)
+local moveHook = v118.new()
+local claimOk, claimError = pcall(v115.claim, "MovementRecorder.Replay", v86[91])
+if not claimOk then
+pcall(function() moveHook:Destroy() end)
+pcall(v115.release, "MovementRecorder.Replay")
+error(claimError, 0)
 end
 
-return setmetatable({
+local replayer = setmetatable({
 _aliveState = arg,
 _clientFighter = arg2,
 _itemBehaviors = arg3,
@@ -76810,13 +77051,21 @@ _keypoints = recording.Keypoints,
 _positions = recording.Positions,
 _positionIndex = v86[63],
 _finishedCallback = arg7,
-_moveHook = v118.new(),
+_moveHook = moveHook,
 _isRoundActive = arg6,
-_startLookRotation = fn41(arg4, recording.Keypoints),
+_startLookRotation = startLookRotation,
 _lookRotation = nil,
 _state = { Kind = "Aligning", Elapsed = 0, StuckTime = 0, BestDistance = math.huge },
 _finished = false,
 }, index2)
+
+if startEquippedIndex ~= nil then
+local equipOk, equipMethod = pcall(function() return arg2.EquipItem end)
+if equipOk and type(equipMethod) == "function" then
+pcall(task.spawn, v119, equipMethod, arg2, startEquippedIndex)
+end
+end
+return replayer
 end
 
 index2._StepAlign = function(arg, arg2, arg3)
@@ -76976,7 +77225,19 @@ task.spawn(v119, arg._clientFighter.EquipItem, arg._clientFighter, action.Index)
 elseif action.Kind == "ItemInput" then
 task.spawn(v119, arg._clientFighter.Input, arg._clientFighter, action.InputType)
 elseif action.Kind == "QuickAttack" then
-task.spawn(v119, arg._clientFighter.QuickAttack, arg._clientFighter, action.AttackType)
+local clientFighter = arg._clientFighter
+local okMethods, quickAttack, quickAttackDown, quickAttackUp = pcall(function()
+return clientFighter.QuickAttack, clientFighter.QuickAttackDown, clientFighter.QuickAttackUp
+end)
+if okMethods and type(quickAttack) == "function" then
+task.spawn(v119, quickAttack, clientFighter, action.AttackType)
+elseif okMethods and type(quickAttackDown) == "function" and type(quickAttackUp) == "function" then
+task.spawn(function()
+local downOk = pcall(quickAttackDown, clientFighter, action.AttackType)
+if downOk then task.wait(0.05) end
+pcall(quickAttackUp, clientFighter, action.AttackType)
+end)
+end
 elseif action.Kind == "Jump" then
 if v102(mechanicsController, "IsSliding") == true then
 v119(mechanicsController.HighJump, mechanicsController)
@@ -77055,9 +77316,23 @@ return (arg._mapAnchor:PointToWorldSpace(position) - rootPart.Position).Magnitud
 end
 
 index2.Destroy = function(arg)
-v115.release("MovementRecorder.Replay")
-arg._moveHook:Destroy()
-v119(mechanicsController.SetCrouching, mechanicsController, false)
+local releaseOk, releaseError = pcall(v115.release, "MovementRecorder.Replay")
+if not releaseOk then
+warn("[MovementRecorder] Camera claim release failed: " .. tostring(releaseError))
+end
+local moveHook = arg._moveHook
+arg._moveHook = nil
+if moveHook ~= nil then
+pcall(function() moveHook:SetMoveVector(Vector3.zero) end)
+local destroyOk, destroyError = pcall(function() moveHook:Destroy() end)
+if not destroyOk then
+warn("[MovementRecorder] Move hook cleanup failed: " .. tostring(destroyError))
+end
+end
+local crouchOk, crouchError = pcall(v119, mechanicsController.SetCrouching, mechanicsController, false)
+if not crouchOk then
+warn("[MovementRecorder] Crouch reset failed: " .. tostring(crouchError))
+end
 end
 
 return index2
@@ -77749,6 +78024,30 @@ v117.get():Notify(arg, arg2)
 end
 end
 
+local function finiteRecorderNumber(value)
+return type(value) == "number" and value == value
+    and value ~= math.huge and value ~= -math.huge
+end
+
+local function finiteRecorderVector3(value)
+if typeof(value) ~= "Vector3"
+    or not finiteRecorderNumber(value.X)
+    or not finiteRecorderNumber(value.Y)
+    or not finiteRecorderNumber(value.Z) then
+    return false
+end
+return finiteRecorderNumber(value.Magnitude)
+end
+
+local function finiteRecorderCFrame(value)
+if typeof(value) ~= "CFrame" then return false end
+local components = { value:GetComponents() }
+for _, component in ipairs(components) do
+if not finiteRecorderNumber(component) then return false end
+end
+return true
+end
+
 local index2 = {}
 index2.__index = index2
 
@@ -78008,7 +78307,23 @@ local aliveState = arg._aliveState
 local localState = arg._duelers.LocalState
 local inner = arg._playerContext.Inner
 local anchor = arg._currentMap:GetAnchor()
-if aliveState == nil or aliveState.RootPart == nil or aliveState.RootPart.Parent == nil or localState == nil or inner == nil or anchor == nil then
+local rootPart = aliveState ~= nil and aliveState.RootPart or nil
+local contextValid = false
+pcall(function()
+contextValid = aliveState ~= nil
+    and aliveState.Alive ~= false
+    and rootPart ~= nil
+    and rootPart:IsA("BasePart")
+    and rootPart.Parent ~= nil
+    and rootPart:IsDescendantOf(workspace)
+    and localState ~= nil
+    and inner ~= nil
+    and inner.FighterState ~= nil
+    and inner.FighterState.Inner ~= nil
+    and inner.ItemBehaviors ~= nil
+    and typeof(anchor) == "CFrame"
+end)
+if not contextValid then
 fn36("You need to be alive and in a match")
 return nil
 end
@@ -78037,9 +78352,35 @@ end
 return false
 end
 
-local v124 = arg._inputHook:Reserve()
-local v125 = v119.new(mapName, v123.MapAnchor, v123.AliveState, v123.InnerContext.FighterState.Inner, v123.InnerContext.ItemBehaviors, v124)
+local reserveOk, v124 = pcall(function() return arg._inputHook:Reserve() end)
+if not reserveOk or v124 == nil then
+warn("[MovementRecorder] Recording input reservation failed: " .. tostring(v124))
+fn36("Could not start recording: input binding is unavailable")
+return false
+end
+local v125 = nil
+local createOk, createResult = pcall(function()
+local innerContext = v123.InnerContext
+local fighterState = innerContext and innerContext.FighterState or nil
+local fighterInner = fighterState and fighterState.Inner or nil
+local itemBehaviors = innerContext and innerContext.ItemBehaviors or nil
+if fighterInner == nil or itemBehaviors == nil then
+error("fighter input context is incomplete", 0)
+end
+v125 = v119.new(mapName, v123.MapAnchor, v123.AliveState, fighterInner, itemBehaviors, v124)
 v125:Update()
+return v125
+end)
+if not createOk or createResult == nil then
+warn("[MovementRecorder] Recording startup failed: " .. tostring(createResult))
+if v125 ~= nil then
+pcall(function() v125:Destroy() end)
+else
+pcall(function() v124:Destroy() end)
+end
+fn36("Could not start recording; check the character and input state")
+return false
+end
 arg._state = { Kind = "Recording", Recorder = v125 }
 fn36("Now recording")
 return v86[34]
@@ -78050,8 +78391,12 @@ local state = arg._state
 if state.Kind ~= "Recording" then
 return
 end
-state.Recorder:Destroy()
 arg._state = { Kind = "Idle" }
+local recorder = state.Recorder
+if recorder ~= nil then
+local destroyOk, destroyError = pcall(function() recorder:Destroy() end)
+if not destroyOk then warn("[MovementRecorder] Recording cleanup failed: " .. tostring(destroyError)) end
+end
 end
 
 index2._StopRecording = function(arg)
@@ -78059,31 +78404,24 @@ local state = arg._state
 if state.Kind ~= "Recording" then
 return
 end
-arg._lastRecording = state.Recorder:GetRecording()
+local getOk, recording = pcall(function()
+return state.Recorder:GetRecording()
+end)
 arg:_TeardownRecording()
+if getOk and type(recording) == "table" then
+arg._lastRecording = recording
 fn36("Recording stopped")
+else
+arg._lastRecording = nil
+fn36("Recording stopped, but the recording data could not be collected")
+warn("[MovementRecorder] Could not collect recording data: " .. tostring(recording))
+end
 end
 
 index2._StartReplaying = function(arg, arg2)
 local v123 = arg:_ResolveStartContext()
 if v123 == nil then
 return false
-end
-if type(arg2) ~= "table" or typeof(arg2.StartCFrame) ~= "CFrame" or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or type(arg2.Positions) ~= "table" then
-fn36("Recording data is invalid")
-return false
-end
-for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
-fn36("Recording data is invalid")
-return false
-end
-end
-for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or typeof(sample.Position) ~= "Vector3" then
-fn36("Recording data is invalid")
-return false
-end
 end
 local kind = arg._state.Kind
 
@@ -78100,7 +78438,7 @@ end
 if type(arg2) ~= "table"
 or type(arg2.MapName) ~= "string"
 or arg2.MapName == ""
-or typeof(arg2.StartCFrame) ~= "CFrame"
+or not finiteRecorderCFrame(arg2.StartCFrame)
 or type(arg2.Keypoints) ~= "table"
 or type(arg2.Positions) ~= "table"
 or #arg2.Keypoints == 0 then
@@ -78110,7 +78448,7 @@ end
 
 local lastKeypointOffset = -math.huge
 for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or keypoint.Offset < 0 or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
+if type(keypoint) ~= "table" or not finiteRecorderNumber(keypoint.Offset) or keypoint.Offset < 0 or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -78118,7 +78456,7 @@ lastKeypointOffset = keypoint.Offset
 local action = keypoint.Action
 local kind = action.Kind
 if kind == "Move" then
-if typeof(action.Direction) ~= "Vector3" then
+if not finiteRecorderVector3(action.Direction) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -78128,7 +78466,7 @@ fn36("Recording is invalid or incomplete")
 return false
 end
 elseif kind == "Look" then
-if typeof(action.CFrame) ~= "CFrame" then
+if not finiteRecorderCFrame(action.CFrame) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -78143,7 +78481,7 @@ fn36("Recording is invalid or incomplete")
 return false
 end
 elseif kind == "Equip" then
-if type(action.Index) ~= "number" then
+if not finiteRecorderNumber(action.Index) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -78155,7 +78493,7 @@ end
 
 local lastPositionOffset = -math.huge
 for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or sample.Offset ~= sample.Offset or sample.Offset < 0 or sample.Offset < lastPositionOffset or typeof(sample.Position) ~= "Vector3" then
+if type(sample) ~= "table" or not finiteRecorderNumber(sample.Offset) or sample.Offset < 0 or sample.Offset < lastPositionOffset or not finiteRecorderVector3(sample.Position) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -78163,18 +78501,41 @@ lastPositionOffset = sample.Offset
 end
 
 local waypoints = arg._waypoints
+local replayer = nil
+local createReplayOk, createReplayError = pcall(function()
+local innerContext = v123.InnerContext
+local fighterState = innerContext and innerContext.FighterState or nil
+local fighterInner = fighterState and fighterState.Inner or nil
+local itemBehaviors = innerContext and innerContext.ItemBehaviors or nil
+if fighterInner == nil or itemBehaviors == nil then
+error("fighter replay context is incomplete", 0)
+end
+replayer = v120.new(v123.AliveState, fighterInner, itemBehaviors, v123.MapAnchor, arg2, function()
+return arg:_IsRoundActive()
+end, function(arg3)
+arg:_FinishReplaying(arg3)
+end)
+end)
+if not createReplayOk or type(replayer) ~= "table" then
+warn("[MovementRecorder] Replay startup failed: " .. tostring(createReplayError))
+if replayer ~= nil then pcall(function() replayer:Destroy() end) end
+fn36("Could not start replay; check the character, camera, and movement controller")
+return false
+end
 
 if waypoints ~= nil then
-waypoints:SetActivatedRecording(arg2)
+local activateOk = pcall(function() waypoints:SetActivatedRecording(arg2) end)
+if not activateOk then
+pcall(function() replayer:Destroy() end)
+pcall(function() waypoints:SetActivatedRecording(nil) end)
+fn36("Could not activate the selected recording")
+return false
+end
 end
 
 arg._state = {
 Kind = "Replaying",
-Replayer = v120.new(v123.AliveState, v123.InnerContext.FighterState.Inner, v123.InnerContext.ItemBehaviors, v123.MapAnchor, arg2, function()
-return arg:_IsRoundActive()
-end, function(arg3)
-arg:_FinishReplaying(arg3)
-end),
+Replayer = replayer,
 }
 
 fn36("Now replaying")
@@ -78186,12 +78547,16 @@ local state = arg._state
 if state.Kind ~= "Replaying" then
 return
 end
-state.Replayer:Destroy()
 arg._state = { Kind = "Idle" }
+local replayer = state.Replayer
+if replayer ~= nil then
+local destroyOk, destroyError = pcall(function() replayer:Destroy() end)
+if not destroyOk then warn("[MovementRecorder] Replay cleanup failed: " .. tostring(destroyError)) end
+end
 local waypoints = arg._waypoints
-
 if waypoints ~= nil then
-waypoints:SetActivatedRecording(nil)
+local clearOk, clearError = pcall(function() waypoints:SetActivatedRecording(nil) end)
+if not clearOk then warn("[MovementRecorder] Could not clear selected recording marker: " .. tostring(clearError)) end
 end
 end
 
