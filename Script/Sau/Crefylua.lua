@@ -64418,10 +64418,15 @@ local function buildOther(grid)
         CloseOnSelect = true,
         Config = { "Ragebot", "TargetPlayer" },
     })
+    if playerDropdown.Value == nil then
+        playerDropdown:Set("Auto")
+    end
 
     local function refreshPlayerOptions()
-        playerDropdown:SetOptions(getPlayerOptions())
-        if playerDropdown.Value == nil then
+        local options = getPlayerOptions()
+        playerDropdown:SetOptions(options)
+        local selected = playerDropdown.Value
+        if type(selected) ~= "string" or not table.find(options, selected) then
             playerDropdown:Set("Auto")
         end
     end
@@ -64483,13 +64488,10 @@ return function(J, B)
     silentSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
     StoreProfiles(J.StoreProfiles, SilentAimProfiles(silentGrid, silentSpec))
 
-    local ragebotTab = B:AddTab({ Label = "Ragebot", Icon = Icons.Ragebot, Description = "Aggressive targeting, weapon priority, and evasive movement." })
-    local mainTab = ragebotTab:AddTab({ Label = "Main", Description = "Ragebot activation, weapon selection, and evasion." })
-    local mainGrid = mainTab:Grid({ Columns = 2 })
-    if W.IsArcadeServer then tbl17.ie()(mainGrid) else tbl17.ih()(mainGrid) end
-
-    local otherTab = ragebotTab:AddTab({ Label = "Other", Description = "Target priority, player selection, hitscan, Underground, and target offsets." })
-    buildOther(otherTab:Grid({ Columns = 1 }))
+    local ragebotTab = combat:AddTab({ Label = "Ragebot", Icon = Icons.Ragebot, Description = "Aggressive targeting, weapon priority, and evasive movement." })
+    local ragebotGrid = ragebotTab:Grid({ Columns = 2 })
+    if W.IsArcadeServer then tbl17.ie()(ragebotGrid) else tbl17.ih()(ragebotGrid) end
+    buildOther(ragebotGrid)
 
     local fireAssistTab = combat:AddTab({ Label = "Fire Assist", Icon = Icons.FireAssist, Description = "Automatic firing and fast camera flicks." })
     local fireGrid, fireSpec = fireAssistTab:Grid({ Columns = 2 }), table.clone(P.BuildSpec)
@@ -68996,13 +68998,9 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.bM()
 
-local function fn36(arg, player, localEnvironmentId)
-if arg == nil or not arg.IsEnemy or localEnvironmentId == nil then
+local function fn36(arg, player)
+if arg == nil or not arg.IsEnemy then
 return false
-end
-local environmentOk, targetEnvironmentId = pcall(function() return arg.EnvironmentId end)
-if not environmentOk or targetEnvironmentId ~= localEnvironmentId then
-    return false
 end
 local okInvincible, isInvincible = pcall(function() return arg:IsInvincible() end)
 if not okInvincible or isInvincible then
@@ -69059,15 +69057,6 @@ end)
 return ok and target or nil
 end
 
-local function getLocalEnvironmentId(fighters)
-    local ok, environmentId = pcall(function()
-        local localState = fighters and fighters.LocalState or nil
-        return localState and localState.EnvironmentId or nil
-    end)
-    if ok then return environmentId end
-    return nil
-end
-
 local index2 = {}
 index2.__index = index2
 
@@ -69081,7 +69070,6 @@ local prioritizeHackers = ragebotTargetConfig.PrioritizeHackers == true
 local selectedTargetName = type(ragebotTargetConfig.TargetPlayer) == "string" and ragebotTargetConfig.TargetPlayer or "Auto"
 if selectedTargetName == "" then selectedTargetName = "Auto" end
 local Players = game:GetService("Players")
-local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
 local localPosition = nil
 local okLocalPosition, localPositionValue = pcall(function()
     local localPlayer = Players.LocalPlayer
@@ -69097,7 +69085,11 @@ if okLocalPosition and typeof(localPositionValue) == "Vector3" then
 end
 
 local function isHacker(player)
-    local okTag, tagged = pcall(arg._playerTags.Has, arg._playerTags, player, "Hacker")
+    local okTag, tagged = pcall(function()
+        local tags = arg._playerTags
+        if tags == nil or type(tags.Has) ~= "function" then return false end
+        return tags:Has(player, "Hacker")
+    end)
     return okTag and tagged == true
 end
 
@@ -69156,11 +69148,6 @@ if arg._lastConfiguredTargetName ~= selectedTargetName then
     arg._lastConfiguredTargetName = selectedTargetName
 end
 
-if localEnvironmentId == nil then
-    clearLockedTarget()
-    return nil
-end
-
 local function lockTimeoutStatus(field, timeout)
     local now = os.clock()
     local started = arg[field]
@@ -69190,7 +69177,7 @@ if prioritizeHackers then
     if okPlayers and type(hackerPlayers) == "table" then
         for _, player in ipairs(hackerPlayers) do
             local fighter = arg._fighters.StateByPlayer[player]
-            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
+            if player ~= nil and fighter ~= nil and fn36(fighter, player) then
                 local distance = distanceTo(fighter)
                 if distance ~= nil and distance < prioritizedHackerDistance then
                     prioritizedHacker = fighter
@@ -69244,10 +69231,6 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
             return lockTimeoutStatus("_lockedEnemyMismatchSince", LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT)
         end
         arg._lockedEnemyMismatchSince = nil
-        if localEnvironmentId ~= nil and lockedFighter.EnvironmentId ~= localEnvironmentId then
-            return "release", nil, nil
-        end
-
         local distance = distanceTo(lockedFighter)
         if distance == nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
@@ -69255,7 +69238,7 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         if isExplicitlyProtected(lockedFighter) then
             return "release", nil, nil
         end
-        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId) then
+        if not fn36(lockedFighter, lockedPlayer) then
             return lockTimeoutStatus("_lockedUnattackableSince", LOCKED_TARGET_UNATTACKABLE_TIMEOUT)
         end
         arg._lockedUnattackableSince = nil
@@ -69305,7 +69288,7 @@ if selectedTargetName ~= "Auto" then
     if selectedPlayer ~= nil then
         local selectedFighter = arg._fighters.EnemyByPlayer[selectedPlayer]
         if selectedFighter ~= nil
-            and fn36(selectedFighter, selectedPlayer, localEnvironmentId)
+            and fn36(selectedFighter, selectedPlayer)
             and distanceTo(selectedFighter) ~= nil
             and not isExplicitlyProtected(selectedFighter) then
             local selectedTarget = fn37(selectedFighter)
@@ -69320,7 +69303,7 @@ end
 
 local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
 for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
-    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
+    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player) then
         local distance = distanceTo(fighter)
         if distance ~= nil and distance < bestTargetDistance then
             bestTarget, bestTargetDistance, bestTargetPlayer = fighter, distance, player
@@ -69345,19 +69328,13 @@ arg._lockedReadFailureSince = nil
 end
 
 index2.HasTargets = function(arg)
-local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
-if localEnvironmentId == nil then
-    return false
+for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
+    if fn36(fighter, player) then
+        return true
+    end
 end
-for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116, player, localEnvironmentId) then
-return true
+return false
 end
-end
-
-return v86[153]
-end
-
 index2.IsSameTarget = function(arg, arg2)
 return arg.FighterState == arg2.FighterState and arg.AliveState == arg2.AliveState
 end
