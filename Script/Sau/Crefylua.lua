@@ -74202,6 +74202,8 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
     return false
 end
 
+end
+
 index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
 if arg4 ~= nil then
 local aliveState = arg4.AliveState
