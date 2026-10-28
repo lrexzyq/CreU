@@ -64483,7 +64483,7 @@ return function(J, B)
     silentSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
     StoreProfiles(J.StoreProfiles, SilentAimProfiles(silentGrid, silentSpec))
 
-    local ragebotTab = combat:AddTab({ Label = "Ragebot", Icon = Icons.Ragebot, Description = "Aggressive targeting, weapon priority, and evasive movement." })
+    local ragebotTab = B:AddTab({ Label = "Ragebot", Icon = Icons.Ragebot, Description = "Aggressive targeting, weapon priority, and evasive movement." })
     local mainTab = ragebotTab:AddTab({ Label = "Main", Description = "Ragebot activation, weapon selection, and evasion." })
     local mainGrid = mainTab:Grid({ Columns = 2 })
     if W.IsArcadeServer then tbl17.ie()(mainGrid) else tbl17.ih()(mainGrid) end
