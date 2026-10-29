@@ -73897,6 +73897,7 @@ end
 end
 end
 end
+end
 
 local function ragebotInventoryHasItem(innerContext, wantedName)
     if type(wantedName) ~= "string" or wantedName == "" then return false end
