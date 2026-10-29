@@ -65171,6 +65171,8 @@ local undergroundCachedLocalPosition = nil
 local undergroundCachedEnvironmentId = nil
 local UNDERGROUND_MIN_DEPTH = 1.25
 local UNDERGROUND_MAX_DEPTH = 12.0
+local UNDERGROUND_GROUND_ENTER_GAP = 4.5
+local UNDERGROUND_GROUND_EXIT_GAP = 5.0
 local UNDERGROUND_SELF_BUFFER = 0.35
 local UNDERGROUND_PLAYER_SCAN_RADIUS = 80
 local UNDERGROUND_PLAYER_VERTICAL_TOLERANCE = 32
@@ -65201,6 +65203,7 @@ local undergroundRagebotIntegrated = false
 local undergroundNextTransitionWarningAt = 0
 local undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
 local undergroundDepth = UNDERGROUND_MIN_DEPTH
+local undergroundGroundEligible = false
 local undergroundAdaptiveScanAt = 0
 local undergroundAdaptiveDepthUpdatedAt = 0
 local undergroundOtherCount = 0
@@ -65522,7 +65525,7 @@ local function undergroundRaycastIgnoringHumanoidModels(origin, direction, param
     if type(baseFilter) == "table" then
         for _, instance in ipairs(baseFilter) do filter[#filter + 1] = instance end
     end
-    for _ = 1, 32 do
+    for _ = 1, 33 do
         params.FilterDescendantsInstances = filter
         local raycastOk, result = pcall(function()
             return Workspace:Raycast(origin, direction, params)
@@ -65535,17 +65538,16 @@ local function undergroundRaycastIgnoringHumanoidModels(origin, direction, param
             if current:IsA("Model") then
                 local hasCharacterController = false
                 local okController, controller = pcall(function()
-                    return current:FindFirstChildWhichIsA("Humanoid", true)
-                        or current:FindFirstChildWhichIsA("AnimationController", true)
+                    return current:FindFirstChildOfClass("Humanoid")
                 end)
                 if okController and controller ~= nil then hasCharacterController = true end
                 if not hasCharacterController then
                     local okRootSignature, rootSignature = pcall(function()
-                        return current:FindFirstChild("HumanoidRootPart", true)
-                            or current:FindFirstChild("RootPart", true)
+                        return current:FindFirstChild("HumanoidRootPart")
+                            or current:FindFirstChild("RootPart")
                     end)
                     local okHeadSignature, headSignature = pcall(function()
-                        return current:FindFirstChild("Head", true)
+                        return current:FindFirstChild("Head")
                     end)
                     if okRootSignature and rootSignature ~= nil and okHeadSignature and headSignature ~= nil then
                         hasCharacterController = true
@@ -65629,6 +65631,13 @@ local function undergroundProbeSurface(char, root)
         end
     end
     params.FilterDescendantsInstances = raycastFilter
+    local ground = undergroundRaycastIgnoringHumanoidModels(
+        Vector3.new(pos.X, minY + 0.15, pos.Z), Vector3.new(0, -128, 0), params
+    )
+    local groundGap = math.huge
+    if ground and ground.Position then
+        groundGap = minY - ground.Position.Y
+    end
 
     local down = undergroundRaycastIgnoringHumanoidModels(
         pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params
@@ -65656,13 +65665,13 @@ local function undergroundProbeSurface(char, root)
         and upGap <= UNDERGROUND_UP_SURFACE_MAX_GAP
 
     if upValid and (not downValid or downGap > UNDERGROUND_NEAR_FLOOR_GAP) then
-        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true }
+        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true, groundGap = groundGap }
     end
     if downValid then
-        return { surfaceY = down.Position.Y, surfacePart = down.Instance, surfaceAboveCharacter = false }
+        return { surfaceY = down.Position.Y, surfacePart = down.Instance, surfaceAboveCharacter = false, groundGap = groundGap }
     end
     if upValid then
-        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true }
+        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true, groundGap = groundGap }
     end
     return nil
 end
@@ -65750,9 +65759,25 @@ end
 local function undergroundFindFloorY(char, root)
     local probe = undergroundProbeSurface(char, root)
     if not probe then
-        return nil, nil, false
+        return nil, nil, false, nil
     end
-    return probe.surfaceY, probe.surfacePart, probe.surfaceAboveCharacter == true
+    return probe.surfaceY, probe.surfacePart, probe.surfaceAboveCharacter == true, probe.groundGap
+end
+
+local function undergroundGroundGapAllowed(groundGap)
+    if type(groundGap) ~= "number" or groundGap ~= groundGap
+        or groundGap == math.huge or groundGap == -math.huge then
+        undergroundGroundEligible = false
+        return false
+    end
+    local groundLimit = undergroundGroundEligible
+        and UNDERGROUND_GROUND_EXIT_GAP or UNDERGROUND_GROUND_ENTER_GAP
+    if groundGap > groundLimit then
+        undergroundGroundEligible = false
+        return false
+    end
+    undergroundGroundEligible = true
+    return true
 end
 
 local function undergroundCapture(char, root, humanoid)
@@ -65831,8 +65856,12 @@ local function undergroundRestore(preferredClientCFrame, skipPositionRestore)
 end
 
 local function undergroundServerCFrame(char, root)
-    local surfaceY, surfacePart = undergroundFindFloorY(char, root)
+    local surfaceY, surfacePart, _, groundGap = undergroundFindFloorY(char, root)
     if surfaceY == nil or surfacePart == nil then
+        undergroundGroundEligible = false
+        return nil
+    end
+    if not undergroundGroundGapAllowed(groundGap) then
         return nil
     end
     local currentRoot = undergroundGetClientCFrame(root)
@@ -65940,6 +65969,7 @@ startUnderground = function()
 
     undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
     undergroundDepth = UNDERGROUND_MIN_DEPTH
+    undergroundGroundEligible = false
     undergroundOtherCount = 0
     undergroundOtherFloorPart = nil
     undergroundAdaptiveScanAt = 0
@@ -66033,6 +66063,8 @@ startUnderground = function()
             return
         end
         if undergroundRagebotIntegrated then
+            local integratedProbe = undergroundProbeSurface(currentChar, currentRoot)
+            undergroundGroundGapAllowed(integratedProbe and integratedProbe.groundGap or nil)
             if typeof(undergroundLastClientCFrame) ~= 'CFrame' then
                 local okClient, clientCFrame = pcall(function() return currentRoot.CFrame end)
                 if okClient and typeof(clientCFrame) == 'CFrame' then
@@ -66089,6 +66121,7 @@ stopUnderground = function(skipPositionRestore)
     undergroundRagebotIntegrated = false
     undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
     undergroundDepth = UNDERGROUND_MIN_DEPTH
+    undergroundGroundEligible = false
     undergroundOtherCount = 0
     undergroundOtherFloorPart = nil
     undergroundAdaptiveScanAt = 0
@@ -66209,6 +66242,9 @@ return undergroundEnabled == true
 end
 undergroundController.IsRagebotIntegrated = function()
 return undergroundEnabled == true and undergroundRagebotIntegrated == true
+end
+undergroundController.IsGroundEligible = function()
+return undergroundGroundEligible == true
 end
 undergroundController.SetRagebotIntegration = function(active, preferredClientPose)
 undergroundRagebotRequested = active == true
@@ -66463,8 +66499,11 @@ end
 if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
 undergroundLastClientCFrame = clientCFrame
 end
+if not undergroundGroundEligible then
+return cframe
+end
 
-local offset = weaponKind == "Melee"
+local offset = (weaponKind == "Melee" or weaponKind == "Knife")
     and Vector3.new(0, UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET, 0)
     or Vector3.zero
 local adjusted = cframe + offset
@@ -74948,7 +74987,12 @@ local controller = rawget(_G, "__CrefyUndergroundController")
 local undergroundIntegrated = false
 if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "function" then
     local okIntegrated, integrated = pcall(controller.IsRagebotIntegrated)
-    undergroundIntegrated = okIntegrated and integrated == true
+    local groundEligible = true
+    if type(controller.IsGroundEligible) == "function" then
+        local okGround, eligible = pcall(controller.IsGroundEligible)
+        groundEligible = okGround and eligible == true
+    end
+    undergroundIntegrated = okIntegrated and integrated == true and groundEligible
 end
 
 local voidSpamBaseCFrame = cframe
