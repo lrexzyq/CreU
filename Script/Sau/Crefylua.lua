@@ -65171,8 +65171,6 @@ local undergroundCachedLocalPosition = nil
 local undergroundCachedEnvironmentId = nil
 local UNDERGROUND_MIN_DEPTH = 1.25
 local UNDERGROUND_MAX_DEPTH = 12.0
-local UNDERGROUND_GROUND_ENTER_GAP = 4.5
-local UNDERGROUND_GROUND_EXIT_GAP = 5.0
 local UNDERGROUND_SELF_BUFFER = 0.35
 local UNDERGROUND_PLAYER_SCAN_RADIUS = 80
 local UNDERGROUND_PLAYER_VERTICAL_TOLERANCE = 32
@@ -65203,7 +65201,6 @@ local undergroundRagebotIntegrated = false
 local undergroundNextTransitionWarningAt = 0
 local undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
 local undergroundDepth = UNDERGROUND_MIN_DEPTH
-local undergroundGroundEligible = false
 local undergroundAdaptiveScanAt = 0
 local undergroundAdaptiveDepthUpdatedAt = 0
 local undergroundOtherCount = 0
@@ -65525,7 +65522,7 @@ local function undergroundRaycastIgnoringHumanoidModels(origin, direction, param
     if type(baseFilter) == "table" then
         for _, instance in ipairs(baseFilter) do filter[#filter + 1] = instance end
     end
-    for _ = 1, 33 do
+    for _ = 1, 32 do
         params.FilterDescendantsInstances = filter
         local raycastOk, result = pcall(function()
             return Workspace:Raycast(origin, direction, params)
@@ -65538,16 +65535,17 @@ local function undergroundRaycastIgnoringHumanoidModels(origin, direction, param
             if current:IsA("Model") then
                 local hasCharacterController = false
                 local okController, controller = pcall(function()
-                    return current:FindFirstChildOfClass("Humanoid")
+                    return current:FindFirstChildWhichIsA("Humanoid", true)
+                        or current:FindFirstChildWhichIsA("AnimationController", true)
                 end)
                 if okController and controller ~= nil then hasCharacterController = true end
                 if not hasCharacterController then
                     local okRootSignature, rootSignature = pcall(function()
-                        return current:FindFirstChild("HumanoidRootPart")
-                            or current:FindFirstChild("RootPart")
+                        return current:FindFirstChild("HumanoidRootPart", true)
+                            or current:FindFirstChild("RootPart", true)
                     end)
                     local okHeadSignature, headSignature = pcall(function()
-                        return current:FindFirstChild("Head")
+                        return current:FindFirstChild("Head", true)
                     end)
                     if okRootSignature and rootSignature ~= nil and okHeadSignature and headSignature ~= nil then
                         hasCharacterController = true
@@ -65631,13 +65629,6 @@ local function undergroundProbeSurface(char, root)
         end
     end
     params.FilterDescendantsInstances = raycastFilter
-    local ground = undergroundRaycastIgnoringHumanoidModels(
-        Vector3.new(pos.X, minY + 0.15, pos.Z), Vector3.new(0, -128, 0), params
-    )
-    local groundGap = math.huge
-    if ground and ground.Position then
-        groundGap = minY - ground.Position.Y
-    end
 
     local down = undergroundRaycastIgnoringHumanoidModels(
         pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params
@@ -65665,13 +65656,13 @@ local function undergroundProbeSurface(char, root)
         and upGap <= UNDERGROUND_UP_SURFACE_MAX_GAP
 
     if upValid and (not downValid or downGap > UNDERGROUND_NEAR_FLOOR_GAP) then
-        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true, groundGap = groundGap }
+        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true }
     end
     if downValid then
-        return { surfaceY = down.Position.Y, surfacePart = down.Instance, surfaceAboveCharacter = false, groundGap = groundGap }
+        return { surfaceY = down.Position.Y, surfacePart = down.Instance, surfaceAboveCharacter = false }
     end
     if upValid then
-        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true, groundGap = groundGap }
+        return { surfaceY = up.Position.Y, surfacePart = up.Instance, surfaceAboveCharacter = true }
     end
     return nil
 end
@@ -65759,25 +65750,9 @@ end
 local function undergroundFindFloorY(char, root)
     local probe = undergroundProbeSurface(char, root)
     if not probe then
-        return nil, nil, false, nil
+        return nil, nil, false
     end
-    return probe.surfaceY, probe.surfacePart, probe.surfaceAboveCharacter == true, probe.groundGap
-end
-
-local function undergroundGroundGapAllowed(groundGap)
-    if type(groundGap) ~= "number" or groundGap ~= groundGap
-        or groundGap == math.huge or groundGap == -math.huge then
-        undergroundGroundEligible = false
-        return false
-    end
-    local groundLimit = undergroundGroundEligible
-        and UNDERGROUND_GROUND_EXIT_GAP or UNDERGROUND_GROUND_ENTER_GAP
-    if groundGap > groundLimit then
-        undergroundGroundEligible = false
-        return false
-    end
-    undergroundGroundEligible = true
-    return true
+    return probe.surfaceY, probe.surfacePart, probe.surfaceAboveCharacter == true
 end
 
 local function undergroundCapture(char, root, humanoid)
@@ -65856,12 +65831,8 @@ local function undergroundRestore(preferredClientCFrame, skipPositionRestore)
 end
 
 local function undergroundServerCFrame(char, root)
-    local surfaceY, surfacePart, _, groundGap = undergroundFindFloorY(char, root)
+    local surfaceY, surfacePart = undergroundFindFloorY(char, root)
     if surfaceY == nil or surfacePart == nil then
-        undergroundGroundEligible = false
-        return nil
-    end
-    if not undergroundGroundGapAllowed(groundGap) then
         return nil
     end
     local currentRoot = undergroundGetClientCFrame(root)
@@ -65969,7 +65940,6 @@ startUnderground = function()
 
     undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
     undergroundDepth = UNDERGROUND_MIN_DEPTH
-    undergroundGroundEligible = false
     undergroundOtherCount = 0
     undergroundOtherFloorPart = nil
     undergroundAdaptiveScanAt = 0
@@ -66063,8 +66033,6 @@ startUnderground = function()
             return
         end
         if undergroundRagebotIntegrated then
-            local integratedProbe = undergroundProbeSurface(currentChar, currentRoot)
-            undergroundGroundGapAllowed(integratedProbe and integratedProbe.groundGap or nil)
             if typeof(undergroundLastClientCFrame) ~= 'CFrame' then
                 local okClient, clientCFrame = pcall(function() return currentRoot.CFrame end)
                 if okClient and typeof(clientCFrame) == 'CFrame' then
@@ -66121,7 +66089,6 @@ stopUnderground = function(skipPositionRestore)
     undergroundRagebotIntegrated = false
     undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
     undergroundDepth = UNDERGROUND_MIN_DEPTH
-    undergroundGroundEligible = false
     undergroundOtherCount = 0
     undergroundOtherFloorPart = nil
     undergroundAdaptiveScanAt = 0
@@ -66242,9 +66209,6 @@ return undergroundEnabled == true
 end
 undergroundController.IsRagebotIntegrated = function()
 return undergroundEnabled == true and undergroundRagebotIntegrated == true
-end
-undergroundController.IsGroundEligible = function()
-return undergroundGroundEligible == true
 end
 undergroundController.SetRagebotIntegration = function(active, preferredClientPose)
 undergroundRagebotRequested = active == true
@@ -66499,11 +66463,8 @@ end
 if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
 undergroundLastClientCFrame = clientCFrame
 end
-if not undergroundGroundEligible then
-return cframe
-end
 
-local offset = (weaponKind == "Melee" or weaponKind == "Knife")
+local offset = weaponKind == "Melee"
     and Vector3.new(0, UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET, 0)
     or Vector3.zero
 local adjusted = cframe + offset
@@ -71465,63 +71426,9 @@ local v115 = tbl17.bG()
 tbl17.cU()
 tbl17.cX()
 
-local function fn36(item, context)
-local function categoryForSlot(slot)
-slot = tonumber(slot)
-if slot == 1 then return "Primary" end
-if slot == 2 then return "Secondary" end
-if slot == 3 then return "Melee" end
-return nil
-end
-
-local itemInner = nil
-pcall(function() itemInner = item and item.Inner or nil end)
-local fighterState = nil
-local fighterInner = nil
-local rawItems = nil
-pcall(function() fighterState = context and context.FighterState or nil end)
-pcall(function() fighterInner = fighterState and fighterState.Inner or nil end)
-pcall(function()
-if fighterState ~= nil and type(fighterState.GetItems) == "function" then
-rawItems = fighterState:GetItems()
-end
-end)
-if type(rawItems) ~= "table" or next(rawItems) == nil then
-local innerItems = nil
-pcall(function() innerItems = fighterInner and fighterInner.Items or nil end)
-if type(innerItems) == "table" and next(innerItems) ~= nil then
-rawItems = innerItems
-end
-end
-
-if type(rawItems) == "table" then
-for slotKey, candidate in pairs(rawItems) do
-local category = categoryForSlot(slotKey)
-if category ~= nil then
-local matches = candidate == item or (itemInner ~= nil and candidate == itemInner)
-if not matches and candidate ~= nil then
-local candidateInner = nil
-pcall(function() candidateInner = candidate.Inner end)
-matches = candidateInner == item or (itemInner ~= nil and candidateInner == itemInner)
-end
-if matches then return category end
-end
-end
-end
-
-local index2 = nil
-pcall(function() index2 = item and item.Index or nil end)
-local category = categoryForSlot(index2)
-if category ~= nil then return category end
-
-local data = nil
-pcall(function() data = item and item.Data or nil end)
-local itemIndex = nil
-if type(data) == "table" then
-pcall(function() itemIndex = data.ItemIndex end)
-if itemIndex == nil then pcall(function() itemIndex = data.Index end) end
-end
-return categoryForSlot(itemIndex)
+local function fn36(arg)
+local index2 = arg.Index
+return index2 == v86[63] and "Primary" or index2 == 2 and "Secondary" or index2 == 3 and "Melee" or nil
 end
 
 local function fn37(arg)
@@ -71577,12 +71484,9 @@ local huge2 = math.huge
 local flag19 = false
 local v116 = nil
 local v117 = nil
-local inventoryItemCount = 0
-local unreadableAmmoCount = 0
 
 for _, v118 in arg.ItemBehaviors:GetItems(), nil, nil do
-inventoryItemCount += 1
-local v119 = fn36(v118, arg)
+local v119 = fn36(v118)
 
 if not (v119 == nil or not fn37(v119)) then
 flag19 = v86[34]
@@ -71593,7 +71497,6 @@ local ammoBased = false
 if v118.__type == "Gun" then
 local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
 if not okAmmoState then
-unreadableAmmoCount += 1
 continue
 end
 ammoBased = readAmmoBased
@@ -71623,7 +71526,7 @@ end
 end
 
 if not flag19 then
-return nil, string.format("no enabled weapon matched Primary/Secondary/Melee slots (items=%d); check slot mapping and weapon toggles", inventoryItemCount)
+return nil
 end
 
 if v116 ~= nil then
@@ -71631,7 +71534,7 @@ local flag20 = false
 if v116.__type == "Gun" then
 local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
 if not okAmmoState then
-return nil, "selected gun ammo state could not be read; waiting for a valid weapon state"
+return nil
 end
 if ammoBased then
 flag20 = currentAmmo == v86[186]
@@ -71649,7 +71552,7 @@ return { Type = "Swap", Item = v116 }
 end
 
 if onEmpty == "Swap" then
-return nil, "On Empty is set to Swap, but no other enabled weapon is available"
+return nil
 end
 
 if v117 ~= nil then
@@ -71659,10 +71562,7 @@ end
 return { Type = "Swap", Item = v117 }
 end
 
-if unreadableAmmoCount > 0 then
-return nil, string.format("ammo state was unreadable for %d enabled gun(s); no safe action was selected", unreadableAmmoCount)
-end
-return nil, "all enabled weapon choices are empty, unavailable, or waiting for ammo/reserve state"
+return nil
 end }
 end
 
@@ -73147,7 +73047,7 @@ if previousEvasionMode ~= mode then
     end
 end
 arg._lastEvasionMode = mode
-local okAction, actionResult, actionReason = pcall(v128.getAction, innerContext)
+local okAction, actionResult = pcall(v128.getAction, innerContext)
 if okAction and actionResult ~= nil then
     if type(actionResult) ~= "table" then
 
@@ -73165,12 +73065,19 @@ if okAction and actionResult ~= nil then
     end
 end
 local v130 = okAction and actionResult or nil
-local noWeaponAction = okAction and actionResult == nil
 if not okAction then
 local warningNow = os.clock()
 if warningNow >= (arg._nextGetActionWarningAt or 0) then
 arg._nextGetActionWarningAt = warningNow + 5
 warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
+end
+elseif actionResult == nil then
+
+local warningNow = os.clock()
+if warningNow >= (arg._nextNoActionWarningAt or 0) then
+arg._nextNoActionWarningAt = warningNow + 5
+warn("[Ragebot] No weapon action selected; if a valid target exists, movement will hold this update and retry")
+end
 end
 
 local repRootCounterActive = false
@@ -73727,15 +73634,6 @@ arg._lastTargetWorld = nil
 ragebotSafeDeactivateTargetState(arg)
 end
 
-if targetPartsValid and noWeaponAction then
-local warningNow = os.clock()
-if warningNow >= (arg._nextNoActionWarningAt or 0) then
-arg._nextNoActionWarningAt = warningNow + 5
-local detail = type(actionReason) == "string" and actionReason ~= "" and (" (" .. actionReason .. ")") or ""
-warn("[Ragebot] No weapon action selected for a valid target" .. detail .. "; movement will hold this update and retry")
-end
-end
-
 local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
@@ -73893,7 +73791,6 @@ else
 if os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Ignored non-function WeaponAction callback")
-end
 end
 end
 end
@@ -74988,12 +74885,7 @@ local controller = rawget(_G, "__CrefyUndergroundController")
 local undergroundIntegrated = false
 if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "function" then
     local okIntegrated, integrated = pcall(controller.IsRagebotIntegrated)
-    local groundEligible = true
-    if type(controller.IsGroundEligible) == "function" then
-        local okGround, eligible = pcall(controller.IsGroundEligible)
-        groundEligible = okGround and eligible == true
-    end
-    undergroundIntegrated = okIntegrated and integrated == true and groundEligible
+    undergroundIntegrated = okIntegrated and integrated == true
 end
 
 local voidSpamBaseCFrame = cframe
@@ -76435,40 +76327,12 @@ end
 index2.new = function(arg, arg2)
 local tbl18 = { _errorReporter = v115.new(), _restore = nil }
 setmetatable(tbl18, index2)
-local installOk, installResult = pcall(function()
-return tbl18:_Install(arg, arg2)
-end)
-if installOk then
-pcall(function() tbl18._errorReporter:ReportResult(installResult) end)
-else
-tbl18._hookSkippedReason = "QuickAttack hook setup failed; input fallback will record quick attacks"
-end
+tbl18._errorReporter:ReportResult(tbl18:_Install(arg, arg2))
 return tbl18
 end
 
 index2._Install = function(arg, arg2, arg3)
-local quickAttack = nil
-local quickAttackReadOk = pcall(function()
-quickAttack = arg2 ~= nil and arg2.QuickAttack or nil
-end)
-if not quickAttackReadOk or type(quickAttack) ~= "function" then
-arg._hookSkippedReason = "QuickAttack method is unavailable; input fallback will record quick attacks"
-return v116.VoidOk
-end
-
-local debugLibrary = debug
-if type(debugLibrary) ~= "table" or type(debugLibrary.getupvalues) ~= "function" then
-arg._hookSkippedReason = "getupvalues is unavailable; input fallback will record quick attacks"
-return v116.VoidOk
-end
-
-local okUpvalues, upvalues = pcall(debugLibrary.getupvalues, quickAttack)
-if not okUpvalues or type(upvalues) ~= "table" then
-arg._hookSkippedReason = "QuickAttack upvalues could not be read; input fallback will record quick attacks"
-return v116.VoidOk
-end
-
-for _, v119 in pairs(upvalues) do
+for _, v119 in debug.getupvalues(arg2.QuickAttack) do
 if type(v119) ~= "table" then
 continue
 end
@@ -76477,37 +76341,24 @@ for k, v120 in v119, nil, nil do
 if typeof(v120) ~= "Instance" or not v117(v120, v118) then
 continue
 end
-local replacement = fn36(arg3)
-local writeOk = pcall(function() v119[k] = replacement end)
-local readOk, installedValue = pcall(function() return v119[k] end)
-if writeOk and readOk and installedValue == replacement then
-arg._restore = { Bundle = v119, Key = k, Original = v120, Replacement = replacement }
-return v116.VoidOk
-end
-pcall(function() v119[k] = v120 end)
-arg._hookSkippedReason = "ReplicatedStorage upvalue could not be safely replaced; input fallback will record quick attacks"
+arg._restore = { Bundle = v119, Key = k, Original = v120 }
+v119[k] = fn36(arg3)
 return v116.VoidOk
 end
 end
 
-arg._hookSkippedReason = "ReplicatedStorage upvalue was not found; input fallback will record quick attacks"
-return v116.VoidOk
+return v116.err("QuickAttackHook", "upvalue_scan", "Failed to find ReplicatedStorage upvalue")
 end
 
 index2.Destroy = function(arg)
 local restore = arg._restore
-arg._restore = nil
 
 if restore ~= nil then
-pcall(function()
-local current = restore.Bundle[restore.Key]
-if current == restore.Replacement then
+arg._restore = nil
 restore.Bundle[restore.Key] = restore.Original
 end
-end)
-end
 
-pcall(function() arg._errorReporter:Destroy() end)
+arg._errorReporter:Destroy()
 end
 
 return index2
@@ -76623,39 +76474,13 @@ Positions = {},
 
 setmetatable(tbl18, index2)
 
-local hookOk, quickAttackHook = pcall(function()
-return v116.new(arg4, function(arg7)
+tbl18._quickAttackHook = v116.new(arg4, function(arg7)
 tbl18:_Record({ Kind = "QuickAttack", AttackType = arg7 })
 end)
-end)
-tbl18._quickAttackHook = hookOk and quickAttackHook or nil
-local quickAttackHookInstalled = false
-if type(tbl18._quickAttackHook) == "table" then
-pcall(function()
-local restore = tbl18._quickAttackHook._restore
-quickAttackHookInstalled = type(restore) == "table"
-    and restore.Bundle ~= nil and restore.Key ~= nil
-    and restore.Bundle[restore.Key] == restore.Replacement
-end)
-end
 
 tbl18._jumpConnection = v118.InputBegan:Connect(function(input, gameProcessed)
-if gameProcessed then
-return
-end
-if v117(inputLibrary.InputIs, inputLibrary, input, "Jump") then
+if not gameProcessed and v117(inputLibrary.InputIs, inputLibrary, input, "Jump") then
 tbl18:_Record({ Kind = "Jump" })
-return
-end
-if not quickAttackHookInstalled then
-if v117(inputLibrary.InputIs, inputLibrary, input, "QuickMelee") then
-tbl18:_Record({ Kind = "QuickAttack", AttackType = "Melee" })
-return
-end
-if v117(inputLibrary.InputIs, inputLibrary, input, "QuickUtility") then
-tbl18:_Record({ Kind = "QuickAttack", AttackType = "Utility" })
-return
-end
 end
 end)
 
@@ -76756,10 +76581,6 @@ index2._RecordItemInput = function(arg, arg2)
 if arg2 == nil or type(arg2.ObjectId) ~= "string" or type(arg2.Type) ~= "string" or arg2.Type == "" then
 return
 end
-local inputTypeLower = string.lower(arg2.Type)
-if inputTypeLower == "quickmelee" or inputTypeLower == "quickutility" then
-return
-end
 if arg._itemBehaviors == nil then
 return
 end
@@ -76808,18 +76629,9 @@ return arg._recording
 end
 
 index2.Destroy = function(arg)
-local inputBinding = arg._inputBinding
-if inputBinding ~= nil then
-pcall(function() inputBinding:Destroy() end)
-end
-local quickAttackHook = arg._quickAttackHook
-if quickAttackHook ~= nil then
-pcall(function() quickAttackHook:Destroy() end)
-end
-local jumpConnection = arg._jumpConnection
-if jumpConnection ~= nil then
-pcall(function() jumpConnection:Disconnect() end)
-end
+arg._inputBinding:Destroy()
+arg._quickAttackHook:Destroy()
+arg._jumpConnection:Disconnect()
 end
 
 return index2
@@ -77164,19 +76976,7 @@ task.spawn(v119, arg._clientFighter.EquipItem, arg._clientFighter, action.Index)
 elseif action.Kind == "ItemInput" then
 task.spawn(v119, arg._clientFighter.Input, arg._clientFighter, action.InputType)
 elseif action.Kind == "QuickAttack" then
-local clientFighter = arg._clientFighter
-local okMethods, quickAttack, quickAttackDown, quickAttackUp = pcall(function()
-return clientFighter.QuickAttack, clientFighter.QuickAttackDown, clientFighter.QuickAttackUp
-end)
-if okMethods and type(quickAttack) == "function" then
-task.spawn(v119, quickAttack, clientFighter, action.AttackType)
-elseif okMethods and type(quickAttackDown) == "function" and type(quickAttackUp) == "function" then
-task.spawn(function()
-local downOk = pcall(quickAttackDown, clientFighter, action.AttackType)
-if downOk then task.wait(0.05) end
-pcall(quickAttackUp, clientFighter, action.AttackType)
-end)
-end
+task.spawn(v119, arg._clientFighter.QuickAttack, arg._clientFighter, action.AttackType)
 elseif action.Kind == "Jump" then
 if v102(mechanicsController, "IsSliding") == true then
 v119(mechanicsController.HighJump, mechanicsController)
