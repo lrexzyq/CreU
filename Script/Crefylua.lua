@@ -8,45 +8,9 @@ end
 if not game:IsLoaded() then game.Loaded:Wait() end
 print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId))
 
--- Auto-detect script source path/URL và lưu vào getgenv() để re-run after teleport
--- có thể tìm thấy source mà không cần user set CrefySourcePath/Url thủ công.
--- Chỉ set nếu user chưa set sẵn.
-pcall(function()
-    local genv = (type(getgenv) == "function" and getgenv()) or _G
-    local hasPath = type(rawget(genv, "CrefySourcePath")) == "string"
-        or type(rawget(_G, "CrefySourcePath")) == "string"
-    local hasUrl  = type(rawget(genv, "CrefySourceUrl")) == "string"
-        or type(rawget(_G, "CrefySourceUrl")) == "string"
-    if hasPath or hasUrl then return end  -- đã có, không override
-
-    local ok, info = pcall(debug.getinfo, 1, "S")
-    if not ok or type(info) ~= "table" then return end
-    local src = info.source
-    if type(src) ~= "string" or src == "" then return end
-    if src:sub(1, 1) == "@" then
-        -- Script load từ file: "@path/to/file.lua"
-        local path = src:sub(2)
-        if type(path) == "string" and #path > 0 then
-            pcall(rawset, genv, "CrefySourcePath", path)
-            pcall(rawset, _G,   "CrefySourcePath", path)
-        end
-    elseif src:sub(1, 1) == "=" then
-        -- Script load từ URL: "=https://..."
-        local url = src:sub(2)
-        if type(url) == "string" and url:match("^https?://") then
-            pcall(rawset, genv, "CrefySourceUrl", url)
-            pcall(rawset, _G,   "CrefySourceUrl", url)
-        end
-    end
-end)
-
 local K: { [string]: any } = { connections = {}, cleanups = {}, destroyed = false }
 getgenv().KiciaRebuild = K
 
--- The teleport loader holds its duplicate guard until this execution either
--- completes bootstrap or reports a bounded failure. The key is per queued
--- generation and destination place, so repeated queue entries cannot unload a
--- still-starting Crefy instance.
 local function markCrefyQueuedRerunBootState(success)
     local env = _G
     pcall(function()
@@ -71,9 +35,6 @@ local function markCrefyQueuedRerunBootState(success)
 end
 local RAGEBOT_LOCAL_PENDING_GLUE_TARGETS = setmetatable({}, { __mode = "k" })
 
--- Recover persisted mutations before any later module can abort initialization.
--- This is deliberately independent of the Ragebot controller so an early load
--- failure cannot leave Workspace or a target hitbox in a modified state.
 local function startupRecoverPersistedMutations()
     local storage = _G
     if type(getgenv) == "function" then
@@ -89,10 +50,33 @@ local function startupRecoverPersistedMutations()
     local savedHeight = rawget(storage, destroyHeightKey)
     if not validSavedHeight(savedHeight) then savedHeight = rawget(_G, destroyHeightKey) end
     local stillPending = false
+    local function startupPoseRestoreIsPending()
+        local gateKey = "__CrefyRagebotPoseRestoreGate"
+        local gate = rawget(storage, gateKey)
+        if type(gate) ~= "table" then gate = rawget(_G, gateKey) end
+        if type(gate) ~= "table" then
+            local owner = rawget(storage, "KiciaRebuild")
+            if type(owner) ~= "table" then owner = rawget(_G, "KiciaRebuild") end
+            return type(owner) == "table"
+                and rawget(owner, "_repRootCounterRestorePending") == true
+        end
+        local active = rawget(gate, "active") == true
+        local untilAt = tonumber(rawget(gate, "untilAt"))
+        local gateStillActive = active
+            and (untilAt == nil or untilAt ~= untilAt
+                or untilAt == math.huge or untilAt == -math.huge
+                or os.clock() < untilAt)
+        local owner = rawget(gate, "owner")
+        local ownerStillRestoring = type(owner) == "table"
+            and rawget(owner, "_repRootCounterRestorePending") == true
+        return gateStillActive or ownerStillRestoring
+    end
     if validSavedHeight(savedHeight) then
         local currentOk, currentHeight = pcall(function() return workspace.FallenPartsDestroyHeight end)
         local heightRestored = currentOk and currentHeight == savedHeight
-        if not heightRestored then
+        if not heightRestored and startupPoseRestoreIsPending() then
+            stillPending = true
+        elseif not heightRestored then
             local heightOk = pcall(function()
                 workspace.FallenPartsDestroyHeight = savedHeight
             end)
@@ -100,12 +84,11 @@ local function startupRecoverPersistedMutations()
                 return workspace.FallenPartsDestroyHeight
             end)
             heightRestored = heightOk and heightReadOk and actualHeight == savedHeight
+            if not heightRestored then stillPending = true end
         end
         if heightRestored then
             pcall(rawset, storage, destroyHeightKey, nil)
             pcall(rawset, _G, destroyHeightKey, nil)
-        else
-            stillPending = true
         end
     end
 
@@ -115,8 +98,7 @@ local function startupRecoverPersistedMutations()
     local queue = type(primaryQueue) == "table" and primaryQueue
         or (type(fallbackQueue) == "table" and fallbackQueue or nil)
     if type(queue) == "table" and type(fallbackQueue) == "table" and fallbackQueue ~= queue then
-        -- Older executions may have written the two environments separately.
-        -- Merge missing target snapshots before synchronizing the table references.
+
         for target, info in pairs(fallbackQueue) do
             if queue[target] == nil then queue[target] = info end
         end
@@ -145,15 +127,15 @@ local function startupRecoverPersistedMutations()
                 if typeof(originalCFrame) ~= "CFrame" or type(info.OriginalAnchored) ~= "boolean" then
                     error("pending PartGlue snapshot is incomplete")
                 end
-                target.CFrame = originalCFrame
                 local weld = info.Weld
                 if weld ~= nil and originalPart1 ~= nil then weld.Part1 = originalPart1 end
+                target.CFrame = originalCFrame
                 target.Anchored = info.OriginalAnchored
                 if target.CFrame ~= originalCFrame or target.Anchored ~= info.OriginalAnchored then
-                    error("pending PartGlue property read-back mismatch")
+                    error("pending PartGlue final property read-back mismatch")
                 end
                 if weld ~= nil and originalPart1 ~= nil and weld.Part1 ~= originalPart1 then
-                    error("pending PartGlue weld read-back mismatch")
+                    error("pending PartGlue final weld read-back mismatch")
                 end
                 return true
             end)
@@ -170,8 +152,6 @@ local function startupRecoverPersistedMutations()
     if storage ~= _G then pcall(rawset, _G, queueKey, queue) end
     end
 
-    -- Recover persisted PhysicsRepRootRef mutations during bootstrap, without
-    -- depending on the later PartGlue module being initialized successfully.
     local sourceQueueKey = "__CrefyPendingPhysicsRepRootRefRestores"
     local primarySourceQueue = rawget(storage, sourceQueueKey)
     local fallbackSourceQueue = rawget(_G, sourceQueueKey)
@@ -200,11 +180,12 @@ local function startupRecoverPersistedMutations()
     end
 
     if type(sourceQueue) == "table" then
-        local hiddenGetter = startupResolveFunction("gethiddenproperty")
-        local hiddenSetter = startupResolveFunction("sethiddenproperty")
-        local hiddenSetterAlias = startupResolveFunction("sethiddenprop")
-        local identityGetter = startupResolveFunction("getthreadidentity") or startupResolveFunction("getidentity")
-        local identitySetter = startupResolveFunction("setthreadidentity") or startupResolveFunction("setidentity")
+        local hiddenGetter = startupResolveFunction("gethiddenproperty") or startupResolveFunction("gethiddenprop") or startupResolveFunction("get_hidden_property") or startupResolveFunction("get_hidden_prop")
+        local hiddenPropertiesGetter = startupResolveFunction("gethiddenproperties") or startupResolveFunction("gethiddenprops") or startupResolveFunction("get_hidden_properties") or startupResolveFunction("get_hidden_props")
+        local hiddenSetter = startupResolveFunction("sethiddenproperty") or startupResolveFunction("sethiddenprop") or startupResolveFunction("set_hidden_property") or startupResolveFunction("set_hidden_prop")
+        local hiddenSetterAlias = startupResolveFunction("sethiddenprop") or startupResolveFunction("set_hidden_prop")
+        local identityGetter = startupResolveFunction("getthreadidentity") or startupResolveFunction("getidentity") or startupResolveFunction("get_thread_identity") or startupResolveFunction("get_thread_context") or startupResolveFunction("getthreadcontext")
+        local identitySetter = startupResolveFunction("setthreadidentity") or startupResolveFunction("setidentity") or startupResolveFunction("set_thread_identity") or startupResolveFunction("set_thread_context") or startupResolveFunction("setthreadcontext")
         local oldIdentity = nil
         local identityWasChanged = false
         if type(identityGetter) == "function" and type(identitySetter) == "function" then
@@ -228,6 +209,13 @@ local function startupRecoverPersistedMutations()
                 local readOk, value = pcall(hiddenGetter, sourcePart, "PhysicsRepRootRef")
                 if readOk then return true, value end
             end
+            if type(hiddenPropertiesGetter) == "function" then
+                local propertiesOk, properties = pcall(hiddenPropertiesGetter, sourcePart)
+                if propertiesOk and type(properties) == "table" then
+                    local value = rawget(properties, "PhysicsRepRootRef")
+                    if value ~= nil then return true, value end
+                end
+            end
             return pcall(function() return sourcePart.PhysicsRepRootRef end)
         end
 
@@ -247,12 +235,12 @@ local function startupRecoverPersistedMutations()
                     if parentOk and parent == nil then
                         sourceQueue[sourcePart] = nil
                     elseif info.OriginalReferenceKnown ~= true then
-                        -- Never guess the original hidden value when no valid snapshot exists.
+                         
                         stillPending = true
                     else
                         local readOk, currentReference = startupReadSourceReference(sourcePart)
                         if not readOk then
-                            -- Unknown ownership is not permission to overwrite a live value.
+                             
                             stillPending = true
                         else
                             local knownPendingTargetReference = info.PendingRollbackTargetReferenceKnown == true
@@ -260,14 +248,13 @@ local function startupRecoverPersistedMutations()
                             local matchesTrackedTransaction = currentReference == info.InstalledReference
                                 or knownPendingTargetReference
                             if not matchesTrackedTransaction then
-                                -- The value no longer matches any value recorded by this transaction;
-                                -- preserve another owner's value and retire only this stale snapshot.
+
                                 if sourceQueue[sourcePart] == info then sourceQueue[sourcePart] = nil end
                             else
                             local restored = false
                             for _, writer in ipairs(writers) do
                                 local writeOk, writeResult = pcall(writer, sourcePart, "PhysicsRepRootRef", info.OriginalReference)
-                                if writeOk and writeResult ~= false then
+                                if writeOk then
                                     local verifyOk, actual = startupReadSourceReference(sourcePart)
                                     if verifyOk and actual == info.OriginalReference then
                                         restored = true
@@ -280,7 +267,7 @@ local function startupRecoverPersistedMutations()
                             else
                                 stillPending = true
                             end
-                            end -- matchesTrackedTransaction
+                            end  
                         end
                     end
                 end
@@ -330,8 +317,6 @@ local function fakePositionFiniteNumber(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
--- One short-lived gate coordinates the Ragebot restore with independent movement
--- controllers. While active, those controllers must not overwrite the restore pose.
 local RAGEBOT_POSE_RESTORE_GATE_KEY = "__CrefyRagebotPoseRestoreGate"
 local function ragebotPoseRestoreGateStorage()
     if type(getgenv) == "function" then
@@ -422,10 +407,6 @@ local function ragebotPoseRestoreGateZeroMotion(rootPart, owner)
     return ok and zeroed == true
 end
 
--- Observe the combat RootPart (not HitboxHead, which PartGlue intentionally
--- moves during a shot) to detect replicated FakePosition oscillation.
--- This cannot reveal a position hidden entirely on another client's machine;
--- it only detects discontinuities visible in the replicated combat root.
 local function ragebotObserveFakePosition(rootPart, now)
     if rootPart == nil or not fakePositionFiniteNumber(now) then
         return false, false
@@ -460,9 +441,7 @@ local function ragebotObserveFakePosition(rootPart, now)
     end
 
     local dt = now - (tonumber(track.lastAt) or now)
-    -- The same combat root is observed by the controller and by both weapon
-    -- planners. Do not count two reads from the same frame as separate motion
-    -- samples; that can manufacture a FakePosition oscillation from one update.
+
     if dt >= 0 and dt < (1 / 120) then
         local lastDesyncAt = tonumber(track.lastDesyncAt) or -math.huge
         local sinceDesync = now - lastDesyncAt
@@ -493,19 +472,14 @@ local function ragebotObserveFakePosition(rootPart, now)
             end
             if track.lastVerticalSign ~= 0 and sign ~= track.lastVerticalSign then
                 track.flipCount = (tonumber(track.flipCount) or 0) + 1
-                -- Two sign changes can occur during an ordinary jump/landing.
-                -- Require a longer, sustained alternating sequence before treating
-                -- vertical motion alone as FakePosition oscillation.
-                -- Fix: 2 flips (not 3) là đủ để detect FakePosition oscillation
-                -- 3 quá conservative, hooker dừng oscillate trước khi switch Knife
+
                 if track.flipCount >= 2 and now - (tonumber(track.flipWindowStartedAt) or now) <= 0.65 then
                     detected = true
                 end
             end
             track.lastVerticalSign = sign
         else
-            -- A sample that does not match the narrow vertical-oscillation shape
-            -- breaks the sequence; intermediate deltas must not keep old flips alive.
+
             track.flipCount = 0
             track.lastVerticalSign = 0
             track.flipWindowStartedAt = now
@@ -521,16 +495,11 @@ local function ragebotObserveFakePosition(rootPart, now)
     if detected then track.lastDesyncAt = now end
     local lastDesyncAt = tonumber(track.lastDesyncAt) or -math.huge
     local recentlyDetected = now - lastDesyncAt <= 0.25
-    -- Keep a longer, weapon-gated threat memory. A counter script may stop
-    -- oscillating immediately before switching to Knife; the ordinary short
-    -- signal window alone can expire before that transition is visible.
+
     local recentKnifeThreat = now - lastDesyncAt <= 1.0
     return recentlyDetected, detected, recentKnifeThreat
 end
 
--- Detect Pure TP primarily from an abrupt replicated relative-position discontinuity
--- into the close-combat envelope. Overhead height and near-90-degree body tilt are
--- supporting evidence only; the detector never reads another client's hidden properties.
 local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     if targetRoot == nil or localRoot == nil or not fakePositionFiniteNumber(now) then
         return false
@@ -581,13 +550,11 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     local relativeDistance = relativeOffset.Magnitude
     local overhead = horizontalOffset <= 4.25 and verticalOffset >= 2.35 and verticalOffset <= 5.65
     local tilted = math.abs(upY) <= 0.48
-    -- Height and 90-degree body rotation are corroborating signs only. They are
-    -- deliberately not prerequisites for the primary, movement-based Pure TP test.
+
     local supportingSignature = overhead and tilted
 
     local track = RAGEBOT_PURE_TP_TRACKS[targetRoot]
-    -- A target root can survive while the local character respawns/rebinds. Never
-    -- compare against a head position sampled from a different local RootPart.
+
     if type(track) ~= "table" or track.localRoot ~= localRoot then
         RAGEBOT_PURE_TP_TRACKS[targetRoot] = {
             localRoot = localRoot,
@@ -606,8 +573,7 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
 
     local priorAt = tonumber(track.lastAt) or now
     local dt = now - priorAt
-    -- A duplicate/non-monotonic timestamp is not a new sample. Do not clear
-    -- triggeredWhileNear or reset the supporting window on a duplicate read.
+
     if dt <= 0 then return false end
     if dt > 0.45 then
         track.localRoot = localRoot
@@ -622,10 +588,6 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
         return false
     end
 
-    -- Relative movement includes motion from both characters. If our own RootPart
-    -- was teleported/dash-corrected, the target can appear to snap into the attack
-    -- envelope even while its replicated RootPart barely moved. Compare each side
-    -- independently before classifying the relative displacement as an enemy Pure TP.
     local priorTargetPosition = track.lastTargetPosition
     local priorLocalHeadPosition = track.lastLocalHeadPosition
     local targetDelta = typeof(priorTargetPosition) == "Vector3"
@@ -652,17 +614,14 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     if dt > 0 and dt <= 0.45 and targetVelocityValid then
         local targetDeltaMagnitude = targetDelta.Magnitude
         local targetResidual = (targetDelta - targetVelocity * dt).Magnitude
-        -- A longer sample window has more legitimate acceleration error. Require
-        -- a larger independent displacement before letting it override evidence
-        -- that the local character itself jumped/teleported between samples.
+
         local targetSnapDistance = dt <= 0.25 and 3.25 or 8.0
         local targetSnapResidual = dt <= 0.25 and 2.5 or 5.0
         targetIndependentSnap = targetDeltaMagnitude >= targetSnapDistance
             and fakePositionFiniteNumber(targetResidual) and targetResidual >= targetSnapResidual
     end
     if localMotionDiscontinuity and not targetIndependentSnap then
-        -- Re-baseline all positions together. Do not let the same local movement
-        -- trigger again through another observer call in the same controller tick.
+
         track.localRoot = localRoot
         track.lastTargetPosition = targetPosition
         track.lastLocalHeadPosition = localHeadPosition
@@ -684,9 +643,6 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
         or (math.abs(relativeDelta.Y) >= 2.25 and horizontalDelta <= 3.25)
     )
 
-    -- Where replicated velocities are trustworthy, compare observed relative
-    -- motion with the displacement those velocities predict. A TP creates a large
-    -- residual even when the target never rotates or is not exactly 3-4 studs high.
     local velocityResidualMagnitude = nil
     if typeof(targetVelocity) == "Vector3" and typeof(localVelocity) == "Vector3"
         and fakePositionFiniteNumber(targetVelocity.X) and fakePositionFiniteNumber(targetVelocity.Y)
@@ -727,13 +683,10 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     local stableSupportingSignature = supportingSignature and signatureSince ~= nil
         and now - signatureSince >= 0.055
     local supportingTP = supportingSignature and (tiltTransition or stableSupportingSignature)
-    -- The overhead/tilt signature can corroborate an abrupt motion, but standing
-    -- in that pose alone is not evidence of a teleport. Keep movement as mandatory.
+
     local movementBackedTP = rapidTPIntoCombat
         or (attackEnvelope and abruptRelativeMove and supportingTP)
-    -- Fix: reset triggeredWhileNear sớm hơn (6 studs thay vì 11)
-    -- Hooker có thể backstab nhiều lần liên tiếp trong combat range <11 studs
-    -- nếu không reset thì chỉ detect attack đầu tiên
+
     if relativeDistance > 6.0 then track.triggeredWhileNear = false end
     local canTriggerNear = track.triggeredWhileNear ~= true
     local detected = canTriggerNear and movementBackedTP
@@ -752,26 +705,16 @@ local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
     return detected
 end
 
--- PhysicsRepRootRef is hidden and cannot reliably identify a remote user's client state.
--- This observer detects only visible, replicated effects; it must also avoid parts that
--- this script itself currently owns through PartGlue.
 local RAGEBOT_REP_ROOT_CONTACT_TRACKS = setmetatable({}, { __mode = "k" })
 
--- ============================================================
--- Knife Cooldown Tracker
--- Mục tiêu: tự học cooldown của từng hooker target dựa trên
--- khoảng thời gian giữa các lần hitboxDiscontinuity / anomalyProximity
--- Hooker default: _attackCooldown = 1.25s, _hitboxWindowUntil = 0.625s
--- Nhưng variant có thể spam liên tục hoặc dùng 1.35s
--- ============================================================
 local RAGEBOT_KNIFE_COOLDOWN_TRACKS = setmetatable({}, { __mode = "k" })
-local KNIFE_COOLDOWN_SAMPLES_MAX    = 6     -- giữ tối đa 6 mẫu gần nhất
-local KNIFE_COOLDOWN_DEFAULT        = 1.25  -- hooker default
-local KNIFE_COOLDOWN_MIN_PLAUSIBLE  = 0.18  -- spam variant tối thiểu
-local KNIFE_COOLDOWN_MAX_PLAUSIBLE  = 2.6   -- slow variant tối đa
--- Cửa sổ "sắp attack" trước thời điểm dự đoán
+local KNIFE_COOLDOWN_SAMPLES_MAX    = 6      
+local KNIFE_COOLDOWN_DEFAULT        = 1.25   
+local KNIFE_COOLDOWN_MIN_PLAUSIBLE  = 0.18   
+local KNIFE_COOLDOWN_MAX_PLAUSIBLE  = 2.6    
+ 
 local KNIFE_PREEMPT_LEAD            = 0.30
--- Cho phép trượt ±150ms so với thời điểm dự đoán
+ 
 local KNIFE_PREEMPT_SLACK           = 0.15
 
 local function ragebotKnifeCooldownTrack(targetRoot)
@@ -788,8 +731,6 @@ local function ragebotKnifeCooldownTrack(targetRoot)
     return t
 end
 
--- Ghi nhận một attack event (hitboxDiscontinuity hoặc anomalous proximity onset).
--- Cập nhật estimatedCooldown bằng median của các khoảng cách gần nhất.
 local function ragebotRecordKnifeAttack(targetRoot, now)
     if targetRoot == nil then return end
     local t = ragebotKnifeCooldownTrack(targetRoot)
@@ -808,11 +749,11 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
                 local med = sorted[math.ceil(#sorted / 2)]
                 t.estimatedCooldown = math.clamp(med,
                     KNIFE_COOLDOWN_MIN_PLAUSIBLE, KNIFE_COOLDOWN_MAX_PLAUSIBLE)
-                -- Ước tính hitboxWindow ≈ cooldown/2 (theo cấu trúc hooker)
+                 
                 t.hitboxWindowEst = t.estimatedCooldown * 0.5
             end
         elseif iv < KNIFE_COOLDOWN_MIN_PLAUSIBLE then
-            -- spam variant: cực ngắn, override về min
+             
             t.estimatedCooldown = KNIFE_COOLDOWN_MIN_PLAUSIBLE
             t.hitboxWindowEst   = KNIFE_COOLDOWN_MIN_PLAUSIBLE * 0.5
         end
@@ -820,8 +761,6 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
     t.lastAttackAt = now
 end
 
--- Trả về: predictedImminent (bool), estimatedCooldown, timeUntilNext
--- predictedImminent = true nếu predicted next attack đang trong cửa sổ [now, now+LEAD]
 local function ragebotKnifePredictImminent(targetRoot, now)
     local t = RAGEBOT_KNIFE_COOLDOWN_TRACKS[targetRoot]
     if type(t) ~= "table" then return false, KNIFE_COOLDOWN_DEFAULT, math.huge end
@@ -830,16 +769,14 @@ local function ragebotKnifePredictImminent(targetRoot, now)
     local cd   = tonumber(t.estimatedCooldown) or KNIFE_COOLDOWN_DEFAULT
     local since = now - last
     local timeUntil = cd - since
-    -- Cửa sổ dự đoán: từ LEAD giây trước đến SLACK giây sau thời điểm dự đoán
+     
     local imminent = timeUntil >= -KNIFE_PREEMPT_SLACK
         and timeUntil <= KNIFE_PREEMPT_LEAD
     return imminent, cd, timeUntil
 end
--- ============================================================
 
 local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
-    -- A target with an unresolved local restore snapshot must never be attributed
-    -- to the remote client, even if the owning strategy was replaced on reload.
+
     if targetHitbox ~= nil and RAGEBOT_LOCAL_PENDING_GLUE_TARGETS[targetHitbox] == true then
         return true
     end
@@ -850,7 +787,7 @@ local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
             local strategy = controller[strategyName]
             local partGlue = type(strategy) == "table" and strategy._partGlue or nil
             local glueInfo = type(partGlue) == "table" and partGlue._glueInfoByTargetPart or nil
-            -- Includes RestorePending records: never treat our own unresolved mutation as a remote signal.
+             
             if type(glueInfo) == "table" and glueInfo[targetHitbox] ~= nil then
                 return true
             end
@@ -861,8 +798,7 @@ local function ragebotIsLocallyGluedTarget(controller, targetHitbox)
 end
 
 local function ragebotIsHookerAnchorPosition(position)
-    -- Matches the anchor range created by the included Hooker-like PartGlue code,
-    -- with a small tolerance instead of the previous very broad high-Y signature.
+
     return typeof(position) == "Vector3"
         and position.Y >= 99000 and position.Y <= 101000
         and position.X >= -101000 and position.X <= -9000
@@ -914,8 +850,7 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     local priorAt = type(track) == "table" and tonumber(track.lastAt) or nil
     local staleTrack = priorAt == nil or not fakePositionFiniteNumber(priorAt)
         or now < priorAt or now - priorAt > 1.0
-    -- Distance history is relative to the local character. Reset when its RootPart
-    -- changes so a respawn cannot look like a target snapped into the old position.
+
     if type(track) ~= "table" or track.hitbox ~= targetHitbox
         or track.localRoot ~= localRoot or staleTrack then
         local glueLikeNow = hitboxRootOffset >= 1000 or ragebotIsHookerAnchorPosition(hitboxPosition)
@@ -930,12 +865,11 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
             glueLikeSince = glueLikeNow and now or nil,
             persistentTriggerConsumed = false,
             lastTriggerAt = -math.huge,
-            -- [NEW] Anomalous proximity: hitbox gần victim nhưng root xa
-            -- Dùng để detect lần 2+ khi hitbox đã ở near-victim và KHÔNG trả về anchor
+
             anomalousSince = nil,
             anomalousTriggerConsumed = false,
         }
-        -- Require a follow-up sample; a single stale/static position is not enough.
+         
         return false
     end
 
@@ -963,31 +897,19 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     local hitboxDiscontinuity = dt > 0 and dt <= 0.35
         and fakePositionFiniteNumber(hitboxDelta) and hitboxDelta >= 500
         and fakePositionFiniteNumber(rootDelta) and rootDelta <= 24
-    -- Treat root-only close snaps as a weak fallback: require an extreme,
-    -- very rapid approach so ordinary dashes/knockback are less likely to trigger.
+
     local snappedIntoBody = dt > 0 and dt <= 0.12
         and fakePositionFiniteNumber(rootDelta) and rootDelta >= 18
         and priorDistance >= 12 and distanceToLocal <= 2
         and priorDistance - distanceToLocal >= 10
 
-    -- ── [NEW] Anomalous Proximity ────────────────────────────────────────────
-    -- Phát hiện: enemy hitbox bám sát victim (≤8 studs) trong khi root xa (≥20)
-    -- Đây là signature của PhysicsRepRootRef đang active khi hooker đã Acquire
-    -- về near-victim và KHÔNG trả hitbox về anchor giữa các lần attack.
-    -- condition:
-    --   hitboxToLocal ≤ 8   → hitbox trong tầm knife của victim
-    --   rootToLocal   ≥ 20  → root (hooker char) đứng xa victim
-    --   hitboxRootOffset ≥ 15 → hitbox tách khỏi root rõ ràng (không phải bình thường)
     local hitboxToLocal = fakePositionFiniteNumber(hitboxPosition.X)
         and (hitboxPosition - localPosition).Magnitude or math.huge
-    -- Fix: dùng relative threshold thay vì absolute rootToLocal >= 20.
-    -- Với absolute threshold, hooker ở gần (15 studs) không bị detect vì rootToLocal < 20.
-    -- Relative check: root phải xa hơn hitbox ≥8 studs → phát hiện đúng khi hooker
-    -- glue hitbox về phía victim dù ở bất kỳ khoảng cách nào.
+
     local anomalousProximityNow = fakePositionFiniteNumber(hitboxToLocal)
-        and hitboxToLocal <= 6.0                           -- trong tầm knife
-        and distanceToLocal >= hitboxToLocal + 8.0         -- root xa hơn hitbox ≥8 studs
-        and hitboxRootOffset >= 12.0                       -- hitbox cách xa root ≥12 studs
+        and hitboxToLocal <= 6.0                            
+        and distanceToLocal >= hitboxToLocal + 8.0          
+        and hitboxRootOffset >= 12.0                        
 
     if anomalousProximityNow then
         if not fakePositionFiniteNumber(track.anomalousSince) then
@@ -1004,20 +926,15 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
         and fakePositionFiniteNumber(anomalousSinceVal)
         and now - anomalousSinceVal >= 0.06
         and track.anomalousTriggerConsumed ~= true
-    -- ────────────────────────────────────────────────────────────────────────
 
     local lastTriggerAt = tonumber(track.lastTriggerAt) or -math.huge
-    -- Fix: cooldown 0.5s (thay vì 0.75) để catch lần attack kế nhanh hơn.
-    -- Counter window vẫn 0.75s; ready chỉ ảnh hưởng đến việc re-detect.
+
     local ready = now - lastTriggerAt >= 0.50
 
-    -- Fix: reset persistentTriggerConsumed và anomalousTriggerConsumed
-    -- khi ready window đã qua để cho phép detect lại chu kỳ tấn công tiếp theo.
-    -- Nếu không reset thì lần 2+ không bao giờ fire persistentGlueLike/persistentAnomalous.
     if ready then
         if track.persistentTriggerConsumed == true and glueLikeNow then
             track.persistentTriggerConsumed = false
-            -- Restart persistent timer để fire sau 0.06s
+             
             if fakePositionFiniteNumber(track.glueLikeSince) then
                 track.glueLikeSince = now - 0.05
             end
@@ -1044,14 +961,14 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     if ready and detected then
         track.lastTriggerAt = now
         if glueLikeNow then track.persistentTriggerConsumed = true end
-        -- Lưu trạng thái TRƯỚC khi set consumed để check bên dưới chính xác
+         
         local anomalousFiringFirstTime = persistentAnomalousProximity
             and track.anomalousTriggerConsumed ~= true
         if anomalousProximityNow then track.anomalousTriggerConsumed = true end
-        -- Record attack vào cooldown tracker:
-        -- hitboxDiscontinuity = lần đầu (anchor→near-victim)
-        -- anomalousFiringFirstTime = lần 2+ (hitbox bám sát victim, lần đầu của mỗi chu kỳ)
-        if hitboxDiscontinuity or anomalousFiringFirstTime then
+
+        -- Chỉ record từ hitboxDiscontinuity (attack thực sự anchor→victim).
+        -- anomalousFiringFirstTime fire mỗi 0.50s → học sai cooldown ~0.50s thay vì 1.25s.
+        if hitboxDiscontinuity then
             ragebotRecordKnifeAttack(targetRoot, now)
         end
         return true
@@ -1059,8 +976,6 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     return false
 end
 
--- Read the target's currently equipped melee item. nil means the item state was
--- unavailable; the counter must fail closed and preserve Translocate in that case.
 local function ragebotTargetKnifeState(target)
     if type(target) ~= "table" then return nil end
     local fighter = target.FighterState
@@ -1076,8 +991,6 @@ local function ragebotTargetKnifeState(target)
     return name == "Knife"
 end
 
--- Resolve a target wrapper against the current enemy roster. Wrappers returned by
--- GetTarget() are ephemeral tables, so fighter + alive-state identity is the stable key.
 local function ragebotResolveRepRootTarget(controller, target)
     if type(controller) ~= "table" or type(target) ~= "table" then return false end
     local fighter = target.FighterState
@@ -1130,7 +1043,7 @@ local function ragebotResolveRepRootTarget(controller, target)
         local okMelee, melee = pcall(function()
             return itemObserver:EquippedItemAsMelee()
         end)
-        -- The candidate is not attackable until the melee/deflect state is readable.
+         
         if not okMelee then return nil, nil, nil end
         if melee ~= nil then
             local okDeflecting, isDeflecting = pcall(function()
@@ -1148,8 +1061,7 @@ local function ragebotResolveRepRootTarget(controller, target)
 end
 
 local function ragebotFindRepRootContactTarget(controller, localRoot, now)
-    -- Counter only considers observable anomalies within a bounded combat radius.
-    -- A distant player's movement must not pause this client's Translocate.
+
     local MAX_COUNTER_DISTANCE = 180
     local okRoster, enemyByPlayer = pcall(function()
         local selection = controller._targetSelection
@@ -1183,10 +1095,7 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
         if ragebotIsLocallyGluedTarget(controller, candidate.hitbox) then
             RAGEBOT_REP_ROOT_CONTACT_TRACKS[candidate.root] = nil
         else
-            -- Keep sampling while the attacker holds Knife. A pure-TP/oscillation
-            -- script may stop moving immediately before the weapon-state transition
-            -- becomes visible; the one-second memory is consumed once if it later
-            -- becomes safe to enter the bounded counter window.
+
             local recentlyDesynced, recentKnifeThreat = false, false
             local okMotion, recentValue, ignoredDetected, recentKnifeValue = pcall(ragebotObserveFakePosition, candidate.root, now)
             if okMotion then
@@ -1195,23 +1104,13 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
             end
 
             local knifeState = ragebotTargetKnifeState(candidate.target)
-            -- Pure-TP detection bị xóa theo yêu cầu
-            -- (gây false positive và không cần thiết khi RepRoot đã đủ mạnh)
 
-            -- RepRoot/PartGlue effects are observable signatures, not a direct read of
-            -- another client's hidden PhysicsRepRootRef. A confirmed anomaly also starts
-            -- the response independently of the attacker's currently equipped weapon.
             if ragebotObserveRepRootContact(candidate.root, candidate.hitbox, localRoot, now) then
-                -- Ghi nhận attack vào cooldown tracker khi RepRoot fires
+                 
                 ragebotRecordKnifeAttack(candidate.root, now)
                 return candidate.target, "rep-root-contact"
             end
 
-            -- [NEW] Knife Cooldown Prediction:
-            -- Nếu target đang cầm Knife và cooldown tracker dự đoán attack SẮP xảy ra,
-            -- pre-activate counter ngay bây giờ để ragebot đã ở vị trí counter trước khi attack.
-            -- Điều này đặc biệt quan trọng cho lần attack 2+ khi hitboxDiscontinuity không còn fire
-            -- (hitbox đã ở near-victim từ attack trước).
             local knifeState2 = ragebotTargetKnifeState(candidate.target)
             if knifeState2 == true then
                 local imminentAttack, cooldownEst, timeUntilNext =
@@ -1221,14 +1120,9 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
                 end
             end
 
-            -- FakePosition alone is a weaker signal than Pure TP/RepRoot. A large
-            -- displacement from a distant player (dash, knockback, or server correction)
-            -- must not redirect the local Ragebot; only consume it near combat range.
             local fakePositionCounterInRange = candidate.distance <= 36
             if knifeState == false and fakePositionCounterInRange then
-                -- Consume one FakePosition event exactly once; a remembered event
-                -- can survive a short Knife transition without repeatedly refreshing
-                -- the response window on every Heartbeat.
+
                 local fakeTrack = RAGEBOT_FAKE_POSITION_TRACKS[candidate.root]
                 local lastDesyncAt = type(fakeTrack) == "table" and tonumber(fakeTrack.lastDesyncAt) or -math.huge
                 local eventUnconsumed = type(fakeTrack) == "table"
@@ -1247,12 +1141,8 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
     return nil
 end
 
-
 local rawget, rawset = rawget, rawset
 
--- Delayed cleanup must not mutate instances after a newer script execution has
--- replaced this build. A missing global owner is treated as indeterminate so a
--- final unload cleanup can still finish; a different live owner cancels stale work.
 local function ragebotCleanupStillCurrentScript()
     if type(getgenv) == "function" then
         local envOk, env = pcall(getgenv)
@@ -1286,9 +1176,9 @@ function K.fn(name)
     return type(v) == "function" and v or nil
 end
 
-local getthreadidentity_ = K.fn("getthreadidentity") or K.fn("getidentity")
-local setthreadidentity_ = K.fn("setthreadidentity") or K.fn("setidentity")
-local _sethiddenproperty = K.fn("sethiddenproperty")
+local getthreadidentity_ = K.fn("getthreadidentity") or K.fn("getidentity") or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext")
+local setthreadidentity_ = K.fn("setthreadidentity") or K.fn("setidentity") or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext")
+local _sethiddenproperty = K.fn("sethiddenproperty") or K.fn("sethiddenprop") or K.fn("set_hidden_property") or K.fn("set_hidden_prop")
 local gethui_ = K.fn("gethui")
 local function identity(n)
     if not setthreadidentity_ then return function() end end
@@ -1312,9 +1202,6 @@ K.hudParent = hudParent
 
 function K.track(c) K.connections[#K.connections + 1] = c; return c end
 function K.onUnload(f) K.cleanups[#K.cleanups + 1] = f end
-
-
-
 
 local Signal = {}
 Signal.__index = Signal
@@ -1358,7 +1245,7 @@ Trove.__index = Trove
 function Trove.new(name) return setmetatable({ _name = name, _items = {} }, Trove) end
 local function cleanItem(o)
     local t = typeof(o)
-    if t == "RBXScriptConnection" then o:Disconnect()
+    if t == "RBXScriptConnection" then pcall(function() o:Disconnect() end)
     elseif t == "Instance" then pcall(function() o:Destroy() end)
     elseif t == "thread" then pcall(task.cancel, o)
     elseif type(o) == "function" then pcall(o)
@@ -1405,15 +1292,15 @@ end
 function Trove:Clean()
     local items = self._items
     self._items = {}
+    local wasCleaning = self._cleaning == true
     self._cleaning = true
-    for i = #items, 1, -1 do cleanItem(items[i]) end
-    self._cleaning = false
+    for i = #items, 1, -1 do
+        pcall(cleanItem, items[i])
+    end
+    self._cleaning = wasCleaning
 end
 Trove.Destroy = Trove.Clean
 K.Trove = Trove
-
-
-
 
 local C = {
     [3] = "Toggle", [9] = 20, [12] = 12, [18] = "0", [26] = 4, [34] = true, [44] = "Enabled",
@@ -1424,9 +1311,6 @@ local C = {
     [170] = 9, [173] = 0.88, [175] = 5, [186] = 0, [192] = 30, [195] = 0.7,
 }
 K.C = C
-
-
-
 
 local v86 = {
     [2] = "ReactiveStore",
@@ -1618,20 +1502,16 @@ local v86 = {
     [200] = 26,
 }
 
-
 local tbl17: { [string]: any } = { cache = {} }
 local v102, v103, v107 = rawget, rawset, pcall
-
-
-
 
 local n25, n26 = 3870, 4800
 local flag2, flag3 = true, true
 local function n29(...) return 0 end
 local cloneref = K.fn("cloneref") or function(x) return x end
 local gethui = K.fn("gethui") or function() return game:GetService("CoreGui") end
-local getthreadidentity = K.fn("getthreadidentity") or K.fn("getidentity") or function() return 8 end
-local setthreadidentity = K.fn("setthreadidentity") or K.fn("setidentity") or function() end
+local getthreadidentity = K.fn("getthreadidentity") or K.fn("getidentity") or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext") or function() return 8 end
+local setthreadidentity = K.fn("setthreadidentity") or K.fn("setidentity") or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext") or function() end
 
 local function clonefn(f)
     local c = K.fn("clonefunction")
@@ -1643,7 +1523,7 @@ local function clonefn(f)
 end
 local fireServer = clonefn(Instance.new("RemoteEvent").FireServer)
 local fireServer2 = clonefn(Instance.new("UnreliableRemoteEvent").FireServer)
-local v104 = clonefn(K.fn("sethiddenproperty"))
+local v104 = clonefn(K.fn("sethiddenproperty") or K.fn("sethiddenprop") or K.fn("set_hidden_property") or K.fn("set_hidden_prop"))
 local v108 = clonefn(K.fn("setfflag")) or function() end
 local v109 = clonefn(K.fn("isexecutorclosure")) or function() return false end
 local v110 = clonefn(K.fn("setrawmetatable")) or setmetatable
@@ -1659,7 +1539,6 @@ local _rawNewIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, 
 local _rawIndex = type(_gameMetatable) == "table" and rawget(_gameMetatable, "__index") or nil
 local v112 = type(_rawNewIndex) == "function" and clonefn(_rawNewIndex) or nil
 if type(v112) ~= "function" then
-
 
     v112 = function(instance, property, value)
         local directOk, directError = pcall(function()
@@ -1700,11 +1579,7 @@ if InstanceHandle == nil then
 end
 if InstanceHandle == nil then InstanceHandle = { new = function(x) return x end } end
 
-
-
-
 tbl17.k = function() return { new = function(name) return Trove.new(name) end } end
-
 
 do
     local UIS = UserInputService
@@ -1823,8 +1698,6 @@ do
     tbl17.w = function() return W end
 end
 
-
-
 do
     local P = {}
     function P.bind(trove, config, control, path, opts)
@@ -1849,7 +1722,6 @@ do
     end
     tbl17.P = function() return P end
 end
-
 
 do
     local Spring = {}
@@ -1935,12 +1807,7 @@ do
     tbl17.c5 = function() return Spring end
 end
 
-
-
 tbl17.ca = function() return nil end
-
-
-
 
 do
     local soft = "rbxasset://textures/particles/smoke_main.dds"
@@ -1985,8 +1852,6 @@ do
     }
     tbl17.hH = function() return W end
 end
-
-
 
 tbl17.iQ = function()
     return function(_, _, grid)
@@ -2069,8 +1934,6 @@ tbl17.iQ = function()
         side("Teammates", "Team", "right")
     end
 end
-
-
 
 tbl17.eZ = function()
     local Offline = {}
@@ -2605,7 +2468,6 @@ ForEachLeafValue = function(I,W,N)local P={};local function a(e,c)for E,p in e,n
 return tbl18
 end
 return nil
-
 
 end
 
@@ -3935,7 +3797,13 @@ end
 arg._isTooltipWired = true
 
 ctx.Menu:AttachTooltip(ctx.Trove, frame, function()
-return arg._tooltip
+local tooltip = arg._tooltip
+local translator = rawget(_G, "__CrefyTranslateTooltipText")
+if type(translator) == "function" then
+    local ok, translated = pcall(translator, tooltip)
+    if ok and translated ~= nil then return translated end
+end
+return tooltip
 end)
 end
 
@@ -5080,7 +4948,7 @@ searchInput.Text = ""
 fn44(arg, "")
 
 panel2.FocusTrove:Add(task.defer(function()
-if panel2.Popup:IsOpen() then
+if panel2.Popup:IsOpen() and arg.SearchAutoFocus then
 searchInput:CaptureFocus()
 end
 
@@ -5294,6 +5162,7 @@ Kind = "Dropdown",
 Row = arg2,
 Multi = arg5,
 Search = arg4.Search == true,
+SearchAutoFocus = arg4.SearchAutoFocus ~= false,
 Inline = arg4.Inline == true,
 CloseOnSelect = arg4.CloseOnSelect == true,
 MaxWidth = arg4.MaxWidth or 300,
@@ -7087,7 +6956,6 @@ fn38(arg6)
 if not (n26 >= 4814) then
 return
 end
-
 
 end)
 
@@ -10406,7 +10274,6 @@ end
 return
 end
 
-
 end
 
 local function fn46(arg, parent, ctx)
@@ -11495,7 +11362,6 @@ rootFrame.LayoutOrder = layoutOrder
 rootFrame.Parent = parent
 return
 end
-
 
 end
 
@@ -16968,7 +16834,6 @@ arg._menu:Tween(indicator, { Position = udim2 })
 return
 end
 
-
 end
 
 return index2
@@ -17670,7 +17535,6 @@ local n34 = math.floor(v117.Y * n)
 return math.clamp(arg, v118, math.max(v118, n33)), math.clamp(arg2, v119, math.max(v119, n34))
 end
 return nil
-
 
 end,
 menuBounds = function(arg)
@@ -18826,6 +18690,1079 @@ local tbl18 = {
 { Key = "ToggleBackgroundUnselected", Label = "Toggle Background" },
 }
 
+local CREFY_LANGUAGE_TRANSLATIONS = {
+    ["Settings"] = "Cài đặt",
+    ["Menu preferences, config management, and theme customization."] = "Tùy chỉnh menu, quản lý cấu hình và đổi giao diện.",
+    ["General"] = "Chung",
+    ["Config Profiles"] = "Bộ cấu hình",
+    ["Theme"] = "Giao diện",
+    ["Menu"] = "Menu",
+    ["Language"] = "Ngôn ngữ",
+    ["Show Keybinds"] = "Hiện danh sách phím tắt",
+    ["Show Watermark"] = "Hiện watermark",
+    ["Watermark"] = "Watermark",
+    ["Hide Floating Menu Button"] = "Ẩn nút mở menu nổi",
+    ["Edit On-screen Keybinds"] = "Chỉnh vị trí danh sách phím trên màn hình",
+    ["Theme Colors"] = "Màu giao diện",
+    ["Accent"] = "Màu điểm nhấn",
+    ["Background"] = "Nền",
+    ["Element Background"] = "Nền thành phần",
+    ["Outline"] = "Viền",
+    ["Selected Tab"] = "Tab đang chọn",
+    ["Text"] = "Chữ",
+    ["Toggle Circle"] = "Nút gạt",
+    ["Toggle Background"] = "Nền nút gạt",
+    ["Whole-Menu Profiles"] = "Cấu hình toàn bộ menu",
+    ["Transfer"] = "Nhập và xuất",
+    ["Automation"] = "Tự động hóa",
+    ["Config Name"] = "Tên cấu hình",
+    ["Create Config"] = "Tạo cấu hình",
+    ["Configs"] = "Các cấu hình",
+    ["Export Config"] = "Xuất cấu hình",
+    ["Import (paste config)"] = "Nhập (dán cấu hình)",
+    ["Import Config"] = "Nhập cấu hình",
+    ["Auto Save"] = "Tự lưu",
+    ["Profile to Auto Save"] = "Cấu hình cần tự lưu",
+    ["Auto Load"] = "Tự tải",
+    ["Profile to Auto Load"] = "Cấu hình cần tự tải",
+    ["Startup"] = "Khởi động",
+    ["Notifications"] = "Thông báo",
+    ["Enable Notifications"] = "Bật thông báo",
+    ["Re-run After Teleport"] = "Tự chạy lại sau khi dịch chuyển",
+    ["Silent Load"] = "Tải không hiện thông báo",
+    ["Unload Crefy"] = "Tắt Crefy",
+    ["Show Notifications"] = "Hiện thông báo",
+    ["Enabled"] = "Bật",
+    ["Disabled"] = "Tắt",
+    ["Enable"] = "Bật",
+    ["Disable"] = "Tắt",
+    ["On"] = "Bật",
+    ["Off"] = "Tắt",
+    ["Always"] = "Luôn bật",
+    ["Toggle"] = "Bật / tắt",
+    ["Hold"] = "Giữ để dùng",
+    ["Tap"] = "Chạm",
+    ["None"] = "Không",
+    ["Default"] = "Mặc định",
+    ["Random"] = "Ngẫu nhiên",
+    ["Manual"] = "Thủ công",
+    ["Automatic"] = "Tự động",
+    ["Auto"] = "Tự động",
+    ["On Empty"] = "Khi hết đạn",
+    ["Reload"] = "Nạp đạn",
+    ["Swap"] = "Đổi vũ khí",
+    ["SwapOrReload"] = "Đổi súng hoặc nạp đạn",
+    ["Ragebot"] = "Ragebot",
+    ["Underground"] = "Ẩn dưới lòng đất",
+    ["Silent Aim"] = "Silent Aim",
+    ["Aim & Fire"] = "Ngắm và bắn",
+    ["Aim Mode"] = "Chế độ ngắm",
+    ["Target Filters"] = "Lọc mục tiêu",
+    ["Target Lock"] = "Khóa mục tiêu",
+    ["Activation"] = "Kích hoạt",
+    ["Activation Rules"] = "Điều kiện bật tính năng",
+    ["Aim Point"] = "Điểm ngắm",
+    ["Hitbox Selection"] = "Chọn vùng trúng đạn",
+    ["Closest to Crosshair"] = "Gần tâm ngắm nhất",
+    ["Weighted Random"] = "Ngẫu nhiên theo trọng số",
+    ["Prioritize Hackers"] = "Tấn công mấy thằng hack trước",
+    ["Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work."] = "Ragebot sẽ nhắm và tấn công những người bị Hacker Detector phát hiện dùng hack trước. Nhớ bật Hacker Detector thì mục này mới hoạt động.",
+    ["Enable Ragebot"] = "Bật Ragebot",
+    ["Primary Enabled"] = "Bật vũ khí chính",
+    ["Secondary Enabled"] = "Bật vũ khí phụ",
+    ["Melee Enabled"] = "Bật vũ khí cận chiến",
+    ["Weapon Strategy"] = "Cách dùng vũ khí",
+    ["Swap or Reload"] = "Đổi súng hoặc nạp đạn",
+    ["Translocate"] = "Dịch chuyển",
+    ["Up"] = "Lên",
+    ["Down"] = "Xuống",
+    ["Part"] = "Giữ hướng bắn theo mục tiêu",
+    ["Projectile Breaker"] = "Né đạn",
+    ["Weapon Priority"] = "Ưu tiên vũ khí",
+    ["Primary"] = "Vũ khí chính",
+    ["Secondary"] = "Vũ khí phụ",
+    ["Melee"] = "Cận chiến",
+    ["Knife"] = "Dao",
+    ["Gun"] = "Súng",
+    ["Stability"] = "Độ ổn định",
+    ["Shoot Frames"] = "Số khung hình giữ lệnh bắn",
+    ["Reaction Delay (s)"] = "Độ trễ phản ứng (giây)",
+    ["Switch Delay (s)"] = "Độ trễ khi đổi mục tiêu (giây)",
+    ["Reposition Interval (s)"] = "Khoảng nghỉ giữa các lần đổi vị trí (giây)",
+    ["Forward Depth"] = "Khoảng dịch về phía trước",
+    ["Forward Frequency"] = "Tần suất dịch về phía trước",
+    ["Upward Depth"] = "Khoảng dịch lên trên",
+    ["Upward Frequency"] = "Tần suất dịch lên trên",
+    ["Fallback Character Origin"] = "Lấy vị trí nhân vật làm điểm dự phòng",
+    ["Fallback Radius"] = "Bán kính dự phòng",
+    ["Fallback Random Factor"] = "Mức ngẫu nhiên dự phòng",
+    ["Reduce Recoil"] = "Giảm độ giật",
+    ["Recoil Reduction (%)"] = "Tỉ lệ giảm độ giật (%)",
+    ["Remove Spread"] = "Loại bỏ độ tản đạn",
+    ["Automatic Fire"] = "Tự động bắn",
+    ["Aim Speed Override"] = "Tùy chỉnh tốc độ ngắm",
+    ["Fire Cooldown Override"] = "Điều chỉnh thời gian chờ giữa các phát bắn",
+    ["Aim Cooldown Override"] = "Điều chỉnh thời gian chờ ngắm",
+    ["Melee Cooldown Override"] = "Điều chỉnh thời gian chờ cận chiến",
+    ["Dash Cooldown Override"] = "Điều chỉnh thời gian chờ giữa các lần lướt",
+    ["Always Backstab"] = "Luôn đánh lén từ phía sau",
+    ["Always Backstab Mode"] = "Cách đánh sau lưng",
+    ["Trigger Distance (studs)"] = "Khoảng cách kích hoạt (stud)",
+    ["Extend Melee Range"] = "Tăng tầm đánh cận chiến",
+    ["Range"] = "Phạm vi",
+    ["Fuse Override"] = "Tùy chỉnh ngòi nổ",
+    ["Explode On"] = "Kích nổ khi",
+    ["Impact"] = "Va chạm",
+    ["Throw"] = "Ném",
+    ["Remove Fuse"] = "Bỏ thời gian chờ trước khi nổ",
+    ["Visuals"] = "Hiển thị",
+    ["ESP"] = "ESP",
+    ["Box"] = "Khung",
+    ["Health Bar"] = "Thanh máu",
+    ["Ammo Bar"] = "Thanh đạn",
+    ["Chams"] = "Làm nổi bật nhân vật",
+    ["Tracer"] = "Đường nối đến mục tiêu",
+    ["Distance"] = "Khoảng cách",
+    ["Name"] = "Tên",
+    ["Font"] = "Phông chữ",
+    ["Font Size"] = "Cỡ chữ",
+    ["Text Size"] = "Cỡ chữ",
+    ["Text Case"] = "Kiểu chữ hoa/thường",
+    ["Standard"] = "Bình thường",
+    ["UPPERCASE"] = "CHỮ HOA",
+    ["lowercase"] = "chữ thường",
+    ["Scale With Distance"] = "Tự đổi kích thước theo khoảng cách",
+    ["Reference Distance"] = "Khoảng cách tham chiếu",
+    ["Color"] = "Màu",
+    ["Color Mode"] = "Chế độ màu",
+    ["Solid"] = "Một màu",
+    ["Gradient"] = "Chuyển sắc",
+    ["Reactive"] = "Thay đổi theo tình huống",
+    ["Style"] = "Kiểu",
+    ["Full"] = "Toàn khung",
+    ["Corner"] = "Góc khung",
+    ["Show Indicator"] = "Hiện dấu báo",
+    ["Use Display Names"] = "Hiện tên hiển thị",
+    ["Manage Custom Sounds"] = "Quản lý âm thanh tùy chỉnh",
+    ["Enable Hit Feedback"] = "Bật hiệu ứng khi trúng đòn",
+    ["Enable Elimination Feedback"] = "Bật hiệu ứng khi hạ gục",
+    ["Play Hit Sound"] = "Phát âm thanh khi trúng đòn",
+    ["Play Elimination Sound"] = "Phát âm thanh khi hạ gục",
+    ["Mute Game Hit Sound"] = "Tắt tiếng báo trúng đòn của game",
+    ["Sound"] = "Âm thanh",
+    ["Volume"] = "Âm lượng",
+    ["Pitch"] = "Cao độ",
+    ["Duration"] = "Thời lượng",
+    ["Notification"] = "Thông báo",
+    ["Enable Hit Notification"] = "Bật thông báo khi trúng đòn",
+    ["Enable Elimination Notification"] = "Bật thông báo khi hạ gục",
+    ["Create"] = "Tạo",
+    ["Delete"] = "Xóa",
+    ["Refresh List"] = "Làm mới danh sách",
+    ["Delete Selected Config"] = "Xóa cấu hình đã chọn",
+    ["Confirm"] = "Xác nhận",
+    ["Cancel"] = "Hủy",
+    ["Save"] = "Lưu",
+    ["Load"] = "Tải",
+    ["Search"] = "Tìm kiếm",
+    ["Copied your current config to the clipboard"] = "Đã sao chép cấu hình hiện tại vào bộ nhớ tạm",
+    ["Box Fit"] = "Cách căn khung",
+    ["Flags"] = "Thông tin kèm theo",
+    ["Flag Font"] = "Phông chữ thông tin kèm theo",
+    ["Flag Font Size"] = "Cỡ chữ thông tin kèm theo",
+    ["Flag Text Case"] = "Kiểu chữ của thông tin kèm theo",
+    ["Flag Surround"] = "Ký tự bao quanh thông tin",
+    ["Text Surround"] = "Ký tự bao quanh chữ",
+    ["Kind"] = "Loại",
+    ["Fill"] = "Tô nền",
+    ["Shape"] = "Hình dạng",
+    ["From"] = "Từ",
+    ["To"] = "Đến",
+    ["Outline Thickness"] = "Độ dày viền",
+    ["Alpha Range"] = "Khoảng độ trong suốt",
+    ["Show in list"] = "Hiện trong danh sách",
+    ["Load Selected Config"] = "Tải cấu hình đã chọn",
+    ["Save to Selected Config"] = "Lưu vào cấu hình đã chọn",
+    ["Manipulation Check"] = "Kiểm tra thao tác",
+    ["First Ban Choices"] = "Những lựa chọn cấm ở lượt đầu",
+    ["Second Ban Choices"] = "Những lựa chọn cấm ở lượt hai",
+    ["Use Map-Specific Loadouts"] = "Dùng bộ trang bị riêng cho từng bản đồ",
+    ["Use Fallback Loadouts"] = "Dùng bộ trang bị dự phòng",
+    ["Loadout Priority (1 highest)"] = "Ưu tiên bộ trang bị (1 là cao nhất)",
+    ["Pickup Types"] = "Các loại vật phẩm cần nhặt",
+    ["Queue"] = "Hàng đợi",
+    ["Maps to Vote For"] = "Bản đồ muốn bỏ phiếu chọn",
+    ["Notify"] = "Thông báo",
+    ["Moderator Responses"] = "Cách xử lý khi phát hiện quản trị viên",
+    ["Mod Friends"] = "Bạn bè là quản trị viên",
+    ["Auto Trigger"] = "Tự kích hoạt",
+    ["Team Trigger"] = "Kích hoạt theo đội",
+    ["Match Flow"] = "Diễn biến trận đấu",
+    ["Auto Loadout"] = "Tự động chọn bộ trang bị",
+    ["In-Match Automation"] = "Tự động thao tác trong trận",
+    ["Detection"] = "Phát hiện",
+    ["Show Targeting Circle"] = "Hiện vòng ngắm mục tiêu",
+    ["Radius (px)"] = "Bán kính (px)",
+    ["Animated"] = "Có chuyển động",
+    ["Animation Speed (deg/s)"] = "Tốc độ chuyển động (độ/giây)",
+    ["Allowed Hitboxes"] = "Các vùng có thể nhắm trúng",
+    ["Surface Reduction (%)"] = "Mức thu nhỏ vùng trúng đạn (%)",
+    ["Preserve Depth"] = "Giữ nguyên độ sâu",
+    ["Linear Speed"] = "Tốc độ tuyến tính",
+    ["AI Speed"] = "Tốc độ AI",
+    ["Spring Speed"] = "Tốc độ đàn hồi",
+    ["Enable Target Lock"] = "Bật khóa mục tiêu",
+    ["Lock Mode"] = "Chế độ khóa",
+    ["Activation Chance (%)"] = "Tỉ lệ kích hoạt (%)",
+    ["Release Delay (s)"] = "Thời gian chờ trước khi nhả khóa (giây)",
+    ["Elimination Sound"] = "Âm thanh hạ gục",
+    ["Elimination Volume"] = "Âm lượng khi hạ gục",
+    ["Elimination Pitch"] = "Cao độ khi hạ gục",
+    ["Enable Elimination Chams"] = "Bật hiệu ứng làm nổi nhân vật khi hạ gục",
+    ["Elimination Chams Duration"] = "Thời gian hiệu ứng sau khi hạ gục",
+    ["Elimination Chams Material"] = "Chất liệu hiệu ứng khi hạ gục",
+    ["Enable Elimination Flash"] = "Bật hiệu ứng chớp khi hạ gục",
+    ["Elimination Flash Duration"] = "Thời gian chớp khi hạ gục",
+    ["Elimination Notification Text"] = "Nội dung thông báo hạ gục",
+    ["Headshot Sound"] = "Âm thanh khi bắn trúng đầu",
+    ["Headshot Volume"] = "Âm lượng khi bắn trúng đầu",
+    ["Headshot Pitch"] = "Cao độ âm thanh khi bắn trúng đầu",
+    ["Body Hit Sound"] = "Âm thanh khi bắn trúng thân",
+    ["Body Hit Volume"] = "Âm lượng khi bắn trúng thân",
+    ["Body Hit Pitch"] = "Cao độ âm thanh khi bắn trúng thân",
+    ["Enable Hit Chams"] = "Bật hiệu ứng làm nổi nhân vật khi trúng đạn",
+    ["Hit Chams Duration"] = "Thời gian hiệu ứng khi trúng đạn",
+    ["Hit Chams Material"] = "Chất liệu hiệu ứng khi trúng đạn",
+    ["Enable Hit Flash"] = "Bật hiệu ứng chớp khi trúng đạn",
+    ["Hit Flash Duration"] = "Thời gian chớp khi trúng đạn",
+    ["Hit Notification Text"] = "Nội dung thông báo khi bắn trúng",
+    ["Utilize Health Lead"] = "Dự đoán theo lượng máu mục tiêu",
+    ["This option is currently not connected to active Ragebot behavior."] = "Mục này hiện chưa được Ragebot sử dụng.",
+    ["Void Spam"] = "Tấn công rồi ẩn vị trí",
+    ["Attack"] = "Thời gian tấn công",
+    ["Hide"] = "Thời gian ẩn vị trí",
+    ["Evasion Mode"] = "Kiểu né đòn",
+    ["Character Origin"] = "Vị trí nhân vật",
+    ["Base Radius"] = "Bán kính cơ bản",
+    ["Random Factor"] = "Mức ngẫu nhiên",
+    ["Hitscan"] = "Hướng đạn",
+    ["Shoot"] = "Bắn",
+    ["Shot Delay (ms)"] = "Độ trễ phát bắn (ms)",
+    ["Cooldown (ms)"] = "Thời gian hồi (ms)",
+    ["Flick Duration (ms)"] = "Thời gian lia tâm ngắm nhanh (ms)",
+    ["Curvature"] = "Độ cong đường ngắm",
+    ["Humanness"] = "Độ tự nhiên khi ngắm",
+    ["Open Aimbot Targeting"] = "Mở cài đặt ngắm tự động",
+    ["Combat"] = "Chiến đấu",
+    ["Aimbot"] = "Aimbot",
+    ["Fire Assist"] = "Hỗ trợ bắn",
+    ["Weapon Handling"] = "Điều khiển vũ khí",
+    ["Hit Feedback"] = "Hiệu ứng khi trúng đòn",
+    ["Hold a weapon, then click the pin next to a setting to give that weapon its own value."] = "Cầm vũ khí lên rồi bấm biểu tượng ghim cạnh một tùy chọn để đặt giá trị riêng cho vũ khí đó.",
+    ["Season"] = "Mùa giải",
+    ["Rank"] = "Hạng",
+    ["Leaderboard Rank (optional, e.g. 1)"] = "Thứ hạng trên bảng xếp hạng (không bắt buộc, ví dụ: 1)",
+    ["Apply To"] = "Áp dụng cho",
+    ["Search Skins"] = "Tìm skin",
+    ["Search Wraps"] = "Tìm lớp áo...",
+    ["Inverted Wrap"] = "Lật lớp áo",
+    ["Player ESP"] = "ESP người chơi",
+    ["Anti Katana"] = "Chống Katana",
+    ["Auto Weapon Ban"] = "Tự động cấm vũ khí",
+    ["Setup"] = "Thiết lập",
+    ["Slot Editor"] = "Chỉnh ô trang bị",
+    ["Auto Pickup"] = "Tự động nhặt vật phẩm",
+    ["Auto Queue"] = "Tự động vào hàng chờ",
+    ["Auto Respawn"] = "Tự động hồi sinh",
+    ["Auto Map Vote"] = "Tự động bỏ phiếu bản đồ",
+    ["Hacker Detector"] = "Phát hiện hack",
+    ["Moderator Detector"] = "Phát hiện admin",
+    ["Subspace Tripmines"] = "Mìn Subspace",
+    ["Targeting"] = "Ngắm mục tiêu",
+    ["Targeting FOV"] = "Góc nhìn ngắm (FOV)",
+    ["Manage Sounds"] = "Quản lý âm thanh",
+    ["Add a Sound"] = "Thêm âm thanh",
+    ["Remove a Sound"] = "Xóa âm thanh",
+    ["Remove selected sound?"] = "Xóa âm thanh đã chọn?",
+    ["Triggerbot"] = "Tự động bắn",
+    ["Cooldowns"] = "Thời gian hồi chiêu",
+    ["Grenades"] = "Lựu đạn",
+    ["Flickbot"] = "Flickbot",
+    ["Skin Catalog"] = "Danh mục skin",
+    ["Wrap Catalog"] = "Danh mục lớp áo",
+    ["Rank Charm Override"] = "Đổi phụ kiện theo hạng",
+    ["Charm Catalog"] = "Danh mục phụ kiện",
+    ["Finisher Catalog"] = "Danh mục kết liễu",
+    ["Cosmetic Runtime"] = "Quản lý đồ trang trí đang dùng",
+    ["Unlock All"] = "Mở khóa toàn bộ",
+    ["Community"] = "Cộng đồng",
+    ["Library"] = "Thư viện",
+    ["Animation Player"] = "Trình phát hoạt ảnh",
+    ["Character Appearance"] = "Tùy chỉnh nhân vật",
+    ["Device Spoof"] = "Giả lập loại thiết bị",
+    ["Ground"] = "Trên mặt đất",
+    ["Air"] = "Trên không trung",
+    ["Recorder"] = "Công cụ ghi lại chuyển động",
+    ["Markers"] = "Mốc đánh dấu",
+    ["Record / Replay"] = "Ghi lại / phát lại",
+    ["Playback Alignment"] = "Căn chỉnh lúc phát lại",
+    ["Save Recording"] = "Lưu dữ liệu ghi lại",
+    ["Recording Library"] = "Danh sách bản ghi",
+    ["Camera FOV"] = "FOV camera",
+    ["Gameplay Overlays"] = "Các lớp thông tin hiển thị trong game",
+    ["Stretched Resolution"] = "Kéo giãn độ phân giải",
+    ["Third Person"] = "Góc nhìn thứ ba",
+    ["Manage Images"] = "Quản lý hình ảnh",
+    ["Add an Image"] = "Thêm hình ảnh",
+    ["Remove an Image"] = "Xóa hình ảnh",
+    ["Remove selected image?"] = "Xóa hình ảnh đã chọn?",
+    ["Crosshair"] = "Tâm ngắm",
+    ["Motion & Effects"] = "Chuyển động và hiệu ứng",
+    ["Activation & Filtering"] = "Kích hoạt và bộ lọc",
+    ["Viewmodel Position"] = "Vị trí vũ khí trên màn hình",
+    ["Motion & Animation"] = "Chuyển động và hoạt ảnh",
+    ["Bullet Tracers"] = "Vệt đạn",
+    ["Advanced Tracers"] = "Vệt đạn nâng cao",
+    ["Suppressions"] = "Hiệu ứng đạn áp sát",
+    ["Lighting Override"] = "Tùy chỉnh ánh sáng",
+    ["Time & Exposure"] = "Thời gian và phơi sáng",
+    ["Shadows & Quality"] = "Bóng đổ và chất lượng",
+    ["Ambient Colors"] = "Màu ánh sáng môi trường",
+    ["Fog & Atmosphere"] = "Sương mù và khí quyển",
+    ["Tone & Color"] = "Tông màu và màu sắc",
+    ["Focus & Motion"] = "Lấy nét và chuyển động",
+    ["Light Effects"] = "Hiệu ứng ánh sáng",
+    ["Manage Skyboxes"] = "Quản lý bầu trời",
+    ["Add a Skybox"] = "Thêm bầu trời",
+    ["Remove a Skybox"] = "Xóa bầu trời",
+    ["Remove selected skybox?"] = "Xóa bầu trời đã chọn?",
+    ["Skybox"] = "Bầu trời",
+    ["Ambient Sound"] = "Âm thanh môi trường",
+    ["Weather"] = "Thời tiết",
+    ["Lightning"] = "Sét",
+    ["Speed"] = "Tốc độ",
+    ["Thickness"] = "Độ dày",
+    ["Intensity"] = "Cường độ",
+    ["Preset"] = "Thiết lập sẵn",
+    ["Glow"] = "Phát sáng",
+    ["Multiplier"] = "Hệ số nhân",
+    ["Brightness"] = "Độ sáng",
+    ["Size"] = "Kích thước",
+    ["Text Color"] = "Màu chữ",
+    ["Follow Target"] = "Bám theo mục tiêu",
+    ["Follow Speed"] = "Tốc độ bám theo",
+    ["Follow Damper"] = "Độ giảm dao động khi bám",
+    ["Snap Distance"] = "Khoảng cách bắt dính",
+    ["Sound Source"] = "Nguồn âm thanh",
+    ["Offset"] = "Độ lệch",
+    ["Image"] = "Hình ảnh",
+    ["Atmosphere"] = "Khí quyển",
+    ["Spread"] = "Độ tản",
+    ["Height"] = "Chiều cao",
+    ["Jaggedness"] = "Độ ngoằn ngoèo",
+    ["Sparks"] = "Tia lửa",
+    ["Explosion"] = "Vụ nổ",
+    ["Match flow, loadouts, in-match automation, and detection."] = "Quản lý trận đấu, bộ trang bị, tác vụ tự động và phát hiện đối tượng.",
+    ["Automate queueing, voting, bans, and respawns."] = "Tự động vào trận, bỏ phiếu, cấm lựa chọn và hồi sinh.",
+    ["Configure map-specific and fallback loadouts."] = "Thiết lập bộ trang bị riêng cho từng bản đồ và bộ dự phòng.",
+    ["Automate pickups, counters, and tripmines."] = "Tự nhặt vật phẩm và tự xử lý các cơ chế phản công, mìn.",
+    ["Detect hackers and moderators."] = "Phát hiện người chơi gian lận và quản trị viên.",
+    ["Add or remove custom sounds."] = "Thêm hoặc xóa âm thanh tùy chỉnh.",
+    ["Enter a name and sound source."] = "Nhập tên và nguồn âm thanh.",
+    ["Select a sound to remove."] = "Chọn âm thanh muốn xóa.",
+    ["Aim assistance, fire control, weapon handling, feedback, and ragebot."] = "Các tính năng ngắm bắn, quản lý vũ khí, phản hồi khi trúng đòn và Ragebot.",
+    ["Camera-based aim assistance and target locking."] = "Hỗ trợ ngắm bằng camera và khóa mục tiêu.",
+    ["Redirect projectiles toward targets without moving the camera."] = "Điều hướng đạn về phía mục tiêu mà không xoay camera.",
+    ["Aggressive targeting, weapon priority, and evasive movement."] = "Tự chọn mục tiêu để tấn công, ưu tiên vũ khí và né đòn.",
+    ["Automatic firing and fast camera flicks."] = "Tự động bắn và xoay camera nhanh.",
+    ["Aim, firing, cooldown, melee, and grenade behavior."] = "Thiết lập ngắm, bắn, thời gian hồi, cận chiến và lựu đạn.",
+    ["Sound, visual, flash, and notification feedback."] = "Tùy chỉnh âm thanh, hình ảnh, hiệu ứng chớp và thông báo.",
+    ["Manage cosmetic runtime, catalogs, and cosmetic presets."] = "Quản lý đồ đang dùng, danh mục và các bộ trang trí đã lưu.",
+    ["Create, load, automate, and delete whole cosmetic loadouts."] = "Tạo, tải, tự động áp dụng hoặc xóa cả bộ trang trí.",
+    ["Enable cosmetic features, unlock cosmetics, reroll, and share your active look."] = "Bật tính năng chỉnh đồ trang trí, mở khóa vật phẩm, đổi ngẫu nhiên và chia sẻ bộ đang dùng.",
+    ["Browse and apply weapon skin variants."] = "Xem và áp dụng các mẫu skin vũ khí.",
+    ["Browse weapon wraps and control inverted patterns."] = "Xem lớp áo vũ khí và bật/tắt chế độ lật họa tiết.",
+    ["Browse weapon charms and optionally override rank charms."] = "Xem phụ kiện gắn trên vũ khí hoặc chọn phụ kiện riêng theo hạng.",
+    ["Browse and apply weapon finishers."] = "Xem và áp dụng hiệu ứng kết liễu.",
+    ["Movement, character appearance, and identity."] = "Di chuyển, tùy chỉnh nhân vật và thông tin nhận dạng.",
+    ["Ground and air movement."] = "Di chuyển trên mặt đất và trên không.",
+    ["Record, replay, and manage movement routes."] = "Ghi lại, phát lại và quản lý lộ trình di chuyển.",
+    ["Animations and character appearance."] = "Hoạt ảnh và tùy chỉnh nhân vật.",
+    ["Presented device and player identity."] = "Thông tin thiết bị và danh tính hiển thị của người chơi.",
+    ["Add or remove custom images."] = "Thêm hoặc xóa hình ảnh tùy chỉnh.",
+    ["Enter a name and image source."] = "Nhập tên và nguồn hình ảnh.",
+    ["Select an image to remove."] = "Chọn hình ảnh muốn xóa.",
+    ["Player information, crosshair, weapon, camera, and sound visuals."] = "Thông tin người chơi, tâm ngắm, vũ khí, camera và hiệu ứng âm thanh.",
+    ["Player overlays, team-specific styling, and a synchronized preview."] = "Thông tin hiển thị trên người chơi, màu sắc riêng cho từng đội và phần xem trước đồng bộ.",
+    ["Crosshair lines, images, text, motion, and target-follow effects."] = "Đường ngắm, hình ảnh, chữ, chuyển động và hiệu ứng bám mục tiêu.",
+    ["Viewmodel position, materials, motion, and projectile effects."] = "Vị trí vũ khí trên màn hình, chất liệu, chuyển động và hiệu ứng đường đạn.",
+    ["Third person, camera field of view, overlays, and screen scaling."] = "Góc nhìn thứ ba, góc nhìn camera (FOV), lớp phủ và tỉ lệ màn hình.",
+    ["Visualize footsteps and other sounds by source and loudness."] = "Hiển thị vị trí nguồn phát và âm lượng của tiếng bước chân cùng các âm thanh khác.",
+    ["Add or remove custom skyboxes."] = "Thêm hoặc xóa bầu trời tùy chỉnh.",
+    ["Enter a name and six face textures."] = "Nhập tên và hình ảnh cho cả sáu mặt.",
+    ["Select a skybox to remove."] = "Chọn bầu trời muốn xóa.",
+    ["Lighting, post-processing, sky, and ambient sound."] = "Ánh sáng, hậu kỳ hình ảnh, bầu trời và âm thanh môi trường.",
+    ["Override time, exposure, shadows, ambient light, fog, and atmosphere."] = "Chỉnh thời gian trong game, độ phơi sáng, bóng đổ, ánh sáng môi trường, sương mù và khí quyển.",
+    ["Tune tone, focus, motion, and light effects."] = "Điều chỉnh tông màu, lấy nét, chuyển động và hiệu ứng ánh sáng.",
+    ["Choose a skybox, ambient sound, weather, and lightning."] = "Chọn bầu trời, âm thanh môi trường, thời tiết và hiệu ứng sét.",
+    ["Distance from screen center for the Crosshair side. Negative is above, positive below."] = "Khoảng cách từ tâm màn hình đến tâm ngắm. Số âm là lên trên, số dương là xuống dưới.",
+    ["Cycles between a continuous attack window and a short hidden server-position window."] = "Luân phiên giữa khoảng thời gian tấn công và khoảng ngắn ẩn vị trí trên máy chủ.",
+    ["Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second."] = "Thời gian của đợt tấn công. Súng vẫn bắn theo nhịp vốn có. Phạm vi: 0,01–1 giây.",
+    ["Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds."] = "Thời gian ẩn vị trí trên máy chủ sau đợt tấn công. Phạm vi: 0,01–1 giây; mặc định: 0,25 giây.",
+    ["Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction."] = "Lên: ép hướng bắn lên trên. Xuống: ép hướng bắn xuống dưới. Theo mục tiêu: giữ hướng bắn phù hợp với mục tiêu.",
+    ["Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive."] = "Kết hợp độ lệch vị trí của Underground với cơ chế điều khiển CFrame phía máy chủ của Ragebot. Ragebot tắt thì Underground vẫn chạy riêng.",
+    ["Applies the choices from the Skins, Wraps, Charms, and Finishers catalogs."] = "Áp dụng các lựa chọn trong danh mục skin, lớp áo, phụ kiện và hiệu ứng kết liễu.",
+    ["How fast the camera turns to the recording's starting look angle"] = "Tốc độ camera xoay về góc nhìn lúc bắt đầu bản ghi.",
+    ["How smoothened camera look is"] = "Độ mượt khi camera xoay nhìn.",
+    ["Once this close to the start, position is considered aligned"] = "Khi đã đủ gần điểm bắt đầu, vị trí sẽ được xem là khớp.",
+    ["Drags the crosshair toward the aimbot / silent aim target"] = "Kéo tâm ngắm về phía mục tiêu của Aimbot / Silent Aim.",
+    ["Degrees per second"] = "Độ mỗi giây",
+    ["Pulses the gap outward by the range below"] = "Làm khoảng cách giữa các vạch nở ra theo giá trị bên dưới.",
+    ["Static tilt of the whole crosshair"] = "Độ nghiêng cố định của toàn bộ tâm ngắm.",
+    ["Pixels below the crosshair"] = "Số pixel lệch xuống dưới tâm ngắm.",
+    ["A custom label beneath the crosshair"] = "Dòng chữ tùy chỉnh bên dưới tâm ngắm.",
+    ["Atmosphere color."] = "Màu khí quyển.",
+    ["Atmosphere decay color."] = "Màu sương khí quyển khi tan dần.",
+    ["Indoor ambient color."] = "Màu ánh sáng môi trường trong nhà.",
+    ["Outdoor ambient color."] = "Màu ánh sáng môi trường ngoài trời.",
+    ["Top color shift."] = "Điều chỉnh màu phía trên.",
+    ["Bottom color shift."] = "Điều chỉnh màu phía dưới.",
+    ["Strike lightning during rain and blizzards."] = "Tạo sét khi trời mưa hoặc có bão tuyết.",
+    ["Colour or gradient of the lightning bolts."] = "Màu hoặc dải màu của tia sét.",
+    ["Average seconds between strikes."] = "Khoảng thời gian trung bình giữa các lần sét đánh (giây).",
+    ["Farthest a strike can land from the camera."] = "Khoảng cách xa nhất từ camera đến điểm sét đánh.",
+    ["Length of each bolt from cloud to ground."] = "Chiều dài tia sét từ mây xuống mặt đất.",
+    ["Core thickness of the bolts."] = "Độ dày lõi tia sét.",
+    ["How jagged and erratic the bolts look."] = "Độ ngoằn ngoèo của tia sét.",
+    ["Maximum forks that split off each bolt."] = "Số nhánh tối đa của mỗi tia sét.",
+    ["Brightness of the light flash at the impact."] = "Độ sáng của chớp sáng khi sét đánh trúng.",
+    ["Sparks that crackle off the bolt as it strikes."] = "Tia lửa bắn ra khi sét đánh.",
+    ["Colour or gradient of the sparks."] = "Màu hoặc dải màu của tia lửa.",
+    ["How many sparks each strike throws off."] = "Số tia lửa tạo ra mỗi lần sét đánh.",
+    ["Thickness of the sparks."] = "Độ dày của tia lửa.",
+    ["How far sparks fly from the bolt."] = "Khoảng cách tia lửa bay khỏi tia sét.",
+    ["How fast sparks shoot out and fade."] = "Tốc độ tia lửa bắn ra rồi mờ dần.",
+    ["How jagged the sparks look."] = "Độ ngoằn ngoèo của tia lửa.",
+    ["Burst of arcs that erupts where the bolt lands."] = "Chùm tia điện bùng lên tại điểm sét đánh.",
+    ["Colour or gradient of the explosion."] = "Màu hoặc dải màu của vụ nổ.",
+    ["Size of the impact burst."] = "Kích thước hiệu ứng tại điểm va chạm.",
+    ["How many arcs radiate from the impact."] = "Số tia điện tỏa ra từ điểm va chạm.",
+    ["Play a thunder crack with each strike, delayed and quietened by distance."] = "Phát tiếng sấm mỗi khi có sét. Tiếng sẽ đến trễ và nhỏ dần khi ở xa.",
+    ["Loudness of a strike landing right beside you."] = "Âm lượng khi sét đánh ngay gần bạn.",
+    ["Lag the crack by the strike's distance, like real thunder. Off plays it instantly."] = "Tạo độ trễ cho tiếng sấm tùy theo khoảng cách như ngoài đời. Tắt mục này để phát tiếng ngay lập tức.",
+    ["Roblox sound id or local file path for the crack. Leave empty for the default thunder."] = "Nhập ID âm thanh Roblox hoặc đường dẫn tệp âm thanh. Để trống để dùng tiếng sấm mặc định.",
+    ["No matches"] = "Không tìm thấy kết quả",
+    ["Loading catalog"] = "Đang tải danh mục",
+    ["No items available"] = "Chưa có mục nào",
+    ["The catalog could not be loaded."] = "Không thể tải danh mục.",
+    ["This catalog does not have any items yet."] = "Danh mục này hiện chưa có mục nào.",
+    ["Clear filter"] = "Xóa bộ lọc",
+    ["No results"] = "Không có kết quả",
+    ["Select an option"] = "Chọn một tùy chọn",
+    ["Type to search"] = "Nhập để tìm kiếm",
+    ["Search..."] = "Tìm kiếm...",
+    ["Search skins..."] = "Tìm skin...",
+    ["Search wraps..."] = "Tìm lớp áo...",
+    ["Search charms..."] = "Tìm phụ kiện...",
+    ["Search finishers..."] = "Tìm hiệu ứng kết liễu...",
+    ["Loading..."] = "Đang tải...",
+    ["Unavailable"] = "Không khả dụng",
+    ["Empty"] = "Trống",
+    ["No Matches"] = "Không tìm thấy kết quả",
+    ["Selected"] = "Đã chọn",
+    ["Select"] = "Chọn",
+    ["Remove"] = "Gỡ bỏ",
+    ["Apply"] = "Áp dụng",
+    ["Reset"] = "Đặt lại",
+    ["Open"] = "Mở",
+    ["Close"] = "Đóng",
+    ["Back"] = "Quay lại",
+    ["Next"] = "Tiếp theo",
+    ["Previous"] = "Trước đó",
+    ["Options"] = "Tùy chọn",
+    ["Profile"] = "Bộ cấu hình",
+    ["Profiles"] = "Các bộ cấu hình",
+    ["Choose a profile"] = "Chọn bộ cấu hình",
+    ["No config selected"] = "Chưa chọn cấu hình",
+    ["Enter config name"] = "Nhập tên cấu hình",
+    ["Paste config here"] = "Dán cấu hình vào đây",
+    ["Copy"] = "Sao chép",
+    ["Copied"] = "Đã sao chép",
+    ["Failed"] = "Thất bại",
+    ["Success"] = "Thành công",
+    ["Are you sure?"] = "Chắc chắn chứ?",
+    ["This cannot be undone."] = "Thao tác này không thể hoàn tác.",
+    ["Enabled features"] = "Tính năng đang bật",
+    ["Hold to activate"] = "Giữ để kích hoạt",
+    ["Press to toggle"] = "Nhấn để bật/tắt",
+    ["Use default"] = "Dùng mặc định",
+    ["Custom"] = "Tùy chỉnh",
+    ["Player"] = "Người chơi",
+    ["Players"] = "Người chơi",
+    ["Team"] = "Đội",
+    ["Enemies"] = "Đối thủ",
+    ["All players"] = "Tất cả người chơi",
+    ["Friendly"] = "Đồng đội",
+    ["Enemy"] = "Đối thủ",
+    ["Head"] = "Đầu",
+    ["Body"] = "Thân người",
+    ["Closest"] = "Gần nhất",
+    ["Farthest"] = "Xa nhất",
+    ["Ascending"] = "Tăng dần",
+    ["Descending"] = "Giảm dần",
+    ["Enabled only"] = "Chỉ mục đang bật",
+    ["Show"] = "Hiện",
+    ["Show All"] = "Hiện tất cả",
+    ["Hide All"] = "Ẩn tất cả",
+    ["Reset to Default"] = "Khôi phục mặc định",
+    ["Waiting..."] = "Đang chờ...",
+    ["Ready"] = "Sẵn sàng",
+    ["Error"] = "Lỗi",
+    ["Warning"] = "Cảnh báo",
+    ["Information"] = "Thông tin",
+    ["Please wait..."] = "Vui lòng chờ...",
+    ["Enter a search term"] = "Nhập từ cần tìm",
+    ["Nothing selected"] = "Chưa chọn mục nào",
+    ["Are you sure you want to delete this?"] = "Bạn có chắc muốn xóa mục này không?",
+    ["Delete this item?"] = "Xóa mục này nhé?",
+    ["This action cannot be undone."] = "Không thể hoàn tác thao tác này.",
+    ["Cosmetic Preset Library"] = "Thư viện bộ trang trí",
+    ["Cosmetic Preset Name"] = "Tên bộ trang trí",
+    ["Cosmetic Rarities to Unlock"] = "Độ hiếm muốn mở khóa",
+    ["Cosmetic Types to Unlock"] = "Loại đồ trang trí muốn mở khóa",
+    ["Cosmetic features are paused until cosmetic changes are enabled."] = "Các tính năng đồ trang trí đang tạm dừng. Hãy bật mục cho phép đổi đồ trang trí để tiếp tục.",
+    ["Auto Load Cosmetic Preset"] = "Tự động áp dụng bộ trang trí",
+    ["Auto Save Cosmetic Preset"] = "Tự động lưu bộ trang trí",
+    ["No Cosmetic Presets yet. Enter a name to create one."] = "Chưa có bộ trang trí nào. Nhập tên để tạo bộ mới.",
+    ["No saved recordings yet. Record a route, then save it to build your library."] = "Chưa có bản ghi nào. Hãy ghi lại đường đi rồi lưu để lần sau dùng lại.",
+    ["Align Snap Distance"] = "Khoảng cách căn chỉnh",
+    ["Animation"] = "Hoạt ảnh",
+    ["Avatar"] = "Ảnh đại diện",
+    ["Back Face"] = "Mặt sau",
+    ["Behind Offset"] = "Khoảng lùi về phía sau",
+    ["Bloom"] = "Quầng sáng",
+    ["Bolt"] = "Tia sét",
+    ["Bolts"] = "Số tia sét",
+    ["Bottom Line"] = "Vạch dưới",
+    ["Branches"] = "Số nhánh",
+    ["Camera & Screen"] = "Camera & màn hình",
+    ["Casual Win %"] = "Tỉ lệ thắng thường (%)",
+    ["Casual Wins"] = "Số trận thắng thường",
+    ["Character Chams Material"] = "Chất liệu hiệu ứng làm nổi nhân vật",
+    ["Charms"] = "Phụ kiện",
+    ["Charm"] = "Phụ kiện",
+    ["Clock Time"] = "Giờ trong ngày",
+    ["Color Correction"] = "Hiệu chỉnh màu",
+    ["Color Grading"] = "Chỉnh tông màu",
+    ["Color Shift"] = "Lệch màu",
+    ["Contrast"] = "Độ tương phản",
+    ["Cosmetics"] = "Đồ trang trí",
+    ["Cosmetic"] = "Đồ trang trí",
+    ["Count"] = "Số lượng",
+    ["Create Cosmetic Preset"] = "Tạo bộ trang trí",
+    ["Crosshair Image Selection"] = "Chọn hình cho tâm ngắm",
+    ["Crosshair Image Size"] = "Kích thước hình tâm ngắm",
+    ["Crosshair Image Transparency"] = "Độ trong suốt của hình tâm ngắm",
+    ["Crosshair Offset"] = "Độ lệch tâm ngắm",
+    ["Crosshair Outline"] = "Viền tâm ngắm",
+    ["Crosshair Outline Thickness"] = "Độ dày viền tâm ngắm",
+    ["Crosshair Rotation Speed"] = "Tốc độ xoay tâm ngắm",
+    ["Crosshair Spread"] = "Độ giãn tâm ngắm",
+    ["Crosshair Spread Range"] = "Khoảng giãn tâm ngắm",
+    ["Crosshair Style"] = "Kiểu tâm ngắm",
+    ["Crosshair Text Color"] = "Màu chữ trên tâm ngắm",
+    ["Crosshair Text Content"] = "Nội dung chữ trên tâm ngắm",
+    ["Crosshair Text Font"] = "Phông chữ trên tâm ngắm",
+    ["Crosshair Text Offset"] = "Độ lệch chữ trên tâm ngắm",
+    ["Crosshair Text Outline"] = "Viền chữ trên tâm ngắm",
+    ["Crosshair Text Outline Thickness"] = "Độ dày viền chữ trên tâm ngắm",
+    ["Crosshair Text Size"] = "Cỡ chữ trên tâm ngắm",
+    ["Custom Animation ID"] = "ID hoạt ảnh tùy chỉnh",
+    ["Custom Sound (ID or URL)"] = "Âm thanh tùy chỉnh (ID hoặc URL)",
+    ["Delay"] = "Độ trễ",
+    ["Delete Recording"] = "Xóa bản ghi",
+    ["Delete Selected Cosmetic Preset"] = "Xóa bộ trang trí đã chọn",
+    ["Density"] = "Mật độ",
+    ["Depth of Field"] = "Độ sâu trường ảnh",
+    ["Diffuse Scale"] = "Cường độ khuếch tán ánh sáng",
+    ["Disable Global Shadows"] = "Tắt bóng đổ toàn cảnh",
+    ["Display Name"] = "Tên hiển thị",
+    ["Down Face"] = "Mặt dưới",
+    ["Emission"] = "Cường độ phát sáng",
+    ["Enable Ambient Sound"] = "Bật âm thanh môi trường",
+    ["Enable Animation Player"] = "Bật trình phát hoạt ảnh",
+    ["Enable Bullet Tracers"] = "Hiện đường đạn",
+    ["Enable Camera FOV"] = "Bật chỉnh góc nhìn camera",
+    ["Enable Character Chams"] = "Làm nổi bật nhân vật",
+    ["Enable Cosmetic Changes"] = "Cho phép đổi đồ trang trí",
+    ["Enable Crosshair"] = "Bật tâm ngắm tùy chỉnh",
+    ["Enable Crosshair Text"] = "Bật chữ trên tâm ngắm",
+    ["Enable Device Spoof"] = "Bật giả lập thiết bị",
+    ["Enable Lighting Override"] = "Bật tùy chỉnh ánh sáng",
+    ["Enable Lightning"] = "Bật hiệu ứng sét",
+    ["Enable Movement Recorder"] = "Bật ghi lại chuyển động",
+    ["Enable Skybox"] = "Bật bầu trời tùy chỉnh",
+    ["Enable Sound ESP"] = "Bật ESP âm thanh",
+    ["Enable Stretched Resolution"] = "Bật kéo giãn độ phân giải",
+    ["Enable Viewmodel Position"] = "Bật chỉnh vị trí vũ khí trên màn hình",
+    ["Enable Weather"] = "Bật thời tiết",
+    ["End"] = "Kết thúc",
+    ["Environment Diffuse Scale"] = "Cường độ khuếch tán ánh sáng môi trường",
+    ["Environment Specular Scale"] = "Cường độ phản chiếu môi trường",
+    ["Event Currency"] = "Tiền sự kiện",
+    ["Expand Damper"] = "Độ hãm khi giãn",
+    ["Expand Speed"] = "Tốc độ giãn",
+    ["Expand Tracers"] = "Kéo dài đường đạn",
+    ["Export to Clipboard"] = "Sao chép vào bộ nhớ tạm",
+    ["Exposure"] = "Phơi sáng",
+    ["Exposure Compensation"] = "Bù sáng",
+    ["Fade Time"] = "Thời gian mờ dần",
+    ["Far Intensity"] = "Cường độ ở xa",
+    ["Favorite Map"] = "Bản đồ yêu thích",
+    ["Field of View"] = "Góc nhìn (FOV)",
+    ["Filled"] = "Tô kín",
+    ["Finishers"] = "Hiệu ứng kết liễu",
+    ["Flash"] = "Độ sáng chớp",
+    ["Focus Distance"] = "Khoảng lấy nét",
+    ["Fog"] = "Sương mù",
+    ["Fog End"] = "Điểm kết thúc sương mù",
+    ["Fog Start"] = "Điểm bắt đầu sương mù",
+    ["Follow Target Mode"] = "Cách bám theo mục tiêu",
+    ["Force"] = "Lực nhảy",
+    ["Front Face"] = "Mặt trước",
+    ["Geographic Latitude"] = "Vĩ độ địa lý",
+    ["Glare"] = "Lóa sáng",
+    ["Haze"] = "Mù nhẹ",
+    ["Hide ADS Vignette"] = "Ẩn hiệu ứng tối viền khi ngắm",
+    ["Hide Burn Effect"] = "Ẩn hiệu ứng cháy",
+    ["Hide Equip Animation"] = "Ẩn hoạt ảnh rút vũ khí",
+    ["Hide Flashbang Effect"] = "Ẩn hiệu ứng lựu đạn choáng",
+    ["Hide Game Tracers"] = "Ẩn đường đạn của game",
+    ["Hide Hitmarker"] = "Ẩn dấu báo trúng đạn",
+    ["Hide Muzzle Flash"] = "Ẩn tia lửa đầu nòng",
+    ["Hide Recorder Notifications"] = "Ẩn thông báo ghi hình",
+    ["Hide Recorder UI"] = "Ẩn giao diện ghi hình",
+    ["Hide Reload Animation"] = "Ẩn hoạt ảnh nạp đạn",
+    ["Hide Scope Overlay"] = "Ẩn lớp phủ ống ngắm",
+    ["Hide Scope Reticle"] = "Ẩn tâm ngắm trong ống ngắm",
+    ["Hide Shoot Animation"] = "Ẩn hoạt ảnh bắn",
+    ["Hide Sprint Animation"] = "Ẩn hoạt ảnh chạy nhanh",
+    ["Highlight"] = "Làm nổi bật",
+    ["Identity Spoofing"] = "Giả mạo thông tin người chơi",
+    ["Image Source"] = "Nguồn hình ảnh",
+    ["Import (paste cosmetics)"] = "Nhập (dán dữ liệu đồ trang trí)",
+    ["Import Cosmetics"] = "Nhập đồ trang trí",
+    ["In Focus Radius"] = "Bán kính vùng lấy nét",
+    ["Infinite Double Jumps"] = "Nhảy đôi vô hạn",
+    ["Interval"] = "Khoảng thời gian",
+    ["Keys"] = "Phím",
+    ["Latitude"] = "Vĩ độ",
+    ["Leaderboard Rank"] = "Hạng trên bảng xếp hạng",
+    ["Left Face"] = "Mặt trái",
+    ["Left Line"] = "Vạch trái",
+    ["Level"] = "Cấp độ",
+    ["Lighting"] = "Ánh sáng",
+    ["Lighting Style"] = "Kiểu ánh sáng",
+    ["Line Gap"] = "Khoảng cách giữa các vạch",
+    ["Line Length"] = "Độ dài vạch",
+    ["Line Thickness"] = "Độ dày vạch",
+    ["Lines"] = "Các vạch",
+    ["Load Selected Cosmetic Preset"] = "Tải bộ trang trí đã chọn",
+    ["Look Align Speed"] = "Tốc độ căn hướng nhìn",
+    ["Look Smoothness"] = "Độ mượt khi xoay camera",
+    ["Manipulate"] = "Điều chỉnh",
+    ["Map"] = "Bản đồ",
+    ["Minimum Volume"] = "Âm lượng tối thiểu",
+    ["Mode"] = "Chế độ",
+    ["Motion"] = "Chuyển động",
+    ["Motion Blur"] = "Nhòe chuyển động",
+    ["Movement"] = "Di chuyển",
+    ["Movement Recorder"] = "Ghi lại chuyển động",
+    ["Nametag Status"] = "Trạng thái nhãn tên",
+    ["Near Intensity"] = "Cường độ ở gần",
+    ["Open Distance"] = "Khoảng cách mở",
+    ["Overview"] = "Tổng quan",
+    ["Ping"] = "Ping",
+    ["Post Processing"] = "Hiệu ứng hậu kỳ",
+    ["Presented Platform"] = "Nền tảng giả lập",
+    ["Presets"] = "Mẫu cài đặt",
+    ["Prioritize Lighting Quality"] = "Ưu tiên chất lượng ánh sáng",
+    ["Ranked ELO"] = "Điểm ELO xếp hạng",
+    ["Ranked Win %"] = "Tỉ lệ thắng xếp hạng (%)",
+    ["Ranked Wins"] = "Số trận thắng xếp hạng",
+    ["Rate"] = "Tần suất xuất hiện",
+    ["Ray Check"] = "Kiểm tra vật cản",
+    ["Recording"] = "Bản ghi",
+    ["Recording Name"] = "Tên bản ghi",
+    ["Remove Camera Shake"] = "Tắt rung camera",
+    ["Remove Camera Sway"] = "Tắt chuyển động lắc của camera",
+    ["Remove Weapon Motion"] = "Tắt chuyển động vũ khí",
+    ["Render Distance"] = "Khoảng cách hiển thị",
+    ["Replay Selected Recording"] = "Phát lại bản ghi đã chọn",
+    ["Reroll Random Cosmetics"] = "Đổi ngẫu nhiên các món trang trí",
+    ["Retry Loading Charm Catalog"] = "Tải lại danh mục phụ kiện",
+    ["Retry Loading Wrap Catalog"] = "Tải lại danh mục lớp áo",
+    ["Right Face"] = "Mặt phải",
+    ["Right Line"] = "Vạch phải",
+    ["Roll"] = "Góc nghiêng",
+    ["Rotate Crosshair"] = "Xoay tâm ngắm",
+    ["Rotation"] = "Góc xoay",
+    ["Saturation"] = "Độ bão hòa màu",
+    ["Save or Overwrite Recording"] = "Lưu bản ghi hoặc ghi đè bản cũ",
+    ["Save to Selected Cosmetic Preset"] = "Lưu vào bộ trang trí đã chọn",
+    ["Search Charms"] = "Tìm phụ kiện",
+    ["Search Finishers"] = "Tìm hiệu ứng kết liễu",
+    ["Sensitivity"] = "Độ nhạy",
+    ["Shadow Color"] = "Màu bóng đổ",
+    ["Shadow Softness"] = "Độ mềm của bóng",
+    ["Share Skins"] = "Chia sẻ skin",
+    ["Show Active Cosmetics"] = "Hiện đồ trang trí đang dùng",
+    ["Show Replica"] = "Hiện bản sao nhân vật",
+    ["Skins"] = "Skin",
+    ["Sky & Weather"] = "Bầu trời & thời tiết",
+    ["Softness"] = "Độ mềm",
+    ["Sound ESP"] = "ESP âm thanh",
+    ["Sound ID"] = "ID âm thanh",
+    ["Sound Types"] = "Loại âm thanh",
+    ["Specular Scale"] = "Cường độ phản chiếu",
+    ["Spread Speed"] = "Tốc độ giãn",
+    ["Start"] = "Bắt đầu",
+    ["Strip Character Chams Textures"] = "Bỏ họa tiết của hiệu ứng làm nổi nhân vật",
+    ["Sun Rays"] = "Tia nắng",
+    ["Texture Length"] = "Độ dài họa tiết",
+    ["Texture Speed"] = "Tốc độ họa tiết",
+    ["Threshold"] = "Ngưỡng",
+    ["Time"] = "Thời gian",
+    ["Top Line"] = "Vạch trên",
+    ["Tracer Lifetime"] = "Thời gian tồn tại của đường đạn",
+    ["Tracer Style"] = "Kiểu đường đạn",
+    ["Tracer Width"] = "Độ dày đường đạn",
+    ["Unlock All Cosmetics"] = "Mở khóa toàn bộ đồ trang trí",
+    ["Up Face"] = "Mặt trên",
+    ["Upward Velocity"] = "Vận tốc hướng lên",
+    ["Use Custom Loadout"] = "Dùng bộ trang bị tùy chỉnh",
+    ["Visual Chams"] = "Hiệu ứng làm nổi nhân vật",
+    ["Weapon Visuals"] = "Hiển thị vũ khí",
+    ["Wind Angle"] = "Hướng gió",
+    ["Wind Strength"] = "Cường độ gió",
+    ["Winstreak"] = "Số trận thắng liên tiếp",
+    ["Wireframe"] = "Khung lưới",
+    ["World"] = "Thế giới",
+    ["Wraps"] = "Lớp áo",
+    ["Wrap"] = "Lớp áo",
+    ["X Offset"] = "Độ lệch X",
+    ["X Scale"] = "Tỉ lệ X",
+    ["Y Offset"] = "Độ lệch Y",
+    ["Y Scale"] = "Tỉ lệ Y",
+    ["Yaw"] = "Góc quay ngang",
+    ["Z Offset"] = "Độ lệch Z",
+    ["Auto Lock"] = "Tự khóa",
+    ["Closest Point"] = "Điểm gần nhất",
+    ["Head %"] = "Tỉ lệ đầu (%)",
+    ["Manual Only"] = "Chỉ thủ công",
+    ["Not Deflecting"] = "Không đỡ đạn",
+    ["Not Reloading"] = "Không nạp đạn",
+    ["Not Shielded"] = "Không có khiên",
+    ["On All Targets"] = "Với mọi mục tiêu",
+    ["On Best Target"] = "Với mục tiêu phù hợp nhất",
+    ["Scoped In"] = "Đang ngắm qua ống ngắm",
+    ["Toggle Lock"] = "Bật/tắt khóa mục tiêu",
+    ["Within FOV"] = "Trong góc nhìn",
+    ["Elimination Feedback"] = "Hiệu ứng khi hạ gục",
+    ["Evasion"] = "Né tránh",
+    ["Id / File name / Url"] = "ID / tên tệp / đường dẫn",
+    ["Id / Url"] = "ID / đường dẫn",
+    ["Ping Value"] = "Mức ping",
+    ["Status"] = "Trạng thái",
+    ["User ID"] = "ID người chơi",
+    ["Value"] = "Giá trị",
+    ["Win %"] = "Tỉ lệ thắng (%)",
+    ["my recording"] = "bản ghi của tôi",
+    [" is hacking"] = " đang dùng hack",
+    ["99"] = "99",
+    ["Clear Search"] = "Xóa nội dung tìm kiếm",
+    ["Done"] = "Xong",
+    ["Eliminated %DNAME% (%NAME%)"] = "Đã hạ %DNAME% (%NAME%)",
+    ["Hit %DNAME% (%NAME%) for %DMG% in %PART%"] = "Bắn trúng %DNAME% (%NAME%), gây %DMG% sát thương vào %PART%",
+    ["Input"] = "Nhập",
+    ["KEYBINDS"] = "PHÍM TẮT",
+    ["Key: "] = "Phím: ",
+    ["Key: ..."] = "Phím: ...",
+    ["Keybind"] = "Phím tắt",
+    ["No matches."] = "Không có kết quả.",
+    ["All"] = "Tất cả",
+    ["All Weapons"] = "Tất cả vũ khí",
+    ["Ammo"] = "Đạn",
+    ["AutoLock"] = "Tự khóa",
+    ["Blizzard"] = "Bão tuyết",
+    ["Bottom"] = "Dưới cùng",
+    ["Camera Look"] = "Theo hướng camera",
+    ["Center"] = "Ở giữa",
+    ["Circle"] = "Hình tròn",
+    ["ClosestToCrosshair"] = "Gần tâm ngắm nhất",
+    ["Cross"] = "Dấu cộng",
+    ["Crosshair + Text"] = "Tâm ngắm + chữ",
+    ["Diamond"] = "Hình thoi",
+    ["Dynamic"] = "Động",
+    ["Feet"] = "Bàn chân",
+    ["Footsteps"] = "Tiếng bước chân",
+    ["Health"] = "Máu",
+    ["High"] = "Cao",
+    ["Kick"] = "Đá khỏi trận",
+    ["Legacy"] = "Cổ điển",
+    ["Low"] = "Thấp",
+    ["ManualOnly"] = "Chỉ thủ công",
+    ["Medium"] = "Vừa",
+    ["Mouse"] = "Chuột",
+    ["OnAllTargets"] = "Mọi mục tiêu",
+    ["OnBestTarget"] = "Mục tiêu phù hợp nhất",
+    ["Origin"] = "Vị trí gốc",
+    ["Other"] = "Khác",
+    ["ProjectileBreaker"] = "Né đạn",
+    ["Rain"] = "Mưa",
+    ["Realistic"] = "Chân thực",
+    ["Retro"] = "Hoài cổ",
+    ["Self"] = "Bản thân",
+    ["Snow"] = "Tuyết",
+    ["Soft"] = "Nhẹ",
+    ["Static"] = "Cố định",
+    ["Surface"] = "Bề mặt",
+    ["ToLobby"] = "Đưa về sảnh",
+    ["ToggleLock"] = "Bật/tắt khóa",
+    ["Top"] = "Trên cùng",
+    ["Under Feet"] = "Dưới chân",
+    ["Local Player"] = "Người chơi của bạn",
+    ["Other Player"] = "Người chơi khác",
+    ["Arms"] = "Tay nhân vật",
+    ["Held Item"] = "Vũ khí đang cầm",
+    ["Arms Chams"] = "Hiệu ứng làm nổi tay nhân vật",
+    ["Held Item Chams"] = "Hiệu ứng làm nổi vũ khí đang cầm",
+    ["Arms Chams Material"] = "Chất liệu hiệu ứng trên tay nhân vật",
+    ["Held Item Chams Material"] = "Chất liệu hiệu ứng trên vũ khí đang cầm",
+    ["Strip Arms Textures"] = "Bỏ họa tiết trên tay nhân vật",
+    ["Strip Held Item Textures"] = "Bỏ họa tiết trên vũ khí đang cầm",
+    ["Arms Highlight"] = "Làm nổi bật tay nhân vật",
+    ["Held Item Highlight"] = "Làm nổi bật vũ khí đang cầm",
+    ["Arms Render Above"] = "Hiển thị tay nhân vật đè lên vật thể",
+    ["Held Item Render Above"] = "Hiển thị vũ khí đè lên vật thể",
+    ["Arms Fill Transparency"] = "Độ trong suốt phần tô của tay nhân vật",
+    ["Held Item Fill Transparency"] = "Độ trong suốt phần tô của vũ khí",
+    ["Arms Outline"] = "Viền tay nhân vật",
+    ["Held Item Outline"] = "Viền vũ khí đang cầm",
+    ["Arms Outline Transparency"] = "Độ trong suốt viền tay nhân vật",
+    ["Held Item Outline Transparency"] = "Độ trong suốt viền vũ khí",
+    ["Arms Wireframe"] = "Hiện khung lưới trên tay nhân vật",
+    ["Held Item Wireframe"] = "Hiện khung lưới trên vũ khí",
+    ["Arms Wireframe Width"] = "Độ dày khung lưới trên tay nhân vật",
+    ["Held Item Wireframe Width"] = "Độ dày khung lưới trên vũ khí",
+    ["Local Player Name"] = "Tên của bạn",
+    ["Local Player Display Name"] = "Tên hiển thị của bạn",
+    ["Local Player Avatar"] = "Ảnh đại diện của bạn",
+    ["Local Player Winstreak"] = "Số trận thắng liên tiếp của bạn",
+    ["Local Player Level"] = "Cấp độ của bạn",
+    ["Local Player Casual Wins"] = "Số trận thắng thường của bạn",
+    ["Local Player Ranked Wins"] = "Số trận thắng xếp hạng của bạn",
+    ["Local Player Casual Win %"] = "Tỉ lệ thắng thường (%) của bạn",
+    ["Local Player Ranked Win %"] = "Tỉ lệ thắng xếp hạng (%) của bạn",
+    ["Local Player Ranked ELO"] = "Điểm ELO xếp hạng của bạn",
+    ["Local Player Leaderboard Rank"] = "Hạng trên bảng xếp hạng của bạn",
+    ["Local Player Favorite Map"] = "Bản đồ yêu thích của bạn",
+    ["Local Player Nametag Status"] = "Trạng thái nhãn tên của bạn",
+    ["Local Player Influencer"] = "Nhà sáng tạo nội dung của bạn",
+    ["Local Player Roblox Employee"] = "Nhân viên Roblox của bạn",
+    ["Local Player Nosniy Games Team"] = "Đội Nosniy Games của bạn",
+    ["Local Player Ping"] = "Ping của bạn",
+    ["Local Player Keys"] = "Phím của bạn",
+    ["Local Player Event Currency"] = "Tiền sự kiện của bạn",
+    ["Other Player Name"] = "Tên của người chơi khác",
+    ["Other Player Display Name"] = "Tên hiển thị của người chơi khác",
+    ["Other Player Avatar"] = "Ảnh đại diện của người chơi khác",
+    ["Other Player Winstreak"] = "Số trận thắng liên tiếp của người chơi khác",
+    ["Other Player Level"] = "Cấp độ của người chơi khác",
+    ["Other Player Casual Wins"] = "Số trận thắng thường của người chơi khác",
+    ["Other Player Ranked Wins"] = "Số trận thắng xếp hạng của người chơi khác",
+    ["Other Player Casual Win %"] = "Tỉ lệ thắng thường (%) của người chơi khác",
+    ["Other Player Ranked Win %"] = "Tỉ lệ thắng xếp hạng (%) của người chơi khác",
+    ["Other Player Ranked ELO"] = "Điểm ELO xếp hạng của người chơi khác",
+    ["Other Player Leaderboard Rank"] = "Hạng trên bảng xếp hạng của người chơi khác",
+    ["Other Player Favorite Map"] = "Bản đồ yêu thích của người chơi khác",
+    ["Other Player Nametag Status"] = "Trạng thái nhãn tên của người chơi khác",
+    ["Other Player Influencer"] = "Nhà sáng tạo nội dung của người chơi khác",
+    ["Other Player Roblox Employee"] = "Nhân viên Roblox của người chơi khác",
+    ["Other Player Nosniy Games Team"] = "Đội Nosniy Games của người chơi khác",
+    ["Other Player Ping"] = "Ping của người chơi khác",
+    ["Other Player Keys"] = "Phím của người chơi khác",
+    ["Other Player Event Currency"] = "Tiền sự kiện của người chơi khác",
+    ["Character"] = "Nhân vật",
+    ["Influencer"] = "Nhà sáng tạo nội dung",
+    ["Roblox Employee"] = "Nhân viên Roblox",
+    ["Nosniy Games Team"] = "Đội ngũ Nosniy Games",
+    ["Shimmer"] = "Lấp lánh",
+    ["Perimeter"] = "Viền",
+    ["PingPong"] = "Qua lại",
+    ["Crosshair Rotation"] = "Xoay tâm ngắm",
+    ["Cosmetic changes are disabled. Enable them on Overview."] = "Tính năng đổi đồ trang trí đang tắt. Hãy bật trong mục Tổng quan.",
+    ["Custom loadout is ready."] = "Bộ trang trí đã sẵn sàng.",
+    ["Custom loadout is disabled. Enable it on Overview."] = "Bộ trang trí đang tắt. Hãy bật trong mục Tổng quan.",
+    ["Wrap previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước lớp áo. Thử lại khi tài nguyên đã sẵn sàng.",
+    ["Charm previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước phụ kiện. Thử lại khi tài nguyên đã sẵn sàng.",
+    ["Skin previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước skin. Thử lại khi tài nguyên đã sẵn sàng.",
+    ["Finisher previews could not be loaded. Retry when assets are available."] = "Không tải được ảnh xem trước hiệu ứng kết liễu. Thử lại khi tài nguyên đã sẵn sàng.",
+}
+local crefyLanguageOriginals = setmetatable({}, { __mode = "k" })
+local crefyLanguageConnections = setmetatable({}, { __mode = "k" })
+local crefyLanguageState = { Language = "English" }
+local function crefyTranslateTextValue(text)
+    if type(text) ~= "string" then return text end
+    local translated = CREFY_LANGUAGE_TRANSLATIONS[text]
+    if translated ~= nil then return translated end
+    local prefix, suffix = string.match(text, "^(.-) Allowed Hitboxes$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Vùng ngắm của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Mode$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Chế độ " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Speed$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Tốc độ " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Fade Color$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Màu mờ dần của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Perimeter Gradient$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Dải màu viền của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Ping Pong Rotation$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Tốc độ xoay qua lại của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Background Color$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Màu nền của " .. translatedPrefix
+    end
+    prefix, suffix = string.match(text, "^(.-) Main Color$")
+    if prefix ~= nil then
+        local translatedPrefix = CREFY_LANGUAGE_TRANSLATIONS[prefix] or prefix
+        return "Màu chính của " .. translatedPrefix
+    end
+    return text
+end
+local function crefyTranslateTooltipText(text)
+    if type(text) ~= "string" then return text end
+    if crefyLanguageState.Language ~= "Tiếng Việt" then return text end
+    return crefyTranslateTextValue(text)
+end
+rawset(_G, "__CrefyTranslateTooltipText", crefyTranslateTooltipText)
+K.onUnload(function()
+    if rawget(_G, "__CrefyTranslateTooltipText") == crefyTranslateTooltipText then
+        rawset(_G, "__CrefyTranslateTooltipText", nil)
+    end
+end)
+local function crefyTranslateGuiObject(object, language, menu)
+    local isTextObject = false
+    pcall(function()
+        isTextObject = object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox")
+    end)
+    if not isTextObject then return end
+    local okText, currentText = pcall(function() return object.Text end)
+    if not okText then return end
+    local okPlaceholder, currentPlaceholder = pcall(function() return object.PlaceholderText end)
+    local original = crefyLanguageOriginals[object]
+    if original == nil then
+        original = { Text = currentText, PlaceholderText = okPlaceholder and currentPlaceholder or nil }
+        crefyLanguageOriginals[object] = original
+    else
+        if original.LastAppliedText ~= nil and currentText ~= original.LastAppliedText then
+            original.Text = currentText
+        end
+        if okPlaceholder and original.LastAppliedPlaceholder ~= nil
+            and currentPlaceholder ~= original.LastAppliedPlaceholder then
+            original.PlaceholderText = currentPlaceholder
+        end
+    end
+    if crefyLanguageConnections[object] == nil then
+        local connections = {}
+        local function scheduleRetranslate()
+            task.defer(function()
+                local activeLanguage = type(menu) == "table" and menu._crefyLanguage or language
+                crefyTranslateGuiObject(object, activeLanguage or "English", menu)
+            end)
+        end
+        local textConnectionOk, textConnection = pcall(function()
+            return object:GetPropertyChangedSignal("Text"):Connect(scheduleRetranslate)
+        end)
+        if textConnectionOk and textConnection ~= nil then
+            connections[#connections + 1] = textConnection
+        end
+        if okPlaceholder then
+            local placeholderConnectionOk, placeholderConnection = pcall(function()
+                return object:GetPropertyChangedSignal("PlaceholderText"):Connect(scheduleRetranslate)
+            end)
+            if placeholderConnectionOk and placeholderConnection ~= nil then
+                connections[#connections + 1] = placeholderConnection
+            end
+        end
+        crefyLanguageConnections[object] = connections
+    end
+    language = language == "Tiếng Việt" and "Tiếng Việt" or "English"
+    local targetText = original.Text
+    if language == "Tiếng Việt" then
+        targetText = crefyTranslateTextValue(original.Text)
+    end
+    original.LastAppliedText = targetText
+    if currentText ~= targetText then
+        pcall(function() object.Text = targetText end)
+    end
+    if okPlaceholder and original.PlaceholderText ~= nil then
+        local targetPlaceholder = original.PlaceholderText
+        if language == "Tiếng Việt" then
+            targetPlaceholder = crefyTranslateTextValue(original.PlaceholderText)
+        end
+        original.LastAppliedPlaceholder = targetPlaceholder
+        if currentPlaceholder ~= targetPlaceholder then
+            pcall(function() object.PlaceholderText = targetPlaceholder end)
+        end
+    end
+end
+local function crefyApplyLanguage(menu, language)
+    language = language == "Tiếng Việt" and "Tiếng Việt" or "English"
+    crefyLanguageState.Language = language
+    if type(menu) ~= "table" then return end
+    local chrome = menu._chrome
+    local window = type(chrome) == "table" and chrome.Window or nil
+    local menuFrame = type(window) == "table" and window.MenuFrame or nil
+    if menuFrame == nil then return end
+    if menu._crefyLanguageFrame ~= menuFrame then
+        if menu._crefyLanguageConnection ~= nil then
+            pcall(function() menu._crefyLanguageConnection:Disconnect() end)
+        end
+        menu._crefyLanguageFrame = menuFrame
+        local connectOk, connection = pcall(function()
+            return menuFrame.DescendantAdded:Connect(function(object)
+                task.defer(function()
+                    crefyTranslateGuiObject(object, menu._crefyLanguage or "English", menu)
+                end)
+            end)
+        end)
+        if connectOk then menu._crefyLanguageConnection = connection end
+    end
+    menu._crefyLanguage = language
+    for _, object in ipairs(menuFrame:GetDescendants()) do
+        crefyTranslateGuiObject(object, language, menu)
+    end
+end
+
 local function fn36(arg, arg2, arg3)
 local v120 = arg3:AddSection({ Title = "Menu", Side = "left" })
 local stateData = arg:GetStateData()
@@ -18887,6 +19824,29 @@ OnChanged = arg2.SetMenuPillHidden,
 })
 
 v120:AddButton({ Label = "Edit On-screen Keybinds", OnClick = arg2.EnterMobileButtonDragMode })
+end
+
+local languageSection = arg3:AddSection({ Title = "Language", Side = "right" })
+local selectedLanguage = stateData ~= nil and stateData.Language == "Tiếng Việt" and "Tiếng Việt" or "English"
+local languageDropdown = languageSection:AddDropdown({
+    Label = "Language",
+    Options = { "English", "Tiếng Việt" },
+    Default = selectedLanguage,
+    CloseOnSelect = true,
+})
+crefyApplyLanguage(arg, selectedLanguage)
+if languageDropdown ~= nil and type(languageDropdown.OnChanged) == "function" then
+    languageDropdown:OnChanged(function(value)
+        local nextLanguage = value == "Tiếng Việt" and "Tiếng Việt" or "English"
+        if stateData ~= nil then
+            stateData.Language = nextLanguage
+            local saveOk, saveResult = pcall(function() return arg:SaveState() end)
+            if not saveOk or saveResult == false or (type(saveResult) == "table" and saveResult.Ok == false) then
+                warn("[Crefy] Could not save language preference; it will apply for this session only.")
+            end
+        end
+        crefyApplyLanguage(arg, nextLanguage)
+    end)
 end
 end
 
@@ -19166,108 +20126,21 @@ local function getEnvironment()
     return env
 end
 
-local function getPathValue(root, path)
-    if type(root) ~= "table" or type(path) ~= "table" then return nil end
-    local value = root
-    for _, key in ipairs(path) do
-        if type(value) ~= "table" then return nil end
-        value = rawget(value, key)
-    end
-    return value
-end
-
-local function setPathValue(root, path, wanted)
-    if type(root) ~= "table" or type(path) ~= "table" or #path == 0 then return false end
-    local node = root
-    for i = 1, #path - 1 do
-        local key = path[i]
-        local nextNode = rawget(node, key)
-        if type(nextNode) ~= "table" then
-            nextNode = {}
-            rawset(node, key, nextNode)
-        end
-        node = nextNode
-    end
-    rawset(node, path[#path], wanted)
-    return true
-end
-
-local function validUrl(value)
-    return type(value) == "string" and value:match("^https?://%S+$") ~= nil
-end
-
-local function tryReadableCrefyPath(path)
-    if type(path) ~= "string" or path == "" then return nil end
-    local env = getEnvironment()
-    local readFn = rawget(env, "readfile")
-    if type(readFn) ~= "function" then readFn = rawget(_G, "readfile") end
-    if type(readFn) ~= "function" then return nil end
-    local okRead, source = pcall(readFn, path)
-    if not okRead or type(source) ~= "string" or #source < 10000 then return nil end
-    if not source:find("Crefy Premium", 1, true) and not source:find("KiciaRebuild", 1, true) then
-        return nil
-    end
-    return path
+local function getEnvironmentValue(root, key)
+    if type(root) ~= "table" then return nil end
+    local value = rawget(root, key)
+    if value ~= nil then return value end
+    local ok, indexed = pcall(function() return root[key] end)
+    if ok then return indexed end
+    return nil
 end
 
 local function resolveReloadSource()
-    local env = getEnvironment()
-    local urlKeys = { "CrefySourceUrl", "CrefyScriptUrl", "CrefyLoaderUrl", "__CrefySourceUrl" }
-    for _, key in ipairs(urlKeys) do
-        local value = rawget(env, key)
-        if not validUrl(value) then value = rawget(_G, key) end
-        if validUrl(value) then return value, nil end
-    end
-
-    local pathKeys = { "CrefySourcePath", "CrefyScriptPath", "CrefyFilePath", "__CrefySourcePath" }
-    for _, key in ipairs(pathKeys) do
-        local value = rawget(env, key)
-        if type(value) ~= "string" or value == "" then value = rawget(_G, key) end
-        if type(value) == "string" and value ~= "" then
-            -- An explicit path is user-supplied; retain it even if the executor
-            -- cannot read it until the next place has finished loading.
-            return nil, value
-        end
-    end
-
-    local sourceHint
-    pcall(function()
-        if type(debug) == "table" and type(debug.getinfo) == "function" then
-            local info = debug.getinfo(fn40, "S")
-            sourceHint = info and info.source or nil
-        end
-    end)
-    if type(sourceHint) == "string" then
-        if sourceHint:sub(1, 1) == "@" then
-            local candidate = sourceHint:sub(2)
-            local readable = tryReadableCrefyPath(candidate)
-            if readable then return nil, readable end
-        elseif sourceHint:sub(1, 1) == "=" then
-            -- Script được load từ URL (executor dùng "=url" thay vì "@path")
-            local candidate = sourceHint:sub(2)
-            if validUrl(candidate) then return candidate, nil end
-        end
-    end
-
-    local candidates = {
-        "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
-        "scripts/Crefy.lua", "scripts/Crefy.lua.txt",
-        "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
-        "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
-    }
-    for _, candidate in ipairs(candidates) do
-        local readable = tryReadableCrefyPath(candidate)
-        if readable then return nil, readable end
-    end
-    -- Keep a bounded auto-discovery fallback in the queued loader. Some
-    -- executors expose scripts under a workspace path not visible to readfile
-    -- until after the teleport has completed.
-    return nil, nil
+    return "https://raw.githubusercontent.com/lrexzyq/CreU/refs/heads/main/Script/Crefylua.lua"
 end
 
-local function makeQueuedLoader(sourceUrl, sourcePath, generation)
+local function makeQueuedLoader(sourceUrl, generation)
     local urlLiteral = string.format("%q", sourceUrl or "")
-    local pathLiteral = string.format("%q", sourcePath or "")
     local generationLiteral = string.format("%q", tostring(generation or ""))
     return [[
 local __env = _G
@@ -19280,17 +20153,28 @@ end)
 local function __getFunction(name)
     local candidate = rawget(__env, name)
     if type(candidate) == "function" then return candidate end
+    local okEnv, envValue = pcall(function() return __env[name] end)
+    if okEnv and type(envValue) == "function" then return envValue end
     candidate = rawget(_G, name)
     if type(candidate) == "function" then return candidate end
+    local okGlobal, globalValue = pcall(function() return _G[name] end)
+    if okGlobal and type(globalValue) == "function" then return globalValue end
     return nil
 end
 local function __getSetting(name)
     local value = rawget(__env, name)
     if value ~= nil then return value end
-    return rawget(_G, name)
+    local okEnv, envValue = pcall(function() return __env[name] end)
+    if okEnv and envValue ~= nil then return envValue end
+    value = rawget(_G, name)
+    if value ~= nil then return value end
+    local okGlobal, globalValue = pcall(function() return _G[name] end)
+    if okGlobal then return globalValue end
+    return nil
 end
 if __getSetting("__CrefyAutoExecuteEnabled") == false then return end
 local __generation = ]] .. generationLiteral .. [[
+local __url = ]] .. urlLiteral .. [[
 local __placeId = tostring(game.PlaceId)
 local __runKey = __generation .. ":" .. __placeId
 if __generation ~= "" then
@@ -19300,13 +20184,11 @@ end
 if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then return end
 if __getSetting("__CrefyAutoExecuteLastFailedRunKey") == __runKey then return end
 
--- If the general settings file is readable, it is authoritative. A malformed
--- or explicitly disabled setting must never execute a stale queued payload.
 local __readFile = __getFunction("readfile")
 local __stateFileReadable = false
 if type(__readFile) == "function" then
-    local __readOk, __stateText = pcall(__readFile, "kiciarebuild/rivals/general.json")
-    if __readOk and type(__stateText) == "string" then
+    local __stateOk, __stateText = pcall(__readFile, "kiciarebuild/rivals/general.json")
+    if __stateOk and type(__stateText) == "string" then
         __stateFileReadable = true
         local __decodeOk, __stateDoc = pcall(function()
             return game:GetService("HttpService"):JSONDecode(__stateText)
@@ -19326,29 +20208,24 @@ if type(__readFile) == "function" then
             warn("[Crefy] Re-run After Teleport cancelled: saved toggle value is invalid.")
             return
         end
-        -- Older Crefy builds stored this option only in the active Config path.
-        -- For a missing GeneralState field, require the live opt-in flag instead
-        -- of treating the legacy file as an explicit disable.
         if __savedToggle == nil and __getSetting("__CrefyAutoExecuteEnabled") ~= true then return end
     end
 end
--- Cho phép boot nếu user đã đặt CrefySourceUrl/Path rõ ràng,
--- kể cả khi settings file chưa đọc được (filesystem chưa mount sau teleport)
-local __hasExplicitSource =
-    (type(rawget(__env, "CrefySourceUrl")) == "string" and rawget(__env, "CrefySourceUrl") ~= "")
-    or (type(rawget(_G,  "CrefySourceUrl")) == "string" and rawget(_G,  "CrefySourceUrl") ~= "")
-    or (type(rawget(__env, "CrefySourcePath")) == "string" and rawget(__env, "CrefySourcePath") ~= "")
-    or (type(rawget(_G,  "CrefySourcePath")) == "string" and rawget(_G,  "CrefySourcePath") ~= "")
-if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true
-    and not __hasExplicitSource then
-    -- Without a readable persisted opt-in or explicit source, require runtime opt-in.
+if not __stateFileReadable and __getSetting("__CrefyAutoExecuteEnabled") ~= true then
+    warn("[Crefy] Re-run After Teleport cancelled: saved settings are unavailable and runtime opt-in is missing.")
     return
+end
+if type(__url) ~= "string" or not __url:match("^https?://%S+$") then
+    warn("[Crefy] Re-run After Teleport stopped: the configured source URL is invalid.")
+    return
+end
+for _, __key in ipairs({ "CrefySourceUrl", "CrefyScriptUrl", "CrevySourceUrl", "CrevyScriptUrl" }) do
+    pcall(rawset, __env, __key, __url)
+    pcall(rawset, _G, __key, __url)
 end
 
 local __existingFlight = __getSetting("__CrefyQueuedRerunInFlight")
 if __existingFlight ~= nil and __existingFlight ~= false then return end
--- Use a unique lock token as well as a stable run key: an old timeout callback
--- must never clear a newer retry for the same generation/place pair.
 local __lockToken = __runKey .. ":" .. tostring({})
 rawset(__env, "__CrefyQueuedRerunInFlight", __lockToken)
 rawset(_G, "__CrefyQueuedRerunInFlight", __lockToken)
@@ -19388,63 +20265,14 @@ local function __isCrefySource(value)
         and (value:find("Crefy Premium", 1, true) ~= nil
             or value:find("KiciaRebuild", 1, true) ~= nil)
 end
-local function __read(path)
-    if type(path) ~= "string" or path == "" or type(__readFile) ~= "function" then return nil end
-    local ok, value = pcall(__readFile, path)
-    if ok and __isCrefySource(value) then return value end
-    return nil
-end
 local function __runQueuedSource()
-    local __url = ]] .. urlLiteral .. [[
-    local __path = ]] .. pathLiteral .. [[
-    local __envUrl = rawget(__env, "CrefySourceUrl")
-    if type(__envUrl) ~= "string" then __envUrl = rawget(_G, "CrefySourceUrl") end
-    if type(__envUrl) == "string" and __envUrl:match("^https?://%S+$") then __url = __envUrl end
-    local __envPath = rawget(__env, "CrefySourcePath")
-    if type(__envPath) ~= "string" or __envPath == "" then __envPath = rawget(_G, "CrefySourcePath") end
-    if type(__envPath) == "string" and __envPath ~= "" then __path = __envPath end
-
-    local __source
-    if type(__url) == "string" and __url:match("^https?://%S+$") then
-        local __httpOk, __value = pcall(function() return game:HttpGet(__url) end)
-        if __httpOk and __isCrefySource(__value) then
-            __source = __value
-        elseif __httpOk and type(__value) == "string" and #__value > 0 then
-            warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy; trying file paths.")
-        end
+    local __httpOk, __source = pcall(function() return game:HttpGet(__url) end)
+    if not __httpOk then
+        warn("[Crefy] Re-run After Teleport could not download the configured source URL: " .. tostring(__source))
+        return false
     end
-    if not __source then __source = __read(__path) end
-    if not __source then
-        local __candidates = {
-            "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
-            "scripts/Crefy.lua", "scripts/Crefy.lua.txt",
-            "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
-            "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
-        }
-        for _, __candidatePath in ipairs(__candidates) do
-            __source = __read(__candidatePath)
-            if __source then break end
-        end
-    end
-    local __listFiles = __getFunction("listfiles")
-    if not __source and type(__listFiles) == "function" then
-        for _, __folder in ipairs({ "", ".", "scripts", "workspace", "workspace/scripts", "autoexec" }) do
-            local __okList, __files = pcall(__listFiles, __folder)
-            if __okList and type(__files) == "table" then
-                for _, __file in ipairs(__files) do
-                    local __lower = tostring(__file):lower():gsub("\\", "/")
-                    if __lower:match("/?crefy%.lua$") or __lower:match("/?crefy%.lua%.txt$")
-                        or __lower:match("/?crefy%.txt$") then
-                        __source = __read(__file)
-                        if __source then break end
-                    end
-                end
-            end
-            if __source then break end
-        end
-    end
-    if type(__source) ~= "string" or #__source == 0 then
-        warn("[Crefy] Re-run After Teleport could not locate a valid Crefy source. Set getgenv().CrefySourcePath or getgenv().CrefySourceUrl.")
+    if not __isCrefySource(__source) then
+        warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy.")
         return false
     end
     local __compiler = __getFunction("loadstring") or __getFunction("load")
@@ -19462,9 +20290,6 @@ local function __runQueuedSource()
         warn("[Crefy] Re-run After Teleport execution failed: " .. tostring(__runError))
         return false
     end
-
-    -- Crefy starts its client bootstrap asynchronously. Keep the duplicate
-    -- guard until it confirms boot, rather than clearing it after a fixed 3s.
     local __deadline = os.clock() + 240
     while os.clock() < __deadline and not __timedOut do
         if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then
@@ -19526,9 +20351,7 @@ local function applyRerunSetting(enabled, persist)
     end
 
     if enabled and persist == true and persistenceFailed then
-        -- The queued loader intentionally fails closed when it can read a
-        -- settings file that does not say true. Do not claim to arm rerun when
-        -- the opt-in could not be saved for a fresh executor environment.
+
         queueRegisteredForCurrentEnable = false
         return
     end
@@ -19540,36 +20363,60 @@ local function applyRerunSetting(enabled, persist)
         pcall(rawset, _G, "__CrefyAutoExecuteGeneration", currentGeneration)
     end
 
-    -- Fix: cũng re-queue nếu queueRegisteredForCurrentEnable == false
-    -- (xảy ra khi place change clear queue, hoặc executor reset)
     local needsRequeue = enabled and (wasEnabled ~= true or persist == true
         or queueRegisteredForCurrentEnable == false)
     if needsRequeue then
-        local sourceUrl, sourcePath = resolveReloadSource()
-        local queueFn, queueOwner
-        local candidateNames = { "queue_on_teleport", "queueonteleport", "queueOnTeleport" }
-        for _, key in ipairs(candidateNames) do
-            local candidate = rawget(env, key)
-            if type(candidate) ~= "function" then candidate = rawget(_G, key) end
-            if type(candidate) == "function" then queueFn = candidate; break end
+        local sourceUrl = resolveReloadSource()
+
+        if sourceUrl ~= nil then
+            pcall(rawset, env, "CrevySourceUrl", sourceUrl)
+            pcall(rawset, _G, "CrevySourceUrl", sourceUrl)
         end
+        local queueFn, queueOwner
+        local candidateNames = {
+            "queue_on_teleport", "queueonteleport", "queueOnTeleport", "QueueOnTeleport",
+            "queue_on_tp", "queueontp",
+        }
+        local roots = { env, _G }
+        for _, root in ipairs(roots) do
+            for _, key in ipairs(candidateNames) do
+                local candidate = getEnvironmentValue(root, key)
+                if type(candidate) == "function" then
+                    queueFn = candidate
+                    queueOwner = nil
+                    break
+                end
+            end
+            if queueFn ~= nil then break end
+        end
+
         if queueFn == nil then
-            local synTable = rawget(env, "syn")
-            if type(synTable) ~= "table" then synTable = rawget(_G, "syn") end
-            if type(synTable) == "table" and type(synTable.queue_on_teleport) == "function" then
-                queueFn, queueOwner = synTable.queue_on_teleport, synTable
+            local providerNames = { "syn", "fluxus", "krnl", "electron", "delta", "sunc", "executor" }
+            for _, root in ipairs(roots) do
+                for _, providerName in ipairs(providerNames) do
+                    local provider = getEnvironmentValue(root, providerName)
+                    if type(provider) == "table" then
+                        for _, key in ipairs(candidateNames) do
+                            local candidate = getEnvironmentValue(provider, key)
+                            if type(candidate) == "function" then
+                                queueFn, queueOwner = candidate, provider
+                                break
+                            end
+                        end
+                    end
+                    if queueFn ~= nil then break end
+                end
+                if queueFn ~= nil then break end
             end
         end
         if type(queueFn) ~= "function" then
             warn("[Crefy] Re-run After Teleport is enabled, but this executor exposes no queue_on_teleport API.")
             queueRegisteredForCurrentEnable = false
-        elseif not queueRegisteredForCurrentEnable then
-            -- elseif được restore: tránh re-queue khi đã đăng ký rồi
-            -- needsRequeue có thể true vì queueRegisteredForCurrentEnable == false,
-            -- nhưng khi đã true thì bỏ qua để tránh queue trùng lặp
+        else
             local currentGeneration = tonumber(rawget(env, "__CrefyAutoExecuteGeneration")) or 0
             local nextGeneration = currentGeneration + 1
-            local payload = makeQueuedLoader(sourceUrl, sourcePath, nextGeneration)
+            
+            local payload = makeQueuedLoader(sourceUrl, nextGeneration)
             local okQueue, queueResult = pcall(queueFn, payload)
             if (not okQueue or queueResult == false) and queueOwner ~= nil then
                 okQueue, queueResult = pcall(queueFn, queueOwner, payload)
@@ -19578,9 +20425,7 @@ local function applyRerunSetting(enabled, persist)
                 pcall(rawset, env, "__CrefyAutoExecuteGeneration", nextGeneration)
                 pcall(rawset, _G, "__CrefyAutoExecuteGeneration", nextGeneration)
                 queueRegisteredForCurrentEnable = true
-                if sourceUrl == nil and sourcePath == nil then
-                    warn("[Crefy] Re-run After Teleport queued with file auto-discovery. If it cannot find the source, set getgenv().CrefySourcePath or getgenv().CrefySourceUrl.")
-                end
+                print("[Crefy] Re-run After Teleport queued; the hosted source will be downloaded after teleport.")
             else
                 queueRegisteredForCurrentEnable = false
                 warn("[Crefy] Failed to queue Re-run After Teleport: " .. tostring(queueResult))
@@ -19591,9 +20436,6 @@ local function applyRerunSetting(enabled, persist)
     end
 end
 
--- The persistent GeneralState flag survives a place change even when the user
--- does not save a separate Ragebot config profile. Mirror it into the control's
--- Config path before building the toggle so the visual state and runtime agree.
 local persistedEnabled = nil
 if stateData ~= nil and type(stateData.ReRunAfterTeleport) == "boolean" then
     persistedEnabled = stateData.ReRunAfterTeleport
@@ -19613,7 +20455,7 @@ if config ~= nil and type(arg3) == "table" then
 end
 local initialEnabled = configuredEnabled
 if persistedEnabled ~= nil then initialEnabled = persistedEnabled end
-applyRerunSetting(initialEnabled, false)
+applyRerunSetting(initialEnabled, persistedEnabled == nil and configuredEnabled == true)
 
 arg:AddToggle({
 Label = v86[142],
@@ -20191,7 +21033,6 @@ if not (n26 > 4823) then
 return v136
 end
 return nil
-
 
 end
 
@@ -21551,7 +22392,7 @@ return bd.c
 end
 end
 do
-local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
+local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,TargetPlayer="Auto",TargetOffset={X=0,Y=0,Z=0},AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
 local be = tbl17.cache.be
@@ -23176,7 +24017,6 @@ end
 if n29(1386) > -20 then
 return
 end
-
 
 end
 
@@ -25456,7 +26296,6 @@ return b.c
 end
 return nil
 
-
 end
 end
 do
@@ -25772,7 +26611,6 @@ end
 
 return
 end
-
 
 end
 
@@ -27016,9 +27854,7 @@ local function ragebotRootDesyncWrite(rootPart, cf)
 end
 
 local function ragebotRootDesyncCharacterCanRestorePose(rootPart)
-    -- Restoring a cached CFrame is only appropriate while the owning character
-    -- is positively known to be alive. A missing model/Humanoid or read error is
-    -- an unknown lifecycle state, so destruction must not replay the cache.
+
     local ok, alive = pcall(function()
         local model = rootPart and rootPart:FindFirstAncestorOfClass("Model") or nil
         if model == nil then return false end
@@ -27036,9 +27872,7 @@ local function ragebotRootDesyncGatePose(rootPart)
     local gate = ragebotPoseRestoreGateRead()
     if type(gate) == "table" and rawget(gate, "active") == true then
         local gateRoot = rawget(gate, "rootPart")
-        -- This global gate belongs to one exact RootPart. Do not suspend unrelated
-        -- character controllers; they cannot overwrite the gated RootPart.
-        -- A missing gateRoot remains fail-closed because ownership is unknown.
+
         if gateRoot ~= nil and gateRoot ~= rootPart then return false, nil end
     end
     local readOk, pose = pcall(function()
@@ -27099,8 +27933,7 @@ index2.SetServerCFrame = function(arg, cframe)
     if not ragebotRootDesyncRootValid(rootPart) then
         arg._cframe = nil
         arg._oldCFrame = nil
-        -- Clearing a controller during character teardown is considered handled;
-        -- a non-nil movement request against a stale root must fail explicitly.
+
         return cframe == nil
     end
     arg._cframe = cframe
@@ -27224,8 +28057,7 @@ index2.HeartbeatUpdate = function(arg)
 end
 
 index2.Destroy = function(arg)
-    -- Do not replay this controller's old local pose over an active restore gate.
-    -- On death, the respawn pipeline owns position; a cached frame is not reusable.
+
     local rootPart = arg._rootPart
     local gateActive = ragebotPoseRestoreGateIsActive()
     local characterCanRestorePose = ragebotRootDesyncCharacterCanRestorePose(rootPart)
@@ -28386,8 +29218,7 @@ local function cameraPayloadHasTwoCharacters(payload)
     return okLength and characterCount == 2
 end
 local function sendCameraRotationPayload(payload)
-    -- Camera rotations are encoded as two UTF-8 code points (utf8.char), not
-    -- necessarily two bytes; values 128-255 occupy multiple bytes in Lua strings.
+
     if not cameraPayloadHasTwoCharacters(payload) then
         return false, "camera payload must contain exactly two valid UTF-8 characters"
     end
@@ -28401,8 +29232,7 @@ local function sendCameraRotationPayload(payload)
         end
     end)
     if okSend then return true end
-    -- The cloned method can be executor-specific; make one guarded direct-method
-    -- attempt before reporting failure. Neither error is allowed to abort Ragebot.
+
     local okDirect, directError = pcall(function() activeRemote:FireServer(payload, nil) end)
     if okDirect then return true end
     return false, tostring(sendError) .. "; direct fallback: " .. tostring(directError)
@@ -28454,19 +29284,14 @@ local function readCameraUpvalue(method, index)
         if okRead and type(values) == "table" then
             local value = values[index]
             if value ~= nil then return true, value end
-            -- Some executor implementations return named/partial upvalue tables.
-            -- If the numeric slot is absent, try debug.getupvalue before declaring
-            -- the current owner unreadable.
+
         end
     end
     if type(debug.getupvalue) == "function" then
         local okRead, first, second = pcall(debug.getupvalue, method, index)
         if okRead then
             if second ~= nil then return true, second end
-            -- Standard debug.getupvalue returns (name, value); a nil second
-            -- result is a readable nil upvalue, not the upvalue name itself.
-            -- A few executor APIs expose only the value, so accept non-string
-            -- first results as their single-value form.
+
             if type(first) == "string" then return true, nil end
             return first ~= nil, first
         end
@@ -28481,8 +29306,7 @@ if prior ~= nil then
     if current == prior.InstalledJointsUpdate then
         return v115.VoidOk
     end
-    -- Do not overwrite another module's newer wrapper. If our hook was replaced,
-    -- re-wrap the current method and retain that method as the restoration target.
+
     arg._jointsRestore = nil
 end
 local update = v102(clientFighterCharacterJoints, "Update")
@@ -28518,8 +29342,7 @@ local nextAuditAt = tonumber(arg._nextReplicationHookAuditAt) or 0
 if type(arg._replicationRestore) == "table"
     and arg._replicationRestore.Installed == true
     and auditNow < nextAuditAt then
-    -- This is called from angle updates, including each Heartbeat. Avoid dumping
-    -- closure upvalues every frame; periodically verify ownership instead.
+
     return v115.VoidOk
 end
 if arg._replicationRestore ~= nil then
@@ -28535,12 +29358,10 @@ if arg._replicationRestore ~= nil then
         return v115.VoidOk
     end
     if readOk and currentUtility == previousRestore.Utility then
-        -- Our earlier rollback already succeeded despite an uncertain return value.
+         
         arg._replicationRestore = nil
     elseif readOk and currentUtility ~= previousRestore.PatchedUtility then
-        -- Another owner replaced this upvalue. Preserve that newer value rather
-        -- than writing our stale snapshot over it; the current owner can be wrapped
-        -- afresh below if it still exposes the expected camera utility interface.
+
         arg._replicationRestore = nil
     elseif readOk and currentUtility == previousRestore.PatchedUtility
         and previousRestore.Installed ~= true then
@@ -28560,8 +29381,7 @@ if arg._replicationRestore ~= nil then
                 "camera-rotation utility restoration is still pending; retry was not verified")
         end
     else
-        -- Without a reliable read-back, neither stacking a second wrapper nor
-        -- overwriting an unknown upvalue is safe.
+
         arg._nextReplicationHookAuditAt = os.clock() + 0.10
         return v115.err("ViewAngleDriver", "setupvalue",
             "camera-rotation utility ownership could not be verified")
@@ -28626,8 +29446,7 @@ return v117.encodeCameraRotation(arg3)
 end }, { __index = v122 })
 local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
 if not okSetup then
-    -- Do not assume a failing setupvalue call is atomic. Attempt rollback and
-    -- preserve a pending snapshot if restoration cannot be verified.
+
     pcall(debug.setupvalue, v120, v121, v122)
     local rollbackVerified = false
     pcall(function()
@@ -28677,8 +29496,7 @@ if not verifyOk or wrapperInstalled ~= true then
         end
     end)
     if not rollbackVerified then
-        -- Preserve ownership of a possibly installed wrapper until Destroy() can
-        -- restore the original upvalue; never report the wrapper as installed.
+
         arg._replicationRestore = {
             CameraReplicationLoopMethod = v120, UtilityIndex = v121, Utility = v122,
             PatchedUtility = patchedUtility, Installed = false,
@@ -28753,9 +29571,7 @@ if fullySuppressed then
 arg:_CancelRestore()
 return arg:_LoadReplicationHook()
 end
--- Releasing suppression must force a fresh send of the active winner. Otherwise
--- the slot can remain unchanged, _dirty stays false, and the Knife prime gate may
--- keep seeing the previous failed/suppressed flush forever.
+
 if arg._winning ~= nil then
     arg._dirty = true
 end
@@ -28789,8 +29605,7 @@ if winning == nil then
     end)
     local restoreTask
     restoreTask = task.delay(0.05 + ping, function()
-        -- Remove completed restore threads from the Trove so repeated camera-slot
-        -- transitions do not accumulate dead task handles for the lifetime of UI.
+
         if arg._restoreTask == restoreTask then arg._restoreTask = nil end
         arg._restoreTrove:Remove(restoreTask, true)
         if arg._winning ~= nil or arg._fullySuppressed then return end
@@ -28811,8 +29626,6 @@ if winning == nil then
     return false
 end
 
--- Do not clear _dirty before encoding and sending. The boolean result lets the
--- Knife prime gate distinguish a local FireServer success from a failed send.
 local okEncode, payload = pcall(fn36, winning)
 if not okEncode or not cameraPayloadHasTwoCharacters(payload) then
     arg._lastFlushSucceeded = false
@@ -28840,11 +29653,10 @@ if jointsRestore ~= nil then
         v103(clientFighterCharacterJoints, "Update", jointsRestore.JointsUpdateMethod)
         arg._jointsRestore = nil
     elseif currentUpdate == jointsRestore.JointsUpdateMethod then
-        -- The original method is already active; there is nothing left to undo.
+         
         arg._jointsRestore = nil
     else
-        -- A different owner replaced the method after our installation. Do not
-        -- overwrite that owner's newer hook with a stale function snapshot.
+
         arg._jointsRestore = nil
         warn("[ViewAngleDriver] Joints.Update ownership changed; skipped stale restore")
     end
@@ -28857,7 +29669,7 @@ local restoreOk, restoreError = false, "camera utility ownership could not be ve
 local readOk, currentUtility = readCameraUpvalue(
     replicationRestore.CameraReplicationLoopMethod, replicationRestore.UtilityIndex)
 if readOk and currentUtility == replicationRestore.Utility then
-    restoreOk = true -- already restored
+    restoreOk = true  
 elseif readOk and currentUtility == replicationRestore.PatchedUtility then
     if type(debug) == "table" and type(debug.setupvalue) == "function" then
         for attempt = 1, 3 do
@@ -28878,8 +29690,7 @@ elseif readOk and currentUtility == replicationRestore.PatchedUtility then
         end
     end
 elseif readOk then
-    -- Someone else replaced the upvalue after we installed our wrapper. Preserve
-    -- the newer owner rather than restoring the stale original utility over it.
+
     restoreOk = true
     restoreError = "ownership changed; stale restore skipped"
 else
@@ -28966,8 +29777,7 @@ end
 index2.SetServerCFrame = function(arg, arg2)
 local rootDesync = arg._rootDesync
 if rootDesync == nil then
--- Clearing an absent per-character controller is handled; a non-nil pose
--- cannot be accepted without a RootDesync instance.
+
 return arg2 == nil
 end
 local setMethod = rootDesync.SetServerCFrame
@@ -29553,8 +30363,6 @@ local reconciled = arg:_ReconcilePendingShots(now2, ammoSnapshot, useSnapshot ==
 if reconciled ~= true then return end
 local expectedAmmoRaw = arg._expectedAmmoRaw
 if not pendingAmmoNumber(expectedAmmoRaw) then return end
-
-
 
 local nextRequestAt = tonumber(arg._nextLikelyShotRequestAt) or 0
 if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then
@@ -31159,7 +31967,6 @@ return nil
 end
 return nil
 
-
 end
 
 local index2 = {}
@@ -32434,9 +33241,6 @@ stop = nil,
 }
 riotStateSet(riotStateKey, riotState)
 
-
-
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -32444,9 +33248,6 @@ local lp = Players.LocalPlayer
 local remote
 local nextRemoteResolveAt = 0
 local nextRemoteWarningAt = 0
-
-
-
 
 local RIOT_FIRE_HOOK_KEY = "__CrefyAlwaysBackstabRiotFireServerHook"
 local function riotFireHookRagebotEnabled()
@@ -32524,9 +33325,6 @@ end
 
 local function riotResolveRemote()
 
-
-
-
     local coreRemote
     local okCore, core = pcall(function()
         if type(tbl17.aS) == "function" then
@@ -32546,7 +33344,6 @@ local function riotResolveRemote()
             return coreRemote
         end
     end
-
 
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
     if not remotes then return nil end
@@ -32613,18 +33410,11 @@ riotState.sendRagebotCamera = function(encoded)
     local now = os.clock()
     local lastAt = tonumber(riotState.ragebotBridgeLastFireAt) or 0
     if now - lastAt < (1 / 60) then
-        -- A fresh angle that arrives inside the 60 Hz gate is deferred, not a
-        -- transport failure. The caller retries every frame and must still
-        -- wait until this exact encoded angle has actually been sent.
+
         return true, lastAt, false
     end
     local activeRemote = remote
-    -- Use the cached cloned method when available. The regular method may be
-    -- wrapped by the camera-replication hook; Ragebot's explicit payload must not
-    -- be intercepted/replaced by the standalone Riot writer's hook state.
-    -- Roblox throws "Expected ':' not '.' calling member function FireServer" khi
-    -- dùng RemoteEvent.FireServer clone trên UnreliableRemoteEvent (khác C++ binding).
-    -- Fix: detect loại remote và dùng clone tương ứng.
+
     local isUnreliable = false
     pcall(function() isUnreliable = activeRemote:IsA("UnreliableRemoteEvent") end)
     local fireOk, fireError
@@ -32660,9 +33450,6 @@ local nextHookRetryAt = 0
 local nextHookScanAt = 0
 local nextHookWarningAt = 0
 
-
-
-
 local function ragebotOwnsCameraRotation()
     local controlState = riotStateGet("__CrefyRagebotControlState")
     if type(controlState) == "table" then
@@ -32670,7 +33457,6 @@ local function ragebotOwnsCameraRotation()
         if enabled == true then return true end
         if enabled == false then return false end
     end
-
 
     local targetState = riotStateGet("__CrefyRagebotTargetState")
     if type(targetState) == "table" and rawget(targetState, "active") == true then
@@ -32706,8 +33492,6 @@ local function restoreReplicationHook()
                 return false
             end
         end
-
-
 
     end
     hookTarget, hookOriginal, hookWrapper = nil, nil, nil
@@ -32756,9 +33540,6 @@ local function installReplicationHook()
         end
     end
 
-
-
-
     local apiOk, api = pcall(function() return tbl17.aS() end)
     local controllerOk, fighterController = pcall(function()
         return apiOk and type(api) == "table" and api.FighterController or nil
@@ -32800,11 +33581,9 @@ local function installReplicationHook()
     if hookTarget ~= nil then
         if not restoreReplicationHook() then return false end
 
-
     end
 
     local wrapper = function(...)
-
 
         if ragebotOwnsCameraRotation() then
             return original(...)
@@ -32816,8 +33595,6 @@ local function installReplicationHook()
     end
     local okWrite = pcall(rawset, target, "EncodeCameraRotation", wrapper)
     if not okWrite then return false end
-
-
 
     hookTarget, hookOriginal, hookWrapper = target, original, wrapper
     hookInstalled = true
@@ -32833,8 +33610,6 @@ local function installReplicationHook()
     end
     return true
 end
-
-
 
 hookInstalled = false
 riotState.hookInstalled = false
@@ -32872,8 +33647,7 @@ local function findNearest(triggerDistance, preferredCharacter)
     local myPos  = myRoot.Position
     local myTeam = lp:GetAttribute("TeamID")
     local myEnv  = lp:GetAttribute("EnvironmentID")
-    -- Team/environment attributes are authoritative filters for this game.
-    -- Do not select targets while the local roster is still initializing.
+
     if myTeam == nil or myEnv == nil then return nil end
 
     local best, bestDist = nil, math.huge
@@ -32946,9 +33720,7 @@ local function riotCharacterHasInventoryItem(character, wantedName)
 end
 
 local function findRiotTarget(triggerDistance)
-    -- When Ragebot is active and the selected target carries a Riot Shield,
-    -- use that same target instead of allowing the standalone Riot loop to
-    -- rotate toward a different nearby player.
+
     local controlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
     local targetState = riotStateGet("__CrefyRagebotTargetState")
     if type(controlState) == "table" and rawget(controlState, "enabled") == true
@@ -32991,8 +33763,7 @@ local function riotRagebotHasPriority()
             if age >= 0 and age <= 0.5
                 and riotCharacterWithinTriggerDistance(character, getConfiguredTriggerDistance())
                 and riotCharacterHasInventoryItem(character, "Riot Shield") then
-                -- Target carries the shield: let AlwaysBackstab.Riot own the
-                -- camera replication; Ragebot must not run a second camera writer.
+
                 return false
             end
         end
@@ -33030,7 +33801,6 @@ local function isLiveBasePart(part, expectedModel)
 end
 
 local function riotHeartbeatStep()
-
 
     if not riotState.enabled or riotRagebotHasPriority() then
         riotClearActiveTarget()
@@ -33072,8 +33842,7 @@ local function riotHeartbeatStep()
         riotClearActiveTarget()
         return
     end
-    -- Root orientation is stable for backstab checks; Head may pitch/roll and
-    -- produce a different encoded camera angle while the same target is moving.
+
     local head = targetChar:FindFirstChild("HumanoidRootPart")
     if not isLiveBasePart(head, targetChar) then
         head = targetChar:FindFirstChild("Head")
@@ -33082,8 +33851,6 @@ local function riotHeartbeatStep()
         riotClearActiveTarget()
         return
     end
-
-
 
     local pitch, yaw = head.CFrame:ToOrientation()
     if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge or yaw == math.huge or yaw == -math.huge then
@@ -33149,9 +33916,7 @@ local function riotStop()
     nextHookScanAt = 0
     nextHookWarningAt = 0
     riotState.retryAfter = 0
-    -- hookfunction is not safely/uniformly reversible across executors. Keep the
-    -- single installed wrapper pass-through, but detach its old state/remote so
-    -- stop and re-execute cannot retain an active target or stack another hook.
+
     local fireHookState = riotStateGet(RIOT_FIRE_HOOK_KEY)
     if type(fireHookState) == "table" and fireHookState.installed == true then
         fireHookState.remote = nil
@@ -33344,8 +34109,6 @@ arg:_ClearAnglePayload(characterController)
 end
 arg._lastBackstabMode = mode
 
-
-
 if mode == "Riot" then
 arg:_UpdateRiot(innerContext, itemModifiers.AlwaysBackstabTriggerDist)
 return
@@ -33359,7 +34122,6 @@ end
 arg._anglePayloadApplied = false
 return
 end
-
 
 local itemBehaviors = innerContext.ItemBehaviors
 local okEquippedMelee, equippedMelee = pcall(function()
@@ -36022,7 +36784,6 @@ end
 return (unpack(v118, v86[63], v118.n))
 end
 return nil
-
 
 end)
 
@@ -38722,7 +39483,6 @@ arg._proposed[arg2] = tbl18
 v119 = tbl18
 else
 
-
 v119 = v118
 end
 else
@@ -39725,7 +40485,6 @@ if not (n25 > 3892) then
 return setmetatable(tbl19, index2)
 end
 return nil
-
 
 end
 
@@ -42601,7 +43360,6 @@ tbl18:_ReloadEquippedSeasonCharms()
 return
 end
 
-
 end)
 
 return tbl18
@@ -43396,7 +44154,6 @@ if not (n26 <= 4781) then
 return v115.err("EmoteEquipWheel", "prototype_lookup", "EquipEmote.__index not found")
 end
 return nil
-
 
 end
 
@@ -45301,7 +46058,6 @@ end)
 return tbl18
 end
 return nil
-
 
 end
 
@@ -47399,7 +48155,6 @@ return index2
 end
 return nil
 
-
 end
 
 tbl17.fi = function()
@@ -47671,7 +48426,6 @@ if true then
 return v115(arg3, (arg + arg2) % 1)
 end
 return nil
-
 
 end,
 }
@@ -54702,74 +55456,131 @@ local v117 = v112
 local random2 = math.random
 local cframe = CFrame.new(math.random(-100000, -10000), 100000, random2(-100000, 10000))
 
+local function partGlueWithTemporaryIdentity(callback)
+    local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
+        or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext")
+    local identitySetter = K.fn("setthreadidentity") or K.fn("setidentity")
+        or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext")
+    local oldIdentity = nil
+    local identityChanged = false
+    if type(identityGetter) == "function" and type(identitySetter) == "function" then
+        local getOk, identityValue = pcall(identityGetter)
+        if getOk and identityValue ~= nil then
+            oldIdentity = identityValue
+            identityChanged = pcall(identitySetter, 8)
+        end
+    end
+    local results = table.pack(pcall(callback))
+    if identityChanged and type(identitySetter) == "function" then
+        pcall(identitySetter, oldIdentity)
+    end
+    if not results[1] then return false, results[2] end
+    return true, table.unpack(results, 2, results.n)
+end
+
+local function partGlueReadSourceReference(sourcePart)
+    local runOk, readOk, value = partGlueWithTemporaryIdentity(function()
+        local hiddenGetter = K.fn("gethiddenproperty") or K.fn("gethiddenprop")
+            or K.fn("get_hidden_property") or K.fn("get_hidden_prop")
+        if type(hiddenGetter) == "function" then
+            local getterOk, getterValue = pcall(hiddenGetter, sourcePart, "PhysicsRepRootRef")
+            if getterOk then return true, getterValue end
+        end
+        local hiddenPropertiesGetter = K.fn("gethiddenproperties") or K.fn("gethiddenprops")
+            or K.fn("get_hidden_properties") or K.fn("get_hidden_props")
+        if type(hiddenPropertiesGetter) == "function" then
+            local propertiesOk, properties = pcall(hiddenPropertiesGetter, sourcePart)
+            if propertiesOk and type(properties) == "table" then
+                local propertyValue = rawget(properties, "PhysicsRepRootRef")
+                if propertyValue ~= nil then return true, propertyValue end
+            end
+        end
+        local directOk, directValue = pcall(function()
+            return sourcePart.PhysicsRepRootRef
+        end)
+        if directOk then return true, directValue end
+        return false, directValue
+    end)
+    if not runOk then return false, readOk end
+    return readOk, value
+end
+
+local function partGlueWriteSourceReferenceVerified(sourcePart, writer, value)
+    if type(writer) ~= "function" then return false, "setter unavailable" end
+    local runOk, callOk, callResult = partGlueWithTemporaryIdentity(function()
+        return pcall(writer, sourcePart, "PhysicsRepRootRef", value)
+    end)
+    if not runOk then return false, tostring(callOk) end
+    local readOk, actualValue = partGlueReadSourceReference(sourcePart)
+    if readOk and actualValue == value then return true end
+    if not callOk then
+        return false, "setter threw: " .. tostring(callResult) .. (readOk and "; read-back mismatch" or "; read-back unavailable")
+    end
+    -- Fix: PC executor không đọc được sau write nhưng write trả ok → chấp nhận.
+    -- Từ chối ở đây = Acquire nil = WeaponAction nil = không bao giờ attack.
+    if not readOk then return true end
+    if callResult == false then
+        return false, "setter returned false and read-back did not match"
+    end
+    return false, "PhysicsRepRootRef read-back mismatch"
+end
+
 local function fn36(arg, arg2)
 local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
+    or K.fn("get_thread_identity") or K.fn("get_thread_context") or K.fn("getthreadcontext")
 local identitySetter = K.fn("setthreadidentity") or K.fn("setidentity")
+    or K.fn("set_thread_identity") or K.fn("set_thread_context") or K.fn("setthreadcontext")
 local oldIdentity = nil
 local restoreIdentity = false
-if identityGetter ~= nil and identitySetter ~= nil then
-local okIdentity, identityValue = pcall(identityGetter)
-if okIdentity and identityValue ~= nil then
-oldIdentity = identityValue
-restoreIdentity = true
-pcall(identitySetter, 8)
-end
-end
-
-
-
-local previousReference, previousReferenceKnown = nil, false
-local hiddenGetter = K.fn("gethiddenproperty")
-if type(hiddenGetter) == "function" then
-    local readOk, value = pcall(hiddenGetter, arg, "PhysicsRepRootRef")
-    if readOk then previousReference, previousReferenceKnown = value, true end
-end
-if not previousReferenceKnown then
-    -- Some executors expose gethiddenproperty but cannot read this field through
-    -- that API. Try the wrapper before deciding that rollback is impossible.
-    local readOk, value = pcall(v116, arg, "PhysicsRepRootRef")
-    if readOk then previousReference, previousReferenceKnown = value, true end
-end
-if not previousReferenceKnown then
-    if restoreIdentity then pcall(identitySetter, oldIdentity) end
-    return false, "original PhysicsRepRootRef could not be read; refusing an un-restorable mutation"
-end
-
-local function readReferenceForVerification()
-    local getter = K.fn("gethiddenproperty")
-    if type(getter) == "function" then
-        local readOk, value = pcall(getter, arg, "PhysicsRepRootRef")
-        if readOk then return true, value end
+if type(identityGetter) == "function" and type(identitySetter) == "function" then
+    local okIdentity, identityValue = pcall(identityGetter)
+    if okIdentity and identityValue ~= nil then
+        oldIdentity = identityValue
+        restoreIdentity = pcall(identitySetter, 8)
     end
-    return pcall(v116, arg, "PhysicsRepRootRef")
 end
+
+local previousReadOk, previousReference = partGlueReadSourceReference(arg)
+local previousReferenceKnown = previousReadOk == true
+if not previousReferenceKnown then
+    -- PC executor fix: gethiddenproperty không khả dụng → assume original = nil.
+    -- HitboxHead.PhysicsRepRootRef mặc định là nil trước khi Crefy set nên an toàn.
+    -- Cleanup sẽ restore về nil — đây là trạng thái neutral đúng.
+    previousReference = nil
+    previousReferenceKnown = true
+    if not K._partGlueNilWarned then
+        K._partGlueNilWarned = true
+        warn("[PartGlue] PhysicsRepRootRef unreadable; assuming nil as original (executor limit).")
+    end
+end
+
 local function writeAndVerifyReference(writer, value)
-    if type(writer) ~= "function" then return false, "setter unavailable" end
-    local callOk, callResult = pcall(writer, arg, "PhysicsRepRootRef", value)
-    if not callOk or callResult == false then
-        return false, tostring(callOk and "setter returned false" or callResult)
-    end
-    local readOk, readValue = readReferenceForVerification()
-    if readOk and readValue == value then return true end
-    return false, "PhysicsRepRootRef read-back mismatch/unavailable"
+    return partGlueWriteSourceReferenceVerified(arg, writer, value)
 end
 
-local okSet, setError = false, "sethiddenproperty API unavailable"
+local okSet, setError = false, "sethiddenproperty/sethiddenprop API unavailable"
 if type(v104) == "function" then
     okSet, setError = writeAndVerifyReference(v104, arg2)
 end
 if not okSet and type(v117) == "function" and v117 ~= v104 then
-    local fallbackOk, fallbackError = writeAndVerifyReference(v117, arg2)
-    if fallbackOk then
-        okSet = true
+    local directPropertyAvailable = pcall(function()
+        local _ = arg.PhysicsRepRootRef
+    end)
+    if directPropertyAvailable then
+        local fallbackOk, fallbackError = writeAndVerifyReference(v117, arg2)
+        if fallbackOk then
+            okSet = true
+        else
+            setError = tostring(setError) .. "; direct property fallback failed: " .. tostring(fallbackError)
+        end
     else
-        setError = tostring(setError) .. "; property fallback failed: " .. tostring(fallbackError)
+        setError = tostring(setError) .. "; direct property fallback skipped (PhysicsRepRootRef is not a public member of this Part)"
     end
 end
-if restoreIdentity then pcall(identitySetter, oldIdentity) end
+
 if not okSet then
     local restored, restoreError = false, "no setter could safely restore the original reference"
-    local currentReadOk, currentReference = readReferenceForVerification()
+    local currentReadOk, currentReference = partGlueReadSourceReference(arg)
     if not currentReadOk then
         restoreError = "current PhysicsRepRootRef unreadable; rollback write skipped to avoid overwriting another owner"
     elseif currentReference == previousReference then
@@ -54785,8 +55596,10 @@ if not okSet then
         end
     end
     if not restored then setError = tostring(setError) .. "; original reference restore unverified: " .. tostring(restoreError) end
+    if restoreIdentity then pcall(identitySetter, oldIdentity) end
     return false, setError
 end
+if restoreIdentity then pcall(identitySetter, oldIdentity) end
 return true, nil, previousReference, previousReferenceKnown
 end
 
@@ -54802,7 +55615,7 @@ local function partGlueGetSourceReferenceQueue(create)
     local queue = type(primaryQueue) == "table" and primaryQueue
         or (type(fallbackQueue) == "table" and fallbackQueue or nil)
     if type(queue) == "table" and type(fallbackQueue) == "table" and fallbackQueue ~= queue then
-        -- Preserve snapshots written by an older execution in the fallback env.
+         
         for sourcePart, info in pairs(fallbackQueue) do
             if queue[sourcePart] == nil then queue[sourcePart] = info end
         end
@@ -54813,15 +55626,6 @@ local function partGlueGetSourceReferenceQueue(create)
         if storage ~= _G then pcall(rawset, _G, PARTGLUE_PENDING_SOURCE_REFERENCE_KEY, queue) end
     end
     return queue
-end
-
-local function partGlueReadSourceReference(sourcePart)
-    local hiddenGetter = K.fn("gethiddenproperty")
-    if type(hiddenGetter) == "function" then
-        local hiddenOk, hiddenValue = pcall(hiddenGetter, sourcePart, "PhysicsRepRootRef")
-        if hiddenOk then return true, hiddenValue end
-    end
-    return pcall(v116, sourcePart, "PhysicsRepRootRef")
 end
 
 local function partGlueRestoreSourceReference(sourcePart, info)
@@ -54842,19 +55646,18 @@ local function partGlueRestoreSourceReference(sourcePart, info)
     if sourceParent == nil then return true, "source instance was removed" end
 
     local readOk, currentReference = partGlueReadSourceReference(sourcePart)
-    -- Ownership must be known before rollback. A failed read is not permission
-    -- to overwrite a possibly newer value installed by another script.
+
     if not readOk then
-        return false, "current PhysicsRepRootRef could not be read; preserving pending snapshot"
+        -- PC fix: không từ chối rollback, assume ownership (OriginalReference = nil)
+        currentReference = nil
+        readOk = true
     end
-    -- Do not overwrite a value another script installed after our last successful
-    -- Acquire. A failed retarget may, however, leave the previous target's own
-    -- reference installed; persisted rollback records explicitly identify that
-    -- value as part of this transaction so it is not mistaken for an external owner.
+
     local installedMatches = currentReference == info.InstalledReference
     local pendingTargetMatches = info.PendingRollbackTargetReferenceKnown == true
         and currentReference == info.PendingRollbackTargetReference
-    if not installedMatches and not pendingTargetMatches then
+    local assumeOwned = currentReference == nil
+    if not installedMatches and not pendingTargetMatches and not assumeOwned then
         return true, "source reference changed by another owner"
     end
 
@@ -54863,33 +55666,28 @@ local function partGlueRestoreSourceReference(sourcePart, info)
     if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
     local lastError = "no PhysicsRepRootRef setter available"
     for _, writer in ipairs(writers) do
-        local writeOk, result = pcall(writer, sourcePart, "PhysicsRepRootRef", info.OriginalReference)
-        if writeOk and result ~= false then
-            local verifyOk, actualReference = partGlueReadSourceReference(sourcePart)
-            if verifyOk and actualReference == info.OriginalReference then return true end
-            lastError = "PhysicsRepRootRef restore could not be verified"
-        else
-            lastError = tostring(writeOk and "setter returned false" or result)
-        end
+        local writeOk, result = partGlueWriteSourceReferenceVerified(sourcePart, writer, info.OriginalReference)
+        if writeOk then return true end
+        lastError = tostring(result)
     end
     return false, lastError
 end
 
 local function fn37(arg, arg2)
-if arg == nil or type(arg2) ~= "table" then return false end
+if arg == nil or type(arg2) ~= "table" then return false, "target or snapshot unavailable" end
 local allRestored = true
+local errors = {}
 local originalCFrame = arg2.OriginalCFrame
 local originalPart1 = arg2.OriginalPart1
 local originalPart1ToTarget = arg2.OriginalPart1ToTarget
-if typeof(originalCFrame) ~= "CFrame" or type(arg2.OriginalAnchored) ~= "boolean" then
-    return false
+local weld = arg2.Weld
+local originalAnchored = arg2.OriginalAnchored
+local function fail(reason)
+    allRestored = false
+    errors[#errors + 1] = reason
 end
-
-if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
-local okOriginalCFrame, computedCFrame = pcall(function()
-return originalPart1.CFrame * originalPart1ToTarget
-end)
-if okOriginalCFrame then originalCFrame = computedCFrame end
+if typeof(originalCFrame) ~= "CFrame" or type(originalAnchored) ~= "boolean" then
+    return false, "snapshot is missing original CFrame/Anchored"
 end
 
 local function restoreProperty(instance, property, value)
@@ -54901,27 +55699,41 @@ local function restoreProperty(instance, property, value)
     if type(v117) == "function" then writers[#writers + 1] = v117 end
     if type(v104) == "function" and v104 ~= v117 then writers[#writers + 1] = v104 end
     for _, writer in ipairs(writers) do
-        local ok, result = pcall(writer, instance, property, value)
-        if ok and result ~= false and verify() then return true end
+        local ok = pcall(writer, instance, property, value)
+        if ok and verify() then return true end
     end
     local directOk = pcall(function() instance[property] = value end)
     return directOk and verify()
 end
 
-if originalCFrame ~= nil and not restoreProperty(arg, v86[127], originalCFrame) then
-allRestored = false
+if weld ~= nil and originalPart1 ~= nil then
+    if not restoreProperty(weld, "Part1", originalPart1) then fail("weld Part1 restore failed") end
 end
 
-local weld = arg2.Weld
-if weld ~= nil and originalPart1 ~= nil and not restoreProperty(weld, "Part1", originalPart1) then
-allRestored = false
+if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
+    local okOriginalCFrame, computedCFrame = pcall(function()
+        return originalPart1.CFrame * originalPart1ToTarget
+    end)
+    if okOriginalCFrame and typeof(computedCFrame) == "CFrame" then
+        originalCFrame = computedCFrame
+    else
+        fail("original weld offset could not be recomputed")
+    end
 end
 
-local originalAnchored = arg2.OriginalAnchored
-if originalAnchored ~= nil and not restoreProperty(arg, "Anchored", originalAnchored) then
-allRestored = false
+if not restoreProperty(arg, v86[127], originalCFrame) then fail("target CFrame write/read-back failed") end
+if not restoreProperty(arg, "Anchored", originalAnchored) then fail("target Anchored write/read-back failed") end
+
+local finalCFrameOk, finalCFrame = pcall(function() return arg.CFrame end)
+local finalAnchoredOk, finalAnchored = pcall(function() return arg.Anchored end)
+if not finalCFrameOk or finalCFrame ~= originalCFrame then fail("final target CFrame mismatch") end
+if not finalAnchoredOk or finalAnchored ~= originalAnchored then fail("final target Anchored mismatch") end
+if weld ~= nil and originalPart1 ~= nil then
+    local finalPart1Ok, finalPart1 = pcall(function() return weld.Part1 end)
+    if not finalPart1Ok or finalPart1 ~= originalPart1 then fail("final weld Part1 mismatch") end
 end
-return allRestored
+if allRestored then return true end
+return false, table.concat(errors, "; ")
 end
 
 local PARTGLUE_PENDING_RESTORE_KEY = "__CrefyPendingPartGlueRestores"
@@ -54957,8 +55769,7 @@ local function partGluePersistPendingRestore(target, info)
     RAGEBOT_LOCAL_PENDING_GLUE_TARGETS[target] = true
     local existing = queue[target]
     if type(existing) == "table" and existing.RestoreToken ~= info.RestoreToken then
-        -- Preserve an already-persisted snapshot rather than replacing the older
-        -- rollback point with a possibly intermediate CFrame from a later owner.
+
         return
     end
     queue[target] = {
@@ -55052,10 +55863,7 @@ local function partGluePersistSourceReference(sourcePart, info)
     if type(queue) ~= "table" then return false end
     local existing = queue[sourcePart]
     if type(existing) == "table" and existing ~= info then
-        -- Preserve the earliest known baseline but keep the queue object aligned
-        -- with the currently tracked transaction. Refusing the write silently
-        -- left the queue and local map pointing at different snapshots, so a later
-        -- Acquire could mistake this script's own newer reference for an outside owner.
+
         if existing.OriginalReferenceKnown == true then
             info.OriginalReference = existing.OriginalReference
             info.OriginalReferenceKnown = true
@@ -55089,14 +55897,9 @@ local function partGlueTryWriteSourceReference(sourcePart, referenceValue)
     if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
     local lastError = "no PhysicsRepRootRef setter available"
     for _, writer in ipairs(writers) do
-        local writeOk, writeResult = pcall(writer, sourcePart, "PhysicsRepRootRef", referenceValue)
-        if writeOk and writeResult ~= false then
-            local readOk, actualReference = partGlueReadSourceReference(sourcePart)
-            if readOk and actualReference == referenceValue then return true end
-            lastError = "PhysicsRepRootRef rollback read-back mismatch/unavailable"
-        else
-            lastError = tostring(writeOk and "setter returned false" or writeResult)
-        end
+        local writeOk, writeError = partGlueWriteSourceReferenceVerified(sourcePart, writer, referenceValue)
+        if writeOk then return true end
+        lastError = tostring(writeError)
     end
     return false, lastError
 end
@@ -55114,10 +55917,6 @@ local function partGlueRestoreTrackedSourceReference(glue, sourcePart, forceRele
     local info = type(map) == "table" and map[sourcePart] or nil
     if type(info) ~= "table" then return true end
 
-    -- A failed retarget can leave our new PhysicsRepRootRef installed after the
-    -- old target is still active. Preserve both possibilities explicitly: when
-    -- that old target remains the live owner, rollback to its reference first;
-    -- when it has already been released, restore the original pre-PartGlue value.
     local pendingInstalled = info.PendingRollbackInstalledReference
     local pendingTargetKnown = info.PendingRollbackTargetReferenceKnown == true
     if pendingInstalled ~= nil and pendingTargetKnown then
@@ -55169,8 +55968,6 @@ local function partGlueRestoreTrackedSourceReference(glue, sourcePart, forceRele
             return true
         end
 
-        -- The old target was released; the correct final destination is the
-        -- original reference, not a reference to a target whose glue is gone.
         if currentReference == pendingInstalled then
             info.InstalledReference = pendingInstalled
         elseif currentReference == pendingTargetReference then
@@ -55202,8 +55999,7 @@ end
 
 index2.Acquire = function(arg, arg2, arg3)
 if type(arg._sourceReferenceInfoBySourcePart) ~= "table" then arg._sourceReferenceInfoBySourcePart = {} end
--- A snapshot left by an earlier execution is the rollback baseline. Resolve it
--- (or safely prove another owner changed the value) before creating a new one.
+
 local persistedSourceQueue = partGlueGetSourceReferenceQueue(false)
 local persistedSourceInfo = type(persistedSourceQueue) == "table" and persistedSourceQueue[arg2] or nil
 local trackedSourceInfo = type(arg._sourceReferenceInfoBySourcePart) == "table"
@@ -55215,10 +56011,7 @@ local activeRetargetRollback = type(persistedSourceInfo) == "table"
     and trackedSourceInfo.PendingRollbackTargetReferenceKnown == true
     and trackedSourceInfo.PendingRollbackTargetPart ~= nil
     and trackedTarget == trackedSourceInfo.PendingRollbackTargetPart
--- A rollback record tied to a still-active prior target must be resolved by the
--- tracked helper below (new reference -> prior target reference). Restoring the
--- ultimate baseline here would leave _targetPartBySourcePart pointing at a glue
--- whose PhysicsRepRootRef had silently been reset.
+
 if type(persistedSourceInfo) == "table" and not activeRetargetRollback then
     local persistedRestoreOk, persistedRestored, persistedRestoreError = pcall(
         partGlueRestoreSourceReference, arg2, persistedSourceInfo
@@ -55243,7 +56036,21 @@ if type(sourceRefInfoBefore) == "table" and sourceRefInfoBefore.RestorePending =
     if not restored then return nil end
 end
 local v118 = arg._glueInfoByTargetPart[arg3]
-local reference = v118 and v118.Reference or InstanceHandle.new(arg3)
+local reference = v118 and v118.Reference or nil
+if reference == nil then
+    local referenceOk, constructedReference = pcall(function()
+        return InstanceHandle.new(arg3)
+    end)
+    if not referenceOk or constructedReference == nil then
+        local warningNow = os.clock()
+        if warningNow >= (arg._nextAcquireWarningAt or 0) then
+            arg._nextAcquireWarningAt = warningNow + 5
+            warn("[PartGlue] Acquire skipped safely: InstanceHandle.new is unavailable or failed: " .. tostring(constructedReference))
+        end
+        return nil
+    end
+    reference = constructedReference
+end
 local okReference, referenceError, previousReference, previousReferenceKnown = fn36(arg2, reference)
 if not okReference then
 local warningNow = os.clock()
@@ -55269,21 +56076,12 @@ local function restoreSourceReference()
         if type(v104) == "function" then writers[#writers + 1] = v104 end
         if type(v117) == "function" and v117 ~= v104 then writers[#writers + 1] = v117 end
         for _, writer in ipairs(writers) do
-            local writeOk, writeResult = pcall(writer, arg2, "PhysicsRepRootRef", previousReference)
-            if writeOk and writeResult ~= false then
-                local readOk, readValue = partGlueReadSourceReference(arg2)
-                if readOk and readValue == previousReference then return true end
-                lastError = "PhysicsRepRootRef rollback read-back mismatch/unavailable"
-            else
-                lastError = tostring(writeOk and "setter returned false" or writeResult)
-            end
+            local writeOk, writeError = partGlueWriteSourceReferenceVerified(arg2, writer, previousReference)
+            if writeOk then return true end
+            lastError = tostring(writeError)
         end
     end
-    -- Keep the earliest known baseline, but record that this acquisition may
-    -- still own the current reference. If the prior target is still active,
-    -- remember the intermediate rollback target too; otherwise a retry could
-    -- mistake our failed write for an external owner's value and discard the
-    -- only snapshot needed for cleanup.
+
     local tracked = arg._sourceReferenceInfoBySourcePart[arg2]
     if type(tracked) ~= "table" then
         tracked = {
@@ -55320,7 +56118,6 @@ end
 return nil
 end
 
-
 if v119 ~= nil then
 arg:_ReleaseGlue(v119)
 end
@@ -55345,9 +56142,7 @@ end
 arg._targetPartBySourcePart[arg2] = nil
 arg:_ReleaseGlue(arg3)
 local restored, restoreError = restoreSourceReference()
--- A former target was already released before the requested CFrame write. If
--- there is a tracked baseline reference, finish rollback all the way to that
--- original value instead of leaving the source pointing at the released target.
+
 if restored and type(arg._sourceReferenceInfoBySourcePart[arg2]) == "table" then
     local finalRestored, finalRestoreError = partGlueRestoreTrackedSourceReference(arg, arg2)
     if not finalRestored then
@@ -55436,9 +56231,6 @@ local originalAnchored = nil
 local originalPart1 = nil
 local originalPart1ToTarget = nil
 
--- Snapshot mutable target properties unconditionally. Acquire moves the target
--- CFrame whether or not a WeldConstraint exists, so restoration must not depend
--- on finding a weld.
 local readCFrameOk, cFrameValue = pcall(v116, arg2, "CFrame")
 if readCFrameOk and typeof(cFrameValue) == "CFrame" then originalCFrame = cFrameValue end
 if originalCFrame == nil then
@@ -55526,7 +56318,7 @@ local v118 = arg._glueInfoByTargetPart[arg2]
 if v118 == nil then return end
 v118.RefCount = math.max((tonumber(v118.RefCount) or 1) - 1, 0)
 if v118.RefCount > 0 then return end
-local restoreCallOk, restored = pcall(fn37, arg2, v118)
+local restoreCallOk, restored, restoreError = pcall(fn37, arg2, v118)
 if restoreCallOk and restored == true then
     arg._glueInfoByTargetPart[arg2] = nil
     v118.RestorePending = false
@@ -55536,12 +56328,13 @@ if restoreCallOk and restored == true then
 end
 v118.RestorePending = true
 v118.RefCount = 0
+v118.LastRestoreError = tostring(restoreCallOk and restoreError or restored)
 partGluePersistPendingRestore(arg2, v118)
 schedulePendingRestoreRetry(arg, arg2, v118)
 local warningNow = os.clock()
 if warningNow >= (arg._nextRestoreWarningAt or 0) then
     arg._nextRestoreWarningAt = warningNow + 5
-    warn("[PartGlue] Restore incomplete; retaining record for cleanup retry")
+    warn("[PartGlue] Restore incomplete; retaining record for cleanup retry: " .. v118.LastRestoreError)
 end
 end
 
@@ -55552,7 +56345,7 @@ index2.RetryPendingRestores = function(arg)
     arg._nextPendingRestoreRetryAt = now + 0.1
     for target, info in pairs(arg._glueInfoByTargetPart) do
         if type(info) == "table" and (info.RestorePending == true or (tonumber(info.RefCount) or 0) <= 0) then
-            local restoreCallOk, restored = pcall(fn37, target, info)
+            local restoreCallOk, restored, restoreError = pcall(fn37, target, info)
             if restoreCallOk and restored == true then
                 arg._glueInfoByTargetPart[target] = nil
                 info.RestorePending = false
@@ -55561,6 +56354,7 @@ index2.RetryPendingRestores = function(arg)
             else
                 info.RestorePending = true
                 info.RefCount = 0
+                info.LastRestoreError = tostring(restoreCallOk and restoreError or restored)
                 partGluePersistPendingRestore(target, info)
                 schedulePendingRestoreRetry(arg, target, info)
             end
@@ -55574,10 +56368,7 @@ index2.RetryPendingRestores = function(arg)
                     partGlueRestoreTrackedSourceReference, arg, sourcePart
                 )
                 if sourceRestoreOk and sourceRestored == true then
-                    -- A tracked rollback may only restore the reference to an old
-                    -- target which is still actively owned. Keep the baseline map
-                    -- until Free/Destroy releases that target; the helper clears it
-                    -- itself only when the final original reference is restored.
+
                     if sourceMap[sourcePart] == sourceInfo
                         and arg._targetPartBySourcePart[sourcePart] == nil then
                         sourceMap[sourcePart] = nil
@@ -55605,8 +56396,7 @@ index2.RetryPendingRestores = function(arg)
     local globalQueue = partGlueGetGlobalRestoreQueue(false)
     if type(globalQueue) == "table" then
         for target, pendingInfo in pairs(globalQueue) do
-            -- Local ownership takes precedence; _SetupGlue adopts and clears a
-            -- global snapshot before creating a new local ownership record.
+
             if arg._glueInfoByTargetPart[target] == nil and type(pendingInfo) == "table" then
                 local restoreCallOk, restored = pcall(fn37, target, pendingInfo)
                 if restoreCallOk and restored == true then
@@ -55623,7 +56413,7 @@ end
 
 index2.Destroy = function(arg)
 for target, info in pairs(arg._glueInfoByTargetPart) do
-    local restoreCallOk, restored = pcall(fn37, target, info)
+    local restoreCallOk, restored, restoreError = pcall(fn37, target, info)
     if restoreCallOk and restored == true then
         arg._glueInfoByTargetPart[target] = nil
         info.RestorePending = false
@@ -55632,9 +56422,10 @@ for target, info in pairs(arg._glueInfoByTargetPart) do
     else
         info.RestorePending = true
         info.RefCount = 0
+        info.LastRestoreError = tostring(restoreCallOk and restoreError or restored)
         partGluePersistPendingRestore(target, info)
         schedulePendingRestoreRetry(arg, target, info)
-        warn("[PartGlue] Destroy could not fully restore a target; bounded cleanup retries scheduled")
+        warn("[PartGlue] Destroy could not fully restore a target; bounded cleanup retries scheduled: " .. info.LastRestoreError)
     end
 end
 local sourceMap = arg._sourceReferenceInfoBySourcePart
@@ -55822,7 +56613,7 @@ end
 
 index2._ClearMover = function(arg)
 local mover = arg._mover
--- Clear the reference first so cleanup remains idempotent if Destroy raises.
+ 
 arg._mover = nil
 if type(mover) ~= "table" then return end
 pcall(function()
@@ -56240,7 +57031,6 @@ if not (3861 > n25) then
 arg:_BindCamera()
 return
 end
-
 
 end)
 
@@ -57565,7 +58355,6 @@ local silentAim2 = data.SilentAim
 local fov = silentAim2.Fov
 local targetConditions = silentAim2.TargetConditions
 
-
 local headOnlyHitboxesByClass = {
 Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
 Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
@@ -58211,7 +59000,6 @@ arg:_OnPlayed(arg2)
 return
 end
 
-
 end),
 Destroying = arg2.Destroying:Connect(function()
 arg:_ForgetSound(arg2)
@@ -58664,7 +59452,6 @@ arg._tripmineDataByHitbox[hitbox] = nil
 trove:Remove(connection)
 return
 end
-
 
 end)
 
@@ -60814,7 +61601,6 @@ arg:_BindColorShift()
 arg:_BindFog()
 return
 end
-
 
 end
 
@@ -63509,7 +64295,7 @@ return id.c
 end
 end
 do
-local function fn35()local I= tbl17 .gR(); tbl17 .aE();local W= tbl17 .h6();local function l(N)W(N,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);if not I.IsArcadeServer then N:AddToggle({Label="Utilize Health Lead",Config={"Ragebot","UtilizeHealthLead"}});end;end;return function(I)l(I:AddSection({Title="Activation",Side="left"}));local l,W=I:AddSection({Title="Weapon Strategy",Side="left"}),{"Primary","Secondary","Melee"};for I,I_149 in W,nil,nil do l:AddToggle({Label=string.format("%s Enabled",tostring(I_149)),Config={"Ragebot","Weapons","Enabled",I_149}});end;end;end
+local function fn35()local I= tbl17 .gR(); tbl17 .aE();local W= tbl17 .h6();local function l(N)W(N,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);if not I.IsArcadeServer then N:AddToggle({Label="Utilize Health Lead",Tooltip="This option is currently not connected to active Ragebot behavior.",Config={"Ragebot","UtilizeHealthLead"}});end;end;return function(I)l(I:AddSection({Title="Activation",Side="left"}));local l,W=I:AddSection({Title="Weapon Strategy",Side="left"}),{"Primary","Secondary","Melee"};for I,I_149 in W,nil,nil do l:AddToggle({Label=string.format("%s Enabled",tostring(I_149)),Config={"Ragebot","Weapons","Enabled",I_149}});end;end;end
 
 tbl17.ie = function()
 local ie = tbl17.cache.ie
@@ -63523,7 +64309,7 @@ return ie.c
 end
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
     if enabled == false then
@@ -63533,9 +64319,7 @@ local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a co
         if type(restore) == "function" then
             local ok, result = pcall(restore)
             if not ok or result == false then
-                -- Keep retrying briefly even if Ragebot's planner is disabled;
-                -- relying only on its next update could leave the 90-degree
-                -- roll or Hide translation in place indefinitely.
+
                 task.spawn(function()
                     local deadline = os.clock() + 2
                     while retryToken == voidSpamRestoreRetryToken and os.clock() < deadline do
@@ -63556,7 +64340,7 @@ end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
@@ -63589,7 +64373,159 @@ return ii.c
 end
 end
 do
-local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});if W.IsArcadeServer then  tbl17 .ie()(k);else  tbl17 .ih()(k);end;D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
+local function fn35()
+local I, W, N, P = tbl17.aU(), tbl17.gR(), tbl17.aW(), tbl17.aY()
+tbl17.aE()
+tbl17.hN()
+local StoreProfiles, AimbotProfiles, SoundStorageBuilder, SilentAimProfiles, FireAssistProfiles, HitFeedbackMain, HitFeedbackExtra, WeaponHandling, Icons =
+    tbl17.h0(), tbl17.h7(), tbl17.h8(), tbl17.h9(), tbl17.ia(), tbl17.ic(), tbl17.ib(), tbl17.id(),
+    { Combat="rbxassetid://99199363807265", CameraAim="rbxassetid://83752373575368", SilentAim="rbxassetid://109514269737059", FireAssist="rbxassetid://81854854241463", WeaponHandling="rbxassetid://128279962545721", HitFeedback="rbxassetid://140427675871522", Ragebot="rbxassetid://125012650497883" }
+
+local function buildOther(grid)
+    local Players = game:GetService("Players")
+    local section = grid:AddSection({ Title = "Other", Side = "left" })
+
+    section:AddToggle({
+        Label = "Prioritize Hackers",
+        Tooltip = "Targets players identified by Hacker Detector before the selected player.",
+        Config = { "Ragebot", "PrioritizeHackers" },
+    })
+
+    local playerOptionsCache = { "Auto" }
+    local playerOptionsDirty = true
+    local playerOptionsRefreshQueued = false
+
+    local function getPlayerOptions()
+        if playerOptionsDirty then
+            local currentPlayers = {}
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= Players.LocalPlayer and player.Parent == Players then
+                    currentPlayers[#currentPlayers + 1] = {
+                        Name = player.Name,
+                        SortName = string.lower(player.Name),
+                    }
+                end
+            end
+            table.sort(currentPlayers, function(a, b)
+                if a.SortName == b.SortName then
+                    return a.Name < b.Name
+                end
+                return a.SortName < b.SortName
+            end)
+
+            local options = { "Auto" }
+            for _, entry in ipairs(currentPlayers) do
+                options[#options + 1] = entry.Name
+            end
+            playerOptionsCache = options
+            playerOptionsDirty = false
+        end
+        return playerOptionsCache
+    end
+
+    local initialPlayerOptions = getPlayerOptions()
+    local playerDropdown = section:AddDropdown({
+        Label = "Player",
+        Tooltip = "Select a player. Auto uses the normal Ragebot target selection.",
+        Options = initialPlayerOptions,
+        Search = true,
+        SearchAutoFocus = false,
+        CloseOnSelect = true,
+        Config = { "Ragebot", "TargetPlayer" },
+    })
+    -- Config profiles may retain a player name from a previous server. Validate
+    -- immediately: PlayerAdded/PlayerRemoving will not necessarily fire after
+    -- this UI is constructed for players already in the server.
+    local initialSelectedPlayer = playerDropdown.Value
+    if type(initialSelectedPlayer) ~= "string"
+        or not table.find(initialPlayerOptions, initialSelectedPlayer) then
+        playerDropdown:Set("Auto")
+    end
+
+    local function refreshPlayerOptions()
+        local options = getPlayerOptions()
+        playerDropdown:SetOptions(options)
+        local selected = playerDropdown.Value
+        if type(selected) ~= "string" or not table.find(options, selected) then
+            playerDropdown:Set("Auto")
+        end
+    end
+
+    local function schedulePlayerOptionsRefresh()
+        playerOptionsDirty = true
+        if playerOptionsRefreshQueued then
+            return
+        end
+        playerOptionsRefreshQueued = true
+        task.defer(function()
+            playerOptionsRefreshQueued = false
+            if not playerOptionsDirty then
+                return
+            end
+            refreshPlayerOptions()
+        end)
+    end
+
+    playerDropdown:Connect(Players.PlayerAdded, schedulePlayerOptionsRefresh)
+    playerDropdown:Connect(Players.PlayerRemoving, schedulePlayerOptionsRefresh)
+
+    section:AddDropdown({
+        Label = "Hitscan",
+        Tooltip = "Up: force shots upward; Down: force shots downward; Part: use the target-aware direction.",
+        Options = { "Up", "Down", "Part" },
+        Config = { "Ragebot", "AimDirection" },
+    })
+
+    section:AddToggle({
+        Label = "Underground",
+        Tooltip = "Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",
+        Config = { "Underground", "Enabled" },
+        OnChanged = function(enabled)
+            local controller = rawget(_G, "__CrefyUndergroundController")
+            if type(controller) ~= "table" then return end
+            local ok, result = pcall(function()
+                if enabled then return controller.Start() else return controller.Stop() end
+            end)
+            if not ok then warn("[Underground] Toggle failed: " .. tostring(result)) end
+        end,
+    })
+
+    section:AddSlider({ Label = "Offset X", Min = -20, Max = 20, Step = 0.1, Config = { "Ragebot", "TargetOffset", "X" } })
+    section:AddSlider({ Label = "Offset Y", Min = -20, Max = 20, Step = 0.1, Config = { "Ragebot", "TargetOffset", "Y" } })
+    section:AddSlider({ Label = "Offset Z", Min = -20, Max = 20, Step = 0.1, Config = { "Ragebot", "TargetOffset", "Z" } })
+end
+
+return function(J, B)
+    local combat = B:AddTab({ Label = "Combat", Icon = Icons.Combat, Description = "Aim assistance, fire control, weapon handling, feedback, and ragebot." })
+
+    local aimbotTab = combat:AddTab({ Label = "Aimbot", Icon = Icons.CameraAim, Description = "Camera-based aim assistance and target locking." })
+    local aimbotGrid, aimbotSpec = aimbotTab:Grid({ Columns = 2 }), table.clone(I.BuildSpec)
+    aimbotSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    StoreProfiles(J.StoreProfiles, AimbotProfiles(aimbotGrid, aimbotSpec))
+
+    local silentTab = combat:AddTab({ Label = "Silent Aim", Icon = Icons.SilentAim, Description = "Redirect projectiles toward targets without moving the camera." })
+    local silentGrid, silentSpec = silentTab:Grid({ Columns = 2 }), table.clone(N.BuildSpec)
+    silentSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    StoreProfiles(J.StoreProfiles, SilentAimProfiles(silentGrid, silentSpec))
+
+    local ragebotTab = combat:AddTab({ Label = "Ragebot", Icon = Icons.Ragebot, Description = "Aggressive targeting, weapon priority, and evasive movement." })
+    local ragebotGrid = ragebotTab:Grid({ Columns = 2 })
+    if W.IsArcadeServer then tbl17.ie()(ragebotGrid) else tbl17.ih()(ragebotGrid) end
+    buildOther(ragebotGrid)
+
+    local fireAssistTab = combat:AddTab({ Label = "Fire Assist", Icon = Icons.FireAssist, Description = "Automatic firing and fast camera flicks." })
+    local fireGrid, fireSpec = fireAssistTab:Grid({ Columns = 2 }), table.clone(P.BuildSpec)
+    fireSpec.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    StoreProfiles(J.StoreProfiles, FireAssistProfiles(fireGrid, fireSpec))
+    tbl17.ii()(fireGrid, function() aimbotTab:Open() end)
+
+    WeaponHandling((combat:AddTab({ Label = "Weapon Handling", Icon = Icons.WeaponHandling, Description = "Aim, firing, cooldown, melee, and grenade behavior." }):Grid({ Columns = 2 })))
+    local feedbackTab = combat:AddTab({ Label = "Hit Feedback", Icon = Icons.HitFeedback, Description = "Sound, visual, flash, and notification feedback." })
+    local feedbackGrid, soundStorage = feedbackTab:Grid({ Columns = 2 }), SoundStorageBuilder(B, J.SfxSoundStorage)
+    HitFeedbackMain(J, feedbackGrid, soundStorage)
+    HitFeedbackExtra(J, feedbackGrid, soundStorage)
+end
+end
 
 tbl17.ij = function()
 local ij = tbl17.cache.ij
@@ -64046,7 +64982,6 @@ return false
 end
 return nil
 
-
 end)
 
 fn51(v141, v140, function()
@@ -64420,8 +65355,8 @@ local UNDERGROUND_PLAYER_SEPARATION = 2.5
 local UNDERGROUND_OTHER_THRESHOLD = 0.75
 local UNDERGROUND_ADAPTIVE_SCAN_INTERVAL = 0.20
 local UNDERGROUND_CACHE_MOVE_DISTANCE = 10
-local UNDERGROUND_DOWN_FLOOR_MAX_GAP = 8
-local UNDERGROUND_NEAR_FLOOR_GAP = 3
+local UNDERGROUND_DOWN_FLOOR_MAX_GAP = 10
+local UNDERGROUND_NEAR_FLOOR_GAP = 10
 local UNDERGROUND_UP_SURFACE_MIN_GAP = 0.6
 local UNDERGROUND_UP_SURFACE_MAX_GAP = 96
 local undergroundRaycastParams = RaycastParams.new()
@@ -64440,6 +65375,7 @@ local UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
+local undergroundNextTransitionWarningAt = 0
 local undergroundAdaptiveDepth = UNDERGROUND_MIN_DEPTH
 local undergroundDepth = UNDERGROUND_MIN_DEPTH
 local undergroundAdaptiveScanAt = 0
@@ -64464,8 +65400,7 @@ function UndergroundRootDesync.new(rootPart)
     }, UndergroundRootDesync)
     RunService:BindToRenderStep(self._boundId, Enum.RenderPriority.First.Value, function()
         if ragebotPoseRestoreGateIsActive() then
-            -- Do not replay a stale Underground client pose over the Ragebot's
-            -- verified restore/hold. The gate setter writes the approved pose directly.
+
             self._oldCFrame = nil
             self._cframe = nil
             return
@@ -64490,10 +65425,7 @@ end
 
 function UndergroundRootDesync:SetServerCFrame(cf)
     if cf == nil then
-        -- A clear must discard both the pending transform and its old-pose cache.
-        -- Otherwise RenderStep may replay that cache if the restore gate changes
-        -- state before the next frame. Callers that need a fresh baseline must
-        -- explicitly capture the current RootPart CFrame after this reset.
+
         self._cframe = nil
         self._oldCFrame = nil
         return true
@@ -64516,8 +65448,7 @@ function UndergroundRootDesync:SetServerCFrame(cf)
         return false
     end
     if ragebotPoseRestoreGateIsActive() then
-        -- The restore transaction owns RootPart while the gate is active.
-        -- Underground may not substitute its own/stale CFrame for the gate pose.
+
         self._cframe = nil
         self._oldCFrame = nil
         local rootPart = self._rootPart
@@ -64569,8 +65500,7 @@ function UndergroundRootDesync:HeartbeatUpdate()
     self._oldCFrame = current
     local okWrite = pcall(function() rootPart.CFrame = cf end)
     if not okWrite then
-        -- Do not let a destroyed/replaced root throw from Heartbeat. Clear the
-        -- pending write; a fresh controller is created for the next character.
+
         self._cframe = nil
         local parentOk, hasParentAfter = pcall(function() return rootPart.Parent ~= nil end)
         if not parentOk or not hasParentAfter then
@@ -64594,8 +65524,7 @@ end
 
 function UndergroundRootDesync:Destroy(skipPositionRestore)
     local rootPart = self._rootPart
-    -- While Ragebot owns the restore gate, this controller's cached client pose
-    -- may predate the approved restore snapshot. Never replay it over that pose.
+
     local gateActive = ragebotPoseRestoreGateIsActive()
     local gate = gateActive and ragebotPoseRestoreGateRead() or nil
     local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
@@ -64603,7 +65532,7 @@ function UndergroundRootDesync:Destroy(skipPositionRestore)
     local restoreCFrame = self._oldCFrame
     if gateActive or skipPositionRestore == true then restoreCFrame = nil end
     pcall(function() RunService:UnbindFromRenderStep(self._boundId) end)
-    -- On death, cleanup must not replay the pre-Underground pose and teleport the character.
+     
     if skipPositionRestore ~= true and rootPart ~= nil and restoreCFrame ~= nil then
         pcall(function()
             if rootPart.Parent ~= nil then rootPart.CFrame = restoreCFrame end
@@ -64678,26 +65607,20 @@ local function undergroundGetClientCFrame(root)
     return nil
 end
 
--- Fix: char:GetBoundingBox() bao gồm cả HitboxHead đang ở vị trí anchor (Y=100000).
--- Điều này làm boxSize.Y ≈ 100000, khiến highestTransformedY ≈ 99995,
--- rồi targetRootY = surfaceY - depth - 99995 ≈ -99998 → character bị tp xuống Y≈-100000.
--- Fix: tính bounding box thủ công, loại bỏ các part cách root >20 studs (outlier/anchor).
-local UNDERGROUND_BOUNDS_MAX_PART_OFFSET = 20  -- studs; HitboxHead ở Y=100000 sẽ bị loại
+-- Fix: char:GetBoundingBox() bao gồm HitboxHead tại anchor Y=100000.
+-- → boxSize.Y≈100000 → highestTransformedY≈99995 → targetRootY≈-99998 → character bay xuống Y=-100000.
+-- Fix: tính bounds thủ công, lọc parts xa root hơn 20 studs.
+local UNDERGROUND_BOUNDS_MAX_PART_OFFSET = 20
 local function undergroundCharacterBounds(char)
     if not char or char.Parent == nil then return nil end
-    local rootPart = char:FindFirstChildOfClass("BasePart") -- fallback
-    local humanoidRoot = char:FindFirstChild("HumanoidRootPart")
-    if humanoidRoot and humanoidRoot:IsA("BasePart") then rootPart = humanoidRoot end
-    local rootY = rootPart and rootPart.Position.Y or nil
-
-    local minX, minY, minZ = math.huge,  math.huge,  math.huge
+    local rootPart = char:FindFirstChild("HumanoidRootPart")
+    local rootY = rootPart and rootPart:IsA("BasePart") and rootPart.Position.Y or nil
+    local minX, minY, minZ =  math.huge,  math.huge,  math.huge
     local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
-
     for _, part in char:GetDescendants() do
         if part:IsA("BasePart") then
-            local partY = part.Position.Y
-            -- Loại bỏ part quá xa root theo Y (HitboxHead anchor, PartGlue anchor)
-            if rootY == nil or math.abs(partY - rootY) <= UNDERGROUND_BOUNDS_MAX_PART_OFFSET then
+            local py = part.Position.Y
+            if rootY == nil or math.abs(py - rootY) <= UNDERGROUND_BOUNDS_MAX_PART_OFFSET then
                 local pos = part.Position
                 local hs  = part.Size * 0.5
                 if pos.X - hs.X < minX then minX = pos.X - hs.X end
@@ -64709,19 +65632,14 @@ local function undergroundCharacterBounds(char)
             end
         end
     end
-
     if minX == math.huge then return nil end
-    local cx = (minX + maxX) * 0.5
-    local cy = (minY + maxY) * 0.5
-    local cz = (minZ + maxZ) * 0.5
-    local sx = maxX - minX
-    local sy = maxY - minY
-    local sz = maxZ - minZ
+    local cx = (minX+maxX)*0.5
+    local cy = (minY+maxY)*0.5
+    local cz = (minZ+maxZ)*0.5
     return {
         CFrame.new(cx, cy, cz),
-        Vector3.new(sx, sy, sz),
-        minY,
-        maxY,
+        Vector3.new(maxX-minX, maxY-minY, maxZ-minZ),
+        minY, maxY,
     }
 end
 
@@ -64775,63 +65693,6 @@ local function undergroundSameEnvironment(localPlayer, localChar, localFloorPart
     return localFloorPart == otherFloorPart
 end
 
-local function undergroundRaycastIgnoringHumanoidModels(origin, direction, params)
-    local baseFilter = params.FilterDescendantsInstances
-    local filter = {}
-    if type(baseFilter) == "table" then
-        for _, instance in ipairs(baseFilter) do filter[#filter + 1] = instance end
-    end
-    for _ = 1, 32 do
-        params.FilterDescendantsInstances = filter
-        local raycastOk, result = pcall(function()
-            return Workspace:Raycast(origin, direction, params)
-        end)
-        if not raycastOk then return nil end
-        if result == nil then return nil end
-        local current = result.Instance
-        local humanoidModel = nil
-        while current ~= nil and current ~= Workspace do
-            if current:IsA("Model") then
-                local hasCharacterController = false
-                local okController, controller = pcall(function()
-                    return current:FindFirstChildWhichIsA("Humanoid", true)
-                        or current:FindFirstChildWhichIsA("AnimationController", true)
-                end)
-                if okController and controller ~= nil then hasCharacterController = true end
-                if not hasCharacterController then
-                    local okRootSignature, rootSignature = pcall(function()
-                        return current:FindFirstChild("HumanoidRootPart", true)
-                            or current:FindFirstChild("RootPart", true)
-                    end)
-                    local okHeadSignature, headSignature = pcall(function()
-                        return current:FindFirstChild("Head", true)
-                    end)
-                    if okRootSignature and rootSignature ~= nil and okHeadSignature and headSignature ~= nil then
-                        hasCharacterController = true
-                    end
-                end
-                if hasCharacterController then
-                    humanoidModel = current
-                    break
-                end
-            end
-            current = current.Parent
-        end
-        if humanoidModel == nil then return result end
-        local alreadyExcluded = false
-        for _, excluded in ipairs(filter) do
-            if excluded == humanoidModel then
-                alreadyExcluded = true
-                break
-            end
-        end
-        if alreadyExcluded then return nil end
-        filter[#filter + 1] = humanoidModel
-    end
-    -- Fail closed rather than treating a humanoid/NPC hit as valid ground.
-    return nil
-end
-
 local function undergroundProbeSurface(char, root)
     if not char or char.Parent ~= Workspace or not root or not root.Parent
         or not root:IsDescendantOf(char) then
@@ -64849,9 +65710,12 @@ local function undergroundProbeSurface(char, root)
     if not bounds then
         return nil
     end
+
     local minY = bounds[3]
     local maxY = bounds[4]
-    if type(minY) ~= 'number' or type(maxY) ~= 'number' then
+    if type(minY) ~= 'number' or type(maxY) ~= 'number'
+        or minY ~= minY or maxY ~= maxY
+        or minY == math.huge or maxY == math.huge then
         return nil
     end
 
@@ -64868,12 +65732,8 @@ local function undergroundProbeSurface(char, root)
     end
     params.FilterDescendantsInstances = raycastFilter
 
-    local down = undergroundRaycastIgnoringHumanoidModels(
-        pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params
-    )
-    local up = undergroundRaycastIgnoringHumanoidModels(
-        pos + Vector3.new(0, -0.15, 0), Vector3.new(0, 96, 0), params
-    )
+    local down = Workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params)
+    local up = Workspace:Raycast(pos + Vector3.new(0, -0.15, 0), Vector3.new(0, 96, 0), params)
 
     local downGap = math.huge
     local upGap = math.huge
@@ -65035,7 +65895,7 @@ local function undergroundRestore(preferredClientCFrame, skipPositionRestore)
     if root and not skipPoseWrite and gateOwnsRoot then
         pcall(function()
             if restoreGateActive then
-                -- Underground cleanup may only touch the exact RootPart bound to the gate.
+                 
                 if typeof(gatedPose) == "CFrame" then root.CFrame = gatedPose end
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
@@ -65082,6 +65942,24 @@ local function undergroundServerCFrame(char, root)
         return nil
     end
     local boxCFrame, boxSize = bounds[1], bounds[2]
+
+    local liveRootCFrame
+    local liveRootReadOk = pcall(function() liveRootCFrame = root.CFrame end)
+    if not liveRootReadOk or typeof(liveRootCFrame) ~= "CFrame" then
+        return nil
+    end
+    local liveRootPosition = liveRootCFrame.Position
+    local intendedPosition = currentRoot.Position
+    local function finiteCoord(n)
+        return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
+    end
+    if not finiteCoord(liveRootPosition.X) or not finiteCoord(liveRootPosition.Y)
+        or not finiteCoord(liveRootPosition.Z) or not finiteCoord(intendedPosition.X)
+        or not finiteCoord(intendedPosition.Y) or not finiteCoord(intendedPosition.Z)
+        or math.abs(liveRootPosition.X) > 100000 or math.abs(liveRootPosition.Y) > 100000
+        or math.abs(liveRootPosition.Z) > 100000 then
+        return nil
+    end
     local localCorners = {}
     for x = -1, 1, 2 do
         for y = -1, 1, 2 do
@@ -65091,7 +65969,7 @@ local function undergroundServerCFrame(char, root)
                     boxSize.Y * 0.5 * y,
                     boxSize.Z * 0.5 * z
                 ))
-                localCorners[#localCorners + 1] = currentRoot:PointToObjectSpace(corner)
+                localCorners[#localCorners + 1] = liveRootCFrame:PointToObjectSpace(corner)
             end
         end
     end
@@ -65182,44 +66060,37 @@ startUnderground = function()
 
     undergroundLastServerCFrame = initialServerCF
     undergroundEnabled = true
-    undergroundRagebotIntegrated = undergroundRagebotRequested == true
-    if undergroundRagebotIntegrated then
-        if undergroundDesync then
-            pcall(function() undergroundDesync:Destroy(true) end)
-            undergroundDesync = nil
-        end
-    else
-        undergroundDesync = UndergroundRootDesync.new(root)
-        if not undergroundDesync:SetServerCFrame(initialServerCF) then
-            undergroundDesync:Destroy(true)
-            undergroundDesync = nil
-            undergroundEnabled = false
-            undergroundSnapshot = nil
-            undergroundSnapshotCharacter = nil
-            return false
-        end
+    undergroundRagebotIntegrated = false
+    if undergroundDesync then
+        pcall(function() undergroundDesync:Destroy(true) end)
+        undergroundDesync = nil
+    end
+    undergroundDesync = UndergroundRootDesync.new(root)
+    if not undergroundDesync:SetServerCFrame(initialServerCF) then
+        pcall(function() undergroundDesync:Destroy(true) end)
+        undergroundDesync = nil
+        undergroundEnabled = false
+        undergroundSnapshot = nil
+        undergroundSnapshotCharacter = nil
+        return false
     end
     undergroundDeathConn = humanoid.Died:Connect(function()
         if undergroundEnabled then
-            -- Died cleanup disconnects Underground but must not restore the saved
-            -- surface pose, which looks like an automatic TP on death.
+
             undergroundRequested = false
             stopUnderground(true)
         end
     end)
-    local lastKnownHealth = tonumber(humanoid.Health) or 0
     undergroundHealthConn = humanoid.HealthChanged:Connect(function(newHealth)
         if not undergroundEnabled then return end
         local currentHealth = tonumber(newHealth)
-        if currentHealth == nil then return end
-        if currentHealth < lastKnownHealth then
-            -- On damage, stop the desync without replaying the old surface CFrame.
-            -- Also clear the request so the retry loop cannot instantly restart it.
+        if currentHealth == nil or currentHealth ~= currentHealth
+            or currentHealth == math.huge or currentHealth == -math.huge then return end
+
+        if currentHealth <= 0 then
             undergroundRequested = false
             stopUnderground(true)
-            return
         end
-        lastKnownHealth = currentHealth
     end)
 
     undergroundConn = RunService.Heartbeat:Connect(function()
@@ -65231,9 +66102,7 @@ startUnderground = function()
         local currentRoot = undergroundGetRoot(currentChar)
         local currentHumanoid = undergroundGetHumanoid(currentChar)
         if not currentChar or not currentRoot or not currentHumanoid then
-            -- A missing/transitional character is not safe to control or restore.
-            -- Preserve the user's request here so CharacterAdded can restart on a
-            -- valid new character. Damage/death paths explicitly clear the request.
+
             stopUnderground(true)
             return
         end
@@ -65246,8 +66115,19 @@ startUnderground = function()
             return
         end
         if currentChar ~= undergroundSnapshotCharacter then
-            -- Never apply an old character's CFrame to a respawn/replacement.
             stopUnderground(true)
+            return
+        end
+        local activeRestoreGate = ragebotPoseRestoreGateIsActive()
+        local activeRestoreGateData = activeRestoreGate and ragebotPoseRestoreGateRead() or nil
+        local activeRestoreGateRoot = type(activeRestoreGateData) == "table"
+            and rawget(activeRestoreGateData, "rootPart") or nil
+        if activeRestoreGate and activeRestoreGateRoot == currentRoot then
+            if undergroundDesync then
+                undergroundDesync._cframe = nil
+                undergroundDesync._oldCFrame = nil
+            end
+            undergroundLastServerCFrame = nil
             return
         end
         if undergroundRagebotIntegrated then
@@ -65287,14 +66167,11 @@ startUnderground = function()
                 undergroundDesync:SetServerCFrame(serverCF)
             end
         else
-            -- Fix: khi probe thất bại (NPC chặn raycast, floor không tìm được):
-            -- KHÔNG dùng currentRoot.CFrame (bị vật lý NPC đẩy lên) làm _oldCFrame.
-            -- Giữ lại undergroundLastServerCFrame và tiếp tục apply nó.
-            -- Nếu không có fallback thì mới để physics kiểm soát.
+            -- Fix: khi probe thất bại (NPC chặn raycast), giữ last serverCF.
+            -- Dùng currentRoot.CFrame (bị physics NPC đẩy lên) sẽ gây character bay lên.
             local fallback = undergroundLastServerCFrame
             if fallback ~= nil and undergroundDesync then
                 undergroundDesync:SetServerCFrame(fallback)
-                -- KHÔNG clear undergroundLastServerCFrame
             elseif undergroundDesync then
                 undergroundDesync:SetServerCFrame(nil)
                 undergroundDesync._oldCFrame = currentRoot.CFrame
@@ -65378,8 +66255,7 @@ if lp then
 undergroundRespawnConnection = lp.CharacterAdded:Connect(function(newCharacter)
 if not undergroundRequested then return end
 task.spawn(function()
-    -- The old Heartbeat may still be connected when CharacterAdded fires. Let it
-    -- observe the character switch and restore the old snapshot before retrying.
+
     if undergroundSnapshotCharacter ~= nil and undergroundSnapshotCharacter ~= newCharacter then
         pcall(stopUnderground, true)
     end
@@ -65389,6 +66265,34 @@ end)
 end)
 end
 local undergroundController = {}
+local undergroundRagebotDisableRetryActive = false
+local function scheduleUndergroundRagebotDisableRetry()
+    if undergroundRagebotDisableRetryActive or not undergroundEnabled
+        or undergroundRagebotRequested or not undergroundRagebotIntegrated then
+        return
+    end
+    if type(task) ~= "table" or type(task.spawn) ~= "function"
+        or type(task.wait) ~= "function" then
+        return
+    end
+    undergroundRagebotDisableRetryActive = true
+    task.spawn(function()
+        while undergroundEnabled and not undergroundRagebotRequested and undergroundRagebotIntegrated do
+            task.wait(0.1)
+            local controller = rawget(_G, "__CrefyUndergroundController")
+            local retry = type(controller) == "table" and controller.SetRagebotIntegration or nil
+            if type(retry) == "function" then
+                local retryOk, retryResult = pcall(retry, false)
+                if retryOk and retryResult ~= false and not undergroundRagebotIntegrated then
+                    break
+                end
+            else
+                break
+            end
+        end
+        undergroundRagebotDisableRetryActive = false
+    end)
+end
 undergroundController.Start = function()
 undergroundRequested = true
 local ok, result = pcall(startUnderground)
@@ -65409,39 +66313,260 @@ end
 undergroundController.IsRagebotIntegrated = function()
 return undergroundEnabled == true and undergroundRagebotIntegrated == true
 end
-undergroundController.SetRagebotIntegration = function(active)
+undergroundController.SetRagebotIntegration = function(active, preferredClientPose)
 undergroundRagebotRequested = active == true
 local shouldIntegrate = undergroundEnabled and undergroundRagebotRequested
-if shouldIntegrate == undergroundRagebotIntegrated then return end
-undergroundRagebotIntegrated = shouldIntegrate
--- Integration transitions must never replay undergroundLastClientCFrame. That
--- cache may be stale by the time Ragebot disables/resets or a RootPart is replaced.
+if shouldIntegrate == undergroundRagebotIntegrated then return true end
+
 if shouldIntegrate then
+
+    local char = undergroundGetCharacter()
+    local root = undergroundGetRoot(char)
+    local humanoid = undergroundGetHumanoid(char)
+    if not (root and root.Parent and char == undergroundSnapshotCharacter
+        and humanoid ~= nil and humanoid.Health > 0) then
+        return false
+    end
+
+    local function validIntegrationPose(cf)
+        if typeof(cf) ~= "CFrame" then return false end
+        local components = { cf:GetComponents() }
+        for _, component in ipairs(components) do
+            if type(component) ~= "number" or component ~= component
+                or component == math.huge or component == -math.huge then
+                return false
+            end
+        end
+        local pos = cf.Position
+        return math.abs(pos.X) <= 100000 and math.abs(pos.Y) <= 100000
+            and math.abs(pos.Z) <= 100000
+    end
+
+    local livePose
+    local liveReadOk = pcall(function() livePose = root.CFrame end)
+    local livePoseIsValid = liveReadOk and validIntegrationPose(livePose)
+    local cachedPose = undergroundLastClientCFrame
+    local gateActive = ragebotPoseRestoreGateIsActive()
+
+    if gateActive then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Ragebot start hand-off is waiting for the active restore gate to finish; preserving the last client pose.")
+        end
+        return false
+    end
+
+    local handoffPose
+    if validIntegrationPose(cachedPose) then
+        handoffPose = cachedPose
+    elseif undergroundDesync then
+        local okClient, clientPose = pcall(function() return undergroundDesync:GetClientCFrame() end)
+        if okClient and validIntegrationPose(clientPose) then handoffPose = clientPose end
+    end
+    if handoffPose == nil and livePoseIsValid then handoffPose = livePose end
+    if handoffPose == nil then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] No valid client pose available to start Ragebot; keeping Underground active.")
+        end
+        return false
+    end
+
+    local distance = livePoseIsValid and (livePose.Position - handoffPose.Position).Magnitude or math.huge
+    local writeOk, writeError = pcall(function()
+        root.CFrame = handoffPose
+        if distance > 2 then
+
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
+    local verifyOk, verifiedPose = pcall(function() return root.CFrame end)
+    if not writeOk or not verifyOk or not validIntegrationPose(verifiedPose)
+        or (verifiedPose.Position - handoffPose.Position).Magnitude > 3 then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Ragebot start pose hand-off could not be verified; Underground remains active. " .. tostring(writeError or verifiedPose))
+        end
+        return false
+    end
+
+    undergroundLastClientCFrame = verifiedPose
+     
     if undergroundDesync then
         pcall(function() undergroundDesync:Destroy(true) end)
         undergroundDesync = nil
     end
-elseif undergroundEnabled then
-    local char = undergroundGetCharacter()
-    local root = undergroundGetRoot(char)
-    if root and root.Parent then
-        if undergroundDesync then
-            pcall(function() undergroundDesync:Destroy(true) end)
+    undergroundLastServerCFrame = nil
+    undergroundRagebotIntegrated = true
+    return true
+end
+
+if not undergroundEnabled then
+    undergroundRagebotIntegrated = false
+    return true
+end
+
+local char = undergroundGetCharacter()
+local root = undergroundGetRoot(char)
+local humanoid = undergroundGetHumanoid(char)
+if not (root and root.Parent and char == undergroundSnapshotCharacter
+    and humanoid ~= nil and humanoid.Health > 0) then
+
+    return false
+end
+
+if undergroundDesync then
+    pcall(function() undergroundDesync:Destroy(true) end)
+    undergroundDesync = nil
+end
+
+local livePose
+local liveReadOk = pcall(function() livePose = root.CFrame end)
+local cachedPose = undergroundLastClientCFrame
+local function validUndergroundPose(cf)
+    if typeof(cf) ~= "CFrame" then return false end
+    local components = { cf:GetComponents() }
+    for _, component in ipairs(components) do
+        if type(component) ~= "number" or component ~= component
+            or component == math.huge or component == -math.huge then
+            return false
         end
-        undergroundDesync = UndergroundRootDesync.new(root)
+    end
+    local pos = cf.Position
+    return math.abs(pos.X) <= 100000 and math.abs(pos.Y) <= 100000
+        and math.abs(pos.Z) <= 100000
+end
+local gateActive = ragebotPoseRestoreGateIsActive()
+local gate = gateActive and ragebotPoseRestoreGateRead() or nil
+local approvedPose = type(gate) == "table" and rawget(gate, "pose") or nil
+local approvedRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
+local gateOwner = type(gate) == "table" and rawget(gate, "owner") or nil
+local gateUntilAt = type(gate) == "table" and rawget(gate, "untilAt") or nil
+local preferredPoseIsValid = not gateActive and validUndergroundPose(preferredClientPose)
+if preferredPoseIsValid then
+    cachedPose = preferredClientPose
+    undergroundLastClientCFrame = preferredClientPose
+end
+local livePoseIsValid = liveReadOk and validUndergroundPose(livePose)
+local cachedPoseIsValid = validUndergroundPose(cachedPose)
+local approvedPoseIsValid = gateActive and approvedRoot == root
+    and validUndergroundPose(approvedPose)
+local canRepairGateFromPreferredPose = gateActive and approvedRoot == root
+    and type(gateOwner) == "table" and cachedPoseIsValid
+
+if gateActive and not approvedPoseIsValid and not canRepairGateFromPreferredPose then
+    if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+        undergroundNextTransitionWarningAt = os.clock() + 5
+        warn("[Underground] Ragebot restore gate has no approved pose for this RootPart; hand-off deferred safely.")
+    end
+    scheduleUndergroundRagebotDisableRetry()
+    return false
+end
+
+local handoffPose
+if preferredPoseIsValid then
+    handoffPose = preferredClientPose
+elseif cachedPoseIsValid then
+    handoffPose = cachedPose
+elseif not gateActive and livePoseIsValid then
+    handoffPose = livePose
+end
+if handoffPose == nil then
+    if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+        undergroundNextTransitionWarningAt = os.clock() + 5
+        warn("[Underground] No valid client pose available for Ragebot hand-off; retrying.")
+    end
+    scheduleUndergroundRagebotDisableRetry()
+    return false
+end
+
+if gateActive then
+    if type(gateOwner) ~= "table" then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Restore gate owner is unavailable; preserving the current pose until it can be handed off safely.")
+        end
+        scheduleUndergroundRagebotDisableRetry()
+        return false
+    end
+    if gateOwner._repRootCounterRestorePending == true then
+        if gateOwner._repRootCounterRestoreRootPart ~= root then
+            if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+                undergroundNextTransitionWarningAt = os.clock() + 5
+                warn("[Underground] Pending restore belongs to a different RootPart; hand-off deferred safely.")
+            end
+            scheduleUndergroundRagebotDisableRetry()
+            return false
+        end
+        gateOwner._repRootCounterRestoreCFrame = handoffPose
+        gateOwner._repRootCounterHoldCFrame = handoffPose
+        gateOwner._repRootCounterRestoreStableFrames = 0
+        gateOwner._repRootCounterRestoreLastSampleAt = nil
+    elseif gateOwner._repRootCounterHoldRootPart == root then
+        gateOwner._repRootCounterHoldCFrame = handoffPose
+    end
+    local gateUpdated = ragebotPoseRestoreGateSet(gateOwner, true, gateUntilAt, handoffPose, root)
+    if not gateUpdated then
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Could not update the active restore gate to the current hand-off pose; retrying safely.")
+        end
+        scheduleUndergroundRagebotDisableRetry()
+        return false
     end
 end
+
+local needsPoseWrite = not livePoseIsValid
+    or (livePose.Position - handoffPose.Position).Magnitude > 2
+if needsPoseWrite then
+    local writeOk, writeError = pcall(function()
+        root.CFrame = handoffPose
+        if (not livePoseIsValid)
+            or (livePose.Position - handoffPose.Position).Magnitude > 12 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
+    local verifyOk, verifiedPose = pcall(function() return root.CFrame end)
+    if writeOk and verifyOk and validUndergroundPose(verifiedPose)
+        and (verifiedPose.Position - handoffPose.Position).Magnitude <= 3 then
+        handoffPose = verifiedPose
+    else
+        if os.clock() >= (undergroundNextTransitionWarningAt or 0) then
+            undergroundNextTransitionWarningAt = os.clock() + 5
+            warn("[Underground] Client-pose hand-off could not be verified; retrying. " .. tostring(writeError or verifiedPose))
+        end
+        scheduleUndergroundRagebotDisableRetry()
+        return false
+    end
+end
+
+undergroundLastClientCFrame = handoffPose
+ 
+undergroundRagebotIntegrated = false
+undergroundLastServerCFrame = nil
+undergroundAdaptiveScanAt = 0
+undergroundAdaptiveDepthUpdatedAt = 0
+undergroundCachedFloorPart = nil
+undergroundCachedLocalPosition = nil
+undergroundCachedEnvironmentId = nil
+undergroundDesync = UndergroundRootDesync.new(root)
+local freshServerPose = undergroundServerCFrame(char, root)
+if freshServerPose ~= nil then
+    undergroundLastServerCFrame = freshServerPose
+    undergroundDesync:SetServerCFrame(freshServerPose)
+end
+return true
 end
 undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame, weaponKind)
 if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
 return cframe
 end
-if typeof(clientCFrame) == "CFrame" then
+if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
 undergroundLastClientCFrame = clientCFrame
 end
--- Underground positioning is weapon-specific: Gun and Knife stay at the
--- planned CFrame; only non-Knife melee uses the legacy -3.8-stud adjustment.
--- Unknown weapon kinds fail neutral rather than shifting a gun by accident.
+
 local offset = weaponKind == "Melee"
     and Vector3.new(0, UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET, 0)
     or Vector3.zero
@@ -65451,15 +66576,13 @@ return adjusted
 end
 _G.__CrefyUndergroundController = undergroundController
 local undergroundCleanup = function()
--- Script reload/unload is cleanup, not a request to teleport back to an old pose.
+ 
 undergroundController.Stop(true)
 end
 _G.__LuaHookUndergroundStandaloneCleanup = undergroundCleanup
 if type(K) == "table" and type(K.onUnload) == "function" then
 K.onUnload(function()
-    -- This callback is registered before the local restore function is declared
-    -- later in the file. Resolve the published hook at callback time instead of
-    -- referencing an out-of-scope local (which would resolve as a nil global).
+
     local restoreKey = "__CrefyRestoreVoidSpamTransform"
     local restoreFn = rawget(_G, restoreKey)
     local restoreOk, restoreResult = false, nil
@@ -65471,9 +66594,7 @@ K.onUnload(function()
             rawset(_G, restoreKey, nil)
         end
     else
-        -- Keep the current global hook while retrying. The old controller can
-        -- survive briefly through reload; the newer script may also replace the
-        -- hook, so every retry resolves the active function again.
+
         task.spawn(function()
             local deadline = os.clock() + 2
             local restored = false
@@ -67279,7 +68400,6 @@ return tbl18
 end
 return nil
 
-
 end
 
 index2._SetEnabled = function(arg, enabled)
@@ -67970,7 +69090,10 @@ return setmetatable({ _fighters = arg, _playerTags = arg2 }, index2)
 end
 
 index2.GetTarget = function(arg)
-local prioritizeHackers = v115.Data.Ragebot.PrioritizeHackers == true
+local ragebotTargetConfig = type(v115.Data) == "table" and type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local prioritizeHackers = ragebotTargetConfig.PrioritizeHackers == true
+local selectedTargetName = type(ragebotTargetConfig.TargetPlayer) == "string" and ragebotTargetConfig.TargetPlayer or "Auto"
+if selectedTargetName == "" then selectedTargetName = "Auto" end
 local Players = game:GetService("Players")
 local localPosition = nil
 local okLocalPosition, localPositionValue = pcall(function()
@@ -67980,6 +69103,18 @@ local okLocalPosition, localPositionValue = pcall(function()
     if root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace) then
         return root.Position
     end
+
+    -- Some character/controller states expose their authoritative RootPart
+    -- before the conventional HumanoidRootPart is available during respawn.
+    local fighters = arg._fighters
+    local stateByPlayer = type(fighters) == "table" and fighters.StateByPlayer or nil
+    local localFighter = type(stateByPlayer) == "table" and localPlayer and stateByPlayer[localPlayer] or nil
+    local fighterCharacter = localFighter and localFighter.Character or nil
+    local characterState = fighterCharacter and fighterCharacter.State or nil
+    local fighterRoot = characterState and characterState.RootPart or nil
+    if fighterRoot ~= nil and fighterRoot:IsA("BasePart") and fighterRoot:IsDescendantOf(workspace) then
+        return fighterRoot.Position
+    end
     return nil
 end)
 if okLocalPosition and typeof(localPositionValue) == "Vector3" then
@@ -67987,12 +69122,15 @@ if okLocalPosition and typeof(localPositionValue) == "Vector3" then
 end
 
 local function isHacker(player)
-    local okTag, tagged = pcall(arg._playerTags.Has, arg._playerTags, player, "Hacker")
+    local okTag, tagged = pcall(function()
+        local tags = arg._playerTags
+        if tags == nil or type(tags.Has) ~= "function" then return false end
+        return tags:Has(player, "Hacker")
+    end)
     return okTag and tagged == true
 end
 
 local function distanceTo(fighter)
-    if localPosition == nil then return nil end
     local okDistance, distance = pcall(function()
         local character = fighter.Character
         local state = character and character.State or nil
@@ -68000,6 +69138,10 @@ local function distanceTo(fighter)
         if root == nil or not root:IsA("BasePart") or not root:IsDescendantOf(workspace) then
             return nil
         end
+        -- Distance is only used to rank otherwise-valid targets, not to decide
+        -- whether the shot can be sent. If the local root is temporarily absent
+        -- during spawn/respawn, still allow a valid target with neutral priority.
+        if localPosition == nil then return 0 end
         return (root.Position - localPosition).Magnitude
     end)
     if not okDistance or type(distance) ~= "number" or distance ~= distance
@@ -68009,8 +69151,6 @@ local function distanceTo(fighter)
     return distance
 end
 
--- A currently invincible or actively deflecting locked target should not
--- monopolize target selection while another enemy is available.
 local function isExplicitlyProtected(fighter)
     if fighter == nil then return false end
     local okInvincible, isInvincible = pcall(fighter.IsInvincible, fighter)
@@ -68043,6 +69183,11 @@ local function clearLockedTarget()
     resetLockedTargetTimers()
 end
 
+if arg._lastConfiguredTargetName ~= selectedTargetName then
+    clearLockedTarget()
+    arg._lastConfiguredTargetName = selectedTargetName
+end
+
 local function lockTimeoutStatus(field, timeout)
     local now = os.clock()
     local started = arg[field]
@@ -68064,11 +69209,39 @@ local function rememberTarget(fighter, player)
     return fn37(fighter)
 end
 
-
-
+local prioritizedHacker, prioritizedHackerDistance, prioritizedHackerPlayer = nil, math.huge, nil
+if prioritizeHackers then
+    local okPlayers, hackerPlayers = pcall(function()
+        return arg._playerTags:GetPlayersWith("Hacker")
+    end)
+    if okPlayers and type(hackerPlayers) == "table" then
+        for _, player in ipairs(hackerPlayers) do
+            local fighter = arg._fighters.StateByPlayer[player]
+            if player ~= nil and fighter ~= nil and fn36(fighter, player) then
+                local distance = distanceTo(fighter)
+                if distance ~= nil and distance < prioritizedHackerDistance then
+                    prioritizedHacker = fighter
+                    prioritizedHackerDistance = distance
+                    prioritizedHackerPlayer = player
+                end
+            end
+        end
+    end
+end
 
 local lockedFighter = arg._lockedFighter
 local lockedPlayer = arg._lockedPlayer
+if selectedTargetName ~= "Auto" and prioritizedHacker == nil
+    and lockedPlayer ~= nil and lockedPlayer.Name ~= selectedTargetName then
+    clearLockedTarget()
+    lockedFighter = nil
+    lockedPlayer = nil
+end
+if lockedFighter ~= nil and lockedPlayer ~= nil
+    and prioritizeHackers and prioritizedHacker ~= nil
+    and not isHacker(lockedPlayer) and prioritizedHackerPlayer ~= lockedPlayer then
+    return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
+end
 if lockedFighter ~= nil and lockedPlayer ~= nil then
     local lockStatus = "hold"
     local lockedTarget = nil
@@ -68093,13 +69266,11 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         end
         arg._lockedUnavailableSince = nil
 
-
         if lockedFighter.IsEnemy ~= true then
             arg._lockedUnattackableSince = nil
             return lockTimeoutStatus("_lockedEnemyMismatchSince", LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT)
         end
         arg._lockedEnemyMismatchSince = nil
-
         local distance = distanceTo(lockedFighter)
         if distance == nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
@@ -68123,7 +69294,6 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
     if okLock then
         lockStatus, lockedTarget, lockedDistance = status, targetValue, distanceValue
 
-
         arg._lockedReadFailureSince = nil
     else
         local failureStatus = lockTimeoutStatus("_lockedReadFailureSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
@@ -68143,26 +69313,54 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
     end
 end
 
+if prioritizedHacker ~= nil then
+    return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
+end
 
-
-if prioritizeHackers then
-    local okPlayers, hackerPlayers = pcall(function()
-        return arg._playerTags:GetPlayersWith("Hacker")
+if selectedTargetName ~= "Auto" then
+    local selectedPlayer = nil
+    local okSelectedPlayer, selectedPlayerValue = pcall(function()
+        return Players:FindFirstChild(selectedTargetName)
     end)
-    if okPlayers and type(hackerPlayers) == "table" then
-        local bestHacker, bestHackerDistance, bestHackerPlayer = nil, math.huge, nil
-        for _, player in hackerPlayers do
-            local fighter = arg._fighters.StateByPlayer[player]
-            if fighter ~= nil and fn36(fighter, player) then
-                local distance = distanceTo(fighter)
-                if distance ~= nil and distance < bestHackerDistance then
-                    bestHacker, bestHackerDistance, bestHackerPlayer = fighter, distance, player
-                end
+    if okSelectedPlayer and selectedPlayerValue ~= nil
+        and selectedPlayerValue ~= Players.LocalPlayer
+        and selectedPlayerValue.Parent == Players then
+        selectedPlayer = selectedPlayerValue
+    end
+
+    if selectedPlayer == nil then
+        -- A stale profile selection must not disable target acquisition for the
+        -- whole match. Treat a departed/unknown selection exactly like Auto.
+        clearLockedTarget()
+        selectedTargetName = "Auto"
+        arg._lastConfiguredTargetName = "Auto"
+        pcall(function() ragebotTargetConfig.TargetPlayer = "Auto" end)
+    else
+        local selectedFighter = arg._fighters.EnemyByPlayer[selectedPlayer]
+        if selectedFighter == nil then
+            -- During environment/team-map refreshes, the state map can be
+            -- populated just before EnemyByPlayer. Accept it only if it is
+            -- already explicitly classified as an enemy.
+            local stateByPlayer = arg._fighters.StateByPlayer
+            local stateCandidate = type(stateByPlayer) == "table" and stateByPlayer[selectedPlayer] or nil
+            if stateCandidate ~= nil and stateCandidate.IsEnemy == true then
+                selectedFighter = stateCandidate
             end
         end
-        if bestHacker ~= nil then
-            return rememberTarget(bestHacker, bestHackerPlayer)
+        if selectedFighter ~= nil
+            and fn36(selectedFighter, selectedPlayer)
+            and distanceTo(selectedFighter) ~= nil
+            and not isExplicitlyProtected(selectedFighter) then
+            local selectedTarget = fn37(selectedFighter)
+            if selectedTarget ~= nil then
+                return rememberTarget(selectedFighter, selectedPlayer)
+            end
         end
+        -- The selected player still exists but is not a valid enemy target
+        -- (e.g. teammate, dead, protected, or not yet registered). Do not
+        -- silently switch to a different player in that case.
+        clearLockedTarget()
+        return nil
     end
 end
 
@@ -68193,15 +69391,13 @@ arg._lockedReadFailureSince = nil
 end
 
 index2.HasTargets = function(arg)
-for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116, player) then
-return true
+for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
+    if fn36(fighter, player) then
+        return true
+    end
 end
+return false
 end
-
-return v86[153]
-end
-
 index2.IsSameTarget = function(arg, arg2)
 return arg.FighterState == arg2.FighterState and arg.AliveState == arg2.AliveState
 end
@@ -68259,6 +69455,19 @@ local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
 local vector2 = Vector3.new(0, -3.85, 0.05)
+local function ragebotConfiguredTargetOffset()
+    local data = type(v115) == "table" and v115.Data or nil
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    local offset = type(ragebot) == "table" and ragebot.TargetOffset or nil
+    local function component(name)
+        local value = type(offset) == "table" and tonumber(offset[name]) or 0
+        if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+            return 0
+        end
+        return math.clamp(value, -20, 20)
+    end
+    return Vector3.new(component("X"), component("Y"), component("Z"))
+end
 local function ragebotSafeEstimatedDelay(callback)
 if type(callback) ~= "function" then return 0 end
 local ok, value = pcall(callback)
@@ -68400,9 +69609,6 @@ index2.new = function(arg)
 return setmetatable({ _partGlue = arg, _shootLock = v116.new() }, index2)
 end
 
-
-
-
 local RAGEBOT_VOID_SPAM_STATE_KEY = "__CrefyRagebotVoidSpamState"
 local function ragebotVoidSpamState()
     local state = rawget(_G, RAGEBOT_VOID_SPAM_STATE_KEY)
@@ -68432,8 +69638,7 @@ local function ragebotVoidSpamState()
     sanitizeClock("attackWindowExpiresAt", 5)
     if state.phase ~= "hide" then state.phase = "attack" end
     if state.cycleModelVersion ~= 2 then
-        -- Old versions interpreted Attack as a per-shot cooldown and entered Hide
-        -- after every request. Start a fresh, unambiguous phase cycle on upgrade.
+
         state.cycleModelVersion = 2
         state.cycleInitialized = false
         state.phaseStartedAt = 0
@@ -68460,8 +69665,7 @@ local function ragebotVoidSpamState()
     if type(state.awaitingShotAck) ~= "boolean" then state.awaitingShotAck = false end
     if not isFiniteClock(state.pendingShotDeadline)
         or state.pendingShotDeadline > now + 2 then
-        -- Invalid/far-future deadlines must resolve immediately, never pin the
-        -- shared state in ACK-wait after re-execution or partial state corruption.
+
         state.pendingShotDeadline = 0
     end
     return state
@@ -68507,7 +69711,6 @@ local function ragebotVoidSpamConfig()
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
     attack = math.clamp(attack, 0.01, 1)
 
-
     if config.Attack ~= attack then
         pcall(function() config.Attack = attack end)
     end
@@ -68522,9 +69725,6 @@ end
 
 local ragebotFiniteNumber
 
--- Attack is a continuous phase window, not the delay between individual shots.
--- Hide is a separate phase window; actual shot cadence remains controlled by
--- the weapon/ShootLock. ACK tracking is informational and never changes phases.
 local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if type(state) ~= "table" then state = ragebotVoidSpamState() end
     if not ragebotFiniteNumber(now) then now = os.clock() end
@@ -68563,9 +69763,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     end
 
     if now >= phaseEnd then
-        -- Start the newly observed phase from this update's clock. This ensures
-        -- even a very short Hide window is actually applied for its full duration
-        -- instead of being skipped when the update arrives a few milliseconds late.
+
         state.phaseStartedAt = now
         if state.phase == "attack" then
             state.phase = "hide"
@@ -68587,7 +69785,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.fakePositionTargetReady = false
         end
     end
-    state.nextAttackAt = 0 -- legacy field; no longer a shot-rate gate
+    state.nextAttackAt = 0  
     return state.phase
 end
 
@@ -68601,8 +69799,7 @@ local function ragebotVoidSpamConfirmShot()
         ragebotVoidSpamReset(state)
         return
     end
-    -- ACK only confirms request/ammo progress. It must not end Attack early or
-    -- start Hide after a single shot; the phase scheduler owns both transitions.
+
 end
 
 local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfter)
@@ -68617,8 +69814,6 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfte
         return
     end
 
-    -- Keep only the latest bounded ACK record. It is not allowed to gate later
-    -- shots or make the server position enter Hide during the Attack phase.
     state.awaitingShotAck = true
     state.pendingShotItem = item
     state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
@@ -68632,8 +69827,8 @@ local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
-    state.nextAttackAt = 0 -- legacy field; not used as a firing interval
-    -- Keep phase/activeUntil unchanged: an ACK timeout is not a phase change.
+    state.nextAttackAt = 0  
+     
     return result
 end
 
@@ -68669,15 +69864,11 @@ local function ragebotVoidSpamPollShotAck(state, item, now, attack)
     if not okCount or not ragebotFiniteNumber(currentRequestCount) then
         return "pending"
     end
-    -- This state tracks exactly one request. If the counter moved after the saved
-    -- baseline, an ammo decrement could belong to another shot; wait for this
-    -- request's bounded timeout rather than misattributing that decrement.
+
     if currentRequestCount ~= pendingRequestCount then
         return "pending"
     end
-    -- Ammo-free items cannot prove a server-side shot via an ammo decrement.
-    -- Keep them pending until the bounded ACK deadline instead of misclassifying
-    -- a valid no-ammo item as an immediate failure.
+
     if ragebotFiniteNumber(ammoBefore) then
         local okAmmo, currentAmmo = pcall(function() return item:GetAmmo() end)
         if okAmmo and ragebotFiniteNumber(currentAmmo) and currentAmmo >= 0 and currentAmmo < ammoBefore then
@@ -68698,21 +69889,13 @@ local function ragebotVoidSpamCancelShot()
     if not enabled then
         ragebotVoidSpamReset(state)
     end
-    -- A failed request clears its ACK bookkeeping, but cannot manufacture a
-    -- Hide window or reset the remaining Attack window.
+
 end
-
-
-
-
 
 ragebotFiniteNumber = function(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
--- Keep target identity tied to the live FighterState throughout planning. PartGlue
--- can relocate the local hitbox to its encoded anchor, so its post-Acquire Position
--- is not an independent server-side Head-position measurement.
 local RAGE_SHOT_ORIGIN_ABOVE = {
     ["\0"] = -9e37,
     ["\1"] = 0,
@@ -68762,7 +69945,6 @@ local RAGE_VOID_SPAM_HITPOINT = {
     ["\5"] = 0,
 }
 
-
 index2.Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
 local aliveState = arg3 ~= nil and arg3.AliveState or nil
 local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
@@ -68781,8 +69963,6 @@ arg._shootLock:Reset()
 return arg5 and arg5.CFrame or nil, nil
 end
 
-
-
 local shieldAimState = v117(arg3.FighterState)
 local flag19 = shieldAimState ~= "Below"
 local ragebot = v115.Data.Ragebot
@@ -68791,8 +69971,7 @@ if voidSpamEnabledReloadGate then
     local okReloading, isReloading = pcall(function()
         return arg4:IsReloading()
     end)
-    -- Fail closed if reload status is temporarily unreadable: never let a stale
-    -- Void Spam phase keep positioning/attacking while the gun may be reloading.
+
     if not okReloading or type(isReloading) ~= "boolean" or isReloading then
         ragebotVoidSpamReset(ragebotVoidSpamState())
         arg:ClearTeleport()
@@ -68805,11 +69984,6 @@ if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
 arg:ClearTeleport()
 end
 
--- Resolve observed FakePosition oscillation using the replicated fighter root.
--- Never sample HitboxHead here: PartGlue places that part at its encoded anchor,
--- which would make our own shot setup look like enemy desync. On detection,
--- release/rebuild the local glue reference so a cached anchor cannot follow a
--- stale transform. Keep pending Void Spam ACK/Hide intact while doing this.
 local desyncRecentlyDetected = ragebotObserveFakePosition(targetRoot, os.clock())
 if desyncRecentlyDetected then
     local nowForGlue = os.clock()
@@ -68851,7 +70025,7 @@ local voidSpamEnabled, voidSpamAttack, voidSpamHide = ragebotVoidSpamConfig()
 if voidSpamEnabled then
     local state = ragebotVoidSpamState()
     local now = os.clock()
-    -- Polling an ACK must never pause the continuous Attack window.
+     
     ragebotVoidSpamPollShotAck(state, arg4, now, voidSpamAttack)
     ragebotVoidSpamAdvancePhase(state, now, voidSpamAttack, voidSpamHide)
     if state.phase == "hide" and now < (tonumber(state.activeUntil) or 0) then
@@ -68859,8 +70033,7 @@ if voidSpamEnabled then
         state.attackWindowExpiresAt = 0
         return n, nil
     end
-    -- Attack defines a phase duration, not a minimum interval between shots.
-    -- The weapon's own cadence and ShootLock decide when another shot is legal.
+
     if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
         return n, nil
     end
@@ -68938,8 +70111,7 @@ if voidSpamEnabledNow then
     local activeUntil = tonumber(state.activeUntil) or 0
     if not ragebotFiniteNumber(activeUntil) then activeUntil = 0 end
     if state.phase == "hide" and callbackNow < activeUntil then
-        -- Reject stale attack plans only when the scheduled Hide window is active.
-        -- A delayed ammo ACK alone must not pause the Attack phase.
+
         return false
     end
 end
@@ -68968,17 +70140,11 @@ local okSend, sendError = pcall(function()
             if not okAmmoBased or isAmmoBased ~= false then
                 error("ammo snapshot unavailable for an ammo-based weapon")
             end
-            -- Known ammo-free item: send, but do not invent an ammo ACK.
+             
             requestedAmmoBefore = nil
         end
     end
 
-
-
-    -- Keep payload direction synchronized with the state used to build this
-    -- plan. Re-reading shield state here can switch the payload after the CFrame
-    -- was planned, producing an internally inconsistent shot (the V47 behavior
-    -- used the captured flag19 for both planning and firing).
     local aimDirectionMode = type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
     if aimDirectionMode ~= "Up" and aimDirectionMode ~= "Down" and aimDirectionMode ~= "Part" then
         aimDirectionMode = "Part"
@@ -68990,12 +70156,21 @@ local okSend, sendError = pcall(function()
     elseif aimDirectionMode == "Down" then
         shotDirectionAbove = false
     else
-        -- Part preserves the original shield-aware behavior exactly.
+         
         shotDirectionAbove = flag19
     end
     local encodedShotOrigin = shotDirectionAbove and RAGE_SHOT_ORIGIN_ABOVE or RAGE_SHOT_ORIGIN_BELOW
     local encodedShotDirection = shotDirectionAbove and RAGE_SHOT_DIRECTION_ABOVE or RAGE_SHOT_DIRECTION_BELOW
-    local shotHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
+    local targetOffset = ragebotConfiguredTargetOffset()
+    local baseHitpoint = voidSpamActive and RAGE_VOID_SPAM_HITPOINT or RAGE_SHOT_HITPOINT
+    local shotHitpoint = {
+        ["\0"] = (tonumber(baseHitpoint["\0"]) or 0) + targetOffset.X,
+        ["\1"] = (tonumber(baseHitpoint["\1"]) or 0) + targetOffset.Y,
+        ["\2"] = (tonumber(baseHitpoint["\2"]) or 0) + targetOffset.Z,
+        ["\3"] = tonumber(baseHitpoint["\3"]) or 0,
+        ["\4"] = tonumber(baseHitpoint["\4"]) or 0,
+        ["\5"] = tonumber(baseHitpoint["\5"]) or 0,
+    }
     arg4:ShootEncoded(encodedShotOrigin, encodedShotDirection, hitboxHead, shotHitpoint)
     local afterCount = arg4.ShotRequestCount
     if not ragebotFiniteNumber(afterCount) or afterCount <= beforeCount then
@@ -69047,9 +70222,6 @@ arg._shootLock:Reset()
 end
 end
 
--- Publish the VoidSpam helpers for the separate Ragebot controller factory.
--- Lua local functions do not cross the factory's lexical scope, so the controller
--- must resolve these through this explicit shared API instead of calling nil globals.
 local voidSpamApi = {
     ApiVersion = 4,
     State = ragebotVoidSpamState,
@@ -69091,6 +70263,19 @@ local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -v86[195], 0.05)
 local vector2 = Vector3.new(v86[186], -3.85, 0.05)
+local function ragebotConfiguredMeleeOffset()
+    local data = type(v115) == "table" and v115.Data or nil
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    local offset = type(ragebot) == "table" and ragebot.TargetOffset or nil
+    local function component(name)
+        local value = type(offset) == "table" and tonumber(offset[name]) or 0
+        if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+            return 0
+        end
+        return math.clamp(value, -20, 20)
+    end
+    return Vector3.new(component("X"), component("Y"), component("Z"))
+end
 
 local tbl18 = {
 ["\0"] = -9e37,
@@ -69201,10 +70386,6 @@ arg:ResetState()
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
 end
 
--- Use the same replicated combat-root observer for Knife and other melee weapons.
--- When target motion indicates a fresh FakePosition/discontinuity, rebuild the
--- glue without resetting knife cooldown/prime windows. A pending Void Spam ACK
--- suppresses this refresh so it cannot interfere with the active Hide interval.
 local meleeDesyncRecentlyDetected = ragebotObserveFakePosition(rootPart, os.clock())
 if meleeDesyncRecentlyDetected then
     local nowForGlue = os.clock()
@@ -69248,20 +70429,19 @@ if not orientationOk or not fakePositionFiniteNumber(v121)
 end
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
 if typeof(v120) ~= "CFrame" then
--- Acquire can fail transiently while PartGlue restores its PhysicsRepRootRef.
--- Keep Knife's target angle alive during this short failure instead of replacing
--- it with the general defensive angle while the backstab sequence is primed.
+
 if not isKnifeItem then arg:ResetState() end
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil,
     isKnifeItem and fn37(v121, v122) or nil, nil, false, nil
 end
 arg._gluedOurPart = gluedOurPart
 local n
+local targetOffset = ragebotConfiguredMeleeOffset()
 
 if flag19 then
-n = v120 + v119
+n = v120 + v119 + targetOffset
 else
-n = v118(v120.Position + v119, hitboxHead.Position)
+n = v118(v120.Position + v119, hitboxHead.Position + targetOffset)
 end
 
 local n33 = flag19 and -1.5707963267948966 or 1.5707963267948966
@@ -69319,8 +70499,7 @@ local function refreshBackstabConfirmation(expectedTarget)
     local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
     if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
         and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
-        -- Health change is the best local confirmation available that the server
-        -- accepted the attack. Stop retries, but retain the target cooldown.
+
         arg._hitboxWindowConfirmed = true
         arg._hitboxWindowUntil = -1
         arg._nextKnifeWindowAttackAt = 0
@@ -69332,8 +70511,7 @@ if arg._lastKnifeTarget ~= hitboxHead then
     local previousWindowTarget = arg._hitboxWindowTarget
     if previousWindowTarget ~= nil and previousWindowTarget ~= hitboxHead then
         refreshBackstabConfirmation(previousWindowTarget)
-        -- A target switch must not strand an unconfirmed attempt behind the
-        -- 1.25s cooldown. Preserve cooldown only when health change confirmed it.
+
         if arg._hitboxWindowConfirmed ~= true and arg._attackCooldownTarget == previousWindowTarget then
             arg._attackCooldown = -1
             arg._attackCooldownTarget = nil
@@ -69359,7 +70537,6 @@ else
 arg._lastKnifeTarget = nil
 end
 
-
 if not isKnife then
 arg:InvalidateKnifeState()
 end
@@ -69369,21 +70546,15 @@ and arg._hitboxWindowConfirmed ~= true
 and now2 < arg._hitboxWindowUntil
 and arg._hitboxWindowTarget == hitboxHead
 
-
-
-
 if isKnife and arg._knifePrimeTarget == hitboxHead
 and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil then
--- Keep refreshing the live target orientation while the initial angle packet
--- is being primed. Never restart the timer just because an anti-aim target
--- changes yaw; that would postpone every HeavyAttack indefinitely.
+
 arg._knifePrimePitch = v121
 arg._knifePrimeYaw = v122
 end
 
 if isKnife and arg._knifePrimeTarget == hitboxHead and now2 < arg._knifePrimeUntil then
--- The camera angle is flushed every update. Wait only for the first packet's
--- minimum lead time, while continuing to use the freshest orientation.
+
 return n, fn37(v121, v122), nil
 end
 
@@ -69410,17 +70581,13 @@ arg:_AbortBackstabAttempt(hitboxHead)
 end
 end
 elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitboxWindowUntil then
-    -- Inspect health at the end of the retry window, rather than stopping retries
-    -- on any early health change (which could come from another player).
+
     refreshBackstabConfirmation(hitboxHead)
     if arg._hitboxWindowConfirmed == true then
-        -- Keep the confirmed target identity until target switch/reset so its
-        -- cooldown cannot be mistaken for an unconfirmed stale attempt.
+
         arg._nextKnifeWindowAttackAt = 0
     else
-        -- A non-throwing remote call is not server acknowledgement. If no health
-        -- change arrived during the retry window, release the cooldown and prime
-        -- a fresh attempt instead of silently suppressing this target for 1.25s.
+
         arg:_AbortBackstabAttempt(hitboxHead)
     end
 end
@@ -69436,9 +70603,7 @@ end
 meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
 if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
     if isKnife then
-        -- A locked Knife must keep its target angle and local attack pose. The old
-        -- generic evade CFrame could move the player away during the prime window,
-        -- then restore the target angle only after the backstab timing had passed.
+
         return n, fn37(v121, v122), nil
     end
     return fn36(), nil, nil
@@ -69502,8 +70667,7 @@ end
 
 index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
 local now2 = os.clock()
--- Sau khi backstab: một lần retry ngắn (0.08s window) thay vì 0.625s liên tục
--- Tránh tình trạng backstab spam → hooker manual timing bắt được nhịp cố định
+
 arg._hitboxWindowUntil = now2 + 0.08
 arg._hitboxWindowTarget = targetHitbox
 arg._hitboxWindowAliveState = targetAliveState
@@ -69515,8 +70679,7 @@ end
 arg._hitboxWindowInitialHealth = baselineHealth
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = now2 + 0.08
--- Random cooldown [0.625, 1.65]: hooker không thể manual-timing được vì
--- không biết khi nào mình sẽ backstab lại
+
 local randomCooldown = 0.625 + math.random() * (1.65 - 0.625)
 arg._attackCooldown = now2 + randomCooldown
 arg._attackCooldownTarget = targetHitbox
@@ -70453,9 +71616,63 @@ local v115 = tbl17.bG()
 tbl17.cU()
 tbl17.cX()
 
-local function fn36(arg)
-local index2 = arg.Index
-return index2 == v86[63] and "Primary" or index2 == 2 and "Secondary" or index2 == 3 and "Melee" or nil
+local function fn36(item, context)
+local function categoryForSlot(slot)
+slot = tonumber(slot)
+if slot == 1 then return "Primary" end
+if slot == 2 then return "Secondary" end
+if slot == 3 then return "Melee" end
+return nil
+end
+
+local itemInner = nil
+pcall(function() itemInner = item and item.Inner or nil end)
+local fighterState = nil
+local fighterInner = nil
+local rawItems = nil
+pcall(function() fighterState = context and context.FighterState or nil end)
+pcall(function() fighterInner = fighterState and fighterState.Inner or nil end)
+pcall(function()
+if fighterState ~= nil and type(fighterState.GetItems) == "function" then
+rawItems = fighterState:GetItems()
+end
+end)
+if type(rawItems) ~= "table" or next(rawItems) == nil then
+local innerItems = nil
+pcall(function() innerItems = fighterInner and fighterInner.Items or nil end)
+if type(innerItems) == "table" and next(innerItems) ~= nil then
+rawItems = innerItems
+end
+end
+
+if type(rawItems) == "table" then
+for slotKey, candidate in pairs(rawItems) do
+local category = categoryForSlot(slotKey)
+if category ~= nil then
+local matches = candidate == item or (itemInner ~= nil and candidate == itemInner)
+if not matches and candidate ~= nil then
+local candidateInner = nil
+pcall(function() candidateInner = candidate.Inner end)
+matches = candidateInner == item or (itemInner ~= nil and candidateInner == itemInner)
+end
+if matches then return category end
+end
+end
+end
+
+local index2 = nil
+pcall(function() index2 = item and item.Index or nil end)
+local category = categoryForSlot(index2)
+if category ~= nil then return category end
+
+local data = nil
+pcall(function() data = item and item.Data or nil end)
+local itemIndex = nil
+if type(data) == "table" then
+pcall(function() itemIndex = data.ItemIndex end)
+if itemIndex == nil then pcall(function() itemIndex = data.Index end) end
+end
+return categoryForSlot(itemIndex)
 end
 
 local function fn37(arg)
@@ -70471,8 +71688,6 @@ local data = item._data
 if type(data) ~= "table" then return nil end
 return rawget(data, "Ammo") ~= nil
 end)
-
-
 
 if not okFallback or type(fallbackBased) ~= "boolean" then return false end
 if fallbackBased == false then return false end
@@ -70513,9 +71728,12 @@ local huge2 = math.huge
 local flag19 = false
 local v116 = nil
 local v117 = nil
+local inventoryItemCount = 0
+local unreadableAmmoCount = 0
 
 for _, v118 in arg.ItemBehaviors:GetItems(), nil, nil do
-local v119 = fn36(v118)
+inventoryItemCount += 1
+local v119 = fn36(v118, arg)
 
 if not (v119 == nil or not fn37(v119)) then
 flag19 = v86[34]
@@ -70526,6 +71744,7 @@ local ammoBased = false
 if v118.__type == "Gun" then
 local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
 if not okAmmoState then
+unreadableAmmoCount += 1
 continue
 end
 ammoBased = readAmmoBased
@@ -70555,7 +71774,7 @@ end
 end
 
 if not flag19 then
-return nil
+return nil, string.format("no enabled weapon matched Primary/Secondary/Melee slots (items=%d); check slot mapping and weapon toggles", inventoryItemCount)
 end
 
 if v116 ~= nil then
@@ -70563,7 +71782,7 @@ local flag20 = false
 if v116.__type == "Gun" then
 local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
 if not okAmmoState then
-return nil
+return nil, "selected gun ammo state could not be read; waiting for a valid weapon state"
 end
 if ammoBased then
 flag20 = currentAmmo == v86[186]
@@ -70581,7 +71800,7 @@ return { Type = "Swap", Item = v116 }
 end
 
 if onEmpty == "Swap" then
-return nil
+return nil, "On Empty is set to Swap, but no other enabled weapon is available"
 end
 
 if v117 ~= nil then
@@ -70591,7 +71810,10 @@ end
 return { Type = "Swap", Item = v117 }
 end
 
-return nil
+if unreadableAmmoCount > 0 then
+return nil, string.format("ammo state was unreadable for %d enabled gun(s); no safe action was selected", unreadableAmmoCount)
+end
+return nil, "all enabled weapon choices are empty, unavailable, or waiting for ammo/reserve state"
 end }
 end
 
@@ -70639,9 +71861,7 @@ local v116 = tbl17.jz()
 local cameraArbiter = tbl17.co()
 tbl17.cF()
 local v117 = tbl17.jD()
--- The planner and the CFrame applier live in separate factories. Use their
--- shared helpers only when the API explicitly matches this schema; older,
--- unversioned executor globals fall back to the local implementation.
+
 local function ragebotGetVoidSpamApiFunction(name)
     local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
     if type(api) ~= "table" or api.ApiVersion ~= 4 then return nil end
@@ -70709,7 +71929,7 @@ local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
         state.nextAttackAt = 0
-        -- ACK failure must not end the Attack phase or manufacture a Hide phase.
+         
     end
     return result or "failed"
 end
@@ -70866,10 +72086,6 @@ local function ragebotClearPersistedDestroyHeight()
     end
 end
 
-
-
-
-
 local function ragebotSafeEstimatedDelay(callback)
     if type(callback) ~= "function" then return 0 end
     local ok, value = pcall(callback)
@@ -71002,7 +72218,6 @@ local function ragebotSafeClearReloadTransport(owner)
         if clearOk then return end
     end
 
-
     for _, field in ipairs({
         "_reloadGun", "_reloadReadyAt", "_reloadAcknowledgementDeadline",
         "_pendingDepletionAmmo", "_reloadReadFailureSince", "_reloadReadRetryAt",
@@ -71076,6 +72291,34 @@ local function ragebotTrySetInstanceProperty(instance, property, value)
     return false, tostring(lastError)
 end
 
+local function ragebotUndergroundHandoffIsPending(owner)
+    if type(owner) ~= "table" or owner._undergroundHandoffPending ~= true then
+        return false
+    end
+    local controller = rawget(_G, "__CrefyUndergroundController")
+    if type(controller) ~= "table" then
+        owner._undergroundHandoffPending = false
+        return false
+    end
+    local transitionOk, transitionResult = false, nil
+    local transition = rawget(controller, "SetRagebotIntegration")
+    if type(transition) == "function" then
+        transitionOk, transitionResult = pcall(transition, false)
+    end
+    local isIntegrated = rawget(controller, "IsRagebotIntegrated")
+    if type(isIntegrated) == "function" then
+        local checkOk, active = pcall(isIntegrated)
+        if checkOk and active ~= true then
+            owner._undergroundHandoffPending = false
+            return false
+        end
+    elseif transitionOk and transitionResult == true then
+        owner._undergroundHandoffPending = false
+        return false
+    end
+    return true
+end
+
 local function ragebotScheduleDestroyHeightRestoreRetry(owner)
     if type(owner) ~= "table" or owner._destroyHeightRestoreRetryScheduled == true then return end
     if type(task) ~= "table" or type(task.delay) ~= "function" then return end
@@ -71088,6 +72331,20 @@ local function ragebotScheduleDestroyHeightRestoreRetry(owner)
         end
         if owner._destroyHeightRestorePending ~= true or owner._enabled == true then
             owner._destroyHeightRestoreRetryScheduled = false
+            return
+        end
+        if ragebotUndergroundHandoffIsPending(owner) then
+            attempts = attempts + 1
+            if attempts >= 20 then
+                owner._destroyHeightRestoreRetryScheduled = false
+                if os.clock() >= (owner._nextDestroyHeightWarningAt or 0) then
+                    owner._nextDestroyHeightWarningAt = os.clock() + 5
+                    warn("[Ragebot] Underground hand-off is still pending; keeping FallenPartsDestroyHeight protection active until the hand-off completes.")
+                end
+                return
+            end
+            local scheduleOk = pcall(task.delay, 0.05, retry)
+            if not scheduleOk then owner._destroyHeightRestoreRetryScheduled = false end
             return
         end
         attempts = attempts + 1
@@ -71155,6 +72412,10 @@ _reloadReadFailureSince = nil,
 _reloadReadRetryAt = nil,
 _nextReloadReadWarningAt = 0,
 _lastAimServerCFrame = nil,
+
+_lastSafeGroundCFrame = nil,
+_lastSafeGroundRootPart = nil,
+_lastSafeGroundAt = nil,
 _depletionHoldCFrame = nil,
 _depletionHoldUntil = nil,
 _repRootCounterRestorePending = false,
@@ -71172,10 +72433,6 @@ _repRootTranslocateBlockUntil = 0,
 _repRootRestoreRetryAt = nil,
 _repRootCounterStationaryUntil = 0,
 _gunShootWindowUntil = 0,
--- Gun counter cycle: khi detector thấy hooker TP vào người
--- → 0.1244s clientCFrame → TP đi → đợi 3.14159s → lặp lại cho đến khi không còn detect
-_gunCounterCycleActive = false,
-_gunCounterCycleNextWindowAt = 0,
 _resetApplied = false,
 _resetContext = nil,
 _resetController = nil,
@@ -71231,9 +72488,7 @@ if type(priorGate) == "table" and ragebotPoseRestoreGateIsActive()
         end
     end
 end
--- Never let a stale, unadoptable gate with no valid transaction block movement
--- forever after an abrupt script stop. A current matching transaction above is
--- already owned by tbl18 and is deliberately left alone.
+
 local gateAfterAdoption = ragebotPoseRestoreGateRead()
 if stalePriorGate and type(gateAfterAdoption) == "table"
     and rawget(gateAfterAdoption, "owner") == priorOwner
@@ -71330,10 +72585,8 @@ callResult = result
 end
 end
 
-
 if okCall then
--- A fresh successful claim/release changes which controller owns the camera.
--- A prime timestamp from the previous owner must never authorize a Knife strike.
+
 arg._knifeCameraPrimeTarget = nil
 arg._knifeCameraPrimeAt = nil
 arg._knifeCameraPrimeAngles = nil
@@ -71374,7 +72627,7 @@ local function ragebotRequestVoidSpamTransformRestore()
 
     local oldToken = tonumber(state._voidSpamRestoreRetryToken) or 0
     if oldToken ~= oldToken or oldToken == math.huge or oldToken == -math.huge then oldToken = 0 end
-    -- Avoid creating/cancelling one retry worker on every planner update.
+     
     if state._voidSpamRestoreRetryScheduledToken == oldToken then return false end
 
     local token = oldToken + 1
@@ -71382,13 +72635,22 @@ local function ragebotRequestVoidSpamTransformRestore()
     state._voidSpamRestoreRetryScheduledToken = token
     if type(task) == "table" and type(task.spawn) == "function" and type(task.wait) == "function" then
         task.spawn(function()
-            local deadline = os.clock() + 3
-            while os.clock() < deadline
-                and type(state) == "table"
+            local startedAt = os.clock()
+            local warnedPending = false
+            while type(state) == "table"
                 and state._voidSpamRestoreRetryToken == token
                 and state._voidSpamRestoreRetryScheduledToken == token
-                and state.voidSpamTransformApplied == true do
-                task.wait(0.05)
+                and state.voidSpamTransformApplied == true
+                and ragebotCleanupStillCurrentScript() do
+                local elapsed = os.clock() - startedAt
+                task.wait(elapsed < 3 and 0.05 or 0.25)
+                if type(state) ~= "table"
+                    or state._voidSpamRestoreRetryToken ~= token
+                    or state._voidSpamRestoreRetryScheduledToken ~= token
+                    or state.voidSpamTransformApplied ~= true
+                    or not ragebotCleanupStillCurrentScript() then
+                    break
+                end
                 local currentRestore = rawget(_G, "__CrefyRestoreVoidSpamTransform")
                 if type(currentRestore) ~= "function" then currentRestore = restore end
                 local retryOk, retryResult = pcall(currentRestore)
@@ -71398,14 +72660,13 @@ local function ragebotRequestVoidSpamTransformRestore()
                     end
                     return
                 end
+                if not warnedPending and os.clock() - startedAt >= 3 then
+                    warnedPending = true
+                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot preserved and retries continue at reduced rate.")
+                end
             end
             if type(state) == "table" and state._voidSpamRestoreRetryScheduledToken == token then
                 state._voidSpamRestoreRetryScheduledToken = nil
-                if state._voidSpamRestoreRetryToken == token
-                    and state.voidSpamTransformApplied == true
-                    and os.clock() >= deadline then
-                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot kept for a later retry.")
-                end
             end
         end)
     else
@@ -71419,6 +72680,36 @@ enabled = enabled == true
 local wasEnabled = arg._enabled == true
 local overrideActive = arg._destroyHeightOverrideActive == true
 local restorePending = arg._destroyHeightRestorePending == true
+local disableClientPose = nil
+if not enabled then
+    local context = arg._innerContext
+    local characterController = type(context) == "table" and context.CharacterController or nil
+    if characterController ~= nil then
+        local poseReadOk, pose = pcall(function()
+            return characterController:GetClientCFrame()
+        end)
+        if poseReadOk and typeof(pose) == "CFrame" then
+            local componentsOk, components = pcall(function() return { pose:GetComponents() } end)
+            local poseValid = componentsOk and type(components) == "table"
+            if poseValid then
+                for _, component in ipairs(components) do
+                    if type(component) ~= "number" or component ~= component
+                        or component == math.huge or component == -math.huge then
+                        poseValid = false
+                        break
+                    end
+                end
+            end
+            if poseValid then
+                local position = pose.Position
+                poseValid = math.abs(position.X) <= 100000
+                    and math.abs(position.Y) <= 100000
+                    and math.abs(position.Z) <= 100000
+            end
+            if poseValid then disableClientPose = pose end
+        end
+    end
+end
 
 if enabled then
     if wasEnabled and overrideActive and not restorePending then
@@ -71426,8 +72717,6 @@ if enabled then
         return
     end
 
-    -- Preserve the pre-override value across script re-execution so a failed
-    -- unload restore cannot cause the next version to snapshot our own override.
     ragebotPersistOriginalDestroyHeight()
     local targetDestroyHeight = 0 / 0
     local heightSetOk, heightWriteError = ragebotTrySetInstanceProperty(
@@ -71436,7 +72725,6 @@ if enabled then
         targetDestroyHeight
     )
     if not heightSetOk then
-
 
         local finiteFallbackHeight = -1000000000
         local fallbackOk, fallbackError = ragebotTrySetInstanceProperty(
@@ -71452,16 +72740,17 @@ if enabled then
             heightWriteError = tostring(heightWriteError) .. "; finite fallback failed: " .. tostring(fallbackError)
         end
     end
+    -- Ragebot activation must not depend on an optional workspace property override.
+    -- Some PC executors cannot reliably write/read FallenPartsDestroyHeight; that
+    -- should disable only the override, not the entire combat controller.
+    arg._enabled = true
+    ragebotPublishControlState(true)
+
     if heightSetOk then
-        arg._enabled = true
         arg._destroyHeightOverrideActive = true
         arg._destroyHeightRestorePending = false
-        ragebotPublishControlState(true)
+        arg._undergroundHandoffPending = false
     else
-
-
-        arg._enabled = false
-        ragebotPublishControlState(false)
         local restoreOk, restoreError = ragebotTrySetInstanceProperty(
             workspace,
             "FallenPartsDestroyHeight",
@@ -71476,17 +72765,35 @@ if enabled then
         end
         if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
             arg._nextDestroyHeightWarningAt = os.clock() + 5
-            warn("[Ragebot] FallenPartsDestroyHeight update failed; integration disabled: " ..
+            warn("[Ragebot] Enabled without FallenPartsDestroyHeight override: " ..
                 tostring(heightWriteError) .. (restoreOk and "" or ("; restore failed: " .. tostring(restoreError))))
         end
     end
 else
 
-
     arg._enabled = false
-    -- Turning off Ragebot must release VoidSpam's independent roll/offset even
-    -- when the planner stops before another _ApplyUndergroundOffset call.
+
     ragebotRequestVoidSpamTransformRestore()
+
+    local undergroundHandoffPending = false
+    local undergroundController = rawget(_G, "__CrefyUndergroundController")
+    if type(undergroundController) == "table"
+        and type(undergroundController.SetRagebotIntegration) == "function" then
+        local transitionOk, transitionResult = pcall(
+            undergroundController.SetRagebotIntegration, false, disableClientPose
+        )
+        local transitionError = not transitionOk and transitionResult or nil
+        undergroundHandoffPending = not transitionOk or transitionResult == false
+        if type(undergroundController.IsRagebotIntegrated) == "function" then
+            local checkOk, isStillIntegrated = pcall(undergroundController.IsRagebotIntegrated)
+            if checkOk and isStillIntegrated == true then undergroundHandoffPending = true end
+        end
+        if undergroundHandoffPending and os.clock() >= (arg._nextUndergroundHandoffWarningAt or 0) then
+            arg._nextUndergroundHandoffWarningAt = os.clock() + 5
+            warn("[Ragebot] Underground hand-off is pending; delaying FallenPartsDestroyHeight restore until the RootPart pose is safe. " .. tostring(transitionError or "restore gate/RootPart not ready"))
+        end
+    end
+    arg._undergroundHandoffPending = undergroundHandoffPending
     local keepRestoreTransaction = arg._repRootCounterRestorePending == true
     if keepRestoreTransaction then
         ragebotPoseRestoreGateSet(arg, true, nil, arg._repRootCounterRestoreCFrame, arg._repRootCounterRestoreRootPart)
@@ -71543,37 +72850,39 @@ else
     end
     local mustRestore = wasEnabled or overrideActive or restorePending
     if mustRestore then
-        local restoreOk, restoreError = ragebotTrySetInstanceProperty(
-            workspace,
-            "FallenPartsDestroyHeight",
-            fallenPartsDestroyHeight
-        )
-        if restoreOk then
-            arg._destroyHeightOverrideActive = false
-            arg._destroyHeightRestorePending = false
-            ragebotClearPersistedDestroyHeight()
-        else
-            arg._destroyHeightOverrideActive = overrideActive or wasEnabled
+        if ragebotUndergroundHandoffIsPending(arg) then
+
+            arg._destroyHeightOverrideActive = true
             arg._destroyHeightRestorePending = true
             ragebotScheduleDestroyHeightRestoreRetry(arg)
-            if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
-                arg._nextDestroyHeightWarningAt = os.clock() + 5
-                warn("[Ragebot] Failed to restore FallenPartsDestroyHeight; will retry during cleanup: " .. tostring(restoreError))
+        else
+            local restoreOk, restoreError = ragebotTrySetInstanceProperty(
+                workspace,
+                "FallenPartsDestroyHeight",
+                fallenPartsDestroyHeight
+            )
+            if restoreOk then
+                arg._destroyHeightOverrideActive = false
+                arg._destroyHeightRestorePending = false
+                arg._undergroundHandoffPending = false
+                ragebotClearPersistedDestroyHeight()
+            else
+                arg._destroyHeightOverrideActive = overrideActive or wasEnabled
+                arg._destroyHeightRestorePending = true
+                ragebotScheduleDestroyHeightRestoreRetry(arg)
+                if os.clock() >= (arg._nextDestroyHeightWarningAt or 0) then
+                    arg._nextDestroyHeightWarningAt = os.clock() + 5
+                    warn("[Ragebot] Failed to restore FallenPartsDestroyHeight; will retry during cleanup: " .. tostring(restoreError))
+                end
             end
         end
     end
 
     ragebotSafeClearReloadTransport(arg)
-    local undergroundController = rawget(_G, "__CrefyUndergroundController")
-    if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
-        pcall(undergroundController.SetRagebotIntegration, false)
-    end
 end
 end
 
 local function ragebotMarkActiveLifecycle(arg)
-
-
 
     arg._resetApplied = false
     arg._resetContext = nil
@@ -71617,10 +72926,6 @@ local function ragebotClearPendingRestoreTransaction(owner)
     end
 end
 
--- Used only when Ragebot is disabled or its context/character is no longer valid.
--- It restores the exact original RootPart without running combat callbacks. If the
--- character/root was replaced, it retires the stale transaction instead of applying
--- the old CFrame to the replacement.
 local function ragebotAdvanceInactiveRestore(owner)
     if type(owner) ~= "table" or owner._repRootCounterRestorePending ~= true then return true end
     local restorePose = owner._repRootCounterRestoreCFrame
@@ -71649,11 +72954,11 @@ local function ragebotAdvanceInactiveRestore(owner)
             and restoreRoot:IsDescendantOf(workspace)
     end)
     if not rootValidOk then
-        -- A failed validity read is unknown state, not proof the snapshot is obsolete.
+         
         return false
     end
     if not rootValid then
-        -- A removed original root cannot receive this pose. Do not keep a gate alive forever.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
@@ -71661,7 +72966,7 @@ local function ragebotAdvanceInactiveRestore(owner)
     local liveHealth = nil
     pcall(function() liveHealth = liveHumanoid and liveHumanoid.Health or nil end)
     if contextAlive == false or (type(liveHealth) == "number" and liveHealth <= 0) then
-        -- Never replay a combat snapshot after death; the spawn pipeline owns the new pose.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
@@ -71669,17 +72974,17 @@ local function ragebotAdvanceInactiveRestore(owner)
     local belongsToCurrentCharacter = false
     pcall(function() belongsToCurrentCharacter = restoreRoot:IsDescendantOf(liveCharacter) end)
     if not belongsToCurrentCharacter then
-        -- A respawn/replacement invalidates the old snapshot; never teleport the new avatar to it.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
     if contextRoot ~= nil and contextRoot ~= restoreRoot then
-        -- A live context now identifies a different root. Do not transplant an old pose.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
     if typeof(restorePose) ~= "CFrame" then
-        -- No trustworthy snapshot remains. Release only this owner's gate; do not invent a pose.
+         
         ragebotClearPendingRestoreTransaction(owner)
         return true
     end
@@ -71696,8 +73001,6 @@ local function ragebotAdvanceInactiveRestore(owner)
     if not gateOk then return false end
     ragebotPoseRestoreGateZeroMotion(restoreRoot, owner)
 
-    -- Read first. A setter followed immediately by a getter can only prove the
-    -- local setter/cache echoed its own write, not that the pose remained stable.
     local serverOk, serverPose = pcall(controller.GetServerCFrame, controller)
     local rootOk, rootPose = pcall(function() return restoreRoot.CFrame end)
     local matches = serverOk and rootOk
@@ -71716,8 +73019,7 @@ local function ragebotAdvanceInactiveRestore(owner)
             )
             owner._repRootCounterRestoreLastSampleAt = now
         end
-        -- Samples arriving too quickly are ignored without moving the sample
-        -- origin; the next sufficiently separated sample can still complete it.
+
     else
         owner._repRootCounterRestoreStableFrames = 0
         owner._repRootCounterRestoreLastSampleAt = nil
@@ -71759,8 +73061,7 @@ local function ragebotScheduleAbandonedRestoreRetry(owner)
             return
         end
         if attempts >= 40 then owner._restoreOwnerAbandoned = true end
-        -- Keep a low-frequency retry after the initial burst. Stopping the retry
-        -- while retaining an immortal gate would strand every movement controller.
+
         local retryDelay = attempts < 40 and 0.05 or 0.25
         local scheduleOk = pcall(task.delay, retryDelay, retry)
         if not scheduleOk then
@@ -71790,18 +73091,23 @@ if arg._enabled ~= true and arg._destroyHeightRestorePending == true then
     local nowRestore = os.clock()
     if nowRestore >= (arg._nextDestroyHeightRestoreRetryAt or 0) then
         arg._nextDestroyHeightRestoreRetryAt = nowRestore + 1
-        local restored, restoreError = ragebotTrySetInstanceProperty(
-            workspace, "FallenPartsDestroyHeight", fallenPartsDestroyHeight
-        )
-        if restored then
-            arg._destroyHeightOverrideActive = false
-            arg._destroyHeightRestorePending = false
-            ragebotClearPersistedDestroyHeight()
-        else
+        if ragebotUndergroundHandoffIsPending(arg) then
             ragebotScheduleDestroyHeightRestoreRetry(arg)
-            if nowRestore >= (arg._nextDestroyHeightWarningAt or 0) then
-                arg._nextDestroyHeightWarningAt = nowRestore + 5
-                warn("[Ragebot] Deferred FallenPartsDestroyHeight restore still failing: " .. tostring(restoreError))
+        else
+            local restored, restoreError = ragebotTrySetInstanceProperty(
+                workspace, "FallenPartsDestroyHeight", fallenPartsDestroyHeight
+            )
+            if restored then
+                arg._destroyHeightOverrideActive = false
+                arg._destroyHeightRestorePending = false
+                arg._undergroundHandoffPending = false
+                ragebotClearPersistedDestroyHeight()
+            else
+                ragebotScheduleDestroyHeightRestoreRetry(arg)
+                if nowRestore >= (arg._nextDestroyHeightWarningAt or 0) then
+                    arg._nextDestroyHeightWarningAt = nowRestore + 5
+                    warn("[Ragebot] Deferred FallenPartsDestroyHeight restore still failing: " .. tostring(restoreError))
+                end
             end
         end
     end
@@ -71810,6 +73116,9 @@ ragebotPublishControlState(arg._enabled == true)
 local undergroundController = rawget(_G, "__CrefyUndergroundController")
 if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
 pcall(undergroundController.SetRagebotIntegration, arg._enabled == true and arg._innerContext ~= nil)
+end
+if arg._undergroundHandoffPending == true then
+    ragebotUndergroundHandoffIsPending(arg)
 end
 local updateGate = ragebotPoseRestoreGateRead()
 if ragebotPoseRestoreGateIsActive()
@@ -71861,6 +73170,9 @@ local okLocalRoot, validLocalRoot = pcall(function()
         and rootPart:IsDescendantOf(localCharacter)
 end)
 if not okLocalRoot or not validLocalRoot then
+arg._lastSafeGroundCFrame = nil
+arg._lastSafeGroundRootPart = nil
+arg._lastSafeGroundAt = nil
 if arg._repRootCounterRestorePending == true then
     arg:_Reset()
     pcall(ragebotAdvanceInactiveRestore, arg)
@@ -71870,8 +73182,6 @@ end
 return
 end
 
--- A verified hold is valid only for the exact RootPart whose read-back passed.
--- If that part is replaced later, discard the stale hold before planner execution.
 if arg._repRootCounterRestorePending ~= true
     and arg._repRootCounterHoldRootPart ~= nil
     and arg._repRootCounterHoldRootPart ~= rootPart then
@@ -71882,8 +73192,6 @@ if arg._repRootCounterRestorePending ~= true
     ragebotPoseRestoreGateSet(arg, false, 0, nil)
 end
 
--- CFrame restoration alone does not clear momentum left by AutoStrafe/Flight.
--- Only the controller that owns the active gate may damp this character's motion.
 if arg._repRootCounterRestorePending == true or ragebotPoseRestoreGateIsActive() then
     ragebotPoseRestoreGateZeroMotion(rootPart, arg)
 end
@@ -71896,9 +73204,7 @@ end
 if typeof(clientCFrame) ~= "CFrame" then
     if arg._repRootCounterRestorePending == true then
         ragebotPoseRestoreGateSet(arg, true, nil, arg._repRootCounterRestoreCFrame, rootPart)
-        -- A transient controller read failure must not clear the restore gate.
-        -- Use the live local RootPart pose only as this update's planner input;
-        -- the original restore snapshot remains authoritative for the restore step.
+
         local fallbackOk, fallbackCFrame = pcall(function()
             if rootPart == nil or not rootPart:IsA("BasePart")
                 or not rootPart:IsDescendantOf(workspace) then
@@ -71923,9 +73229,25 @@ if typeof(clientCFrame) ~= "CFrame" then
     end
 end
 
+pcall(function()
+    local humanoid = localCharacter and localCharacter:FindFirstChildWhichIsA("Humanoid", true)
+    if humanoid == nil or humanoid.Health <= 0 or humanoid.FloorMaterial == Enum.Material.Air then
+        return
+    end
+    local liveCFrame = rootPart.CFrame
+    local velocity = rootPart.AssemblyLinearVelocity
+    if typeof(liveCFrame) ~= "CFrame"
+        or not fakePositionFiniteNumber(liveCFrame.Position.X)
+        or not fakePositionFiniteNumber(liveCFrame.Position.Y)
+        or not fakePositionFiniteNumber(liveCFrame.Position.Z)
+        or not fakePositionFiniteNumber(velocity.Y) or velocity.Y < -5 then
+        return
+    end
+    arg._lastSafeGroundCFrame = liveCFrame
+    arg._lastSafeGroundRootPart = rootPart
+    arg._lastSafeGroundAt = os.clock()
+end)
 
--- Poll the pending ACK on every valid controller update, not only when the
--- hitscan planner runs. Translocate returns early and must not bypass the deadline.
 local pendingVoidSpamState = ragebotVoidSpamState()
 local phaseEnabledForUpdate, phaseAttackForUpdate, phaseHideForUpdate = ragebotVoidSpamConfig()
 local phaseNowForUpdate = os.clock()
@@ -71937,8 +73259,7 @@ if pendingVoidSpamState.awaitingShotAck == true then
         ragebotVoidSpamResolveUnconfirmedShot(pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, "failed")
     end
 end
--- Keep the phase clock live even when no target is available or a strategy
--- returns early; otherwise the first target after an idle gap can enter Hide.
+
 if phaseEnabledForUpdate then
     ragebotVoidSpamAdvancePhase(
         pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, phaseHideForUpdate
@@ -71946,14 +73267,11 @@ if phaseEnabledForUpdate then
 end
 
 local mode = v115.Data.Ragebot.Evasion.Mode
--- On entry into Translocate, release any PartGlue state created by the normal
--- hitscan/melee planners before observing target hitboxes. These mutations are
--- local to this script and otherwise can look like an opponent's displaced hitbox.
+
 local previousEvasionMode = arg._lastEvasionMode
 local enteredTranslocate = previousEvasionMode ~= mode and mode == "Translocate"
 if previousEvasionMode ~= mode then
-    -- A mode change must not discard the counter target while its restore gate
-    -- is still pending. The target is revalidated before combat resumes.
+
     if arg._repRootCounterRestorePending ~= true then
         arg._repRootCounterTarget = nil
         arg._repRootCounterKind = nil
@@ -71961,10 +73279,8 @@ if previousEvasionMode ~= mode then
         arg._repRootCounterActionAt = nil
         arg._repRootCounterStationaryUntil = 0
     end
-    -- Gun shoot window + counter cycle expire on mode change
+     
     arg._gunShootWindowUntil = 0
-    arg._gunCounterCycleActive = false
-    arg._gunCounterCycleNextWindowAt = 0
     if mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker" then
         local strategyNames = { "_hitscanStrategy", "_meleeStrategy" }
         for _, strategyName in ipairs(strategyNames) do
@@ -71979,16 +73295,14 @@ if previousEvasionMode ~= mode then
             end
         end
         table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
-        -- Knife cooldown history vẫn giữ khi mode thay đổi
-        -- vì cooldown là thuộc tính của TARGET, không phải mode của mình
+
     end
 end
 arg._lastEvasionMode = mode
-local okAction, actionResult = pcall(v128.getAction, innerContext)
+local okAction, actionResult, actionReason = pcall(v128.getAction, innerContext)
 if okAction and actionResult ~= nil then
     if type(actionResult) ~= "table" then
-        -- The planner accepts nil as a legitimate no-action state, but false,
-        -- numbers and strings are not action objects. Do not coerce them to nil.
+
         okAction = false
         actionResult = "GetAction returned invalid result type: " .. type(actionResult)
     else
@@ -71996,20 +73310,19 @@ if okAction and actionResult ~= nil then
         local supportedType = shapeOk and (actionType == "Attack" or actionType == "Melee"
             or actionType == "Reload" or actionType == "Swap")
         if not supportedType then
-            -- An unknown/malformed action table must not fall through as a no-op
-            -- and be interpreted by Evasion as permission to TP.
+
             okAction = false
             actionResult = "GetAction returned an unsupported action type: " .. tostring(actionType)
         end
     end
 end
 local v130 = okAction and actionResult or nil
+local noWeaponAction = okAction and actionResult == nil
 if not okAction then
 local warningNow = os.clock()
 if warningNow >= (arg._nextGetActionWarningAt or 0) then
 arg._nextGetActionWarningAt = warningNow + 5
 warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
-end
 end
 
 local repRootCounterActive = false
@@ -72030,7 +73343,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         local storedKnifeState = ragebotTargetKnifeState(storedCounterTarget)
         local storedKind = arg._repRootCounterKind
         local confirmedTPOrRepRoot = storedKind == "rep-root-contact"
-        -- knife-cooldown-predict cũng là confirmed (target đang cầm knife + đã track cooldown)
+         
         local confirmedKnifePrediction = storedKind == "knife-cooldown-predict"
             and storedKnifeState == true
         local restorePendingNow = arg._repRootCounterRestorePending == true
@@ -72047,13 +73360,9 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
             repRootCounterActive = true
             repRootCounterTarget = storedCounterTarget
         end
-        -- While restoration is pending, preserve even a temporarily unreadable
-        -- target wrapper but do not make it attackable. The post-restore resolver
-        -- will revalidate the live roster and weapon policy before resuming it.
+
     end
 
-    -- Observe all currently attackable enemies, nearest first, instead of only the
-    -- ordinary selected target. This permits a bounded response to a non-selected attacker.
     if not repRootCounterActive
         and arg._repRootCounterRestorePending ~= true
         and nowForRepRoot >= (tonumber(arg._repRootRestoreRetryAt) or 0) then
@@ -72069,16 +73378,13 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         if detectedTarget ~= nil then
             local detectedKnifeState = ragebotTargetKnifeState(detectedTarget)
             local confirmedTPOrRepRoot = detectedKind == "rep-root-contact"
-            -- [NEW] knife-cooldown-predict: target đang cầm Knife và được confirm qua cooldown tracker
+             
             local confirmedKnifePrediction = detectedKind == "knife-cooldown-predict"
                 and detectedKnifeState == true
             if detectedKnifeState == false or confirmedTPOrRepRoot or confirmedKnifePrediction then
                 arg._repRootCounterTarget = detectedTarget
                 arg._repRootCounterKind = detectedKind
-                -- [NEW] Dynamic counter window:
-                -- Nếu có cooldown estimate cho target này, extend window để cover cả lần attack kế.
-                -- Ví dụ: hooker cooldown 1.25s → window = max(0.75, 1.25 + 0.35) = 1.60s
-                -- Với spam variant (0.18s): window = max(0.75, 0.18 + 0.35) = 0.75s (không đổi)
+
                 local detectedRoot = nil
                 pcall(function()
                     local aliveState = detectedTarget.AliveState
@@ -72087,7 +73393,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                 local baseWindow = 0.75
                 if detectedRoot ~= nil then
                     local _, cdEst, _ = ragebotKnifePredictImminent(detectedRoot, nowForRepRoot)
-                    -- Chỉ extend khi estimate đáng tin (đã có ít nhất 2 mẫu thực tế)
+                     
                     local cdTrack = RAGEBOT_KNIFE_COOLDOWN_TRACKS[detectedRoot]
                     local sampleCount = type(cdTrack) == "table"
                         and type(cdTrack.intervals) == "table"
@@ -72098,12 +73404,19 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                 end
                 arg._repRootCounterUntil = nowForRepRoot + baseWindow
                 arg._repRootCounterActionAt = nil
-                -- Cửa sổ đứng yên ngắn: chỉ 0.20s để fire một backstab
-                -- Sau đó character TP ngay, tránh đứng yên cả baseWindow → hooker tắt ragebot = chết
-                arg._repRootCounterStationaryUntil = nowForRepRoot + 0.20
-                -- Snapshot the pre-Translocate client pose. If the controller has
-                -- no readable client pose for this update, fall back to the current
-                -- live RootPart pose instead of leaving an invalid nil snapshot.
+
+                -- Chỉ set stationaryUntil khi THỰC SỰ cần đứng yên để backstab:
+                --  1. knife-cooldown-predict: biết attack sắp đến → cần đứng yên
+                --  2. Counter chưa active với target này → lần detect đầu
+                -- Không set mỗi 0.50s (ready cycle) → sẽ trap character liên tục
+                local wasActive = type(arg._repRootCounterTarget) == "table"
+                    and arg._repRootCounterTarget == detectedTarget
+                    and (tonumber(arg._repRootCounterUntil) or 0) > nowForRepRoot + 0.02
+                local needsStationary = detectedKind == "knife-cooldown-predict" or not wasActive
+                if needsStationary then
+                    arg._repRootCounterStationaryUntil = nowForRepRoot + 0.20
+                end
+
                 local restoreSnapshot = clientCFrame
                 if typeof(restoreSnapshot) ~= "CFrame" then
                     local snapshotOk, rootSnapshot = pcall(function()
@@ -72150,8 +73463,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                     end
                 end
             else
-                -- FakePosition alone does not suspend evasion when the target is
-                -- Knife-equipped or its current weapon state cannot be verified.
+
                 arg._repRootCounterTarget = nil
                 arg._repRootCounterKind = nil
                 arg._repRootCounterUntil = 0
@@ -72160,8 +73472,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         end
     end
 else
-    -- Reload or a temporary mode change should not erase a target whose pose
-    -- restoration is still pending. Once restored, the target is revalidated.
+
     if arg._repRootCounterRestorePending ~= true then
         arg._repRootCounterTarget = nil
         arg._repRootCounterKind = nil
@@ -72170,19 +73481,13 @@ else
     end
 end
 
--- Restore the saved pose before running any combat planner/action. The initial
--- target window is 0.10-0.25s; if local controller/RootPart read-back misses the
--- deadline, retry and keep planner/weapon callbacks gated. This is not an
--- independent acknowledgement from the authoritative game server.
 if arg._repRootCounterRestorePending == true then
     local restoreCFrame = arg._repRootCounterRestoreCFrame
     local nowRestore = os.clock()
     local deadlineRestore = tonumber(arg._repRootCounterRestoreDeadline) or nowRestore
     local savedRestoreRoot = arg._repRootCounterRestoreRootPart
     if savedRestoreRoot ~= rootPart then
-        -- The snapshot is associated with a different or unknown RootPart.
-        -- Never apply a stale pose across a character/root replacement. Re-baseline
-        -- against the current RootPart and keep the update gate closed until stable.
+
         local replacementPoseOk, replacementPose = pcall(function()
             if rootPart == nil or not rootPart:IsA("BasePart")
                 or not rootPart:IsDescendantOf(workspace) then
@@ -72202,9 +73507,7 @@ if arg._repRootCounterRestorePending == true then
             arg._repRootCounterRestorePending = true
             arg._repRootCounterRestoreLastSampleAt = nil
             local replacementGateOk = ragebotPoseRestoreGateSet(arg, true, nil, replacementPose, rootPart)
-            -- The original pose belongs to a different RootPart and cannot be
-            -- proven restored. Re-baseline safely, but never resume the old
-            -- counter target from that replacement-root transaction.
+
             arg._repRootCounterTarget = nil
             arg._repRootCounterKind = nil
             arg._repRootCounterUntil = 0
@@ -72223,15 +73526,12 @@ if arg._repRootCounterRestorePending == true then
             )
             arg._repRootRestoreRetryAt = nil
         end
-        -- If the replacement RootPart is not yet valid, leave restore pending;
-        -- this returns before planner/WeaponAction and retries next update.
+
         ragebotMarkActiveLifecycle(arg)
         return
     end
     if typeof(restoreCFrame) ~= "CFrame" then
-        -- If a pending state lost its snapshot, do not retry a nil/invalid pose
-        -- forever. Re-baseline to this live RootPart, then require the same stable
-        -- read-back gate before allowing planner/weapon callbacks again.
+
         local fallbackSnapshotOk, fallbackSnapshot = pcall(function()
             if rootPart == nil or not rootPart:IsA("BasePart")
                 or not rootPart:IsDescendantOf(workspace) then
@@ -72318,8 +73618,7 @@ if arg._repRootCounterRestorePending == true then
         and ragebotCFrameMatches(serverRestoreCFrame, restoreCFrame)
     local rootPoseMatches = okRootRestore
         and ragebotCFrameMatches(rootRestoreCFrame, restoreCFrame)
-    -- Verify what remained from the previous frame before issuing another write.
-    -- If the read-back misses, write once and defer verification until a later Update.
+
     local restoreReadbackMatches = validRestoreCFrame and controllerPoseMatches and rootPoseMatches
     local okSetRestore = true
     local setRestoreError = nil
@@ -72349,14 +73648,8 @@ if arg._repRootCounterRestorePending == true then
             or nil
     end
 
-    -- A single synchronous read-back can merely reflect the local setter. Require
-    -- two consecutive Update samples before allowing the planner/weapon callbacks.
     if restoreReadbackMatches and arg._repRootCounterRestoreStableFrames >= 2 then
-        -- Clear the restore gate only after controller and local RootPart read-back
-        -- agree across consecutive updates. This is local verification, not a server ACK.
-        -- Keep the restored pose as a short stationary anchor so normal weapon
-        -- planning (including ShootLock and HeavyAttack callbacks) can continue
-        -- without immediately reintroducing a Translocate/defensive CFrame move.
+
         arg._repRootCounterRestorePending = false
         arg._repRootCounterRestoreVerifiedAt = nowRestore
         arg._repRootCounterHoldRootPart = rootPart
@@ -72391,8 +73684,7 @@ if arg._repRootCounterRestorePending == true then
                 repRootCounterTarget = targetToResume
                 arg._repRootCounterUntil = math.max(priorCounterUntil, responseUntil)
             else
-                -- Never resume a stale or no-longer-attackable target after a long
-                -- restore. Drop only the target state; the verified pose hold remains.
+
                 arg._repRootCounterTarget = nil
                 arg._repRootCounterKind = nil
                 arg._repRootCounterUntil = 0
@@ -72409,10 +73701,7 @@ if arg._repRootCounterRestorePending == true then
         ragebotMarkActiveLifecycle(arg)
         return
     else
-        -- Fail closed: the 0.10-0.25s target is the expected restore window, not
-        -- permission to attack from an unverified pose. Keep retrying the exact
-        -- restore and keep TP/combat planning gated until RootPart verifies.
-        -- A successful later retry reopens the normal planner and weapon callbacks.
+
         local priorBlockUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
         if not fakePositionFiniteNumber(priorBlockUntil) then priorBlockUntil = 0 end
         arg._repRootTranslocateBlockUntil = math.max(priorBlockUntil, nowRestore + 0.75)
@@ -72431,10 +73720,6 @@ if arg._repRootCounterRestorePending == true then
     end
 end
 
--- Weapon-action selection is a prerequisite for every movement/attack planner.
--- A thrown GetAction call is not equivalent to a legitimate nil/no-action result:
--- fail closed for this update so Translocate/Random cannot TP on an unknown weapon
--- state and no stale Knife callback can fire after a transient controller error.
 if not okAction then
     pcall(function() characterController:SetServerCFrame(nil) end)
     pcall(function() characterController:SendViewAngles(20, nil) end)
@@ -72451,7 +73736,13 @@ if not okAction then
     arg._knifeCameraPrimeTarget = nil
     arg._knifeCameraPrimeAt = nil
     arg._knifeCameraPrimeAngles = nil
-    ragebotResetRiotCameraPrime(arg)
+    arg._riotCameraBridgeTarget = nil
+    arg._riotCameraBridgeStartedAt = nil
+    arg._riotCameraBridgeLastSentAt = 0
+    arg._riotCameraBridgeLastEncoded = nil
+    arg._riotCameraBridgeSendCount = 0
+    arg._riotCameraBridgeFallbackTarget = nil
+    arg._riotCameraBridgeFallbackStartedAt = nil
     pcall(function() arg._ApplyForcedCrouch(false) end)
     local meleeStrategy = rawget(arg, "_meleeStrategy")
     if type(meleeStrategy) == "table" and type(meleeStrategy.ResetState) == "function" then
@@ -72484,60 +73775,12 @@ if ragebotPoseRestoreGateIsActive()
     return
 end
 
--- ── Gun Counter Cycle ─────────────────────────────────────────────────────────
--- Khi detector phát hiện hooker TP vào người (repRootCounterActive) + đang cầm gun:
---   1. Bắt đầu cycle ngay: mở 0.1244s window (snap về clientCFrame, bắn)
---   2. Sau 0.1244s: Translocate tiếp tục → TP đi
---   3. Nếu hooker vẫn attack: sau 3.14159s → mở 0.1244s window tiếp
---   4. Lặp cho đến khi repRootCounter hết hoặc hooker dừng detect
--- ─────────────────────────────────────────────────────────────────────────────
-do
-    local nowCycle = os.clock()
-    local gunCycleActive  = arg._gunCounterCycleActive == true
-    local gunCycleNextAt  = tonumber(arg._gunCounterCycleNextWindowAt) or 0
-    local gunWindowNow    = nowCycle < (tonumber(arg._gunShootWindowUntil) or 0)
-
-    -- Xác định xem có đang cầm gun không (kiểm tra action trước _Plan)
-    local actionItemNow = type(v130) == "table" and rawget(v130, "Item") or nil
-    local isGunEquipped = type(actionItemNow) == "table"
-        and rawget(actionItemNow, "__type") == "Gun"
-
-    if repRootCounterActive and isGunEquipped then
-        if not gunCycleActive then
-            -- Phát hiện lần đầu: kích hoạt cycle và mở window ngay
-            arg._gunCounterCycleActive = true
-            arg._gunCounterCycleNextWindowAt = nowCycle  -- fire immediately
-            gunCycleActive = true
-            gunCycleNextAt = nowCycle
-        end
-        -- Khi đến lượt mở window tiếp theo (và window trước đã kết thúc)
-        if nowCycle >= gunCycleNextAt and not gunWindowNow then
-            -- Mở 0.1244s snap window
-            arg._gunShootWindowUntil = nowCycle + 0.1244444445
-            -- Lên lịch window tiếp theo: sau window (0.1244) + thời gian bay đi (3.14159s)
-            arg._gunCounterCycleNextWindowAt = nowCycle + 0.1244444445 + 3.14159265358979
-        end
-    else
-        -- Detector không còn phát hiện hoặc không cầm gun: dừng cycle
-        -- Không xóa _gunShootWindowUntil để window đang mở được hoàn thành
-        if gunCycleActive and not gunWindowNow then
-            arg._gunCounterCycleActive = false
-        end
-    end
-end
-
--- Gun shoot window: block Translocate trong 0.1244s sau khi bắn hoặc cycle trigger
--- → character snap về clientCFrame, tiếp tục bắn từ vị trí đó
--- → hooker đang track TP position sẽ bị lừa vì character đột ngột ở clientCFrame
--- Random/ProjectileBreaker được handle bởi gun branch trong _Plan (v131 = arg6)
 local gunShootWindowActive = os.clock() < (tonumber(arg._gunShootWindowUntil) or 0)
 
 if okAction and mode == "Translocate" and arg._reloadGun == nil
     and (v130 == nil or v130.Type ~= "Reload")
     and not repRootCounterActive and not repRootTranslocateBlocked
     and not gunShootWindowActive then
-
-
 
 ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 arg._knifeActionExpected = false
@@ -72584,8 +73827,7 @@ end
 
 local target
 if repRootCounterActive then
-    -- Keep the one-shot counter response bound to the same target that caused
-    -- the close-snap event; do not switch to a different target mid-window.
+
     target = repRootCounterTarget
 else
     local okTarget, resultTarget = pcall(arg._targetSelection.GetTarget, arg._targetSelection)
@@ -72601,6 +73843,7 @@ else
 end
 
 local targetPartsValid = false
+local targetWasRejected = false
 local candidateModel = nil
 local targetWorldPosition = nil
 if target ~= nil and target.AliveState ~= nil then
@@ -72636,7 +73879,10 @@ if targetPartsValid then
 arg._lastTargetWorld = targetWorldPosition
 ragebotPublishTargetState(arg, arg._enabled == true, candidateModel)
 else
-if target ~= nil then target = nil end
+if target ~= nil then
+    targetWasRejected = true
+    target = nil
+end
 if repRootCounterActive then
     arg._repRootCounterTarget = nil
     arg._repRootCounterKind = nil
@@ -72649,12 +73895,21 @@ arg._lastTargetWorld = nil
 ragebotSafeDeactivateTargetState(arg)
 end
 
+if targetPartsValid and noWeaponAction then
+local warningNow = os.clock()
+if warningNow >= (arg._nextNoActionWarningAt or 0) then
+arg._nextNoActionWarningAt = warningNow + 5
+local detail = type(actionReason) == "string" and actionReason ~= "" and (" (" .. actionReason .. ")") or ""
+warn("[Ragebot] No weapon action selected for a valid target" .. detail .. "; movement will hold this update and retry")
+end
+end
+
 local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
 end
 
-local okPlan, v131 = pcall(arg._Plan, arg, safeDt, v130, target, rootPart, clientCFrame, mode)
+local okPlan, v131 = pcall(arg._Plan, arg, safeDt, v130, target, rootPart, clientCFrame, mode, targetWasRejected)
 if not okPlan or type(v131) ~= "table" then
 local warningNow = os.clock()
 if warningNow >= (arg._nextPlanWarningAt or 0) then
@@ -72674,9 +73929,7 @@ if arg._repRootCounterRestorePending ~= true
     and os.clock() < counterHoldUntil
     and arg._repRootCounterHoldRootPart == rootPart
     and typeof(counterHoldCFrame) == "CFrame" then
-    -- Pin only movement: preserve ShouldSkipDefense, ViewAngles, IsAimPose and
-    -- WeaponAction exactly as the ordinary planner produced them. This keeps
-    -- ShootLock, HeavyAttack, reload and their normal angle-routing behavior.
+
     v131.CFrame = counterHoldCFrame
 end
 local okApply, applyError = pcall(arg._ApplyPlan, arg, v131, target, innerContext)
@@ -72754,8 +74007,7 @@ if arg._knifeActionExpected == true and type(weaponAction) == "function" then
             or type(primedAt) ~= "number" or primedAt ~= primedAt
             or primedAt == math.huge or primedAt == -math.huge
             or os.clock() - primedAt < 0.06 then
-            -- Require the first valid camera packet to have had its minimum lead time.
-            -- Angle changes after that are flushed each update and must not starve attacks.
+
             weaponAction = nil
         end
     end
@@ -72764,16 +74016,12 @@ end
 if weaponAction ~= nil then
 if type(weaponAction) == "function" then
 
-
-
 local actionOk, actionError = pcall(weaponAction)
 if not actionOk and os.clock() >= (arg._nextWeaponActionWarningAt or 0) then
 arg._nextWeaponActionWarningAt = os.clock() + 5
 warn("[Ragebot] Weapon action failed: " .. tostring(actionError))
 end
 
--- A non-throwing callback can be Swap/Equip or a no-op. Only a verified
--- ShotRequestCount increment is treated as a confirmed gun-request event.
 local shotRequestAdvanced = false
 local countAfter = nil
 if actionOk and v132 ~= nil and shotRequestCount ~= nil then
@@ -72785,12 +74033,9 @@ if actionOk and v132 ~= nil and shotRequestCount ~= nil then
         and countAfter > shotRequestCount
 end
 if shotRequestAdvanced and repRootCounterActive and target == repRootCounterTarget then
-    -- A successful shot confirms the normal planner is active, but must not
-    -- immediately cancel the defensive response window. The previous code set
-    -- the deadline to `now`, which made Translocate resume on the next update.
+
     arg._repRootCounterActionAt = os.clock()
-    -- Backstab đã fire → reset stationaryUntil ngay để character bắt đầu TP
-    -- Không giữ đứng yên thêm vì đã backstab xong rồi
+
     arg._repRootCounterStationaryUntil = 0
 end
 
@@ -72800,7 +74045,6 @@ local okAmmoAfter, ammoAfter = pcall(function() return v132:GetAmmo() end)
 local observedEmpty = okAmmoAfter and type(ammoAfter) == "number" and ammoAfter == ammoAfter
 and ammoAfter ~= math.huge and ammoAfter ~= -math.huge and ammoAfter <= 0
 if okExpected and type(expectedAmmo) == "number" and expectedAmmo == expectedAmmo and expectedAmmo ~= math.huge and expectedAmmo ~= -math.huge and expectedAmmo <= 0 and observedEmpty then
-
 
 local now2 = os.clock()
 arg._reloadGun = v132
@@ -72821,11 +74065,7 @@ end
 end
 end
 end
-
-
-
-
-
+end
 
 local function ragebotInventoryHasItem(innerContext, wantedName)
     if type(wantedName) ~= "string" or wantedName == "" then return false end
@@ -72864,15 +74104,11 @@ local function ragebotShouldUseRiotKnifeRotation(item, innerContext, target)
     if type(modifiers) ~= "table" or rawget(modifiers, "AlwaysBackstab") ~= true then return false end
     local mode = rawget(modifiers, "AlwaysBackstabMode")
     if mode == "Knife" then
-        -- `item` is the concrete Knife selected from ItemBehaviors:GetItems();
-        -- do not fail closed because a separate observer snapshot is one frame stale.
+
         return true
     end
     if mode == "Riot" then
-        -- If the external Riot loop is not selected (for example, the target has no
-        -- shield or its camera stream has not become operational), Ragebot must keep
-        -- a complete internal backstab path instead of falling through to ordinary
-        -- melee angles while still blocking the standalone camera owner.
+
         return true
     end
     return false
@@ -72930,9 +74166,7 @@ local function ragebotUsesExternalRiotCamera(item, target, owner)
     local targetKey = aliveState ~= nil and aliveState.HitboxHead or targetModel
     local now = os.clock()
     local shared = ragebotStateGet("__SilentCamTargetRotationExactReplication_v1")
-    -- The standalone Riot camera loop deliberately stops while Ragebot owns
-    -- the camera. Do not wait through its startup grace period when it is
-    -- explicitly disabled; use Ragebot's internal Knife camera path immediately.
+
     if type(shared) ~= "table" or rawget(shared, "enabled") ~= true then
         if type(owner) == "table" then
             owner._externalRiotCameraWaitTarget = nil
@@ -72955,9 +74189,6 @@ local function ragebotUsesExternalRiotCamera(item, target, owner)
         return true
     end
 
-    -- Allow the independent Riot loop a short startup window to acquire its remote
-    -- and begin sending. If it never becomes operational, use Ragebot's internal
-    -- backstab angles rather than suppressing HeavyAttack indefinitely.
     if type(owner) ~= "table" then return true end
     if owner._externalRiotCameraWaitTarget ~= targetKey then
         owner._externalRiotCameraWaitTarget = targetKey
@@ -73031,9 +74262,6 @@ local function ragebotBuildRiotKnifeViewAngles(target)
     local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
     if hitbox == nil then return nil end
 
-    -- Match the very same combat RootPart used by the melee payload builder.
-    -- Choosing Model.HumanoidRootPart independently can send camera yaw for a
-    -- different part on rigs with a custom replicated combat root.
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, candidatePart = pcall(function()
         if anglePart == nil or not anglePart:IsA("BasePart")
@@ -73084,8 +74312,7 @@ local function ragebotRiotBridgeFallbackReady(owner, targetKey, now)
         owner._riotCameraBridgeFallbackStartedAt = now
         return false
     end
-    -- The internal normalized angle payload is already being sent by Ragebot.
-    -- If the bridge cannot transmit a fresh value, do not block melee forever.
+
     return now - startedAt >= 0.35
 end
 
@@ -73124,8 +74351,7 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
         return ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
     local callOk, sendOk, sentAt, didSend, sendFailure = pcall(sender, encoded)
-    -- Keep `now` in this function scope: the post-send and dedupe paths compare
-    -- against the latest monotonic time, not a branch-local variable.
+
     local now = os.clock()
     if not callOk or sendOk ~= true or type(sentAt) ~= "number" or not ragebotRiotFiniteNumber(sentAt) then
         local now = os.clock()
@@ -73138,9 +74364,7 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
         return ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
     if didSend == true then
-        -- Only a genuinely transmitted fresh packet resets the fallback timer.
-        -- A successful call that was deduplicated is not proof that this target's
-        -- current angle reached the bridge and must not restart the timer forever.
+
         owner._riotCameraBridgeFallbackTarget = nil
         owner._riotCameraBridgeFallbackStartedAt = nil
         if owner._riotCameraBridgeStartedAt == nil then
@@ -73176,7 +74400,8 @@ local function ragebotPrimeRiotCamera(owner, targetKey, pitch, yaw)
     return false
 end
 
-index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
+
+index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
 if arg4 ~= nil then
 local aliveState = arg4.AliveState
 local root = aliveState ~= nil and aliveState.RootPart or nil
@@ -73196,9 +74421,7 @@ local counterTarget = arg._repRootCounterTarget
 local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "table"
     and (counterTarget == arg4 or (counterTarget.FighterState ~= nil
         and counterTarget.FighterState == arg4.FighterState))
--- stationaryCounterResponse: đứng yên CHỈ trong cửa sổ 0.20s (_repRootCounterStationaryUntil)
--- để fire một backstab. Sau đó TP đi ngay dù counterUntil chưa hết.
--- Điều này ngăn hooker tắt ragebot → backstab trong khi mình đang đứng yên cả 1-1.6s.
+
 local stationaryUntil = tonumber(arg._repRootCounterStationaryUntil) or 0
 local stationaryCounterResponse = arg._enabled == true and os.clock() < stationaryUntil
     and (counterKind == "rep-root-contact"
@@ -73221,8 +74444,7 @@ if externalRiotCamera then
     arg._knifeCameraPrimeAt = nil
     arg._knifeCameraPrimeAngles = nil
 else
-    -- Leaving external Riot ownership invalidates its ACK-like camera prime;
-    -- otherwise a later re-entry to the same target could reuse an old timestamp.
+
     arg._externalRiotCameraTarget = nil
     arg._externalRiotCameraStartedAt = nil
     arg._externalRiotCameraStartCount = nil
@@ -73247,6 +74469,10 @@ arg._hitscanStrategy:ResetState()
 arg._meleeStrategy:ResetState()
 if stationaryCounterResponse and typeof(arg6) == "CFrame" then
     return { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
+end
+
+if arg4 ~= nil and typeof(arg6) == "CFrame" then
+    return { CFrame = arg6, HoldPosition = true }
 end
 return arg:_EvadePlan(arg6, arg7)
 end
@@ -73278,6 +74504,16 @@ end
 if arg4 == nil then
 arg._hitscanStrategy:ResetState()
 arg._meleeStrategy:ResetState()
+
+if arg8 == true and (arg3.Type == "Attack" or arg3.Type == "Melee")
+    and typeof(arg6) == "CFrame" then
+    local warningNow = os.clock()
+    if warningNow >= (arg._nextRejectedTargetHoldWarningAt or 0) then
+        arg._nextRejectedTargetHoldWarningAt = warningNow + 5
+        warn("[Ragebot] Selected target failed validation; holding position instead of teleporting without an attack.")
+    end
+    return { CFrame = arg6, HoldPosition = true }
+end
 return arg:_EvadePlan(arg6, arg7)
 end
 local item = arg3.Item
@@ -73298,31 +74534,24 @@ arg._hitscanStrategy:ResetState()
 return fn36()
 end
 local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg5, flag19, arg6)
--- ── Gun Shoot Window ──────────────────────────────────────────────────────────
--- Luồng đúng:
---   1. Bắn bình thường ở vị trí TP (frame có v132 ~= nil, CFrame KHÔNG bị override)
---   2. Ngay sau đó: snap về clientCFrame trong 0.1244s (window starts NEXT frame)
---   3. Trong window: tiếp tục bắn nếu có v132, renew window; CFrame = clientCFrame
---   4. Sau 0.1244s: Translocate tiếp tục bình thường
--- gunShootWindowActive đã được tính ở Update scope (dùng lại, không tính lại)
-local nowGun = os.clock()
 
-if gunShootWindowActive then
-    -- Đang trong window 0.1244s: snap về clientCFrame, bắn tiếp nếu có
+local nowGun = os.clock()
+-- Fix: gunShootWindowActive là local trong Update không visible trong _Plan.
+-- Tính lại từ arg._gunShootWindowUntil để đảm bảo snap về clientCFrame hoạt động.
+local gunShootWindowActivePlan = nowGun < (tonumber(arg._gunShootWindowUntil) or 0)
+
+if gunShootWindowActivePlan then
     if typeof(arg6) == "CFrame" then
         v131 = arg6
     end
     if v132 ~= nil then
-        -- Renew window khi bắn thêm trong window
         arg._gunShootWindowUntil = nowGun + 0.1244444445
     end
 else
     if v132 ~= nil then
-        -- Bắn ở TP position frame này, window bắt đầu từ FRAME SAU
         arg._gunShootWindowUntil = nowGun + 0.1244444445
     end
 end
--- ─────────────────────────────────────────────────────────────────────────────
 return { CFrame = v131, WeaponAction = v132, ShouldForceCrouch = true, IsAimPose = v132 ~= nil }
 end
 
@@ -73330,13 +74559,8 @@ if item.__type == "Melee" then
 arg._hitscanStrategy:ResetState()
 local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
 
-
-
-
 if arg._knifeExternalRiotCamera == true then
-    -- Standalone AlwaysBackstab.Riot owns the remote camera stream for a shielded
-    -- target. Do not race it with Ragebot's separate angle payload; wait for fresh,
-    -- repeated sends from that module before allowing HeavyAttack.
+
     v132 = nil
     if type(v133) == "function" and not ragebotPrimeExternalRiotCamera(arg, arg4) then
         v133 = nil
@@ -73392,8 +74616,7 @@ if reloadGun ~= nil and (
     or ((reloadActionType == "Attack" or reloadActionType == "Melee" or reloadActionType == "Reload")
         and reloadActionItem ~= reloadGun)
 ) then
-    -- A swap can temporarily expose no equipped gun. Clear the old reload
-    -- transport from the action identity before querying that transient state.
+
     ragebotSafeClearReloadTransport(arg)
     reloadGun = nil
 end
@@ -73699,8 +74922,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         setFn = controller.SetServerCFrame
     end)
     if not methodsOk then setFn = nil end
-    -- A destroyed CharacterController may no longer have its RootDesync setter.
-    -- The identity-checked RootPart remains the final recovery fallback below.
 
     local currentRoot = ragebotVoidSpamControllerRoot(controller)
     if typeof(currentRoot) ~= "Instance" then return false end
@@ -73719,9 +74940,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         end)
         if not oldRootReadOk then return false end
         if snapshotRoot ~= currentRoot then
-            -- Never transfer a stale roll/offset to a replacement character.
-            -- The old root is no longer controller-owned; retire only this stale
-            -- transaction rather than moving the new character to an old pose.
+
             ragebotClearVoidSpamTransformSnapshot(state)
             return true
         end
@@ -73731,10 +74950,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         end
     end
 
-    -- GetServerCFrame can return RootDesync's cached _cframe instead of the
-    -- actual RootPart pose. Read the real part before deciding whether the
-    -- pitch/roll/offset remains applied; otherwise a cache-only setter can pass
-    -- a false-positive verification when _oldCFrame is nil.
     local currentReadOk, currentCFrame = pcall(function() return currentRoot.CFrame end)
     if not currentReadOk or typeof(currentCFrame) ~= "CFrame" then return false end
 
@@ -73751,14 +74966,8 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local nearOutputPosition = deltaOutput <= normalTolerance
     local nearBasePosition = deltaBase <= normalTolerance
 
-    -- Legacy transactions created before RootPart identity was stored can be
-    -- adopted only if the current part still matches the captured pose closely.
-    -- Do not apply old snapshots across a respawn merely because the controller
-    -- object itself survived reload.
     if snapshotRoot == nil then
-        -- Legacy snapshots cannot prove RootPart identity. Adopt only when both
-        -- position and orientation closely match the saved output or base pose;
-        -- being merely far below the base is not enough to identify this root.
+
         local outputOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, lastOutputCFrame)
         local baseOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, baseCFrame)
         local exactLegacyPoseMatches = (nearOutputPosition and outputOrientationMatches)
@@ -73767,8 +74976,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         state.voidSpamRootPart = currentRoot
     end
 
-    -- Another restore transaction owns pose changes while the gate is active.
-    -- Let it finish first, then retry the Void Spam cleanup against the real pose.
     if ragebotPoseRestoreGateIsActive() then return false end
 
     local outputScore = ragebotCFrameOrientationScore(currentCFrame, lastOutputCFrame)
@@ -73778,14 +74985,12 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local rotationIsStillRolled = outputScore > baseScore + 0.15
     local rotationAlreadyRestored = baseScore > outputScore + 0.15
     if not rotationIsStillRolled and not rotationAlreadyRestored then
-        -- Another controller supplied an orientation that cannot be attributed
-        -- safely to either snapshot. Keep the recovery record and retry later.
+
         return false
     end
 
     if largeHideOffset and not nearOutputPosition and not nearBasePosition and not hideOffsetStillVisible then
-        -- Do not remove only the roll and then discard the sole recovery record
-        -- while a large Hide translation is still ambiguous.
+
         return false
     end
 
@@ -73797,8 +75002,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     elseif nearBasePosition then
         restoredPosition = currentPos
     elseif not largeHideOffset then
-        -- For a normal offset the character likely moved after the snapshot.
-        -- Preserve the newer location while still removing our own side roll.
+
         restoredPosition = currentPos
     elseif hideOffsetStillVisible then
         restoredPosition = currentPos - fakeOffset
@@ -73808,8 +75012,7 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local restoredRotation = currentCFrame.Rotation
     local rotationNeedsCorrection = false
     if rotationIsStillRolled then
-        -- Void Spam applies a local -90° pitch plus +90° Z roll. Remove the
-        -- exact local transform so a newer legitimate yaw is preserved.
+
         restoredRotation = (currentCFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90)):Inverse()).Rotation
         rotationNeedsCorrection = true
     end
@@ -73835,15 +75038,12 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
             setterOk, setterResult = pcall(setFn, controller, restoredCFrame)
         end
         if not setterOk or setterResult == false then
-            -- Fall back to the actual RootPart only if the wrapper no longer has
-            -- a RootDesync owner. A live owner rejecting the write remains a
-            -- hard failure; do not bypass it or another active restore gate.
+
             local rootDesyncPresent = false
             pcall(function() rootDesyncPresent = controller._rootDesync ~= nil end)
             if rootDesyncPresent or ragebotPoseRestoreGateIsActive() then return false end
         end
-        -- SetServerCFrame may only update RootDesync._cframe when _oldCFrame is
-        -- nil. Explicitly restore this same, identity-checked RootPart as well.
+
         if ragebotPoseRestoreGateIsActive() then return false end
         local rootStillCurrent = ragebotVoidSpamControllerRoot(controller) == currentRoot
         if not rootStillCurrent then return false end
@@ -73856,8 +75056,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
             return false
         end
 
-        -- Reconcile same-root RootDesync caches before clearing the snapshot; either
-        -- cache can replay the rolled/hidden pose after this function returns.
         local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
             controller, currentRoot, lastOutputCFrame, baseCFrame, restoredCFrame,
             fakeOffset, normalTolerance
@@ -73871,11 +75069,6 @@ end
 
 pcall(rawset, _G, "__CrefyRestoreVoidSpamTransform", ragebotRestoreVoidSpamTransform)
 
--- The previous execution's unload hook may have been too old to restore the
--- transform (or its callback may have failed before this version could publish
--- its recovery hook). Once the compatible restore function exists, immediately
--- retry any persisted Void Spam transform before the new planner can overwrite
--- its recovery snapshot. Failure keeps the snapshot and schedules a bounded retry.
 do
     local staleVoidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
     if type(staleVoidSpamState) == "table"
@@ -73899,7 +75092,7 @@ if voidSpamConfigured and arg._enabled == true then
             return behaviors:EquippedItemAsGun()
         end)
         if not okGun then
-            -- Missing reload visibility must not leave an old transform active.
+             
             voidSpamReloading = true
         elseif equippedGun ~= nil then
             reloadCandidate = equippedGun
@@ -73909,9 +75102,7 @@ if voidSpamConfigured and arg._enabled == true then
         reloadCandidate = arg._reloadGun
     end
     if reloadCandidate == nil then
-        -- A missing equipped-gun reference is not proof that the weapon is ready.
-        -- During equip/respawn/context transitions this used to fail open and let
-        -- a stale Hide/roll transform continue without a readable reload state.
+
         voidSpamReloading = true
     else
         local okReloading, isReloading = pcall(function()
@@ -73933,9 +75124,7 @@ if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload
     and voidSpamState.voidSpamTransformApplied == true then
     ragebotRequestVoidSpamTransformRestore()
 end
--- Clear the phase scheduler while disabled, missing a usable frame, or reloading.
--- Keep the transform snapshot/retry transaction until its actual pose and caches
--- are verified restored.
+
 if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload)
     and type(voidSpamState) == "table" then
     voidSpamState.activeUntil = 0
@@ -73970,8 +75159,6 @@ if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "func
     undergroundIntegrated = okIntegrated and integrated == true
 end
 
--- The base snapshot excludes Void Spam's own offset/roll, but retains the
--- independent legacy Underground adjustment if that controller is active.
 local voidSpamBaseCFrame = cframe
 local voidSpamPositionOffset = Vector3.zero
 local weaponKind = "Other"
@@ -73996,7 +75183,6 @@ elseif itemBehaviors ~= nil then
     end
 end
 
--- Fix: void spam không dùng Y offset (+4) nữa, giữ nguyên (0,0,0)
 local RAGEBOT_VOID_SPAM_Y_OFFSET = 0
 local RAGEBOT_UNDERGROUND_Y_OFFSET = -3.8
 if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
@@ -74020,16 +75206,13 @@ local function applyVoidSpamSideRoll(value, baseValue)
         if voidSpamState._voidSpamTransformRestorePending == true then
             local restored = ragebotRequestVoidSpamTransformRestore()
             if not restored or voidSpamState._voidSpamTransformRestorePending == true then
-                -- Keep the unresolved snapshot and do not stack a new roll/Hide
-                -- offset on top of a pose whose previous owner has not been restored.
+
                 return base
             end
         end
-        -- Fix: không lật người 90°, giữ orientation gốc
+         
         local rolled = value
-        -- Fix: vì offset = 0 và không có rotation, KHÔNG đánh dấu voidSpamTransformApplied
-        -- Nếu đánh dấu, restore logic sẽ retry mãi vì cacheIsThisVoidSpamOutput luôn false
-        -- (orientation của output == base → không phân biệt được → warn liên tục)
+
         local fakeOffset = value.Position - base.Position
         local hasActualTransform = fakeOffset.Magnitude > 0.01
             or not ragebotCFrameOrientationMatches(value, base)
@@ -74045,7 +75228,7 @@ local function applyVoidSpamSideRoll(value, baseValue)
             voidSpamState.voidSpamController = characterController
             voidSpamState.voidSpamRootPart = ragebotVoidSpamControllerRoot(characterController)
         else
-            -- Không có transform thực sự → không cần restore
+             
             voidSpamState.voidSpamTransformApplied = false
         end
         return rolled
@@ -74075,11 +75258,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
     local fakePositionActive = voidSpamState.phase == "hide"
         and activeUntilValid and now < activeUntil
     if fakePositionActive then
-        -- Hide shares Evasion Random's BaseRadius / RadiusRandomFactor / Character
-        -- Origin settings, but deliberately does not reuse Evasion's far-axis
-        -- sentinel (1,073,741,824 studs), which can send the character out of-map.
-        -- Keep one random destination for the entire Hide phase so frame updates
-        -- cannot make the character jitter around a continuously changing point.
+
         local hidePosition = cframe.Position
         local hideYOffset = undergroundIntegrated and 0 or -24
         local targetX = tonumber(voidSpamState.fakePositionTargetX)
@@ -74094,9 +75273,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
             and voidSpamState.fakePositionHideUndergroundIntegrated == undergroundIntegrated
             and cachedYOffsetValid
         if voidSpamState.fakePositionTargetReady == true and targetIsFinite and cachedHideStateCompatible then
-            -- Keep the safe fallback stable for the entire Hide phase. Without
-            -- persisting this value, an unsafe-location fallback used 0 studs
-            -- for one frame and reverted to -24 studs on the next frame.
+
             hideYOffset = cachedHideYOffset
         else
             targetIsFinite = false
@@ -74164,20 +75341,14 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
                         CFrame.new(destination), Vector3.new(6, 8, 6), overlapParams
                     )
                 end)
-                -- If world queries fail, fail closed rather than accepting a point
-                -- that cannot be checked against known kill/out-of-bounds parts.
+
                 if not overlapOk or type(overlappingParts) ~= "table" then return false end
                 for _, part in ipairs(overlappingParts) do
                     if isUnsafeHidePart(part) then return false end
                 end
 
-                -- A point over a void or a kill floor is a common source of Hide
-                -- self-kills. Require a nearby landing surface and reject tagged
-                -- kill/out-of-bounds surfaces before committing the phase target.
                 local rayOk, rayResult = pcall(function()
-                    -- Probe downward from the current elevation, not the lowered
-                    -- Hide elevation (-24): probing from below the floor falsely
-                    -- rejects every safe destination on ordinary solid maps.
+
                     return workspace:Raycast(
                         Vector3.new(x, hidePosition.Y + 6, z),
                         Vector3.new(0, -120, 0),
@@ -74206,16 +75377,11 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
 
             targetX, targetZ = pickSafeDestination(anchorX, anchorZ)
             if (targetX == nil or targetZ == nil) and not anchorFromCharacter then
-                -- Character Origin off still prefers the world-origin ring, but
-                -- if that area has no safe landing point, retry around the live
-                -- character instead of teleporting into an unmapped/kill region.
+
                 targetX, targetZ = pickSafeDestination(hidePosition.X, hidePosition.Z)
             end
             if targetX == nil or targetZ == nil then
-                -- Last-resort safe fallback: keep the horizontal position rather
-                -- than selecting an unchecked point. If even the current location
-                -- is unsafe/unknown at the lowered Hide height, disable the -24
-                -- vertical move for this phase to avoid entering a kill floor.
+
                 targetX, targetZ = hidePosition.X, hidePosition.Z
                 if not isSafeHideDestination(targetX, targetZ) then
                     hideYOffset = 0
@@ -74235,8 +75401,6 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
         if panicX ~= panicX or panicX == math.huge or panicX == -math.huge then panicX = 0 end
         if panicZ ~= panicZ or panicZ == math.huge or panicZ == -math.huge then panicZ = 0 end
 
-        -- Underground has precedence over Void Spam's vertical Hide offset.
-        -- Its existing -3.8-stud baseline stays intact; Hide only randomizes X/Z.
         cframe = cframe + Vector3.new(panicX, hideYOffset, panicZ)
         voidSpamState.fakePositionActive = true
     else
@@ -74300,9 +75464,7 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     local arbiter = owner._cameraArbiter
     if type(arbiter) == "table" and type(arbiter.claim) == "function"
         and owner._knifeCameraLocked ~= true then
-        -- Do not begin/retain camera prime while another owner may still control
-        -- the winning angle payload. _SetKnifeCameraLock clears this timer when
-        -- it eventually acquires ownership.
+
         owner._knifeCameraPrimeTarget = nil
         owner._knifeCameraPrimeAt = nil
         owner._knifeCameraPrimeAngles = nil
@@ -74333,8 +75495,6 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
         owner._knifeCameraPrimeAngles = nil
     end
 
-    -- A prime timer is meaningful only after the driver confirms that the current
-    -- winning angle payload was actually passed to FireServer without an error.
     local okFlush, flushed = pcall(function() return characterController:FlushViewAngles() end)
     if not okFlush or flushed ~= true then
         owner._knifeCameraPrimeAt = nil
@@ -74348,10 +75508,10 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     local primeAtValid = type(primeAt) == "number" and primeAt == primeAt
         and primeAt ~= math.huge and primeAt ~= -math.huge
     if baseline == nil or not primeAtValid then
-        -- Start lead-time only after a successful camera send for this target.
+         
         owner._knifeCameraPrimeAt = os.clock()
     end
-    -- A rapidly changing yaw is not a reason to restart the lead-time clock.
+     
     owner._knifeCameraPrimeAngles = { Pitch = pitch, Yaw = yaw }
     return true
 end
@@ -74393,6 +75553,7 @@ end
 local cFrame = arg2 ~= nil and arg2.CFrame or nil
 local defensiveViewAngles = arg2 ~= nil and arg2.ViewAngles or nil
 local shouldSkipDefense = arg2 ~= nil and arg2.ShouldSkipDefense == true
+local holdPosition = arg2 ~= nil and arg2.HoldPosition == true
 local currentHoldRootPart = nil
 pcall(function()
     local context = arg._innerContext
@@ -74403,6 +75564,65 @@ pcall(function()
 end)
 local holdRootMatches = arg._repRootCounterHoldRootPart ~= nil
     and currentHoldRootPart == arg._repRootCounterHoldRootPart
+
+if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
+    local holdCFrame = arg._repRootCounterHoldCFrame
+    local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
+    local restoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
+    local useVerifiedCounterHold = arg._repRootCounterRestorePending ~= true
+        and holdRootMatches
+        and typeof(holdCFrame) == "CFrame"
+        and type(restoreVerifiedAt) == "number"
+        and restoreVerifiedAt == restoreVerifiedAt
+        and restoreVerifiedAt ~= math.huge and restoreVerifiedAt ~= -math.huge
+        and os.clock() < holdUntil
+    local heldServerCFrame = useVerifiedCounterHold and holdCFrame or cFrame
+    if not useVerifiedCounterHold then
+
+        local undergroundController = rawget(_G, "__CrefyUndergroundController")
+        if type(undergroundController) == "table"
+            and type(undergroundController.ApplyToRagebotCFrame) == "function" then
+            local holdWeaponKind = "Other"
+            if arg._knifeActionExpected == true or arg._knifeCameraLocked == true then
+                holdWeaponKind = "Knife"
+            else
+                local context = arg._innerContext
+                local behaviors = context ~= nil and context.ItemBehaviors or nil
+                if behaviors ~= nil then
+                    local okMelee, melee = pcall(function() return behaviors:EquippedItemAsMelee() end)
+                    if okMelee and melee ~= nil then
+                        local okName, meleeName = pcall(function() return melee.Name end)
+                        if okName and type(meleeName) == "string" then
+                            holdWeaponKind = meleeName == "Knife" and "Knife" or "Melee"
+                        end
+                    else
+                        local okGun, gun = pcall(function() return behaviors:EquippedItemAsGun() end)
+                        if okGun and gun ~= nil then holdWeaponKind = "Gun" end
+                    end
+                end
+            end
+            local clientCFrame = nil
+            local clientOk, clientResult = pcall(function() return characterController:GetClientCFrame() end)
+            if clientOk and typeof(clientResult) == "CFrame" then clientCFrame = clientResult end
+            local adjustOk, adjusted = pcall(
+                undergroundController.ApplyToRagebotCFrame,
+                heldServerCFrame,
+                clientCFrame,
+                holdWeaponKind
+            )
+            if adjustOk and typeof(adjusted) == "CFrame" then
+                heldServerCFrame = adjusted
+            end
+        end
+    end
+    characterController:SetServerCFrame(heldServerCFrame)
+    if arg._knifeExternalRiotCamera ~= true then
+        local viewAngleSlot = (arg._knifeCameraLocked == true or arg._knifeActionExpected == true) and 20 or v86[9]
+        local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
+        characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
+    end
+    return
+end
 
 if cFrame == nil or arg3 == nil or shouldSkipDefense then
 local holdCFrame = arg._repRootCounterHoldCFrame
@@ -74422,8 +75642,7 @@ if useVerifiedCounterHold then
     end
 else
     local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
-    -- Planner/context transitions can briefly provide no CFrame. Never pass nil
-    -- into SetServerCFrame; let the next valid plan own the next server pose.
+
     if typeof(safeFallbackCFrame) == "CFrame" then
         characterController:SetServerCFrame(safeFallbackCFrame)
     end
@@ -74486,6 +75705,74 @@ arg._stateHook:ClearForced("IsCrouching")
 end
 end
 
+local function ragebotRestoreRecentGroundPoseIfFallen(owner)
+    if type(owner) ~= "table" or owner._enabled == true then return false end
+    local safeCFrame = owner._lastSafeGroundCFrame
+    local safeRoot = owner._lastSafeGroundRootPart
+    local sampledAt = tonumber(owner._lastSafeGroundAt)
+    if typeof(safeCFrame) ~= "CFrame" or safeRoot == nil
+        or not fakePositionFiniteNumber(sampledAt) or os.clock() - sampledAt > 15 then
+        return false
+    end
+    local context = owner._innerContext
+    local fighter = context and context.FighterState
+    local character = fighter and fighter.Character
+    local state = character and character.State
+    local currentRoot = state and state.RootPart
+    local localCharacter = _player and _player.Character
+    if localCharacter == nil or (currentRoot ~= nil and currentRoot ~= safeRoot) then return false end
+    local humanoidOk, humanoid = pcall(function()
+        return localCharacter:FindFirstChildWhichIsA("Humanoid", true)
+    end)
+    if not humanoidOk or humanoid == nil then return false end
+    local healthOk, health = pcall(function() return humanoid.Health end)
+    if not healthOk or not fakePositionFiniteNumber(health) or health <= 0 then return false end
+    local validOk, valid = pcall(function()
+        return safeRoot:IsA("BasePart") and safeRoot:IsDescendantOf(localCharacter)
+            and safeRoot:IsDescendantOf(workspace)
+    end)
+    if not validOk or not valid then return false end
+    local currentY
+    local readOk = pcall(function() currentY = safeRoot.Position.Y end)
+    local safeY = safeCFrame.Position.Y
+    if not readOk or not fakePositionFiniteNumber(currentY)
+        or not fakePositionFiniteNumber(safeY) then return false end
+
+    local destroyHeight = fallenPartsDestroyHeight
+    if not ragebotIsFiniteDestroyHeight(destroyHeight) then
+        local heightOk, currentHeight = pcall(function() return workspace.FallenPartsDestroyHeight end)
+        if not heightOk or not ragebotIsFiniteDestroyHeight(currentHeight) then return false end
+        destroyHeight = currentHeight
+    end
+    local rescueThreshold = destroyHeight + 125
+
+    if not fakePositionFiniteNumber(rescueThreshold)
+        or safeY <= rescueThreshold + 50
+        or currentY >= safeY - 12
+        or currentY > rescueThreshold then return false end
+
+    local poseWriteOk, poseWriteError = pcall(function()
+        safeRoot.CFrame = safeCFrame
+    end)
+    pcall(function() safeRoot.AssemblyLinearVelocity = Vector3.zero end)
+    pcall(function() safeRoot.AssemblyAngularVelocity = Vector3.zero end)
+    local verifyOk, actualCFrame = pcall(function() return safeRoot.CFrame end)
+    if poseWriteOk and verifyOk and typeof(actualCFrame) == "CFrame"
+        and (actualCFrame.Position - safeCFrame.Position).Magnitude <= 2 then
+        warn("[Ragebot] Restored the last grounded RootPart pose after disable-time fall detection.")
+        return true
+    end
+    if os.clock() >= (owner._nextSafeGroundRestoreWarningAt or 0) then
+        owner._nextSafeGroundRestoreWarningAt = os.clock() + 5
+        local failureDetail = poseWriteError
+        if failureDetail == nil then
+            failureDetail = not verifyOk and actualCFrame or "RootPart CFrame write/read-back mismatch"
+        end
+        warn("[Ragebot] Disable-time ground recovery could not verify the RootPart restore: " .. tostring(failureDetail))
+    end
+    return false
+end
+
 index2._Reset = function(arg)
 if type(arg) ~= "table" then return end
 ragebotRequestVoidSpamTransformRestore()
@@ -74497,8 +75784,7 @@ if keepRestoreTransaction then
 else
     ragebotPoseRestoreGateSet(arg, false, 0, nil)
 end
--- These weak-key histories are session observations, not durable controller state.
--- Clear them on every reset/disable/context removal so re-enable starts clean.
+
 table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
 table.clear(RAGEBOT_FAKE_POSITION_TRACKS)
 table.clear(RAGEBOT_PURE_TP_TRACKS)
@@ -74533,7 +75819,6 @@ local sameReset = rawget(arg, "_resetApplied") == true
 
 if not sameReset then
 
-
     arg._resetApplied = true
     arg._resetContext = resetContext
     arg._resetController = resetController
@@ -74560,8 +75845,6 @@ if not sameReset then
         arg._repRootCounterStationaryUntil = 0
     end
     arg._gunShootWindowUntil = 0
-    arg._gunCounterCycleActive = false
-    arg._gunCounterCycleNextWindowAt = 0
     arg._lastEvasionMode = nil
 
     local targetSelection = rawget(arg, "_targetSelection")
@@ -74603,7 +75886,13 @@ if not sameReset then
     arg._externalRiotCameraStartCount = nil
     arg._externalRiotCameraPrimed = false
     arg._externalRiotCameraPrimeAt = nil
-    ragebotResetRiotCameraPrime(arg)
+    arg._riotCameraBridgeTarget = nil
+    arg._riotCameraBridgeStartedAt = nil
+    arg._riotCameraBridgeLastSentAt = 0
+    arg._riotCameraBridgeLastEncoded = nil
+    arg._riotCameraBridgeSendCount = 0
+    arg._riotCameraBridgeFallbackTarget = nil
+    arg._riotCameraBridgeFallbackStartedAt = nil
     ragebotSafeDeactivateTargetState(arg)
     ragebotSafeClearReloadTransport(arg)
     arg._lastTargetWorld = nil
@@ -74629,13 +75918,17 @@ if not sameReset then
     end
 end
 
-
-
 if rawget(arg, "_knifeCameraLocked") ~= false then
     ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 end
 
-if resetController == nil then return end
+if resetController == nil then
+
+    if not keepRestoreTransaction then
+        pcall(ragebotRestoreRecentGroundPoseIfFallen, arg)
+    end
+    return
+end
 if not keepRestoreTransaction and rawget(arg, "_resetServerCFrameCleared") ~= true then
     local method
     pcall(function() method = resetController.SetServerCFrame end)
@@ -74645,6 +75938,10 @@ if not keepRestoreTransaction and rawget(arg, "_resetServerCFrameCleared") ~= tr
         local ok, result = pcall(method, resetController, nil)
         if ok and result ~= false then arg._resetServerCFrameCleared = true end
     end
+end
+
+if not keepRestoreTransaction then
+    pcall(ragebotRestoreRecentGroundPoseIfFallen, arg)
 end
 if rawget(arg, "_resetViewAnglesCleared") ~= true then
     local method
@@ -74666,8 +75963,7 @@ index2.Destroy = function(arg)
 
 pcall(function() arg:SetEnabled(false) end)
 pcall(function() arg:_Reset() end)
--- Destroy/Unload must use the same two-sample restore verifier as the live Update
--- path. A single synchronous read-back can only reflect the setter itself.
+
 if arg._repRootCounterRestorePending == true then
     arg._restoreOwnerAbandoned = true
     ragebotScheduleAbandonedRestoreRetry(arg)
@@ -75141,20 +76437,76 @@ local recordingByName = arg._recordingByName
 table.clear(recordingByName)
 table.clear(arg._recordingNamesByMap)
 
-for _, v120 in arg._store:List(), nil, nil do
-local v121 = arg._store:Load(v120)
+local invalidRecordCount = 0
+local listOk, listValue, state, control = pcall(function()
+return arg._store:List()
+end)
+if not listOk then
+warn("[MovementRecorder] Could not list saved recordings: " .. tostring(listValue))
+arg.Reloaded:Fire()
+return
+end
 
-if v121.Ok then
-local value = v121.Value
-value.Name = v120
-recordingByName[v120] = value
-table.insert(arg:_GetOrCreateNamesForMap(value.MapName), v120)
+local function loadOne(recordName)
+if type(recordName) ~= "string" or recordName == "" then
+invalidRecordCount = invalidRecordCount + 1
+return
+end
+
+local loadOk, result = pcall(function()
+return arg._store:Load(recordName)
+end)
+if not loadOk or type(result) ~= "table" or result.Ok ~= true or type(result.Value) ~= "table" then
+invalidRecordCount = invalidRecordCount + 1
+return
+end
+
+local value = result.Value
+local validRecording = type(value.MapName) == "string"
+    and value.MapName ~= ""
+    and typeof(value.StartCFrame) == "CFrame"
+    and typeof(value.DisplayPosition) == "Vector3"
+    and type(value.Keypoints) == "table"
+    and #value.Keypoints > 0
+    and type(value.Positions) == "table"
+if not validRecording then
+invalidRecordCount = invalidRecordCount + 1
+return
+end
+
+if type(value.LoadoutRequirementSet) ~= "table" then
+value.LoadoutRequirementSet = {}
+end
+value.Name = recordName
+recordingByName[recordName] = value
+local namesForMap = arg:_GetOrCreateNamesForMap(value.MapName)
+if not table.find(namesForMap, recordName) then
+ table.insert(namesForMap, recordName)
 end
 end
 
+local iterationOk, iterationError = pcall(function()
+if type(listValue) == "table" then
+for _, recordName in ipairs(listValue) do
+loadOne(recordName)
+end
+elseif type(listValue) == "function" then
+for _, recordName in listValue, state, control do
+loadOne(recordName)
+end
+else
+error("recording list returned unsupported type " .. type(listValue), 0)
+end
+end)
+
+if not iterationOk then
+warn("[MovementRecorder] Saved recording list stopped early: " .. tostring(iterationError))
+end
+if invalidRecordCount > 0 then
+warn("[MovementRecorder] Skipped " .. tostring(invalidRecordCount) .. " invalid saved recording(s)")
+end
 arg.Reloaded:Fire()
 end
-
 index2._GetOrCreateNamesForMap = function(arg, arg2)
 local tbl18 = arg._recordingNamesByMap[arg2]
 
@@ -75167,6 +76519,17 @@ return tbl18
 end
 
 index2.Save = function(arg, name, arg2)
+if type(name) ~= "string" or name:match("^%s*$") then
+return v117.err("RecordedMovements", "Save", "Recording name is empty or invalid")
+end
+if type(arg2) ~= "table"
+    or type(arg2.MapName) ~= "string" or arg2.MapName == ""
+    or typeof(arg2.StartCFrame) ~= "CFrame"
+    or typeof(arg2.DisplayPosition) ~= "Vector3"
+    or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0
+    or type(arg2.Positions) ~= "table" then
+return v117.err("RecordedMovements", "Save", "Recording data is invalid")
+end
 local v120 = arg._store:Save(name, arg2)
 if not v120.Ok then
 return v117.err("RecordedMovements", "Save", v120.Error.Detail)
@@ -75176,14 +76539,21 @@ local v121 = arg._recordingByName[name]
 if v121 == nil or v121.MapName ~= arg2.MapName then
 if v121 ~= nil then
 local v122 = arg._recordingNamesByMap[v121.MapName]
-table.remove(v122, table.find(v122, name))
-
+if type(v122) == "table" then
+local namePosition = table.find(v122, name)
+if namePosition ~= nil then
+ table.remove(v122, namePosition)
+end
 if #v122 == 0 then
 arg._recordingNamesByMap[v121.MapName] = nil
 end
 end
+end
 
-table.insert(arg:_GetOrCreateNamesForMap(arg2.MapName), name)
+local namesForMap = arg:_GetOrCreateNamesForMap(arg2.MapName)
+if not table.find(namesForMap, name) then
+ table.insert(namesForMap, name)
+end
 end
 
 arg2.Name = name
@@ -75241,7 +76611,10 @@ local v121 = arg._recordingByName[arg2]
 if v121 ~= nil then
 arg._recordingByName[arg2] = nil
 local v122 = arg:_GetOrCreateNamesForMap(v121.MapName)
-table.remove(v122, table.find(v122, arg2))
+local recordingPosition = table.find(v122, arg2)
+if recordingPosition ~= nil then
+ table.remove(v122, recordingPosition)
+end
 
 if #v122 == 0 then
 arg._recordingNamesByMap[v121.MapName] = nil
@@ -75308,12 +76681,40 @@ end
 index2.new = function(arg, arg2)
 local tbl18 = { _errorReporter = v115.new(), _restore = nil }
 setmetatable(tbl18, index2)
-tbl18._errorReporter:ReportResult(tbl18:_Install(arg, arg2))
+local installOk, installResult = pcall(function()
+return tbl18:_Install(arg, arg2)
+end)
+if installOk then
+pcall(function() tbl18._errorReporter:ReportResult(installResult) end)
+else
+tbl18._hookSkippedReason = "QuickAttack hook setup failed; input fallback will record quick attacks"
+end
 return tbl18
 end
 
 index2._Install = function(arg, arg2, arg3)
-for _, v119 in debug.getupvalues(arg2.QuickAttack) do
+local quickAttack = nil
+local quickAttackReadOk = pcall(function()
+quickAttack = arg2 ~= nil and arg2.QuickAttack or nil
+end)
+if not quickAttackReadOk or type(quickAttack) ~= "function" then
+arg._hookSkippedReason = "QuickAttack method is unavailable; input fallback will record quick attacks"
+return v116.VoidOk
+end
+
+local debugLibrary = debug
+if type(debugLibrary) ~= "table" or type(debugLibrary.getupvalues) ~= "function" then
+arg._hookSkippedReason = "getupvalues is unavailable; input fallback will record quick attacks"
+return v116.VoidOk
+end
+
+local okUpvalues, upvalues = pcall(debugLibrary.getupvalues, quickAttack)
+if not okUpvalues or type(upvalues) ~= "table" then
+arg._hookSkippedReason = "QuickAttack upvalues could not be read; input fallback will record quick attacks"
+return v116.VoidOk
+end
+
+for _, v119 in pairs(upvalues) do
 if type(v119) ~= "table" then
 continue
 end
@@ -75322,24 +76723,37 @@ for k, v120 in v119, nil, nil do
 if typeof(v120) ~= "Instance" or not v117(v120, v118) then
 continue
 end
-arg._restore = { Bundle = v119, Key = k, Original = v120 }
-v119[k] = fn36(arg3)
+local replacement = fn36(arg3)
+local writeOk = pcall(function() v119[k] = replacement end)
+local readOk, installedValue = pcall(function() return v119[k] end)
+if writeOk and readOk and installedValue == replacement then
+arg._restore = { Bundle = v119, Key = k, Original = v120, Replacement = replacement }
+return v116.VoidOk
+end
+pcall(function() v119[k] = v120 end)
+arg._hookSkippedReason = "ReplicatedStorage upvalue could not be safely replaced; input fallback will record quick attacks"
 return v116.VoidOk
 end
 end
 
-return v116.err("QuickAttackHook", "upvalue_scan", "Failed to find ReplicatedStorage upvalue")
+arg._hookSkippedReason = "ReplicatedStorage upvalue was not found; input fallback will record quick attacks"
+return v116.VoidOk
 end
 
 index2.Destroy = function(arg)
 local restore = arg._restore
+arg._restore = nil
 
 if restore ~= nil then
-arg._restore = nil
+pcall(function()
+local current = restore.Bundle[restore.Key]
+if current == restore.Replacement then
 restore.Bundle[restore.Key] = restore.Original
 end
+end)
+end
 
-arg._errorReporter:Destroy()
+pcall(function() arg._errorReporter:Destroy() end)
 end
 
 return index2
@@ -75409,6 +76823,9 @@ end
 end
 local displayWorldPosition = fn37()
 if displayWorldPosition == nil then
+if arg3 == nil or arg3.RootPart == nil then
+error("Movement Recorder requires a live RootPart", 0)
+end
 displayWorldPosition = arg3.RootPart.Position
 end
 local equipped = arg5:GetEquipped()
@@ -75439,9 +76856,7 @@ _startItemUsed = false,
 _lastCrouching = false,
 _lastSliding = false,
 _lastPositionSampleTime = 0,
--- Fix: _startTime phải được set ngay khi bắt đầu record, không phải lazily.
--- Nếu không set ở đây, _SamplePosition sẽ return early cho đến khi có input đầu tiên,
--- dẫn đến Positions array rỗng khi player đứng yên lúc bắt đầu replay.
+
 _startTime = os.clock(),
 _recording = {
 MapName = arg,
@@ -75456,14 +76871,40 @@ Positions = {},
 }
 
 setmetatable(tbl18, index2)
-
-tbl18._quickAttackHook = v116.new(arg4, function(arg7)
+local initializeOk, initializeError = pcall(function()
+local hookOk, quickAttackHook = pcall(function()
+return v116.new(arg4, function(arg7)
 tbl18:_Record({ Kind = "QuickAttack", AttackType = arg7 })
 end)
+end)
+tbl18._quickAttackHook = hookOk and quickAttackHook or nil
+local quickAttackHookInstalled = false
+if type(tbl18._quickAttackHook) == "table" then
+pcall(function()
+local restore = tbl18._quickAttackHook._restore
+quickAttackHookInstalled = type(restore) == "table"
+    and restore.Bundle ~= nil and restore.Key ~= nil
+    and restore.Bundle[restore.Key] == restore.Replacement
+end)
+end
 
 tbl18._jumpConnection = v118.InputBegan:Connect(function(input, gameProcessed)
-if not gameProcessed and v117(inputLibrary.InputIs, inputLibrary, input, "Jump") then
+if gameProcessed then
+return
+end
+if v117(inputLibrary.InputIs, inputLibrary, input, "Jump") then
 tbl18:_Record({ Kind = "Jump" })
+return
+end
+if not quickAttackHookInstalled then
+if v117(inputLibrary.InputIs, inputLibrary, input, "QuickMelee") then
+tbl18:_Record({ Kind = "QuickAttack", AttackType = "Melee" })
+return
+end
+if v117(inputLibrary.InputIs, inputLibrary, input, "QuickUtility") then
+tbl18:_Record({ Kind = "QuickAttack", AttackType = "Utility" })
+return
+end
 end
 end)
 
@@ -75472,6 +76913,11 @@ tbl18:_RecordItemInput(arg7)
 end)
 
 arg6:SetEnabled(true)
+end)
+if not initializeOk then
+pcall(function() tbl18:Destroy() end)
+error(initializeError, 0)
+end
 return tbl18
 end
 
@@ -75485,7 +76931,7 @@ arg:_SamplePosition()
 end
 
 index2._SamplePosition = function(arg)
--- Fix: không cần kiểm tra _startTime == nil vì đã được init trong constructor
+ 
 if arg._rootPart == nil or arg._rootPart.Parent == nil then
 return
 end
@@ -75541,7 +76987,6 @@ if true then
 return
 end
 
-
 end
 
 index2._SampleEquipped = function(arg)
@@ -75563,6 +77008,10 @@ end
 
 index2._RecordItemInput = function(arg, arg2)
 if arg2 == nil or type(arg2.ObjectId) ~= "string" or type(arg2.Type) ~= "string" or arg2.Type == "" then
+return
+end
+local inputTypeLower = string.lower(arg2.Type)
+if inputTypeLower == "quickmelee" or inputTypeLower == "quickutility" then
 return
 end
 if arg._itemBehaviors == nil then
@@ -75613,9 +77062,18 @@ return arg._recording
 end
 
 index2.Destroy = function(arg)
-arg._inputBinding:Destroy()
-arg._quickAttackHook:Destroy()
-arg._jumpConnection:Disconnect()
+local inputBinding = arg._inputBinding
+if inputBinding ~= nil then
+pcall(function() inputBinding:Destroy() end)
+end
+local quickAttackHook = arg._quickAttackHook
+if quickAttackHook ~= nil then
+pcall(function() quickAttackHook:Destroy() end)
+end
+local jumpConnection = arg._jumpConnection
+if jumpConnection ~= nil then
+pcall(function() jumpConnection:Disconnect() end)
+end
 end
 
 return index2
@@ -75775,15 +77233,18 @@ return nil
 end
 
 index2.new = function(arg, arg2, arg3, arg4, arg5, arg6, arg7)
-v115.claim("MovementRecorder.Replay", v86[91])
 local recording = type(arg5) == "table" and arg5 or {}
 local startEquippedIndex = recording.StartEquippedIndex
-
-if startEquippedIndex ~= nil then
-task.spawn(v119, arg2.EquipItem, arg2, startEquippedIndex)
+local startLookRotation = fn41(arg4, recording.Keypoints)
+local moveHook = v118.new()
+local claimOk, claimError = pcall(v115.claim, "MovementRecorder.Replay", v86[91])
+if not claimOk then
+pcall(function() moveHook:Destroy() end)
+pcall(v115.release, "MovementRecorder.Replay")
+error(claimError, 0)
 end
 
-return setmetatable({
+local replayer = setmetatable({
 _aliveState = arg,
 _clientFighter = arg2,
 _itemBehaviors = arg3,
@@ -75794,13 +77255,21 @@ _keypoints = recording.Keypoints,
 _positions = recording.Positions,
 _positionIndex = v86[63],
 _finishedCallback = arg7,
-_moveHook = v118.new(),
+_moveHook = moveHook,
 _isRoundActive = arg6,
-_startLookRotation = fn41(arg4, recording.Keypoints),
+_startLookRotation = startLookRotation,
 _lookRotation = nil,
 _state = { Kind = "Aligning", Elapsed = 0, StuckTime = 0, BestDistance = math.huge },
 _finished = false,
 }, index2)
+
+if startEquippedIndex ~= nil then
+local equipOk, equipMethod = pcall(function() return arg2.EquipItem end)
+if equipOk and type(equipMethod) == "function" then
+pcall(task.spawn, v119, equipMethod, arg2, startEquippedIndex)
+end
+end
+return replayer
 end
 
 index2._StepAlign = function(arg, arg2, arg3)
@@ -75810,7 +77279,6 @@ local flag19 = true
 if startLookRotation ~= nil and not v115.isBlockedFor("MovementRecorder.Replay", 0) then
 local v120 = v116.get()
 if v120 == nil or typeof(v120) ~= "Vector2" then
-
 
 flag19 = false
 else
@@ -75865,7 +77333,6 @@ local moveVector = fn36(vector.Unit)
 if typeof(moveVector) == "Vector3" then
 arg._moveHook:SetMoveVector(moveVector)
 else
-
 
 arg._moveHook:SetMoveVector(Vector3.zero)
 end
@@ -75962,7 +77429,19 @@ task.spawn(v119, arg._clientFighter.EquipItem, arg._clientFighter, action.Index)
 elseif action.Kind == "ItemInput" then
 task.spawn(v119, arg._clientFighter.Input, arg._clientFighter, action.InputType)
 elseif action.Kind == "QuickAttack" then
-task.spawn(v119, arg._clientFighter.QuickAttack, arg._clientFighter, action.AttackType)
+local clientFighter = arg._clientFighter
+local okMethods, quickAttack, quickAttackDown, quickAttackUp = pcall(function()
+return clientFighter.QuickAttack, clientFighter.QuickAttackDown, clientFighter.QuickAttackUp
+end)
+if okMethods and type(quickAttack) == "function" then
+task.spawn(v119, quickAttack, clientFighter, action.AttackType)
+elseif okMethods and type(quickAttackDown) == "function" and type(quickAttackUp) == "function" then
+task.spawn(function()
+local downOk = pcall(quickAttackDown, clientFighter, action.AttackType)
+if downOk then task.wait(0.05) end
+pcall(quickAttackUp, clientFighter, action.AttackType)
+end)
+end
 elseif action.Kind == "Jump" then
 if v102(mechanicsController, "IsSliding") == true then
 v119(mechanicsController.HighJump, mechanicsController)
@@ -75988,7 +77467,6 @@ local lookRotation = arg._lookRotation
 local currentRotation = v116.get()
 if currentRotation ~= nil then
 if v115.isBlockedFor("MovementRecorder.Replay", 0) then
-
 
 arg._lookRotation = currentRotation
 else
@@ -76042,9 +77520,23 @@ return (arg._mapAnchor:PointToWorldSpace(position) - rootPart.Position).Magnitud
 end
 
 index2.Destroy = function(arg)
-v115.release("MovementRecorder.Replay")
-arg._moveHook:Destroy()
-v119(mechanicsController.SetCrouching, mechanicsController, false)
+local releaseOk, releaseError = pcall(v115.release, "MovementRecorder.Replay")
+if not releaseOk then
+warn("[MovementRecorder] Camera claim release failed: " .. tostring(releaseError))
+end
+local moveHook = arg._moveHook
+arg._moveHook = nil
+if moveHook ~= nil then
+pcall(function() moveHook:SetMoveVector(Vector3.zero) end)
+local destroyOk, destroyError = pcall(function() moveHook:Destroy() end)
+if not destroyOk then
+warn("[MovementRecorder] Move hook cleanup failed: " .. tostring(destroyError))
+end
+end
+local crouchOk, crouchError = pcall(v119, mechanicsController.SetCrouching, mechanicsController, false)
+if not crouchOk then
+warn("[MovementRecorder] Crouch reset failed: " .. tostring(crouchError))
+end
 end
 
 return index2
@@ -76620,7 +78112,6 @@ end
 return
 end
 
-
 end
 
 index2._ForEachRoute = function(arg, arg2, arg3)
@@ -76735,6 +78226,30 @@ local function fn36(arg, arg2)
 if not v115.Data.Movement.MovementRecorder.HideNotifications then
 v117.get():Notify(arg, arg2)
 end
+end
+
+local function finiteRecorderNumber(value)
+return type(value) == "number" and value == value
+    and value ~= math.huge and value ~= -math.huge
+end
+
+local function finiteRecorderVector3(value)
+if typeof(value) ~= "Vector3"
+    or not finiteRecorderNumber(value.X)
+    or not finiteRecorderNumber(value.Y)
+    or not finiteRecorderNumber(value.Z) then
+    return false
+end
+return finiteRecorderNumber(value.Magnitude)
+end
+
+local function finiteRecorderCFrame(value)
+if typeof(value) ~= "CFrame" then return false end
+local components = { value:GetComponents() }
+for _, component in ipairs(components) do
+if not finiteRecorderNumber(component) then return false end
+end
+return true
 end
 
 local index2 = {}
@@ -76996,7 +78511,23 @@ local aliveState = arg._aliveState
 local localState = arg._duelers.LocalState
 local inner = arg._playerContext.Inner
 local anchor = arg._currentMap:GetAnchor()
-if aliveState == nil or aliveState.RootPart == nil or aliveState.RootPart.Parent == nil or localState == nil or inner == nil or anchor == nil then
+local rootPart = aliveState ~= nil and aliveState.RootPart or nil
+local contextValid = false
+pcall(function()
+contextValid = aliveState ~= nil
+    and aliveState.Alive ~= false
+    and rootPart ~= nil
+    and rootPart:IsA("BasePart")
+    and rootPart.Parent ~= nil
+    and rootPart:IsDescendantOf(workspace)
+    and localState ~= nil
+    and inner ~= nil
+    and inner.FighterState ~= nil
+    and inner.FighterState.Inner ~= nil
+    and inner.ItemBehaviors ~= nil
+    and typeof(anchor) == "CFrame"
+end)
+if not contextValid then
 fn36("You need to be alive and in a match")
 return nil
 end
@@ -77025,9 +78556,35 @@ end
 return false
 end
 
-local v124 = arg._inputHook:Reserve()
-local v125 = v119.new(mapName, v123.MapAnchor, v123.AliveState, v123.InnerContext.FighterState.Inner, v123.InnerContext.ItemBehaviors, v124)
+local reserveOk, v124 = pcall(function() return arg._inputHook:Reserve() end)
+if not reserveOk or v124 == nil then
+warn("[MovementRecorder] Recording input reservation failed: " .. tostring(v124))
+fn36("Could not start recording: input binding is unavailable")
+return false
+end
+local v125 = nil
+local createOk, createResult = pcall(function()
+local innerContext = v123.InnerContext
+local fighterState = innerContext and innerContext.FighterState or nil
+local fighterInner = fighterState and fighterState.Inner or nil
+local itemBehaviors = innerContext and innerContext.ItemBehaviors or nil
+if fighterInner == nil or itemBehaviors == nil then
+error("fighter input context is incomplete", 0)
+end
+v125 = v119.new(mapName, v123.MapAnchor, v123.AliveState, fighterInner, itemBehaviors, v124)
 v125:Update()
+return v125
+end)
+if not createOk or createResult == nil then
+warn("[MovementRecorder] Recording startup failed: " .. tostring(createResult))
+if v125 ~= nil then
+pcall(function() v125:Destroy() end)
+else
+pcall(function() v124:Destroy() end)
+end
+fn36("Could not start recording; check the character and input state")
+return false
+end
 arg._state = { Kind = "Recording", Recorder = v125 }
 fn36("Now recording")
 return v86[34]
@@ -77038,8 +78595,12 @@ local state = arg._state
 if state.Kind ~= "Recording" then
 return
 end
-state.Recorder:Destroy()
 arg._state = { Kind = "Idle" }
+local recorder = state.Recorder
+if recorder ~= nil then
+local destroyOk, destroyError = pcall(function() recorder:Destroy() end)
+if not destroyOk then warn("[MovementRecorder] Recording cleanup failed: " .. tostring(destroyError)) end
+end
 end
 
 index2._StopRecording = function(arg)
@@ -77047,31 +78608,24 @@ local state = arg._state
 if state.Kind ~= "Recording" then
 return
 end
-arg._lastRecording = state.Recorder:GetRecording()
+local getOk, recording = pcall(function()
+return state.Recorder:GetRecording()
+end)
 arg:_TeardownRecording()
+if getOk and type(recording) == "table" then
+arg._lastRecording = recording
 fn36("Recording stopped")
+else
+arg._lastRecording = nil
+fn36("Recording stopped, but the recording data could not be collected")
+warn("[MovementRecorder] Could not collect recording data: " .. tostring(recording))
+end
 end
 
 index2._StartReplaying = function(arg, arg2)
 local v123 = arg:_ResolveStartContext()
 if v123 == nil then
 return false
-end
-if type(arg2) ~= "table" or typeof(arg2.StartCFrame) ~= "CFrame" or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or type(arg2.Positions) ~= "table" then
-fn36("Recording data is invalid")
-return false
-end
-for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
-fn36("Recording data is invalid")
-return false
-end
-end
-for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or typeof(sample.Position) ~= "Vector3" then
-fn36("Recording data is invalid")
-return false
-end
 end
 local kind = arg._state.Kind
 
@@ -77088,7 +78642,7 @@ end
 if type(arg2) ~= "table"
 or type(arg2.MapName) ~= "string"
 or arg2.MapName == ""
-or typeof(arg2.StartCFrame) ~= "CFrame"
+or not finiteRecorderCFrame(arg2.StartCFrame)
 or type(arg2.Keypoints) ~= "table"
 or type(arg2.Positions) ~= "table"
 or #arg2.Keypoints == 0 then
@@ -77098,7 +78652,7 @@ end
 
 local lastKeypointOffset = -math.huge
 for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or keypoint.Offset < 0 or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
+if type(keypoint) ~= "table" or not finiteRecorderNumber(keypoint.Offset) or keypoint.Offset < 0 or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -77106,7 +78660,7 @@ lastKeypointOffset = keypoint.Offset
 local action = keypoint.Action
 local kind = action.Kind
 if kind == "Move" then
-if typeof(action.Direction) ~= "Vector3" then
+if not finiteRecorderVector3(action.Direction) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -77116,7 +78670,7 @@ fn36("Recording is invalid or incomplete")
 return false
 end
 elseif kind == "Look" then
-if typeof(action.CFrame) ~= "CFrame" then
+if not finiteRecorderCFrame(action.CFrame) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -77131,7 +78685,7 @@ fn36("Recording is invalid or incomplete")
 return false
 end
 elseif kind == "Equip" then
-if type(action.Index) ~= "number" then
+if not finiteRecorderNumber(action.Index) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -77143,7 +78697,7 @@ end
 
 local lastPositionOffset = -math.huge
 for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or sample.Offset ~= sample.Offset or sample.Offset < 0 or sample.Offset < lastPositionOffset or typeof(sample.Position) ~= "Vector3" then
+if type(sample) ~= "table" or not finiteRecorderNumber(sample.Offset) or sample.Offset < 0 or sample.Offset < lastPositionOffset or not finiteRecorderVector3(sample.Position) then
 fn36("Recording is invalid or incomplete")
 return false
 end
@@ -77151,18 +78705,41 @@ lastPositionOffset = sample.Offset
 end
 
 local waypoints = arg._waypoints
+local replayer = nil
+local createReplayOk, createReplayError = pcall(function()
+local innerContext = v123.InnerContext
+local fighterState = innerContext and innerContext.FighterState or nil
+local fighterInner = fighterState and fighterState.Inner or nil
+local itemBehaviors = innerContext and innerContext.ItemBehaviors or nil
+if fighterInner == nil or itemBehaviors == nil then
+error("fighter replay context is incomplete", 0)
+end
+replayer = v120.new(v123.AliveState, fighterInner, itemBehaviors, v123.MapAnchor, arg2, function()
+return arg:_IsRoundActive()
+end, function(arg3)
+arg:_FinishReplaying(arg3)
+end)
+end)
+if not createReplayOk or type(replayer) ~= "table" then
+warn("[MovementRecorder] Replay startup failed: " .. tostring(createReplayError))
+if replayer ~= nil then pcall(function() replayer:Destroy() end) end
+fn36("Could not start replay; check the character, camera, and movement controller")
+return false
+end
 
 if waypoints ~= nil then
-waypoints:SetActivatedRecording(arg2)
+local activateOk = pcall(function() waypoints:SetActivatedRecording(arg2) end)
+if not activateOk then
+pcall(function() replayer:Destroy() end)
+pcall(function() waypoints:SetActivatedRecording(nil) end)
+fn36("Could not activate the selected recording")
+return false
+end
 end
 
 arg._state = {
 Kind = "Replaying",
-Replayer = v120.new(v123.AliveState, v123.InnerContext.FighterState.Inner, v123.InnerContext.ItemBehaviors, v123.MapAnchor, arg2, function()
-return arg:_IsRoundActive()
-end, function(arg3)
-arg:_FinishReplaying(arg3)
-end),
+Replayer = replayer,
 }
 
 fn36("Now replaying")
@@ -77174,12 +78751,16 @@ local state = arg._state
 if state.Kind ~= "Replaying" then
 return
 end
-state.Replayer:Destroy()
 arg._state = { Kind = "Idle" }
+local replayer = state.Replayer
+if replayer ~= nil then
+local destroyOk, destroyError = pcall(function() replayer:Destroy() end)
+if not destroyOk then warn("[MovementRecorder] Replay cleanup failed: " .. tostring(destroyError)) end
+end
 local waypoints = arg._waypoints
-
 if waypoints ~= nil then
-waypoints:SetActivatedRecording(nil)
+local clearOk, clearError = pcall(function() waypoints:SetActivatedRecording(nil) end)
+if not clearOk then warn("[MovementRecorder] Could not clear selected recording marker: " .. tostring(clearError)) end
 end
 end
 
@@ -77761,13 +79342,7 @@ tbl17.hN = function() return nil end
 tbl17.hM = function() return nil end
 tbl17.jx = function() return nil end
 
-
 local LITHIUM_LOGO_B64 = "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"
-
-
-
-
-
 
 local GlobalTrove = tbl17.n()
 tbl17.w().ensureStorageDirectories("kiciarebuild/rivals")
@@ -77779,8 +79354,6 @@ tbl17.w().ensureStorageDirectories("kiciarebuild/cache")
 for _, sub in ipairs({ "cosmetics/states", "crosshair_textures", "esp_images", "movement_recorder" }) do
     tbl17.w().ensureStorageDirectories("kiciarebuild/rivals/" .. sub)
 end
-
-
 
 do
     local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -77808,7 +79381,6 @@ do
 
     end
 end
-
 
 tbl17.b().use({ Report = function(_, e)
     local detail = type(e) == "table" and (e.Detail or e.Operation) or e
@@ -77869,8 +79441,7 @@ end
 function K.Unload()
     if K.destroyed then return end
     K.destroyed = true
-    -- Keep any active restore gate in place while cleanup callbacks run; otherwise
-    -- Underground cleanup can replay a stale cached CFrame during unload.
+
     for _, f in ipairs(K.cleanups) do pcall(f) end
     pcall(function() GlobalTrove:Destroy() end)
     local restoreGate = ragebotPoseRestoreGateRead()
@@ -77880,8 +79451,7 @@ function K.Unload()
             and rawget(restoreGateOwner, "_repRootCounterRestorePending") == true
             and ragebotPoseRestoreGateIsActive()
         if ownerPending then
-            -- Do not release a gate whose restore is still unverified. Destroy's
-            -- bounded retry or the next controller instance must resolve it.
+
             pcall(function() restoreGateOwner._restoreOwnerAbandoned = true end)
         else
             ragebotPoseRestoreGateSet(restoreGateOwner, false, 0, nil)
@@ -77889,8 +79459,6 @@ function K.Unload()
     end
     if getgenv().KiciaRebuild == K then getgenv().KiciaRebuild = nil end
 end
-
-
 
 task.spawn(function()
 if K.destroyed then return end
@@ -77934,9 +79502,6 @@ pcall(K.Unload)
 return
 end
 
-
-
-
 print("[Crefy Premium] waiting for client to come alive ...")
 local _wt1 = os.clock()
 local _clientReady = false
@@ -77960,8 +79525,7 @@ end
 task.wait(1)
 end
 if K.destroyed then return end
--- Revalidate readiness after the wait rather than booting unconditionally when
--- the 45-second deadline expires. The UI/player may also have changed meanwhile.
+
 local _finalCharacter = _lp.Character
 local _finalPlayerGui = _lp:FindFirstChild("PlayerGui")
 local _finalSpawnedOk = _finalCharacter ~= nil
