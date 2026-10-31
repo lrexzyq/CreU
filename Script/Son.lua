@@ -513,21 +513,6 @@ tbl = {
 	"Japan",
 }
 
-local tbl2 = {
-	Background = Color3.fromRGB(17, 18, 23),
-	Panel = Color3.fromRGB(26, 27, 34),
-	PanelAlt = Color3.fromRGB(33, 34, 43),
-	Stroke = Color3.fromRGB(50, 51, 63),
-	TextPrimary = Color3.fromRGB(240, 240, 245),
-	TextDim = Color3.fromRGB(145, 146, 158),
-	Amber = Color3.fromRGB(240, 170, 60),
-	Teal = Color3.fromRGB(70, 200, 190),
-	Rose = Color3.fromRGB(225, 95, 110),
-	Lavender = Color3.fromRGB(150, 130, 235),
-	FarmOn = Color3.fromRGB(70, 200, 130),
-	FarmOff = Color3.fromRGB(200, 70, 80),
-}
-
 local flag3
 flag3 = true
 local HttpService
@@ -589,1399 +574,398 @@ getgenv().TimeFarmed = getgenv().TimeFarmed or 0
 getgenv().session_start = getgenv().session_start or os.time()
 getgenv().carriedKills = getgenv().carriedKills or 0
 getgenv().emotes = getgenv().emotes or 0
-local fn2
-
-fn2 = function(arg, arg2, arg3, arg4, arg5)
-	local tween = TweenService:Create(arg, TweenInfo.new(arg3, arg4 or Enum.EasingStyle.Quint, arg5 or Enum.EasingDirection.Out), arg2)
-	tween:Play()
-	return tween
-end
-
-local createUIGradient
-
-createUIGradient = function(parent, arg, arg2, rotation)
-	local uiGradient = Instance.new("UIGradient")
-	uiGradient.Color = ColorSequence.new(arg, arg2)
-	uiGradient.Rotation = rotation or 90
-	uiGradient.Parent = parent
-	return uiGradient
-end
-
-local fn3
-
-fn3 = function(arg, arg2)
-	Instance.new("UICorner", arg).CornerRadius = UDim.new(0, arg2 or 8)
-end
-
-local createUIStroke
-
-createUIStroke = function(parent, color, thickness, transparency)
-	local uiStroke = Instance.new("UIStroke")
-	uiStroke.Color = color or Color3.fromRGB(255, 255, 255)
-	uiStroke.Thickness = thickness or 1
-	uiStroke.Transparency = transparency or 0.85
-	uiStroke.Parent = parent
-	return uiStroke
-end
-
---[[ ####################################################################
-	PROJECT DADDY V2  -  DYNAMIC ISLAND UI
-	- Dynamic island ghim c dinh goc tren man hinh, bam vao se day config ra
-	- Config: Season / Kills / Emotes / Region / Hop / Render / Farm
-	- Khong drag (Active = false, Draggable = false)
-	#################################################################### ]]--
-
-local screenGui, island, panel, tbl3, doServerHop, fn4, textButton, textButton2
-local UIInputService = game:GetService("UserInputService")
-
 local tpState = {
-	selectedPlayer = nil,
-	targetName = "",
-	mode = "Behind",
-	behindOffset = 5,
-	verticalOffset = 5,
-	loop = false,
-	invisible = true,
-	applyLoop = nil,
-	applyInvisible = nil,
-	loopConnection = nil,
+    selectedPlayer = nil,
+    targetName = "",
+    mode = "Behind",
+    behindOffset = 5,
+    verticalOffset = 5,
+    loop = false,
+    invisible = true,
+    applyLoop = nil,
+    applyInvisible = nil,
+    loopConnection = nil,
+    generation = 0,
 }
 
-local COL = {
-	Base = Color3.fromRGB(9, 10, 14),
-	Body = Color3.fromRGB(16, 17, 23),
-	Card = Color3.fromRGB(23, 24, 32),
-	CardHi = Color3.fromRGB(35, 36, 47),
-	Line = Color3.fromRGB(58, 60, 74),
-	Text = Color3.fromRGB(242, 243, 248),
-	Dim = Color3.fromRGB(130, 132, 146),
-	Gold = Color3.fromRGB(255, 196, 84),
-	Blue = Color3.fromRGB(120, 200, 255),
-	Violet = Color3.fromRGB(178, 140, 255),
-	Green = Color3.fromRGB(60, 200, 126),
-	Red = Color3.fromRGB(212, 76, 88),
+local tbl3, doServerHop, fn4, requestWebhook, requestManualHop
+
+local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
+local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+Library.DebugCreateErrors = true
+Library.NotifyOnError = true
+Library.AutoSaveEnabled = true
+Library:SetNotifySide("Right")
+
+local camera = workspace.CurrentCamera
+local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+local initialScale = math.clamp(math.floor(math.min(viewport.X / 560, viewport.Y / 500) * 100), 60, 100)
+if Library.SetDPIScale then
+    Library:SetDPIScale(initialScale)
+end
+
+local Window = Library:CreateWindow({
+    Title = "ProjectDaddy | Farm TSB",
+    Minimizable = true,
+    MinimizeKeybind = Enum.KeyCode.RightBracket,
+    Center = true,
+    Size = UDim2.fromOffset(560, 500),
+    AutoShow = true,
+    Footer = {
+        "ProjectDaddy | ",
+        { Text = "--enjoy!", Copyable = true },
+        " | UserId: ",
+        { Text = tostring(LocalPlayer.UserId), Copyable = true },
+    },
+    CopyableFooter = true,
+})
+
+Window:SetAlwaysOnTop(true)
+
+local Tabs = {
+    Home = Window:AddTab({
+        Name = "Home",
+        Icon = "house",
+        Description = "Session statistics and status",
+    }),
+    Farm = Window:AddTab({
+        Name = "Farm",
+        Icon = "bot",
+        Description = "Farm controls and server settings",
+        SingleColumn = true,
+    }),
+    Teleport = Window:AddTab({
+        Name = "Teleport",
+        Icon = "move",
+        Description = "Target teleport and invisible controls",
+        SingleColumn = true,
+    }),
+    Settings = Window:AddTab({
+        Name = "Settings",
+        Icon = "settings",
+        Description = "Theme, config and interface settings",
+    }),
 }
 
-local ISLAND_W, ISLAND_H = 300, 38
-local PANEL_W, PANEL_H = 430, 724
-local PANEL_TOP = 64
-
-local anims = {}
-
-local function tw(target, props, time, style, dir)
-	local tween = TweenService:Create(target, TweenInfo.new(time, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), props)
-	table.insert(anims, tween)
-	tween:Play()
-	return tween
+local StatsBox = Tabs.Home:AddLeftGroupbox("Session Statistics", "activity")
+local function makeStat(text)
+    local label = StatsBox:AddLabel(text)
+    return setmetatable({}, {
+        __index = function(_, key)
+            if key == "Text" then
+                return label.TextLabel.Text
+            end
+            return label[key]
+        end,
+        __newindex = function(self, key, value)
+            if key == "Text" then
+                value = tostring(value)
+                if label.TextLabel.Text ~= value then
+                    label:SetText(value)
+                end
+            else
+                rawset(self, key, value)
+            end
+        end,
+    })
 end
 
-local function stopAnims()
-	for _, tween in ipairs(anims) do
-		tween:Cancel()
-	end
-	table.clear(anims)
+tbl3 = {
+    timer = makeStat("Season time: 00:00:00"),
+    kills = makeStat("Kills farmed: 0"),
+    emotes = makeStat("Emotes unlocked: 0"),
+    total = makeStat("Total kills: 0"),
+    kph = makeStat("Kills / hr: 0"),
+}
+
+local StatusBox = Tabs.Home:AddRightGroupbox("Status", "activity")
+local StatusLabel = StatusBox:AddLabel("Farm: ON")
+local TargetStatusLabel = StatusBox:AddLabel("Target: Not selected")
+StatusBox:AddButton({
+    Text = "Send Webhook Report",
+    Tooltip = "Sends the current session statistics to the configured webhook",
+    Func = function()
+        if requestWebhook then
+            requestWebhook()
+        else
+            Library:Notify("Webhook is not ready yet", 3)
+        end
+    end,
+})
+
+local FarmBox = Tabs.Farm:AddGroupbox({ Name = "Farm Controls", IconName = "bot" })
+FarmBox:AddToggle("FarmEnabled", {
+    Text = "Enable Farm",
+    Default = flag3,
+    Callback = function(value)
+        if fn4 then
+            fn4(value)
+        end
+    end,
+})
+
+FarmBox:AddDropdown("FarmRegion", {
+    Text = "Server Region",
+    Values = tbl,
+    Default = v.country or tbl[1],
+    Searchable = true,
+    Callback = function(value)
+        if type(value) == "string" and value ~= "" then
+            v.country = value
+            fn()
+        end
+    end,
+})
+
+doServerHop = getgenv().DoServerHop
+if doServerHop == nil then
+    doServerHop = true
+end
+getgenv().DoServerHop = doServerHop
+
+FarmBox:AddToggle("ServerHop", {
+    Text = "Automatic Server Hop",
+    Default = doServerHop,
+    Callback = function(value)
+        doServerHop = value
+        getgenv().DoServerHop = value
+    end,
+})
+
+local renderEnabled = getgenv().renderEnabled
+if renderEnabled == nil then
+    renderEnabled = true
 end
 
-local function collectTexts(root)
-	local out = {}
-	for _, d in ipairs(root:GetDescendants()) do
-		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-			out[#out + 1] = { gui = d, transparency = d.TextTransparency }
-		end
-	end
-	return out
+FarmBox:AddToggle("RenderEnabled", {
+    Text = "3D Rendering",
+    Default = renderEnabled,
+    Callback = function(value)
+        renderEnabled = value
+        getgenv().renderEnabled = value
+        pcall(function()
+            RunService:Set3dRenderingEnabled(value)
+        end)
+    end,
+})
+
+FarmBox:AddInput("WebhookUrl", {
+    Text = "Webhook URL",
+    Default = v.webhookUrl or "",
+    Placeholder = "Paste webhook URL",
+    Finished = true,
+    Callback = function(value)
+        v.webhookUrl = tostring(value or "")
+        fn()
+    end,
+})
+
+FarmBox:AddButton({
+    Text = "Manual Server Hop",
+    Tooltip = "Finds another compatible public server",
+    Func = function()
+        if requestManualHop then
+            requestManualHop()
+        else
+            Library:Notify("Server hop is not ready yet", 3)
+        end
+    end,
+})
+
+local TeleportBox = Tabs.Teleport:AddGroupbox({ Name = "Target Teleport", IconName = "move" })
+
+TeleportBox:AddToggle("InvisibleEnabled", {
+    Text = "Invisible",
+    Default = tpState.invisible,
+    Callback = function(value)
+        tpState.invisible = value
+        if tpState.applyInvisible then
+            tpState.applyInvisible(value)
+        end
+    end,
+})
+
+TeleportBox:AddDropdown("TargetPlayer", {
+    Text = "Target Player",
+    SpecialType = "Player",
+    AllowNull = true,
+    Searchable = true,
+    Callback = function(value)
+        local selectedPlayer
+        if type(value) == "string" then
+            selectedPlayer = Players:FindFirstChild(value)
+        end
+        if selectedPlayer and selectedPlayer:IsA("Player") and selectedPlayer ~= LocalPlayer then
+            tpState.selectedPlayer = selectedPlayer
+            tpState.targetName = selectedPlayer.Name
+            TargetStatusLabel:SetText("Target: " .. selectedPlayer.Name)
+        else
+            tpState.selectedPlayer = nil
+            tpState.targetName = ""
+            TargetStatusLabel:SetText("Target: Not selected")
+        end
+    end,
+})
+
+TeleportBox:AddInput("TargetPlayerName", {
+    Text = "Target Username / Display Name",
+    Default = tpState.targetName,
+    Placeholder = "Enter player name",
+    Finished = true,
+    Callback = function(value)
+        tpState.targetName = tostring(value or "")
+        if tpState.targetName == "" then
+            tpState.selectedPlayer = nil
+            TargetStatusLabel:SetText("Target: Not selected")
+        else
+            TargetStatusLabel:SetText("Target query: " .. tpState.targetName)
+        end
+    end,
+})
+
+TeleportBox:AddDropdown("TeleportMode", {
+    Text = "Teleport Mode",
+    Values = { "Behind", "Above", "Under" },
+    Default = tpState.mode,
+    Callback = function(value)
+        tpState.mode = value
+    end,
+})
+
+TeleportBox:AddSlider("BehindOffset", {
+    Text = "Behind Offset",
+    Default = tpState.behindOffset,
+    Min = -50,
+    Max = 50,
+    Rounding = 0,
+    Callback = function(value)
+        tpState.behindOffset = value
+    end,
+})
+
+TeleportBox:AddSlider("VerticalOffset", {
+    Text = "Above / Under Offset",
+    Default = tpState.verticalOffset,
+    Min = -50,
+    Max = 50,
+    Rounding = 0,
+    Callback = function(value)
+        tpState.verticalOffset = value
+    end,
+})
+
+TeleportBox:AddToggle("TeleportLoop", {
+    Text = "TP Loop",
+    Default = tpState.loop,
+    Callback = function(value)
+        tpState.loop = value
+        if tpState.applyLoop then
+            tpState.applyLoop(value)
+        end
+    end,
+})
+
+TeleportBox:AddLabel("TP LOOP takes priority over Farm movement while enabled.", true)
+
+local MenuBox = Tabs.Settings:AddLeftGroupbox("Menu", "wrench")
+MenuBox:AddToggle("NotifyOnError", {
+    Text = "Notify On Callback Error",
+    Default = Library.NotifyOnError == true,
+    Callback = function(value)
+        Library.NotifyOnError = value
+    end,
+})
+
+MenuBox:AddToggle("AlwaysOnTop", {
+    Text = "Always On Top",
+    Default = true,
+    Callback = function(value)
+        Window:SetAlwaysOnTop(value)
+    end,
+})
+
+MenuBox:AddLabel("Menu Bind"):AddKeyPicker("MenuKeybind", {
+    Default = "RightShift",
+    NoUI = true,
+    Text = "Menu Keybind",
+})
+
+MenuBox:AddButton({
+    Text = "Unload UI",
+    DoubleClick = true,
+    Func = function()
+        Library:Unload()
+    end,
+})
+
+local UtilityBox = Tabs.Settings:AddRightGroupbox("Interface", "sliders-horizontal")
+UtilityBox:AddSlider("DpiScale", {
+    Text = "DPI Scale",
+    Default = initialScale,
+    Min = 60,
+    Max = 100,
+    Rounding = 0,
+    Suffix = "%",
+    Callback = function(value)
+        if Library.SetDPIScale then
+            Library:SetDPIScale(value)
+        end
+    end,
+})
+
+UtilityBox:AddDropdown("NotificationSide", {
+    Text = "Notification Side",
+    Values = { "Left", "Right" },
+    Default = "Right",
+    Callback = function(value)
+        Library:SetNotifySide(value)
+    end,
+})
+
+Library.ToggleKeybind = Options.MenuKeybind
+
+ThemeManager:SetLibrary(Library)
+ThemeManager:SetFolder("CreU")
+ThemeManager:ApplyToTab(Tabs.Settings)
+
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+SaveManager:SetFolder("CreU/FarmTSB")
+SaveManager:SetSubFolder(tostring(game.PlaceId))
+SaveManager:BuildConfigSection(Tabs.Settings)
+pcall(function()
+    SaveManager:LoadAutoloadConfig()
+end)
+
+local watermark = Library:AddWatermark({
+    { Text = "ProjectDaddy", Accent = true },
+    { Icon = "user", Text = function() return LocalPlayer.Name end },
+    { Text = "--enjoy!", Accent = true },
+})
+if watermark then
+    watermark.RefreshRate = 2
 end
 
-local function makeSheen(parent)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(1, 1, 1))
-	g.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.5, 0.9),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	g.Rotation = 0
-	g.Offset = Vector2.new(-1, 0)
-	g.Parent = parent
-	return g
+fn4 = function(state)
+    flag3 = state == true
+    StatusLabel:SetText("Farm: " .. (flag3 and "ON" or "OFF"))
+    if Toggles.FarmEnabled and Toggles.FarmEnabled.Value ~= flag3 then
+        Toggles.FarmEnabled:SetValue(flag3)
+    end
 end
 
-local function runSheen(g, duration)
-	task.spawn(function()
-		local info = TweenInfo.new(duration or 3.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-		while g and g.Parent do
-			g.Offset = Vector2.new(-1, 0)
-			local tween = TweenService:Create(g, info, { Offset = Vector2.new(1, 0) })
-			tween:Play()
-			tween.Completed:Wait()
-		end
-	end)
+if Toggles.FarmEnabled then
+    fn4(Toggles.FarmEnabled.Value)
 end
 
-local function clockString()
-	local t = os.date("*t")
-	local h = t.hour % 12
-	if h == 0 then
-		h = 12
-	end
-	return string.format("%d:%02d %s", h, t.min, t.hour < 12 and "AM" or "PM")
-end
-
-screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ProjectDaddyV2UI"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = game.CoreGui
-
---====================================================== DYNAMIC ISLAND ==
-do
-	local halo = Instance.new("Frame")
-	halo.Name = "Halo"
-	halo.AnchorPoint = Vector2.new(0.5, 0.5)
-	halo.Size = UDim2.new(0, ISLAND_W + 54, 0, ISLAND_H + 40)
-	halo.Position = UDim2.new(0.5, 0, 0, 16 + ISLAND_H / 2)
-	halo.BackgroundColor3 = Color3.new(1, 1, 1)
-	halo.BackgroundTransparency = 0.965
-	halo.BorderSizePixel = 0
-	halo.ZIndex = 36
-	halo.Parent = screenGui
-	fn3(halo, 99)
-
-	local glow = Instance.new("Frame")
-	glow.Name = "Glow"
-	glow.AnchorPoint = Vector2.new(0.5, 0.5)
-	glow.Size = UDim2.new(0, ISLAND_W + 22, 0, ISLAND_H + 14)
-	glow.Position = UDim2.new(0.5, 0, 0, 16 + ISLAND_H / 2)
-	glow.BackgroundColor3 = Color3.new(1, 1, 1)
-	glow.BackgroundTransparency = 0.93
-	glow.BorderSizePixel = 0
-	glow.ZIndex = 37
-	glow.Parent = screenGui
-	fn3(glow, 99)
-
-	island = Instance.new("TextButton")
-	island.Name = "DynamicIsland"
-	island.AnchorPoint = Vector2.new(0.5, 0)
-	island.Size = UDim2.new(0, ISLAND_W, 0, ISLAND_H)
-	island.Position = UDim2.new(0.5, 0, 0, 16)
-	island.BackgroundColor3 = Color3.new(0, 0, 0)
-	island.BackgroundTransparency = 0.04
-	island.BorderSizePixel = 0
-	island.Text = ""
-	island.Font = Enum.Font.GothamBold
-	island.AutoButtonColor = false
-	island.Active = false
-	island.Draggable = false
-	island.Selectable = false
-	island.ZIndex = 40
-	island.Parent = screenGui
-	fn3(island, ISLAND_H / 2)
-	createUIStroke(island, Color3.new(1, 1, 1), 1, 0.78)
-	local islandSheen = makeSheen(island)
-
-	local dot = Instance.new("Frame")
-	dot.Name = "Live"
-	dot.AnchorPoint = Vector2.new(0.5, 0.5)
-	dot.Size = UDim2.fromOffset(8, 8)
-	dot.Position = UDim2.new(0, 20, 0.5, 0)
-	dot.BackgroundColor3 = Color3.new(1, 1, 1)
-	dot.BorderSizePixel = 0
-	dot.ZIndex = 42
-	dot.Parent = island
-	fn3(dot, 99)
-
-	local dotRing = Instance.new("Frame")
-	dotRing.Name = "LiveRing"
-	dotRing.AnchorPoint = Vector2.new(0.5, 0.5)
-	dotRing.Size = UDim2.fromOffset(11, 11)
-	dotRing.Position = UDim2.new(0, 20, 0.5, 0)
-	dotRing.BackgroundColor3 = Color3.new(1, 1, 1)
-	dotRing.BackgroundTransparency = 0.5
-	dotRing.BorderSizePixel = 0
-	dotRing.ZIndex = 41
-	dotRing.Parent = island
-	fn3(dotRing, 99)
-
-	local title = Instance.new("TextLabel")
-	title.Name = "Title"
-	title.Size = UDim2.new(0, 150, 1, 0)
-	title.Position = UDim2.new(0, 32, 0, 0)
-	title.BackgroundTransparency = 1
-	title.Text = "Project Daddy V3"
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 13
-	title.TextColor3 = Color3.new(1, 1, 1)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.ZIndex = 43
-	title.Parent = island
-
-	local sep = Instance.new("TextLabel")
-	sep.Name = "Sep"
-	sep.Size = UDim2.new(0, 14, 1, 0)
-	sep.Position = UDim2.new(0, 186, 0, 0)
-	sep.BackgroundTransparency = 1
-	sep.Text = "|"
-	sep.Font = Enum.Font.GothamBold
-	sep.TextSize = 11
-	sep.TextColor3 = Color3.fromRGB(150, 150, 150)
-	sep.TextTransparency = 0.35
-	sep.ZIndex = 43
-	sep.Parent = island
-
-	local clock = Instance.new("TextLabel")
-	clock.Name = "Clock"
-	clock.Size = UDim2.new(0, 70, 1, 0)
-	clock.Position = UDim2.new(0, 202, 0, 0)
-	clock.BackgroundTransparency = 1
-	clock.Text = clockString()
-	clock.Font = Enum.Font.GothamMedium
-	clock.TextSize = 12
-	clock.TextColor3 = Color3.fromRGB(205, 205, 205)
-	clock.TextXAlignment = Enum.TextXAlignment.Left
-	clock.ZIndex = 43
-	clock.Parent = island
-
-	local arrow = Instance.new("TextLabel")
-	arrow.Name = "Arrow"
-	arrow.Size = UDim2.new(0, 20, 1, 0)
-	arrow.Position = UDim2.new(1, -28, 0, 0)
-	arrow.BackgroundTransparency = 1
-	arrow.Text = "\226\150\190"
-	arrow.Font = Enum.Font.GothamBold
-	arrow.TextSize = 11
-	arrow.TextColor3 = Color3.fromRGB(170, 170, 170)
-	arrow.ZIndex = 43
-	arrow.Parent = island
-
-	task.spawn(function()
-		while true do
-			task.wait(1)
-			clock.Text = clockString()
-		end
-	end)
-
-	task.spawn(function()
-		while true do
-			dotRing.Size = UDim2.fromOffset(11, 11)
-			dotRing.BackgroundTransparency = 0.5
-			TweenService:Create(dotRing, TweenInfo.new(1.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-				Size = UDim2.fromOffset(24, 24),
-				BackgroundTransparency = 1,
-			}):Play()
-			task.wait(1.15)
-		end
-	end)
-
-	task.spawn(function()
-		local info = TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-
-		while true do
-			TweenService:Create(glow, info, { BackgroundTransparency = 0.88 }):Play()
-			task.wait(1.5)
-			TweenService:Create(halo, info, { BackgroundTransparency = 0.93 }):Play()
-			task.wait(1.5)
-			TweenService:Create(glow, info, { BackgroundTransparency = 0.96 }):Play()
-			task.wait(1.5)
-			TweenService:Create(halo, info, { BackgroundTransparency = 0.975 }):Play()
-			task.wait(1.5)
-		end
-	end)
-
-	runSheen(islandSheen, 3.2)
-
-	--====================================================== CONFIG PANEL ==
-	local blur = Instance.new("Frame")
-	blur.Name = "PanelBlur"
-	blur.AnchorPoint = Vector2.new(0.5, 0)
-	blur.Size = UDim2.new(0, PANEL_W + 52, 0, PANEL_H + 52)
-	blur.Position = UDim2.new(0.5, 0, 0, PANEL_TOP - 26)
-	blur.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	blur.BackgroundTransparency = 1
-	blur.BorderSizePixel = 0
-	blur.ZIndex = 44
-	blur.Visible = false
-	blur.Parent = screenGui
-	fn3(blur, 46)
-
-	local shadow = Instance.new("Frame")
-	shadow.Name = "PanelShadow"
-	shadow.AnchorPoint = Vector2.new(0.5, 0)
-	shadow.Size = UDim2.new(0, PANEL_W + 16, 0, PANEL_H + 16)
-	shadow.Position = UDim2.new(0.5, 0, 0, PANEL_TOP - 8)
-	shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	shadow.BackgroundTransparency = 1
-	shadow.BorderSizePixel = 0
-	shadow.ZIndex = 45
-	shadow.Visible = false
-	shadow.Parent = screenGui
-	fn3(shadow, 30)
-
-	panel = Instance.new("Frame")
-	panel.Name = "ConfigPanel"
-	panel.AnchorPoint = Vector2.new(0.5, 0)
-	panel.Size = UDim2.new(0, PANEL_W, 0, PANEL_H)
-	panel.Position = UDim2.new(0.5, 0, 0, PANEL_TOP)
-	panel.BackgroundColor3 = COL.Body
-	panel.BackgroundTransparency = 0.05
-	panel.BorderSizePixel = 0
-	panel.Active = false
-	panel.Draggable = false
-	panel.ClipsDescendants = true
-	panel.Visible = false
-	panel.ZIndex = 50
-	panel.Parent = screenGui
-	fn3(panel, 22)
-	createUIStroke(panel, COL.Line, 1, 0.25)
-	runSheen(makeSheen(panel), 4.4)
-
-	local panelScale = Instance.new("UIScale")
-	panelScale.Parent = panel
-
-	local viewScale = 1
-
-	local function refreshScale()
-		local cam = workspace.CurrentCamera
-		if not cam then
-			return
-		end
-		local vp = cam.ViewportSize
-		viewScale = math.min(math.max(math.min(vp.X / 500, (vp.Y - PANEL_TOP - 20) / PANEL_H), 0.45), 1)
-		panelScale.Scale = viewScale
-	end
-
-	-- header
-	local header = Instance.new("Frame")
-	header.Size = UDim2.new(1, 0, 0, 46)
-	header.BackgroundTransparency = 1
-	header.BorderSizePixel = 0
-	header.ZIndex = 51
-	header.Parent = panel
-
-	local headerTitle = Instance.new("TextLabel")
-	headerTitle.Size = UDim2.new(1, -40, 0, 22)
-	headerTitle.Position = UDim2.new(0, 20, 0, 8)
-	headerTitle.BackgroundTransparency = 1
-	headerTitle.Text = "PROJECT DADDY V3"
-	headerTitle.Font = Enum.Font.GothamBold
-	headerTitle.TextSize = 19
-	headerTitle.TextColor3 = COL.Text
-	headerTitle.TextXAlignment = Enum.TextXAlignment.Left
-	headerTitle.ZIndex = 52
-	headerTitle.Parent = header
-	createUIGradient(headerTitle, COL.Gold, Color3.fromRGB(255, 246, 230), 0)
-
-	local headerSub = Instance.new("TextLabel")
-	headerSub.Size = UDim2.new(1, -40, 0, 13)
-	headerSub.Position = UDim2.new(0, 20, 0, 28)
-	headerSub.BackgroundTransparency = 1
-	headerSub.Text = "PUBLIC FARM  \226\128\162  SEASON CONFIG"
-	headerSub.Font = Enum.Font.GothamMedium
-	headerSub.TextSize = 9
-	headerSub.TextColor3 = COL.Dim
-	headerSub.TextXAlignment = Enum.TextXAlignment.Left
-	headerSub.ZIndex = 52
-	headerSub.Parent = header
-
-	local highlight = Instance.new("Frame")
-	highlight.Size = UDim2.new(1, -44, 0, 1)
-	highlight.Position = UDim2.new(0, 22, 0, 3)
-	highlight.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	highlight.BackgroundTransparency = 0.88
-	highlight.BorderSizePixel = 0
-	highlight.ZIndex = 51
-	highlight.Parent = panel
-
-	local divider = Instance.new("Frame")
-	divider.Size = UDim2.new(1, -40, 0, 1)
-	divider.Position = UDim2.new(0, 20, 0, 52)
-	divider.BackgroundColor3 = COL.Line
-	divider.BackgroundTransparency = 0.5
-	divider.BorderSizePixel = 0
-	divider.ZIndex = 51
-	divider.Parent = panel
-
-	-- stats: season / kills / emotes
-	tbl3 = {}
-	do
-		local cards = {
-			{ id = "timer", label = "SEASON", accent = COL.Gold, text = "00:00:00", size = 19 },
-			{ id = "kills", label = "KILLS", accent = COL.Blue, text = "0", size = 22 },
-			{ id = "emotes", label = "EMOTES", accent = COL.Violet, text = "0", size = 22 },
-		}
-
-		for i, st in ipairs(cards) do
-			local card = Instance.new("Frame")
-			card.Size = UDim2.new(0, 123, 0, 74)
-			card.Position = UDim2.new(0, 20 + (i - 1) * 133, 0, 64)
-			card.BackgroundColor3 = COL.Card
-			card.BackgroundTransparency = 0.12
-			card.BorderSizePixel = 0
-			card.ZIndex = 51
-			card.Parent = panel
-			fn3(card, 14)
-			createUIStroke(card, COL.Line, 1, 0.6)
-
-			local bar = Instance.new("Frame")
-			bar.Size = UDim2.new(0, 24, 0, 3)
-			bar.Position = UDim2.new(0, 12, 0, 0)
-			bar.BackgroundColor3 = st.accent
-			bar.BorderSizePixel = 0
-			bar.ZIndex = 52
-			bar.Parent = card
-			fn3(bar, 3)
-
-			local lab = Instance.new("TextLabel")
-			lab.Size = UDim2.new(1, -20, 0, 12)
-			lab.Position = UDim2.new(0, 12, 0, 15)
-			lab.BackgroundTransparency = 1
-			lab.Text = st.label
-			lab.Font = Enum.Font.GothamMedium
-			lab.TextSize = 9
-			lab.TextColor3 = COL.Dim
-			lab.TextXAlignment = Enum.TextXAlignment.Left
-			lab.ZIndex = 52
-			lab.Parent = card
-
-			local val = Instance.new("TextLabel")
-			val.Size = UDim2.new(1, -16, 0, 28)
-			val.Position = UDim2.new(0, 12, 0, 33)
-			val.BackgroundTransparency = 1
-			val.Text = st.text
-			val.Font = Enum.Font.GothamBold
-			val.TextSize = st.size
-			val.TextColor3 = COL.Text
-			val.TextXAlignment = Enum.TextXAlignment.Left
-			val.ZIndex = 52
-			val.Parent = card
-			tbl3[st.id] = val
-		end
-
-		tbl3.kph = Instance.new("TextLabel")
-		tbl3.total = Instance.new("TextLabel")
-	end
-
-	-- region
-	local regionLabel = Instance.new("TextLabel")
-	regionLabel.Size = UDim2.new(1, -40, 0, 12)
-	regionLabel.Position = UDim2.new(0, 20, 0, 150)
-	regionLabel.BackgroundTransparency = 1
-	regionLabel.Text = "REGION"
-	regionLabel.Font = Enum.Font.GothamBold
-	regionLabel.TextSize = 9
-	regionLabel.TextColor3 = COL.Dim
-	regionLabel.TextXAlignment = Enum.TextXAlignment.Left
-	regionLabel.ZIndex = 52
-	regionLabel.Parent = panel
-
-	local regionButton = Instance.new("TextButton")
-	regionButton.Name = "RegionButton"
-	regionButton.Size = UDim2.new(1, -40, 0, 32)
-	regionButton.Position = UDim2.new(0, 20, 0, 164)
-	regionButton.BackgroundColor3 = COL.Card
-	regionButton.BackgroundTransparency = 0.1
-	regionButton.BorderSizePixel = 0
-	regionButton.Text = ""
-	regionButton.AutoButtonColor = false
-	regionButton.Active = false
-	regionButton.ZIndex = 52
-	regionButton.Parent = panel
-	fn3(regionButton, 10)
-	createUIStroke(regionButton, COL.Line, 1, 0.5)
-
-	local regionText = Instance.new("TextLabel")
-	regionText.Size = UDim2.new(1, -48, 1, 0)
-	regionText.Position = UDim2.new(0, 13, 0, 0)
-	regionText.BackgroundTransparency = 1
-	regionText.Text = v.country or tbl[1]
-	regionText.Font = Enum.Font.GothamMedium
-	regionText.TextSize = 12
-	regionText.TextColor3 = COL.Text
-	regionText.TextXAlignment = Enum.TextXAlignment.Left
-	regionText.ZIndex = 53
-	regionText.Parent = regionButton
-
-	local regionChevron = Instance.new("TextLabel")
-	regionChevron.Size = UDim2.new(0, 24, 1, 0)
-	regionChevron.Position = UDim2.new(1, -30, 0, 0)
-	regionChevron.BackgroundTransparency = 1
-	regionChevron.Text = "\226\150\190"
-	regionChevron.Font = Enum.Font.GothamBold
-	regionChevron.TextSize = 12
-	regionChevron.TextColor3 = COL.Dim
-	regionChevron.ZIndex = 53
-	regionChevron.Parent = regionButton
-
-	local regionList = Instance.new("Frame")
-	regionList.Name = "RegionList"
-	regionList.Size = UDim2.new(1, -40, 0, 0)
-	regionList.Position = UDim2.new(0, 20, 0, 202)
-	regionList.BackgroundColor3 = COL.Card
-	regionList.BackgroundTransparency = 0.04
-	regionList.BorderSizePixel = 0
-	regionList.ClipsDescendants = true
-	regionList.Visible = false
-	regionList.ZIndex = 70
-	regionList.Parent = panel
-	fn3(regionList, 10)
-	createUIStroke(regionList, COL.Line, 1, 0.4)
-
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Padding = UDim.new(0, 2)
-	listLayout.Parent = regionList
-
-	local listItems = {}
-	local regionOpen = false
-
-	for i, country in ipairs(tbl) do
-		local item = Instance.new("TextButton")
-		item.Name = country
-		item.LayoutOrder = i
-		item.Size = UDim2.new(1, 0, 0, 28)
-		item.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		item.BackgroundTransparency = 0.965
-		item.BorderSizePixel = 0
-		item.Text = country
-		item.Font = Enum.Font.GothamMedium
-		item.TextSize = 12
-		item.TextColor3 = COL.Text
-		item.TextXAlignment = Enum.TextXAlignment.Left
-		item.AutoButtonColor = false
-		item.Active = false
-		item.ZIndex = 71
-		item.Parent = regionList
-
-		local itemPad = Instance.new("UIPadding")
-		itemPad.PaddingLeft = UDim.new(0, 12)
-		itemPad.PaddingRight = UDim.new(0, 8)
-		itemPad.Parent = item
-
-		listItems[#listItems + 1] = item
-
-		item.MouseEnter:Connect(function()
-			tw(item, { BackgroundTransparency = 0.9 }, 0.12)
-		end)
-
-		item.MouseLeave:Connect(function()
-			tw(item, { BackgroundTransparency = 0.965 }, 0.12)
-		end)
-
-		item.MouseButton1Click:Connect(function()
-			v.country = country
-			regionText.Text = country
-			regionOpen = false
-			tw(regionChevron, { Rotation = 0 }, 0.22)
-			regionList.Visible = false
-			regionList.Size = UDim2.new(1, -40, 0, 0)
-			tw(regionText, { TextColor3 = COL.Gold }, 0.25)
-
-			task.delay(0.6, function()
-				regionText.TextColor3 = COL.Text
-			end)
-
-			fn()
-		end)
-	end
-
-	local function setRegion(state)
-		regionOpen = state
-		regionList.Visible = true
-		tw(regionChevron, { Rotation = state and 180 or 0 }, 0.22)
-
-		if not state then
-			for i, item in ipairs(listItems) do
-				item.TextTransparency = 1
-			end
-
-			regionList.Size = UDim2.new(1, -40, 0, 0)
-			tw(regionList, { Size = UDim2.new(1, -40, 0, 0) }, 0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-
-			task.delay(0.22, function()
-				if not regionOpen then
-					regionList.Visible = false
-				end
-			end)
-
-			return
-		end
-
-		local rows = math.min(#tbl, 5)
-		regionList.Size = UDim2.new(1, -40, 0, 0)
-
-		for i, item in ipairs(listItems) do
-			item.TextTransparency = 1
-		end
-
-		tw(regionList, { Size = UDim2.new(1, -40, 0, rows * 28 + 8) }, 0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-		for i, item in ipairs(listItems) do
-			task.spawn(function()
-				task.wait(0.03 + i * 0.022)
-				tw(item, { TextTransparency = 0 }, 0.22)
-			end)
-		end
-	end
-
-	regionButton.MouseButton1Click:Connect(function()
-		setRegion(not regionOpen)
-	end)
-
-	regionButton.MouseEnter:Connect(function()
-		tw(regionButton, { BackgroundTransparency = 0.04 }, 0.15)
-	end)
-
-	regionButton.MouseLeave:Connect(function()
-		tw(regionButton, { BackgroundTransparency = 0.1 }, 0.15)
-	end)
-
-	-- switches
-	local function makeSwitch(yPos, titleText, subText, initOn, onChange)
-		local row = Instance.new("TextButton")
-		row.Name = "Switch_" .. titleText
-		row.Size = UDim2.new(1, -40, 0, 40)
-		row.Position = UDim2.new(0, 20, 0, yPos)
-		row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		row.BackgroundTransparency = 0.968
-		row.BorderSizePixel = 0
-		row.Text = ""
-		row.Font = Enum.Font.GothamBold
-		row.AutoButtonColor = false
-		row.Active = false
-		row.ZIndex = 52
-		row.Parent = panel
-		fn3(row, 12)
-
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, -76, 0, 14)
-		lbl.Position = UDim2.new(0, 12, 0, 5)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = titleText
-		lbl.Font = Enum.Font.GothamBold
-		lbl.TextSize = 11
-		lbl.TextColor3 = COL.Text
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.ZIndex = 53
-		lbl.Parent = row
-
-		local sub = Instance.new("TextLabel")
-		sub.Size = UDim2.new(1, -76, 0, 12)
-		sub.Position = UDim2.new(0, 12, 0, 22)
-		sub.BackgroundTransparency = 1
-		sub.Text = subText
-		sub.Font = Enum.Font.Gotham
-		sub.TextSize = 8
-		sub.TextColor3 = COL.Dim
-		sub.TextXAlignment = Enum.TextXAlignment.Left
-		sub.ZIndex = 53
-		sub.Parent = row
-
-		local haloTrack = Instance.new("Frame")
-		haloTrack.AnchorPoint = Vector2.new(1, 0.5)
-		haloTrack.Size = UDim2.fromOffset(56, 30)
-		haloTrack.Position = UDim2.new(1, -14, 0.5, 0)
-		haloTrack.BackgroundColor3 = COL.Green
-		haloTrack.BackgroundTransparency = 0.9
-		haloTrack.BorderSizePixel = 0
-		haloTrack.ZIndex = 52
-		haloTrack.Parent = row
-		fn3(haloTrack, 99)
-
-		local track = Instance.new("Frame")
-		track.AnchorPoint = Vector2.new(1, 0.5)
-		track.Size = UDim2.fromOffset(46, 24)
-		track.Position = UDim2.new(1, -20, 0.5, 0)
-		track.BackgroundColor3 = COL.CardHi
-		track.BorderSizePixel = 0
-		track.ZIndex = 53
-		track.Parent = row
-		fn3(track, 99)
-
-		local knob = Instance.new("Frame")
-		knob.Size = UDim2.fromOffset(18, 18)
-		knob.Position = UDim2.new(0, 3, 0, 3)
-		knob.BackgroundColor3 = Color3.fromRGB(240, 241, 246)
-		knob.BorderSizePixel = 0
-		knob.ZIndex = 54
-		knob.Parent = track
-		fn3(knob, 99)
-
-		local state = initOn and true or false
-
-		local function apply(time)
-			local d = time or 0.2
-
-			if state then
-				tw(track, { BackgroundColor3 = COL.Green }, d)
-				tw(haloTrack, { BackgroundColor3 = COL.Green, BackgroundTransparency = 0.6 }, d)
-				tw(knob, { Position = UDim2.new(0, 25, 0, 3) }, d, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			else
-				tw(track, { BackgroundColor3 = COL.CardHi }, d)
-				tw(haloTrack, { BackgroundColor3 = COL.CardHi, BackgroundTransparency = 0.92 }, d)
-				tw(knob, { Position = UDim2.new(0, 3, 0, 3) }, d, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			end
-		end
-
-		row.MouseButton1Click:Connect(function()
-			state = not state
-			apply(0.2)
-			onChange(state)
-		end)
-
-		row.MouseEnter:Connect(function()
-			tw(row, { BackgroundTransparency = 0.945 }, 0.15)
-		end)
-
-		row.MouseLeave:Connect(function()
-			tw(row, { BackgroundTransparency = 0.968 }, 0.15)
-		end)
-
-		apply(0)
-
-		return function(value)
-			state = value and true or false
-			apply(0.2)
-		end
-	end
-
-	-- server hop
-	doServerHop = getgenv().DoServerHop
-
-	if doServerHop == nil then
-		doServerHop = true
-	end
-
-	getgenv().DoServerHop = doServerHop
-
-	local setHop = makeSwitch(208, "SERVER HOP", "Auto hop when the server is bad", doServerHop, function(value)
-		doServerHop = value
-		getgenv().DoServerHop = value
-	end)
-
-	-- render (on by default)
-	local renderEnabled = getgenv().renderEnabled
-
-	if renderEnabled == nil then
-		renderEnabled = true
-	end
-
-	local function applyRender(value)
-		getgenv().renderEnabled = value
-		pcall(function()
-			RunService:Set3dRenderingEnabled(value)
-		end)
-	end
-
-	local setRender = makeSwitch(254, "RENDER", "3D rendering of the world", renderEnabled, function(value)
-		applyRender(value)
-	end)
-
-	applyRender(renderEnabled)
-
-	-- farm
-	local setFarm
-
-	fn4 = function(state)
-		flag3 = state
-
-		if setFarm then
-			setFarm(state)
-		end
-
-		if state then
-			tw(dot, { BackgroundColor3 = Color3.new(1, 1, 1) }, 0.25)
-			tw(dotRing, { BackgroundColor3 = Color3.new(1, 1, 1) }, 0.25)
-		else
-			tw(dot, { BackgroundColor3 = Color3.fromRGB(90, 90, 90) }, 0.25)
-			tw(dotRing, { BackgroundColor3 = Color3.fromRGB(90, 90, 90) }, 0.25)
-		end
-	end
-
-	setFarm = makeSwitch(300, "FARM", "Start or stop the public farm", flag3, function(value)
-		fn4(value)
-	end)
-
-	fn4(flag3)
-
-	local tpSection = Instance.new("TextLabel")
-	tpSection.Name = "TeleportSection"
-	tpSection.Size = UDim2.new(1, -40, 0, 14)
-	tpSection.Position = UDim2.new(0, 20, 0, 370)
-	tpSection.BackgroundTransparency = 1
-	tpSection.Text = "TARGET TELEPORT"
-	tpSection.Font = Enum.Font.GothamBold
-	tpSection.TextSize = 9
-	tpSection.TextColor3 = COL.Gold
-	tpSection.TextXAlignment = Enum.TextXAlignment.Left
-	tpSection.ZIndex = 52
-	tpSection.Parent = panel
-
-	makeSwitch(388, "INVISIBLE", "Toggle the existing invisible effect", tpState.invisible, function(value)
-		tpState.invisible = value
-		if tpState.applyInvisible then
-			tpState.applyInvisible(value)
-		end
-	end)
-
-	local targetNameLabel = Instance.new("TextLabel")
-	targetNameLabel.Size = UDim2.new(1, -40, 0, 12)
-	targetNameLabel.Position = UDim2.new(0, 20, 0, 431)
-	targetNameLabel.BackgroundTransparency = 1
-	targetNameLabel.Text = "PLAYER NAME"
-	targetNameLabel.Font = Enum.Font.GothamBold
-	targetNameLabel.TextSize = 9
-	targetNameLabel.TextColor3 = COL.Dim
-	targetNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	targetNameLabel.ZIndex = 52
-	targetNameLabel.Parent = panel
-
-	local targetNameBox = Instance.new("TextBox")
-	targetNameBox.Name = "TargetPlayerName"
-	targetNameBox.Size = UDim2.new(1, -40, 0, 30)
-	targetNameBox.Position = UDim2.new(0, 20, 0, 445)
-	targetNameBox.BackgroundColor3 = COL.Card
-	targetNameBox.BackgroundTransparency = 0.08
-	targetNameBox.BorderSizePixel = 0
-	targetNameBox.ClearTextOnFocus = false
-	targetNameBox.PlaceholderText = "Enter player username or display name"
-	targetNameBox.PlaceholderColor3 = COL.Dim
-	targetNameBox.Text = tpState.targetName
-	targetNameBox.TextColor3 = COL.Text
-	targetNameBox.Font = Enum.Font.GothamMedium
-	targetNameBox.TextSize = 11
-	targetNameBox.TextXAlignment = Enum.TextXAlignment.Left
-	targetNameBox.ZIndex = 53
-	targetNameBox.Parent = panel
-	fn3(targetNameBox, 9)
-	createUIStroke(targetNameBox, COL.Line, 1, 0.5)
-	local targetNamePadding = Instance.new("UIPadding")
-	targetNamePadding.PaddingLeft = UDim.new(0, 11)
-	targetNamePadding.PaddingRight = UDim.new(0, 8)
-	targetNamePadding.Parent = targetNameBox
-
-	local function findPlayerByName(query)
-		query = tostring(query or ""):match("^%s*(.-)%s*$")
-		if query == "" then
-			return nil
-		end
-		local lowered = query:lower()
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer and player.Name:lower() == lowered then
-				return player
-			end
-		end
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer and player.DisplayName:lower() == lowered then
-				return player
-			end
-		end
-		return nil
-	end
-
-	local selectedPlayerButton = Instance.new("TextButton")
-	selectedPlayerButton.Name = "TargetPlayerDropdown"
-	selectedPlayerButton.Size = UDim2.new(1, -40, 0, 32)
-	selectedPlayerButton.Position = UDim2.new(0, 20, 0, 484)
-	selectedPlayerButton.BackgroundColor3 = COL.Card
-	selectedPlayerButton.BackgroundTransparency = 0.08
-	selectedPlayerButton.BorderSizePixel = 0
-	selectedPlayerButton.Text = ""
-	selectedPlayerButton.AutoButtonColor = false
-	selectedPlayerButton.ZIndex = 53
-	selectedPlayerButton.Parent = panel
-	fn3(selectedPlayerButton, 9)
-	createUIStroke(selectedPlayerButton, COL.Line, 1, 0.5)
-
-	local selectedPlayerText = Instance.new("TextLabel")
-	selectedPlayerText.Size = UDim2.new(1, -42, 1, 0)
-	selectedPlayerText.Position = UDim2.new(0, 11, 0, 0)
-	selectedPlayerText.BackgroundTransparency = 1
-	selectedPlayerText.Text = "PLAYER  |  Select player"
-	selectedPlayerText.Font = Enum.Font.GothamMedium
-	selectedPlayerText.TextSize = 11
-	selectedPlayerText.TextColor3 = COL.Text
-	selectedPlayerText.TextXAlignment = Enum.TextXAlignment.Left
-	selectedPlayerText.TextTruncate = Enum.TextTruncate.AtEnd
-	selectedPlayerText.ZIndex = 54
-	selectedPlayerText.Parent = selectedPlayerButton
-
-	local selectedPlayerChevron = Instance.new("TextLabel")
-	selectedPlayerChevron.Size = UDim2.new(0, 24, 1, 0)
-	selectedPlayerChevron.Position = UDim2.new(1, -29, 0, 0)
-	selectedPlayerChevron.BackgroundTransparency = 1
-	selectedPlayerChevron.Text = "\226\150\190"
-	selectedPlayerChevron.Font = Enum.Font.GothamBold
-	selectedPlayerChevron.TextSize = 11
-	selectedPlayerChevron.TextColor3 = COL.Dim
-	selectedPlayerChevron.ZIndex = 54
-	selectedPlayerChevron.Parent = selectedPlayerButton
-
-	local playerList = Instance.new("ScrollingFrame")
-	playerList.Name = "TargetPlayerList"
-	playerList.Size = UDim2.new(1, -40, 0, 108)
-	playerList.Position = UDim2.new(0, 20, 0, 518)
-	playerList.BackgroundColor3 = COL.Card
-	playerList.BackgroundTransparency = 0.02
-	playerList.BorderSizePixel = 0
-	playerList.ScrollBarThickness = 3
-	playerList.ScrollBarImageColor3 = COL.Gold
-	playerList.CanvasSize = UDim2.new(0, 0, 0, 0)
-	playerList.Visible = false
-	playerList.ZIndex = 80
-	playerList.Parent = panel
-	fn3(playerList, 9)
-	createUIStroke(playerList, COL.Line, 1, 0.35)
-
-	local playerListLayout = Instance.new("UIListLayout")
-	playerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	playerListLayout.Padding = UDim.new(0, 1)
-	playerListLayout.Parent = playerList
-
-	local function updateSelectedPlayerText()
-		local player = tpState.selectedPlayer
-		if player and player.Parent == Players then
-			selectedPlayerText.Text = "PLAYER  |  " .. player.Name
-		elseif tpState.targetName ~= "" then
-			selectedPlayerText.Text = "PLAYER  |  No match"
-		else
-			selectedPlayerText.Text = "PLAYER  |  Select player"
-		end
-	end
-
-	local function rebuildPlayerList()
-		for _, child in ipairs(playerList:GetChildren()) do
-			if child:IsA("TextButton") then
-				child:Destroy()
-			end
-		end
-		local available = {}
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer then
-				available[#available + 1] = player
-			end
-		end
-		table.sort(available, function(a, b)
-			return a.Name:lower() < b.Name:lower()
-		end)
-		for index, player in ipairs(available) do
-			local option = Instance.new("TextButton")
-			option.Name = "PlayerOption_" .. player.UserId
-			option.LayoutOrder = index
-			option.Size = UDim2.new(1, -4, 0, 26)
-			option.BackgroundColor3 = COL.CardHi
-			option.BackgroundTransparency = 0.35
-			option.BorderSizePixel = 0
-			option.Text = player.DisplayName .. "  @" .. player.Name
-			option.Font = Enum.Font.GothamMedium
-			option.TextSize = 10
-			option.TextColor3 = COL.Text
-			option.TextXAlignment = Enum.TextXAlignment.Left
-			option.TextTruncate = Enum.TextTruncate.AtEnd
-			option.AutoButtonColor = false
-			option.ZIndex = 81
-			option.Parent = playerList
-			local padding = Instance.new("UIPadding")
-			padding.PaddingLeft = UDim.new(0, 9)
-			padding.Parent = option
-			option.MouseButton1Click:Connect(function()
-				tpState.selectedPlayer = player
-				tpState.targetName = player.Name
-				targetNameBox.Text = player.Name
-				updateSelectedPlayerText()
-				playerList.Visible = false
-				tw(selectedPlayerChevron, { Rotation = 0 }, 0.18)
-			end)
-		end
-		playerList.CanvasSize = UDim2.new(0, 0, 0, #available * 27 + 2)
-	end
-	tpState.refreshPlayerList = rebuildPlayerList
-
-	targetNameBox:GetPropertyChangedSignal("Text"):Connect(function()
-		tpState.targetName = targetNameBox.Text
-		if tpState.targetName == "" then
-			tpState.selectedPlayer = nil
-			updateSelectedPlayerText()
-		end
-	end)
-	targetNameBox.FocusLost:Connect(function()
-		local match = findPlayerByName(targetNameBox.Text)
-		tpState.selectedPlayer = match
-		if match then
-			tpState.targetName = match.Name
-			targetNameBox.Text = match.Name
-		end
-		updateSelectedPlayerText()
-	end)
-
-	selectedPlayerButton.MouseButton1Click:Connect(function()
-		local open = not playerList.Visible
-		playerList.Visible = open
-		if open then
-			rebuildPlayerList()
-		end
-		tw(selectedPlayerChevron, { Rotation = open and 180 or 0 }, 0.18)
-	end)
-	Players.PlayerAdded:Connect(function()
-		if playerList.Visible then
-			rebuildPlayerList()
-		end
-	end)
-	Players.PlayerRemoving:Connect(function(player)
-		if tpState.selectedPlayer == player then
-			tpState.selectedPlayer = nil
-			tpState.targetName = ""
-			targetNameBox.Text = ""
-			updateSelectedPlayerText()
-		end
-		if playerList.Visible then
-			rebuildPlayerList()
-		end
-	end)
-
-	local modeButton = Instance.new("TextButton")
-	modeButton.Name = "TeleportModeDropdown"
-	modeButton.Size = UDim2.new(1, -40, 0, 32)
-	modeButton.Position = UDim2.new(0, 20, 0, 524)
-	modeButton.BackgroundColor3 = COL.Card
-	modeButton.BackgroundTransparency = 0.08
-	modeButton.BorderSizePixel = 0
-	modeButton.Text = ""
-	modeButton.AutoButtonColor = false
-	modeButton.ZIndex = 53
-	modeButton.Parent = panel
-	fn3(modeButton, 9)
-	createUIStroke(modeButton, COL.Line, 1, 0.5)
-
-	local modeText = Instance.new("TextLabel")
-	modeText.Size = UDim2.new(1, -42, 1, 0)
-	modeText.Position = UDim2.new(0, 11, 0, 0)
-	modeText.BackgroundTransparency = 1
-	modeText.Text = "MODE  |  " .. tpState.mode
-	modeText.Font = Enum.Font.GothamMedium
-	modeText.TextSize = 11
-	modeText.TextColor3 = COL.Text
-	modeText.TextXAlignment = Enum.TextXAlignment.Left
-	modeText.ZIndex = 54
-	modeText.Parent = modeButton
-
-	local modeChevron = Instance.new("TextLabel")
-	modeChevron.Size = UDim2.new(0, 24, 1, 0)
-	modeChevron.Position = UDim2.new(1, -29, 0, 0)
-	modeChevron.BackgroundTransparency = 1
-	modeChevron.Text = "\226\150\190"
-	modeChevron.Font = Enum.Font.GothamBold
-	modeChevron.TextSize = 11
-	modeChevron.TextColor3 = COL.Dim
-	modeChevron.ZIndex = 54
-	modeChevron.Parent = modeButton
-
-	local modeList = Instance.new("Frame")
-	modeList.Name = "TeleportModeList"
-	modeList.Size = UDim2.new(1, -40, 0, 88)
-	modeList.Position = UDim2.new(0, 20, 0, 558)
-	modeList.BackgroundColor3 = COL.Card
-	modeList.BackgroundTransparency = 0.02
-	modeList.BorderSizePixel = 0
-	modeList.ClipsDescendants = true
-	modeList.Visible = false
-	modeList.ZIndex = 80
-	modeList.Parent = panel
-	fn3(modeList, 9)
-	createUIStroke(modeList, COL.Line, 1, 0.35)
-	local modeListLayout = Instance.new("UIListLayout")
-	modeListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	modeListLayout.Padding = UDim.new(0, 1)
-	modeListLayout.Parent = modeList
-
-	for index, mode in ipairs({ "Behind", "Above", "Under" }) do
-		local option = Instance.new("TextButton")
-		option.Name = "Mode_" .. mode
-		option.LayoutOrder = index
-		option.Size = UDim2.new(1, 0, 0, 28)
-		option.BackgroundColor3 = COL.CardHi
-		option.BackgroundTransparency = 0.35
-		option.BorderSizePixel = 0
-		option.Text = mode
-		option.Font = Enum.Font.GothamMedium
-		option.TextSize = 10
-		option.TextColor3 = COL.Text
-		option.TextXAlignment = Enum.TextXAlignment.Left
-		option.AutoButtonColor = false
-		option.ZIndex = 81
-		option.Parent = modeList
-		local padding = Instance.new("UIPadding")
-		padding.PaddingLeft = UDim.new(0, 10)
-		padding.Parent = option
-		option.MouseButton1Click:Connect(function()
-			tpState.mode = mode
-			modeText.Text = "MODE  |  " .. mode
-			modeList.Visible = false
-			tw(modeChevron, { Rotation = 0 }, 0.18)
-		end)
-	end
-	selectedPlayerButton.MouseButton1Click:Connect(function()
-		modeList.Visible = false
-		tw(modeChevron, { Rotation = 0 }, 0.18)
-	end)
-	modeButton.MouseButton1Click:Connect(function()
-		playerList.Visible = false
-		tw(selectedPlayerChevron, { Rotation = 0 }, 0.18)
-		local open = not modeList.Visible
-		modeList.Visible = open
-		tw(modeChevron, { Rotation = open and 180 or 0 }, 0.18)
-	end)
-
-	local function makeRangeSlider(titleText, stateKey, yPos)
-		local wrap = Instance.new("Frame")
-		wrap.Name = "Slider_" .. stateKey
-		wrap.Size = UDim2.new(1, -40, 0, 44)
-		wrap.Position = UDim2.new(0, 20, 0, yPos)
-		wrap.BackgroundTransparency = 1
-		wrap.BorderSizePixel = 0
-		wrap.ZIndex = 52
-		wrap.Parent = panel
-
-		local valueLabel = Instance.new("TextLabel")
-		valueLabel.Size = UDim2.new(1, 0, 0, 13)
-		valueLabel.Position = UDim2.new(0, 0, 0, 0)
-		valueLabel.BackgroundTransparency = 1
-		valueLabel.Font = Enum.Font.GothamBold
-		valueLabel.TextSize = 9
-		valueLabel.TextColor3 = COL.Text
-		valueLabel.TextXAlignment = Enum.TextXAlignment.Left
-		valueLabel.ZIndex = 53
-		valueLabel.Parent = wrap
-
-		local track = Instance.new("Frame")
-		track.Name = "Track"
-		track.Size = UDim2.new(1, -16, 0, 6)
-		track.Position = UDim2.new(0, 8, 0, 27)
-		track.BackgroundColor3 = COL.CardHi
-		track.BorderSizePixel = 0
-		track.Active = true
-		track.ZIndex = 53
-		track.Parent = wrap
-		fn3(track, 99)
-
-		local fill = Instance.new("Frame")
-		fill.Name = "Fill"
-		fill.Size = UDim2.new(0.55, 0, 1, 0)
-		fill.BackgroundColor3 = COL.Gold
-		fill.BorderSizePixel = 0
-		fill.ZIndex = 54
-		fill.Parent = track
-		fn3(fill, 99)
-
-		local knob = Instance.new("Frame")
-		knob.Name = "Knob"
-		knob.AnchorPoint = Vector2.new(0.5, 0.5)
-		knob.Size = UDim2.fromOffset(13, 13)
-		knob.Position = UDim2.new(0.55, 0, 0.5, 0)
-		knob.BackgroundColor3 = COL.Text
-		knob.BorderSizePixel = 0
-		knob.ZIndex = 55
-		knob.Parent = track
-		fn3(knob, 99)
-
-		local dragging = false
-		local function applyValue(value)
-			value = math.clamp(math.floor(value + 0.5), -50, 50)
-			tpState[stateKey] = value
-			local pct = (value + 50) / 100
-			valueLabel.Text = titleText .. ": " .. tostring(value)
-			fill.Size = UDim2.new(pct, 0, 1, 0)
-			knob.Position = UDim2.new(pct, 0, 0.5, 0)
-		end
-		local function updateFromX(x)
-			local width = track.AbsoluteSize.X
-			if width <= 0 then
-				return
-			end
-			local pct = math.clamp((x - track.AbsolutePosition.X) / width, 0, 1)
-			applyValue(-50 + pct * 100)
-		end
-		track.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = true
-				updateFromX(input.Position.X)
-			end
-		end)
-		UIInputService.InputChanged:Connect(function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				updateFromX(input.Position.X)
-			end
-		end)
-		UIInputService.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = false
-			end
-		end)
-		applyValue(tpState[stateKey] or 0)
-	end
-
-	makeRangeSlider("BEHIND OFFSET", "behindOffset", 560)
-	makeRangeSlider("ABOVE / UNDER OFFSET", "verticalOffset", 608)
-
-	makeSwitch(660, "TP LOOP", "Update target position every Heartbeat", tpState.loop, function(value)
-		tpState.loop = value
-		if tpState.applyLoop then
-			tpState.applyLoop(value)
-		end
-	end)
-
-	local hint = Instance.new("TextLabel")
-	hint.Size = UDim2.new(1, -40, 0, 14)
-	hint.Position = UDim2.new(0, 20, 0, 704)
-	hint.BackgroundTransparency = 1
-	hint.Text = "TP LOOP takes control while active · tap island to close"
-	hint.Font = Enum.Font.Gotham
-	hint.TextSize = 9
-	hint.TextColor3 = COL.Dim
-	hint.TextTransparency = 0.35
-	hint.ZIndex = 52
-	hint.Parent = panel
-
-	-- open / close
-	local uiPanelTexts = collectTexts(panel)
-	local uiIslandTexts = collectTexts(island)
-	local islandOpen = false
-
-	local function pulseIsland()
-		island.Size = UDim2.new(0, ISLAND_W + 16, 0, ISLAND_H + 3)
-		tw(island, { Size = UDim2.new(0, ISLAND_W, 0, ISLAND_H) }, 0.42, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-	end
-
-	local function setOpen(state)
-		stopAnims()
-		islandOpen = state
-		pulseIsland()
-
-		if regionOpen then
-			setRegion(false)
-		end
-		if not state then
-			playerList.Visible = false
-			modeList.Visible = false
-			tw(selectedPlayerChevron, { Rotation = 0 }, 0.18)
-			tw(modeChevron, { Rotation = 0 }, 0.18)
-		end
-
-		if state then
-			panel.Visible = true
-			blur.Visible = true
-			shadow.Visible = true
-			panel.Position = UDim2.new(0.5, 0, 0, PANEL_TOP - 12)
-			panel.BackgroundTransparency = 1
-			blur.BackgroundTransparency = 1
-			shadow.BackgroundTransparency = 1
-			panelScale.Scale = viewScale * 0.9
-			tw(arrow, { Rotation = 180 }, 0.3)
-			tw(panel, { Position = UDim2.new(0.5, 0, 0, PANEL_TOP), BackgroundTransparency = 0.05 }, 0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			tw(blur, { BackgroundTransparency = 0.72 }, 0.34)
-			tw(shadow, { BackgroundTransparency = 0.5 }, 0.34)
-			tw(panelScale, { Scale = viewScale }, 0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-			for i, entry in ipairs(uiPanelTexts) do
-				entry.gui.TextTransparency = 1
-			end
-
-			for i, entry in ipairs(uiPanelTexts) do
-				task.spawn(function()
-					task.wait(0.04 + i * 0.016)
-					tw(entry.gui, { TextTransparency = entry.transparency }, 0.3)
-				end)
-			end
-		else
-			tw(arrow, { Rotation = 0 }, 0.24)
-			tw(panel, { Position = UDim2.new(0.5, 0, 0, PANEL_TOP - 10), BackgroundTransparency = 1 }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-			tw(blur, { BackgroundTransparency = 1 }, 0.28)
-			tw(shadow, { BackgroundTransparency = 1 }, 0.28)
-			tw(panelScale, { Scale = viewScale * 0.92 }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-
-			for _, entry in ipairs(uiPanelTexts) do
-				entry.gui.TextTransparency = 1
-			end
-
-			task.delay(0.3, function()
-				if not islandOpen then
-					panel.Visible = false
-					blur.Visible = false
-					shadow.Visible = false
-					regionList.Visible = false
-					regionList.Size = UDim2.new(1, -40, 0, 0)
-					panelScale.Scale = viewScale
-				end
-			end)
-		end
-	end
-
-	island.MouseButton1Click:Connect(function()
-		setOpen(not islandOpen)
-	end)
-
-	island.MouseEnter:Connect(function()
-		if not islandOpen then
-			tw(island, { BackgroundTransparency = 0 }, 0.18)
-		end
-	end)
-
-	island.MouseLeave:Connect(function()
-		if not islandOpen then
-			tw(island, { BackgroundTransparency = 0.04 }, 0.18)
-		end
-	end)
-
-	-- intro
-	island.Size = UDim2.new(0, ISLAND_W - 70, 0, 6)
-	island.BackgroundTransparency = 1
-
-	for _, entry in ipairs(uiIslandTexts) do
-		entry.gui.TextTransparency = 1
-	end
-
-	refreshScale()
-	panelScale.Scale = viewScale
-
-	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(refreshScale)
-
-	if workspace.CurrentCamera then
-		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(refreshScale)
-	end
-
-	task.spawn(function()
-		task.wait(0.2)
-		tw(island, { Size = UDim2.new(0, ISLAND_W, 0, ISLAND_H), BackgroundTransparency = 0.04 }, 0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		tw(glow, { BackgroundTransparency = 0.9 }, 0.8)
-
-		for i, entry in ipairs(uiIslandTexts) do
-			task.spawn(function()
-				task.wait(0.18 + i * 0.05)
-				tw(entry.gui, { TextTransparency = entry.transparency }, 0.35)
-			end)
-		end
-	end)
-end
-
--- hidden triggers (webhook test / manual hop) kept for the script logic
-textButton = Instance.new("TextButton")
-textButton.Name = "WebhookTrigger"
-textButton.Size = UDim2.fromOffset(1, 1)
-textButton.BackgroundTransparency = 1
-textButton.Text = ""
-textButton.Visible = false
-textButton.ZIndex = 1
-textButton.Parent = screenGui
-
-textButton2 = Instance.new("TextButton")
-textButton2.Name = "ManualHopTrigger"
-textButton2.Size = UDim2.fromOffset(1, 1)
-textButton2.BackgroundTransparency = 1
-textButton2.Text = ""
-textButton2.Visible = false
-textButton2.ZIndex = 1
-textButton2.Parent = screenGui
-
+Library:Notify("ProjectDaddy CreU UI loaded", 3)
 
 local function fn5()
 	local CoreGui = game:GetService("CoreGui")
@@ -2093,13 +1077,32 @@ do
 
 	local function setTeleportLoop(enabled)
 		tpState.loop = enabled and true or false
+		tpState.generation += 1
 		if tpState.loopConnection then
 			tpState.loopConnection:Disconnect()
 			tpState.loopConnection = nil
 		end
 		if not tpState.loop then
+			flag4 = false
+			flag6 = false
+			flag7 = false
+			local character = localPlayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.AutoRotate = true
+				if workspace.CurrentCamera then
+					workspace.CurrentCamera.CameraSubject = humanoid
+				end
+			end
+			if character then
+				pcall(function()
+					character:SetAttribute("NoHeadLerp", false)
+				end)
+			end
 			return
 		end
+		flag6 = false
+		flag7 = false
 
 		tpState.loopConnection = RunService.Heartbeat:Connect(function()
 			if not tpState.loop then
@@ -2198,7 +1201,7 @@ do
 		return ok, result
 	end
 
-	textButton.MouseButton1Click:Connect(fn6)
+	requestWebhook = fn6
 	workspace.FallenPartsDestroyHeight = (0/0)
 
 	workspace:GetPropertyChangedSignal("FallenPartsDestroyHeight"):Connect(function()
@@ -2328,11 +1331,13 @@ do
 	getgenv().InvisPart30 = part2
 	local flag11 = false
 	local deadCharacterHandled = nil
+	local invisibleGeneration = 0
 
 	local function fn10()
 		if not flag11 then
 			return
 		end
+		invisibleGeneration += 1
 		flag11 = false
 		getgenv().InvisActive = false
 		flag10 = false
@@ -2353,7 +1358,7 @@ do
 		if character then
 			local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
 
-			if humanoidRootPart and v5 then
+			if humanoidRootPart and v5 and not tpState.loop and not flag3 then
 				pcall(function()
 					humanoidRootPart.CFrame = v5
 				end)
@@ -2463,9 +1468,11 @@ do
 		if not humanoid2 or not humanoidRootPart then
 			return
 		end
+		invisibleGeneration += 1
 		flag11 = true
 		getgenv().InvisActive = true
 		flag10 = false
+		v5 = nil
 		local character2 = localPlayer.Character
 
 		if character2 then
@@ -2485,6 +1492,7 @@ do
 	end
 
 	local function resetInvisibleCharacter(character)
+		invisibleGeneration += 1
 		for _, connection in ipairs(tbl5) do
 			pcall(function()
 				connection:Disconnect()
@@ -2521,6 +1529,8 @@ do
 
 	local lastInvisibleWarning = 0
 	RunService.Heartbeat:Connect(function()
+		local cycleGeneration = invisibleGeneration
+		local cycleTeleportGeneration = tpState.generation
 		local ok, err = pcall(function()
 			if flag6 or flag8 then
 				getgenv().desync = nil
@@ -2566,7 +1576,7 @@ do
 				cFrame3 = cFrame3 or nil
 			end
 
-			if cFrame3 then
+			if cFrame3 and not tpState.loop and cycleTeleportGeneration == tpState.generation then
 				local flag14
 
 				if currentCamera2 then
@@ -2627,6 +1637,9 @@ do
 			end
 
 			RunService.RenderStepped:Wait()
+			if cycleGeneration ~= invisibleGeneration or cycleTeleportGeneration ~= tpState.generation then
+				return
+			end
 			humanoid.CameraOffset = humanoid2.CameraOffset
 
 			if v6 and v6.IsPlaying then
@@ -2635,7 +1648,7 @@ do
 				end)
 			end
 
-			if cFrame3 then
+			if cFrame3 and not tpState.loop and cycleTeleportGeneration == tpState.generation then
 				if flag4 and cFrame then
 					humanoidRootPart.CFrame = cFrame
 				else
@@ -2660,10 +1673,14 @@ do
 				end
 			end
 
-			humanoidRootPart.Velocity = velocity
+			if not tpState.loop then
+				humanoidRootPart.Velocity = velocity
+			end
 			flag10 = false
 		end)
-		flag10 = false
+		if cycleGeneration == invisibleGeneration then
+			flag10 = false
+		end
 		if not ok and tick() - lastInvisibleWarning >= 3 then
 			lastInvisibleWarning = tick()
 			warn("[ProjectDaddy] Invisible update failed:", err)
@@ -4081,14 +3098,17 @@ getgenv().renderEnabled=%s
 		end
 	end)
 
-	textButton2.MouseButton1Click:Connect(function()
+	requestManualHop = function()
 		if not enoughPlayersToHop() then
-			warn("[ProjectDaddy] Hop requires at least " .. tostring(MIN_PLAYERS_TO_HOP) .. " players in this server.")
+			if Library and Library.Notify then
+				Library:Notify("Hop requires at least " .. tostring(MIN_PLAYERS_TO_HOP) .. " players", 3)
+			end
 			return
 		end
 		flag10 = true
 		doHopServer()
-	end)
+	end
+
 
 	local tbl5 = {
 		422755031,
