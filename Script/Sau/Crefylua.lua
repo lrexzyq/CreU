@@ -128,14 +128,8 @@ local function startupRecoverPersistedMutations()
                     error("pending PartGlue snapshot is incomplete")
                 end
                 local weld = info.Weld
-                target.Anchored = true
-                if weld ~= nil and originalPart1 ~= nil and weld.Part1 ~= nil then
-                    weld.Part1 = nil
-                end
+                if weld ~= nil and originalPart1 ~= nil then weld.Part1 = originalPart1 end
                 target.CFrame = originalCFrame
-                if weld ~= nil and originalPart1 ~= nil then
-                    weld.Part1 = originalPart1
-                end
                 target.Anchored = info.OriginalAnchored
                 if target.CFrame ~= originalCFrame or target.Anchored ~= info.OriginalAnchored then
                     error("pending PartGlue final property read-back mismatch")
@@ -439,6 +433,8 @@ local function ragebotObserveFakePosition(rootPart, now)
             flipCount = 0,
             flipWindowStartedAt = now,
             lastDesyncAt = -math.huge,
+            lastHitscanGlueRefreshAt = -math.huge,
+            lastMeleeGlueRefreshAt = -math.huge,
         }
         RAGEBOT_FAKE_POSITION_TRACKS[rootPart] = track
         return false, false
@@ -22063,17 +22059,10 @@ Labels = { NotDeflecting = "Not Deflecting", NotShielded = "Not Shielded", Withi
 },
 TargetHitboxes = { Kind = "Stateful", Classes = fn36() },
 RandomHitboxPercentages = { Options = { Head = 50 }, Labels = { Head = "Head %" } },
-Extension = { Manipulate = { Enabled = false, Mode = "OnBestTarget", Type = "Head", ShowIndicator = true } },
+Extension = { Manipulate = { Enabled = false, Mode = "OnBestTarget", ShowIndicator = true } },
 ExpandActivationSection = function(arg)
 local v117 = arg:AddGroup({
 Source = arg:AddToggle({ Label = "Manipulate", Config = { "SilentAim", "Manipulate", "Enabled" } }),
-})
-
-v117:AddDropdown({
-Label = "Manipulate Type",
-Options = { "Head", "Body" },
-Config = { "SilentAim", "Manipulate", "Type" },
-Labels = { Head = "Manipulate Head", Body = "Manipulate Body" },
 })
 
 v117:AddDropdown({
@@ -22956,10 +22945,6 @@ end
 
 if manipulate.Mode == nil then
 manipulate.Mode = "OnBestTarget"
-end
-
-if manipulate.Type ~= "Head" and manipulate.Type ~= "Body" then
-manipulate.Type = "Head"
 end
 
 if manipulate.ShowIndicator == nil then
@@ -27856,20 +27841,13 @@ local function ragebotRootDesyncWrite(rootPart, cf)
     if not ragebotRootDesyncCFrameValid(cf) or not ragebotRootDesyncRootValid(rootPart) then
         return false
     end
-    local writeOk = pcall(function()
+    local ok = pcall(function()
         if not rootPart:IsA("BasePart") or not rootPart:IsDescendantOf(workspace) then
             error("RootPart is no longer active")
         end
         rootPart.CFrame = cf
     end)
-    if not writeOk then return false end
-    local readOk, actual = pcall(function() return rootPart.CFrame end)
-    if not readOk or typeof(actual) ~= "CFrame" then return false end
-    local positionMatches = (actual.Position - cf.Position).Magnitude <= 0.05
-    return positionMatches
-        and actual.RightVector:Dot(cf.RightVector) >= 0.999
-        and actual.UpVector:Dot(cf.UpVector) >= 0.999
-        and actual.LookVector:Dot(cf.LookVector) >= 0.999
+    return ok
 end
 
 local function ragebotRootDesyncCharacterCanRestorePose(rootPart)
@@ -27891,6 +27869,7 @@ local function ragebotRootDesyncGatePose(rootPart)
     local gate = ragebotPoseRestoreGateRead()
     if type(gate) == "table" and rawget(gate, "active") == true then
         local gateRoot = rawget(gate, "rootPart")
+
         if gateRoot ~= nil and gateRoot ~= rootPart then return false, nil end
     end
     local readOk, pose = pcall(function()
@@ -27959,10 +27938,8 @@ index2.SetServerCFrame = function(arg, cframe)
     if oldCFrame ~= nil then
         local targetCFrame = cframe or oldCFrame
         if not ragebotRootDesyncWrite(rootPart, targetCFrame) then
+            arg._oldCFrame = nil
             arg._cframe = nil
-            if not ragebotRootDesyncRootValid(rootPart) then
-                arg._oldCFrame = nil
-            end
             return false
         end
     end
@@ -28022,14 +27999,8 @@ index2._RenderStepUpdate = function(arg)
     if oldCFrame == nil then return end
     local rootPart = arg._rootPart
     local writeOk = ragebotRootDesyncWrite(rootPart, oldCFrame)
-    if writeOk then
-        arg._oldCFrame = nil
-    else
-        arg._cframe = nil
-        if not ragebotRootDesyncRootValid(rootPart) then
-            arg._oldCFrame = nil
-        end
-    end
+    arg._oldCFrame = nil
+    if not writeOk then arg._cframe = nil end
 end
 
 index2.HeartbeatUpdate = function(arg)
@@ -28066,9 +28037,7 @@ index2.HeartbeatUpdate = function(arg)
     local writeOk = ragebotRootDesyncWrite(rootPart, cframe)
     if not writeOk then
         arg._cframe = nil
-        if not ragebotRootDesyncRootValid(rootPart) then
-            arg._oldCFrame = nil
-        end
+        arg._oldCFrame = nil
         return false
     end
     pcall(function()
@@ -28085,29 +28054,15 @@ index2.HeartbeatUpdate = function(arg)
 end
 
 index2.Destroy = function(arg)
+
     local rootPart = arg._rootPart
     local gateActive = ragebotPoseRestoreGateIsActive()
-    local gate = gateActive and ragebotPoseRestoreGateRead() or nil
-    local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
-    local gateOwnsThisRoot = gateActive and (gateRoot == nil or gateRoot == rootPart)
     local characterCanRestorePose = ragebotRootDesyncCharacterCanRestorePose(rootPart)
-    local restoreCFrame = arg._oldCFrame
-    if gateOwnsThisRoot or not characterCanRestorePose then
-        restoreCFrame = nil
+    if gateActive or not characterCanRestorePose then
         arg._oldCFrame = nil
         arg._cframe = nil
-    elseif typeof(restoreCFrame) == "CFrame" then
-        if not ragebotRootDesyncWrite(rootPart, restoreCFrame)
-            and type(task) == "table" and type(task.delay) == "function" then
-            local attempts = 0
-            local function retryRestore()
-                attempts = attempts + 1
-                if not ragebotRootDesyncRootValid(rootPart) then return end
-                if ragebotRootDesyncWrite(rootPart, restoreCFrame) then return end
-                if attempts < 20 then pcall(task.delay, 0.05, retryRestore) end
-            end
-            pcall(task.delay, 0.05, retryRestore)
-        end
+    else
+        pcall(arg._RenderStepUpdate, arg)
     end
     pcall(function() v115:UnbindFromRenderStep(arg._boundId) end)
     arg._oldCFrame = nil
@@ -33039,37 +32994,6 @@ local v133 = tbl17.dg()
 local data = v120.Data
 local get = v118.get
 local set = v118.set
-local AIMBOT_RIOT_TARGET_STATE_KEY = "__CrefyAimbotTargetState"
-local function publishAimbotRiotTarget(targetFighter, hitbox, pending)
-    local env = _G
-    if type(getgenv) == "function" then
-        local okEnv, sharedEnv = pcall(getgenv)
-        if okEnv and type(sharedEnv) == "table" then env = sharedEnv end
-    end
-    local character = nil
-    pcall(function()
-        local player = targetFighter ~= nil and targetFighter.Player or nil
-        local playerCharacter = player ~= nil and player.Character or nil
-        if playerCharacter ~= nil and hitbox ~= nil and hitbox:IsDescendantOf(playerCharacter) then
-            character = playerCharacter
-        elseif playerCharacter == nil and hitbox ~= nil then
-            character = hitbox:FindFirstAncestorOfClass("Model")
-        end
-    end)
-    local state = rawget(env, AIMBOT_RIOT_TARGET_STATE_KEY)
-    if type(state) ~= "table" then state = {} end
-    local hasSelection = targetFighter ~= nil and hitbox ~= nil
-    state.active = character ~= nil and hitbox ~= nil and pending ~= true
-    state.pending = hasSelection and pending == true
-    state.character = character
-    state.hitbox = hitbox
-    state.updatedAt = os.clock()
-    state.source = "Aimbot"
-    pcall(rawset, env, AIMBOT_RIOT_TARGET_STATE_KEY, state)
-    if type(_G) == "table" and env ~= _G then
-        pcall(rawset, _G, AIMBOT_RIOT_TARGET_STATE_KEY, state)
-    end
-end
 local function fn36(I,W)local N=workspace.CurrentCamera;local P=math.rad(N.FieldOfView)/N.ViewportSize.Y;N= get (); set (Vector2.new(N.X-W*P,N.Y-I*P));end
 local function fn37()local I=workspace.CurrentCamera;local W= get ();local l=CFrame.fromOrientation(W.X,W.Y,0);W=I:WorldToViewportPoint(I.CFrame.Position+l.LookVector*1000);return Vector2.new(W.X,W.Y);end
 local index2 = {}
@@ -33190,7 +33114,6 @@ index2._Reset = function(arg)
 arg._lastHitbox = nil
 arg._targetScreenPosition = nil
 arg._targetAcquisition:Reset()
-publishAimbotRiotTarget(nil, nil)
 v117.release("Aimbot")
 end
 
@@ -33205,7 +33128,6 @@ arg:_Reset()
 return
 end
 arg._lastHitbox = v135
-publishAimbotRiotTarget(v134, v135, true)
 local enabled = arg4.Fov.Circle.Visible and arg4.Fov.Circle.FollowTarget.Enabled
 local v136 = nil
 
@@ -33221,16 +33143,13 @@ end
 
 if not v117.isBlockedFor("Aimbot", 0) then
 v117.claim("Aimbot", v86[186])
-publishAimbotRiotTarget(v134, v135, false)
 arg._aimApplier:Apply(v136 or arg._computeTargetPoint(workspace.CurrentCamera, v133(), v135), arg2, arg4.Mode, v86[34])
 else
-publishAimbotRiotTarget(nil, nil)
 v117.release("Aimbot")
 end
 end
 
 index2.Destroy = function(arg)
-publishAimbotRiotTarget(nil, nil)
 v117.release("Aimbot")
 arg._trove:Destroy()
 end
@@ -33341,14 +33260,6 @@ local function riotFireHookRagebotEnabled()
         local age = os.clock() - updatedAt
         if age >= 0 and age <= 0.5 then return true end
     end
-    local aimbotTarget = riotStateGet("__CrefyAimbotTargetState")
-    if type(aimbotTarget) == "table"
-        and rawget(aimbotTarget, "active") == true
-        and rawget(aimbotTarget, "pending") ~= true then
-        local updatedAt = tonumber(rawget(aimbotTarget, "updatedAt")) or 0
-        local age = os.clock() - updatedAt
-        if age >= 0 and age <= 0.35 then return true end
-    end
     return false
 end
 
@@ -33371,14 +33282,9 @@ local function riotInstallFireServerHook()
         local currentState = shared.riotState
         local currentRemote = shared.remote
         local encoded = type(currentState) == "table" and rawget(currentState, "lastEncoded") or nil
-        local angleAt = type(currentState) == "table" and tonumber(rawget(currentState, "lastAngleAt")) or nil
-        local now = os.clock()
-        local freshAngle = angleAt ~= nil and angleAt == angleAt
-            and angleAt > 0 and angleAt <= now and now - angleAt <= 0.20
         local active = type(currentState) == "table"
             and rawget(currentState, "enabled") == true
             and rawget(currentState, "active") == true
-            and freshAngle
             and not riotFireHookRagebotEnabled()
         if self == currentRemote and active and type(encoded) == "string" then
             local okLen, len = pcall(utf8.len, encoded)
@@ -33555,15 +33461,6 @@ local function ragebotOwnsCameraRotation()
         local age = os.clock() - updatedAt
         if age >= 0 and age <= 0.5 then return true end
     end
-
-    local aimbotState = riotStateGet("__CrefyAimbotTargetState")
-    if type(aimbotState) == "table"
-        and rawget(aimbotState, "active") == true
-        and rawget(aimbotState, "pending") ~= true then
-        local updatedAt = tonumber(rawget(aimbotState, "updatedAt")) or 0
-        local age = os.clock() - updatedAt
-        if age >= 0 and age <= 0.35 then return true end
-    end
     return false
 end
 
@@ -33735,8 +33632,7 @@ local function getConfiguredTriggerDistance()
     return sanitizeTriggerDistance(configured)
 end
 
-local riotCharacterHasInventoryItem
-local function findNearest(triggerDistance, preferredCharacter, requireRiotShield)
+local function findNearest(triggerDistance, preferredCharacter)
     triggerDistance = sanitizeTriggerDistance(triggerDistance)
     if lp == nil then return nil end
     local myChar = lp.Character
@@ -33766,11 +33662,6 @@ local function findNearest(triggerDistance, preferredCharacter, requireRiotShiel
         local hum  = char:FindFirstChildOfClass("Humanoid")
         if root == nil or not root:IsA("BasePart") or root.Parent == nil or hum == nil or hum.Health <= 0 then continue end
 
-        if requireRiotShield == true
-            and (type(riotCharacterHasInventoryItem) ~= "function"
-                or not riotCharacterHasInventoryItem(char, "Riot Shield")) then
-            continue
-        end
         local dist = (root.Position - myPos).Magnitude
         if dist ~= dist or dist == math.huge or dist < 0 then continue end
         if dist > triggerDistance then continue end
@@ -33790,10 +33681,7 @@ local function riotCharacterWithinTriggerDistance(character, triggerDistance)
         local myCharacter = lp.Character
         local myRoot = myCharacter ~= nil and myCharacter:FindFirstChild("HumanoidRootPart") or nil
         local targetRoot = character:FindFirstChild("HumanoidRootPart")
-        local myHumanoid = myCharacter ~= nil and myCharacter:FindFirstChildOfClass("Humanoid") or nil
-        local targetHumanoid = character:FindFirstChildOfClass("Humanoid")
-        if myRoot == nil or targetRoot == nil or myHumanoid == nil or targetHumanoid == nil
-            or myHumanoid.Health <= 0 or targetHumanoid.Health <= 0
+        if myRoot == nil or targetRoot == nil
             or not myRoot:IsA("BasePart") or not targetRoot:IsA("BasePart")
             or not myRoot:IsDescendantOf(workspace) or not targetRoot:IsDescendantOf(workspace) then
             return false
@@ -33804,36 +33692,28 @@ local function riotCharacterWithinTriggerDistance(character, triggerDistance)
     return ok and within == true
 end
 
-local function riotFindFighterForCharacter(character)
-    if character == nil then return nil end
+local function riotCharacterHasInventoryItem(character, wantedName)
+    if character == nil or type(wantedName) ~= "string" or wantedName == "" then return false end
     local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
     local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
-    if type(enemies) ~= "table" then return nil end
+    if type(enemies) ~= "table" then return false end
     for player, fighter in pairs(enemies) do
         local sameCharacter = false
         pcall(function() sameCharacter = player ~= nil and player.Character == character end)
-        if sameCharacter then return fighter end
-    end
-    return nil
-end
-
-riotCharacterHasInventoryItem = function(character, wantedName)
-    if character == nil or type(wantedName) ~= "string" or wantedName == "" then return false end
-    local fighter = riotFindFighterForCharacter(character)
-    local observer = fighter ~= nil and fighter.ItemObserver or nil
-    if observer == nil then return false end
-    local okItems, hasItem = pcall(function()
-        for _, inventoryItem in observer:GetItems() do
-            if inventoryItem ~= nil and inventoryItem.Name == wantedName then
-                return true
-            end
+        if sameCharacter then
+            local observer = fighter ~= nil and fighter.ItemObserver or nil
+            if observer == nil then return false end
+            local okItems, hasItem = pcall(function()
+                for _, inventoryItem in observer:GetItems() do
+                    if inventoryItem ~= nil and inventoryItem.Name == wantedName then return true end
+                end
+                local equipped = observer:GetEquippedItem()
+                return equipped ~= nil and equipped.Name == wantedName
+            end)
+            return okItems and hasItem == true
         end
-        local equippedMelee = observer:EquippedItemAsMelee()
-        if equippedMelee ~= nil and equippedMelee.Name == wantedName then return true end
-        local equipped = observer:GetEquippedItem()
-        return equipped ~= nil and equipped.Name == wantedName
-    end)
-    return okItems and hasItem == true
+    end
+    return false
 end
 
 local function findRiotTarget(triggerDistance)
@@ -33860,26 +33740,7 @@ local function findRiotTarget(triggerDistance)
             if valid and root ~= nil then return character end
         end
     end
-    local aimbotTargetState = riotStateGet("__CrefyAimbotTargetState")
-    if type(aimbotTargetState) == "table" then
-        local updatedAt = tonumber(rawget(aimbotTargetState, "updatedAt")) or 0
-        local age = os.clock() - updatedAt
-        local character = rawget(aimbotTargetState, "character")
-        if age >= 0 and age <= 0.35 then
-            if rawget(aimbotTargetState, "pending") == true then
-                return nil
-            end
-            if rawget(aimbotTargetState, "active") == true then
-                if character ~= nil and riotFindFighterForCharacter(character) ~= nil
-                    and riotCharacterWithinTriggerDistance(character, triggerDistance)
-                    and riotCharacterHasInventoryItem(character, "Riot Shield") then
-                    return character
-                end
-                return nil
-            end
-        end
-    end
-    return findNearest(triggerDistance, nil, true)
+    return findNearest(triggerDistance, nil)
 end
 
 local function riotRagebotHasPriority()
@@ -33918,7 +33779,6 @@ end
 
 local function riotClearActiveTarget()
     silentActive = false
-    lastEncoded = utf8.char(0) .. utf8.char(0)
     riotState.active = false
     riotState.targetCharacter = nil
     riotState.lastEncoded = nil
@@ -33941,20 +33801,6 @@ local function riotHeartbeatStep()
 
     if not riotState.enabled or riotRagebotHasPriority() then
         riotClearActiveTarget()
-        return
-    end
-
-    -- Riot camera replication is only relevant while the local player actually has
-    -- a Knife equipped. Previously it ran against any nearby shield carrier and
-    -- continuously overwrote the outgoing camera angle even while idle/unarmed.
-    local context = riotState.innerContext
-    local itemBehaviors = context ~= nil and context.ItemBehaviors or nil
-    local okEquipped, equippedMelee = pcall(function()
-        return itemBehaviors ~= nil and itemBehaviors:EquippedItemAsMelee() or nil
-    end)
-    if not okEquipped or equippedMelee == nil or equippedMelee.Name ~= "Knife" then
-        riotClearActiveTarget()
-        if hookInstalled then restoreReplicationHook() end
         return
     end
 
@@ -33989,56 +33835,22 @@ local function riotHeartbeatStep()
         return
     end
     local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    if targetHumanoid == nil or targetHumanoid.Health <= 0 then
+    if targetHumanoid ~= nil and targetHumanoid.Health <= 0 then
         riotClearActiveTarget()
         return
     end
 
-    local aimPart = targetChar:FindFirstChild("HumanoidRootPart")
-    if not isLiveBasePart(aimPart, targetChar) then
-        aimPart = targetChar:FindFirstChild("Head")
+    local head = targetChar:FindFirstChild("HumanoidRootPart")
+    if not isLiveBasePart(head, targetChar) then
+        head = targetChar:FindFirstChild("Head")
     end
-    if not isLiveBasePart(aimPart, targetChar) then
+    if not isLiveBasePart(head, targetChar) then
         riotClearActiveTarget()
         return
     end
 
-    -- When Aimbot owns this exact target, mirror the local camera it is already
-    -- controlling. Otherwise use the target's stable body/root facing, never its
-    -- independent third-person free-look camera.
-    local aimbotTargetState = riotStateGet("__CrefyAimbotTargetState")
-    local aimbotOwnsTarget = false
-    if type(aimbotTargetState) == "table"
-        and rawget(aimbotTargetState, "active") == true
-        and rawget(aimbotTargetState, "pending") ~= true
-        and rawget(aimbotTargetState, "character") == targetChar then
-        local updatedAt = tonumber(rawget(aimbotTargetState, "updatedAt")) or 0
-        local age = os.clock() - updatedAt
-        aimbotOwnsTarget = age >= 0 and age <= 0.35
-    end
-    local rotationSource = nil
-    if aimbotOwnsTarget then
-        rotationSource = workspace.CurrentCamera
-    else
-        rotationSource = targetChar:FindFirstChild("HumanoidRootPart")
-        if not isLiveBasePart(rotationSource, targetChar) then
-            rotationSource = aimPart
-        end
-    end
-    local okRotation, pitch, yaw = pcall(function()
-        if typeof(rotationSource) ~= "Instance"
-            or (not rotationSource:IsA("Camera") and not rotationSource:IsA("BasePart")) then
-            return nil, nil
-        end
-        local rotation = rotationSource.CFrame
-        local p, y = rotation:ToOrientation()
-        if p ~= p or y ~= y or p == math.huge or p == -math.huge
-            or y == math.huge or y == -math.huge then
-            return nil, nil
-        end
-        return p, y
-    end)
-    if not okRotation or type(pitch) ~= "number" or type(yaw) ~= "number" then
+    local pitch, yaw = head.CFrame:ToOrientation()
+    if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge or yaw == math.huge or yaw == -math.huge then
         riotClearActiveTarget()
         return
     end
@@ -34050,7 +33862,7 @@ local function riotHeartbeatStep()
     riotState.targetCharacter = targetChar
     riotState.lastEncoded = encoded
     riotState.payload = nil
-    riotState.aimPart = aimPart
+    riotState.aimPart = head
     riotState.lastAngleAt = os.clock()
 
     local fireNow = os.clock()
@@ -55638,6 +55450,8 @@ local function fn35()
 local v115 = v114
 local v116 = v113
 local v117 = v112
+local random2 = math.random
+local cframe = CFrame.new(math.random(-100000, -10000), 100000, random2(-100000, 10000))
 
 local function partGlueWithTemporaryIdentity(callback)
     local identityGetter = K.fn("getthreadidentity") or K.fn("getidentity")
@@ -55688,22 +55502,77 @@ local function partGlueReadSourceReference(sourcePart)
     return readOk, value
 end
 
-local function partGlueWriteSourceReferenceVerified(sourcePart, writer, value)
-    if type(writer) ~= "function" then return false, "setter unavailable" end
-    local runOk, callOk, callResult = partGlueWithTemporaryIdentity(function()
-        return pcall(writer, sourcePart, "PhysicsRepRootRef", value)
+local function partGlueWriteViaScriptableVerified(sourcePart, value)
+    local setScriptable = K.fn("setscriptable") or K.fn("set_scriptable")
+    local isScriptable = K.fn("isscriptable") or K.fn("is_scriptable")
+    if type(setScriptable) ~= "function" then
+        return false, "setscriptable API unavailable"
+    end
+
+    local oldState
+    if type(isScriptable) == "function" then
+        local stateOk, state = pcall(isScriptable, sourcePart, "PhysicsRepRootRef")
+        if stateOk and type(state) == "boolean" then oldState = state end
+    end
+
+    local setOk, previousState = pcall(setScriptable, sourcePart, "PhysicsRepRootRef", true)
+    if not setOk then
+        return false, "setscriptable failed: " .. tostring(previousState)
+    end
+    if oldState == nil and type(previousState) == "boolean" then
+        oldState = previousState
+    end
+    if oldState == nil then
+        return false, "original scriptability state unavailable; refusing an un-restorable change"
+    end
+
+    local writeOk, writeError = pcall(function()
+        sourcePart.PhysicsRepRootRef = value
     end)
-    if not runOk then return false, tostring(callOk) end
-    local readOk, actualValue = partGlueReadSourceReference(sourcePart)
-    if readOk and actualValue == value then return true end
-    if not callOk then
-        return false, "setter threw: " .. tostring(callResult) .. (readOk and "; read-back mismatch" or "; read-back unavailable")
+    local readOk, actualValue = pcall(function()
+        return sourcePart.PhysicsRepRootRef
+    end)
+    local matched = writeOk and readOk and actualValue == value
+
+    local restoreOk, restoreError = pcall(setScriptable, sourcePart, "PhysicsRepRootRef", oldState)
+    if not restoreOk then
+        return false, "scriptability restore failed: " .. tostring(restoreError)
     end
-    if not readOk then return false, "PhysicsRepRootRef read-back unavailable" end
-    if callResult == false then
-        return false, "setter returned false and read-back did not match (false may indicate a non-hidden property on some executors)"
+    if matched then return true end
+    if not writeOk then return false, "scriptable assignment failed: " .. tostring(writeError) end
+    if not readOk then return false, "scriptable read-back failed: " .. tostring(actualValue) end
+    return false, "scriptable read-back mismatch"
+end
+
+local function partGlueWriteSourceReferenceVerified(sourcePart, writer, value)
+    local writerError = "setter unavailable"
+    if type(writer) == "function" then
+        local runOk, callOk, callResult = partGlueWithTemporaryIdentity(function()
+            return pcall(writer, sourcePart, "PhysicsRepRootRef", value)
+        end)
+        if runOk then
+            local readOk, actualValue = partGlueReadSourceReference(sourcePart)
+            if readOk and actualValue == value then return true end
+            if not callOk then
+                writerError = "setter threw: " .. tostring(callResult) .. (readOk and "; read-back mismatch" or "; read-back unavailable")
+            elseif not readOk then
+                writerError = "PhysicsRepRootRef read-back unavailable"
+            elseif callResult == false then
+                writerError = "setter returned false and read-back did not match"
+            else
+                writerError = "PhysicsRepRootRef read-back mismatch"
+            end
+        else
+            writerError = tostring(callOk)
+        end
     end
-    return false, "PhysicsRepRootRef read-back mismatch"
+
+    local scriptableRunOk, scriptableWriteOk, scriptableError = partGlueWithTemporaryIdentity(function()
+        return partGlueWriteViaScriptableVerified(sourcePart, value)
+    end)
+    if scriptableRunOk and scriptableWriteOk == true then return true end
+    if not scriptableRunOk then scriptableError = scriptableWriteOk end
+    return false, tostring(writerError) .. "; scriptable fallback failed: " .. tostring(scriptableError)
 end
 
 local function fn36(arg, arg2)
@@ -55846,6 +55715,7 @@ end
 
 local function fn37(arg, arg2)
 if arg == nil or type(arg2) ~= "table" then return false end
+local allRestored = true
 local originalCFrame = arg2.OriginalCFrame
 local originalPart1 = arg2.OriginalPart1
 local originalPart1ToTarget = arg2.OriginalPart1ToTarget
@@ -55854,67 +55724,49 @@ if typeof(originalCFrame) ~= "CFrame" or type(arg2.OriginalAnchored) ~= "boolean
     return false
 end
 
-local function read(instance, property)
-    local ok, value = pcall(function() return instance[property] end)
-    return ok, value
-end
-local function write(instance, property, value)
-    if instance == nil then return false end
+local function restoreProperty(instance, property, value)
+    local function verify()
+        local readOk, current = pcall(function() return instance[property] end)
+        return readOk and current == value
+    end
     local writers = {}
     if type(v117) == "function" then writers[#writers + 1] = v117 end
     if type(v104) == "function" and v104 ~= v117 then writers[#writers + 1] = v104 end
     for _, writer in ipairs(writers) do
-        pcall(writer, instance, property, value)
-        local readOk, actual = read(instance, property)
-        if readOk and actual == value then return true end
+        local ok = pcall(writer, instance, property, value)
+        if ok and verify() then return true end
     end
     local directOk = pcall(function() instance[property] = value end)
-    if directOk then
-        local readOk, actual = read(instance, property)
-        if readOk and actual == value then return true end
-    end
-    return false
+    return directOk and verify()
 end
 
-local targetOk, targetParent = pcall(function()
-    if typeof(arg) ~= "Instance" or not arg:IsA("BasePart") then return false end
-    return arg.Parent
-end)
-if not targetOk then return false end
-if targetParent == false or targetParent == nil then return true end
+if weld ~= nil and originalPart1 ~= nil then
+    if not restoreProperty(weld, "Part1", originalPart1) then allRestored = false end
+end
 
--- Resolve the original relative pose before touching the constraint.
-if originalPart1 ~= nil and typeof(originalPart1ToTarget) == "CFrame" then
-    local relativeOk, relativePose = pcall(function()
+if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
+    local okOriginalCFrame, computedCFrame = pcall(function()
         return originalPart1.CFrame * originalPart1ToTarget
     end)
-    if not relativeOk or typeof(relativePose) ~= "CFrame" then return false end
-    originalCFrame = relativePose
+    if okOriginalCFrame and typeof(computedCFrame) == "CFrame" then
+        originalCFrame = computedCFrame
+    else
+        allRestored = false
+    end
 end
 
--- A connected WeldConstraint can override a CFrame write. Freeze and detach
--- first, restore the pose, reconnect the weld, and only then restore Anchored.
-if not write(arg, "Anchored", true) then return false end
-if weld ~= nil and originalPart1 ~= nil then
-    local part1Ok, currentPart1 = read(weld, "Part1")
-    if not part1Ok then return false end
-    if currentPart1 ~= nil and not write(weld, "Part1", nil) then return false end
-end
-if not write(arg, v86[127], originalCFrame) then return false end
-if weld ~= nil and originalPart1 ~= nil then
-    if not write(weld, "Part1", originalPart1) then return false end
-end
-if not write(arg, "Anchored", arg2.OriginalAnchored) then return false end
+if not restoreProperty(arg, v86[127], originalCFrame) then allRestored = false end
+if not restoreProperty(arg, "Anchored", arg2.OriginalAnchored) then allRestored = false end
 
-local finalCFrameOk, finalCFrame = read(arg, v86[127])
-local finalAnchoredOk, finalAnchored = read(arg, "Anchored")
-if not finalCFrameOk or finalCFrame ~= originalCFrame then return false end
-if not finalAnchoredOk or finalAnchored ~= arg2.OriginalAnchored then return false end
+local finalCFrameOk, finalCFrame = pcall(function() return arg.CFrame end)
+local finalAnchoredOk, finalAnchored = pcall(function() return arg.Anchored end)
+if not finalCFrameOk or finalCFrame ~= originalCFrame then allRestored = false end
+if not finalAnchoredOk or finalAnchored ~= arg2.OriginalAnchored then allRestored = false end
 if weld ~= nil and originalPart1 ~= nil then
-    local finalPart1Ok, finalPart1 = read(weld, "Part1")
-    if not finalPart1Ok or finalPart1 ~= originalPart1 then return false end
+    local finalPart1Ok, finalPart1 = pcall(function() return weld.Part1 end)
+    if not finalPart1Ok or finalPart1 ~= originalPart1 then allRestored = false end
 end
-return true
+return allRestored
 end
 
 local PARTGLUE_PENDING_RESTORE_KEY = "__CrefyPendingPartGlueRestores"
@@ -56305,122 +56157,19 @@ end
 arg._targetPartBySourcePart[arg2] = arg3
 end
 
-local sourceCFrameOk, sourceCFrame = pcall(function() return arg2.CFrame end)
-if not sourceCFrameOk or typeof(sourceCFrame) ~= "CFrame" then
-    arg._targetPartBySourcePart[arg2] = nil
-    arg:_ReleaseGlue(arg3)
-    restoreSourceReference()
-    return nil
-end
-local sourcePosition = sourceCFrame.Position
-local function finiteCoordinate(value)
-    return type(value) == "number" and value == value
-        and value ~= math.huge and value ~= -math.huge
-end
-if not finiteCoordinate(sourcePosition.X) or not finiteCoordinate(sourcePosition.Y)
-    or not finiteCoordinate(sourcePosition.Z)
-    or math.abs(sourcePosition.X) > 50000 or math.abs(sourcePosition.Z) > 50000
-    or sourcePosition.Y < -1000 or sourcePosition.Y > 10000 then
-    arg._targetPartBySourcePart[arg2] = nil
-    arg:_ReleaseGlue(arg3)
-    restoreSourceReference()
-    return nil
-end
-
--- PartGlue moves the target hitbox to the source part before the shot is sent.
--- Coordinate bounds alone do not prove that the source is on the playable map:
--- a perfectly finite CFrame can still be below the floor or over the void.
--- Reject such poses before touching the target and roll back both glue and ref.
-local sourcePoseSafe = false
-local sourcePoseCheckOk, sourcePoseCheckResult = pcall(function()
-    if not arg2:IsA("BasePart") or arg2.Parent == nil
-        or not arg2:IsDescendantOf(workspace)
-        or not arg3:IsA("BasePart") or arg3.Parent == nil
-        or not arg3:IsDescendantOf(workspace) then
-        return false
-    end
-
-    local sourceModel = arg2:FindFirstAncestorOfClass("Model")
-    local targetModel = arg3:FindFirstAncestorOfClass("Model")
-    if sourceModel == nil or targetModel == nil or sourceModel == targetModel then
-        return false
-    end
-
-    local destroyHeight = workspace.FallenPartsDestroyHeight
-    if not finiteCoordinate(destroyHeight) or sourcePosition.Y <= destroyHeight + 64 then
-        return false
-    end
-
-    local rayParams = arg._sourcePoseRaycastParams
-    if typeof(rayParams) ~= "RaycastParams" then
-        rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.IgnoreWater = true
-        arg._sourcePoseRaycastParams = rayParams
-    end
-    rayParams.FilterDescendantsInstances = { sourceModel, targetModel }
-
-    local floorResult = workspace:Raycast(
-        sourcePosition + Vector3.new(0, 4, 0),
-        Vector3.new(0, -128, 0),
-        rayParams
-    )
-    if floorResult == nil or floorResult.Normal.Y < 0.5 then
-        return false
-    end
-
-    local floorGap = sourcePosition.Y - floorResult.Position.Y
-    -- Permit ordinary jumps and small steps, but not a source pose far above
-    -- support or already below the supporting surface.
-    if not finiteCoordinate(floorGap) or floorGap < -3 or floorGap > 32 then
-        return false
-    end
-
-    local support = floorResult.Instance
-    if support ~= workspace.Terrain then
-        if not support:IsA("BasePart") or not support.CanCollide then
-            return false
-        end
-        local supportName = string.lower(support.Name)
-        if supportName == "barriers" or supportName == "killbrick"
-            or supportName == "killpart" or supportName == "lava" then
-            return false
-        end
-        local collectionService = game:GetService("CollectionService")
-        if collectionService:HasTag(support, "OutOfBoundsPart")
-            or collectionService:HasTag(support, "KillBrick") then
-            return false
-        end
-    end
-    return true
-end)
-sourcePoseSafe = sourcePoseCheckOk and sourcePoseCheckResult == true
-if not sourcePoseSafe then
-    arg._targetPartBySourcePart[arg2] = nil
-    pcall(arg._ReleaseGlue, arg, arg3)
-    local restored, restoreError = restoreSourceReference()
-    local warningNow = os.clock()
-    if warningNow >= (arg._nextUnsafeSourcePoseWarningAt or 0) then
-        arg._nextUnsafeSourcePoseWarningAt = warningNow + 5
-        warn("[PartGlue] Target move blocked: source pose has no verified safe ground/support; " ..
-            (restored and "glue/reference rolled back" or ("reference restore pending: " .. tostring(restoreError or sourcePoseCheckResult))))
-    end
-    return nil
-end
-
-local requestedTargetCFrame = CFrame.new(sourcePosition)
+local requestedTargetCFrame = CFrame.new(cframe.Position)
 local moveOk, moveError = pcall(v117, arg3, "CFrame", requestedTargetCFrame)
 local readbackOk, actualTargetCFrame = pcall(function() return arg3.CFrame end)
-local moveVerified = readbackOk and typeof(actualTargetCFrame) == "CFrame"
-    and actualTargetCFrame == requestedTargetCFrame
+local moveVerified = moveOk and moveError ~= false and readbackOk
+    and typeof(actualTargetCFrame) == "CFrame" and actualTargetCFrame == requestedTargetCFrame
 if not moveVerified then
-if not moveOk then
-    moveError = "CFrame setter failed: " .. tostring(moveError)
-elseif not readbackOk then
+if moveOk and moveError == false then
+    moveError = "CFrame setter returned false"
+elseif moveOk and not readbackOk then
     moveError = "CFrame read-back failed: " .. tostring(actualTargetCFrame)
-elseif typeof(actualTargetCFrame) ~= "CFrame" then
+elseif moveOk and typeof(actualTargetCFrame) ~= "CFrame" then
     moveError = "CFrame read-back returned an invalid value"
-else
+elseif moveOk and actualTargetCFrame ~= requestedTargetCFrame then
     moveError = "CFrame read-back mismatch"
 end
 arg._targetPartBySourcePart[arg2] = nil
@@ -56458,7 +56207,7 @@ else
     partGlueClearPendingSourceRollback(sourceReferenceInfo)
 end
 partGlueClearPersistedSourceReference(arg2, sourceReferenceInfo)
-return requestedTargetCFrame
+return cframe
 end
 
 index2.Free = function(arg, arg2)
@@ -56564,29 +56313,17 @@ local info = {
 arg._glueInfoByTargetPart[arg2] = info
 
 if weldConstraint ~= nil then
-    local function writeAndVerify(instance, property, value, label)
-        local setterOk, setterResult = pcall(v117, instance, property, value)
-        local readOk, actualValue = pcall(function() return instance[property] end)
-        if readOk and actualValue == value then return true end
-
-        local directOk, directError = pcall(function()
-            instance[property] = value
-        end)
-        readOk, actualValue = pcall(function() return instance[property] end)
-        if readOk and actualValue == value then return true end
-
-        local detail = label .. " read-back mismatch"
-        if not setterOk then detail = detail .. "; setter error: " .. tostring(setterResult) end
-        if setterOk and setterResult == false then detail = detail .. "; setter returned false" end
-        if not directOk then detail = detail .. "; direct write error: " .. tostring(directError) end
-        error(detail, 0)
-    end
-
     local setupOk, setupError = pcall(function()
         if originalPart1 ~= nil and originalCFrame ~= nil then
-            writeAndVerify(weldConstraint, "Part1", nil, "original WeldConstraint.Part1 detach")
+            local okDetach, detachResult = pcall(v117, weldConstraint, "Part1", nil)
+            if not okDetach or detachResult == false then
+                error("failed detaching original weld: " .. tostring(detachResult), 0)
+            end
         end
-        writeAndVerify(arg2, "Anchored", true, "target Anchored=true")
+        local okAnchor, anchorResult = pcall(v117, arg2, "Anchored", true)
+        if not okAnchor or anchorResult == false then
+            error("failed anchoring target: " .. tostring(anchorResult), 0)
+        end
     end)
 
     if not setupOk then
@@ -58596,7 +58333,7 @@ end
 do
 local function fn35()
 tbl17.c_()
-return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;if e<=1e-5 then return false,nil;end;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
+return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
 end
 
 tbl17.gU = function()
@@ -58655,209 +58392,22 @@ Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
 local v134 = headOnlyHitboxesByClass[v127.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
 local manipulate = silentAim2.Manipulate
 local obj = setmetatable({}, { __mode = "k" })
-local BODY_MANIPULATE_REACH = 9.5
-local BODY_MANIPULATE_FLOOR_DEPTH = 5
-local bodyManipulateOffsets = nil
-local bodyManipulateParams = RaycastParams.new()
-bodyManipulateParams.FilterType = Enum.RaycastFilterType.Exclude
-local bodyManipulateFilterRefreshAt = 0
-local bodyManipulateFilterDirty = true
-local bodyManipulateBoundPlayers = setmetatable({}, { __mode = "k" })
-
-local function invalidateBodyManipulateFilter()
-bodyManipulateFilterDirty = true
-end
-
-local function bindBodyManipulatePlayer(player)
-if player == nil or bodyManipulateBoundPlayers[player] then return end
-bodyManipulateBoundPlayers[player] = true
-silentAim:Connect(player.CharacterAdded, invalidateBodyManipulateFilter)
-silentAim:Connect(player.CharacterRemoving, invalidateBodyManipulateFilter)
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-bindBodyManipulatePlayer(player)
-end
-silentAim:Connect(Players.PlayerAdded, function(player)
-bindBodyManipulatePlayer(player)
-invalidateBodyManipulateFilter()
-end)
-silentAim:Connect(Players.PlayerRemoving, invalidateBodyManipulateFilter)
-
-local function refreshBodyManipulateFilter()
-local now = os.clock()
-if not bodyManipulateFilterDirty and now < bodyManipulateFilterRefreshAt then return end
-bodyManipulateFilterDirty = false
-bodyManipulateFilterRefreshAt = now + 0.5
-local ignored = {}
-local viewModels = workspace:FindFirstChild("ViewModels")
-if viewModels then ignored[#ignored + 1] = viewModels end
-for _, player in ipairs(Players:GetPlayers()) do
-local character = player.Character
-if character then ignored[#ignored + 1] = character end
-end
-bodyManipulateParams.FilterDescendantsInstances = ignored
-end
-
-local function bodyManipulateClear(origin, target)
-local ok, hit = pcall(function()
-return workspace:Raycast(origin, target - origin, bodyManipulateParams)
-end)
-if not ok then return false, nil end
-return hit == nil, hit
-end
-
-local function bodyManipulateHead(targetPart)
-if typeof(targetPart) ~= "Instance" or not targetPart:IsA("BasePart")
-    or not targetPart:IsDescendantOf(workspace) then return nil end
-local bodyNames = targetPart.Name == "HitboxHeadSmall"
-    and { "HitboxBodySmall", "HitboxBody", "BodyHitbox", "HitboxTorso", "UpperTorso", "Torso", "LowerTorso", "Body" }
-    or { "HitboxBody", "HitboxBodySmall", "BodyHitbox", "HitboxTorso", "UpperTorso", "Torso", "LowerTorso", "Body" }
-local ancestor = targetPart.Parent
-while ancestor ~= nil and ancestor ~= workspace do
-    if ancestor:IsA("Model") then
-        for _, bodyName in ipairs(bodyNames) do
-            local body = ancestor:FindFirstChild(bodyName, true)
-            if body ~= nil and body:IsA("BasePart") and body ~= targetPart
-                and body:IsDescendantOf(ancestor) then
-                return body
-            end
-        end
-        -- Custom rigs often rename torso hitboxes. Fall back to the largest central
-        -- non-extremity part instead of silently treating the head as the body.
-        local boxOk, boxCFrame, boxSize = pcall(function() return ancestor:GetBoundingBox() end)
-        if boxOk and typeof(boxCFrame) == "CFrame" and typeof(boxSize) == "Vector3" then
-            local centerY = boxCFrame.Position.Y
-            local halfY = math.max(boxSize.Y * 0.5, 0.01)
-            local bestPart, bestScore = nil, -math.huge
-            local descendantsOk, descendants = pcall(function() return ancestor:GetDescendants() end)
-            if descendantsOk and type(descendants) == "table" then
-                for _, candidate in ipairs(descendants) do
-                    if candidate ~= targetPart and candidate:IsA("BasePart") then
-                        local lowerName = string.lower(candidate.Name)
-                        local excluded = lowerName:find("head", 1, true)
-                            or lowerName:find("arm", 1, true)
-                            or lowerName:find("leg", 1, true)
-                            or lowerName:find("hand", 1, true)
-                            or lowerName:find("foot", 1, true)
-                            or lowerName:find("accessory", 1, true)
-                            or lowerName:find("handle", 1, true)
-                            or lowerName:find("root", 1, true)
-                        if not excluded then
-                            local relativeY = math.abs(candidate.Position.Y - centerY) / halfY
-                            if relativeY <= 0.42 then
-                                local size = candidate.Size
-                                local volume = size.X * size.Y * size.Z
-                                local score = volume / (1 + relativeY * 3)
-                                if score > bestScore then
-                                    bestScore = score
-                                    bestPart = candidate
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            if bestPart ~= nil then return bestPart end
-        end
-        -- Root is only a last resort when the rig exposes no usable torso part.
-        local rootFallback = ancestor:FindFirstChild("HumanoidRootPart", true)
-        if rootFallback ~= nil and rootFallback:IsA("BasePart")
-            and rootFallback ~= targetPart and rootFallback:IsDescendantOf(ancestor) then
-            return rootFallback
-        end
-    end
-    ancestor = ancestor.Parent
-end
-return nil
-end
-
-local function bodyManipulateAround(origin, target, targetPart)
-if bodyManipulateOffsets == nil then
-local offsets = {}
-for x = -1, 1 do
-for y = -1, 1 do
-for z = -1, 1 do
-if x ~= 0 or y ~= 0 or z ~= 0 then
-local offset = Vector3.new(x, y, z)
-offsets[#offsets + 1] = offset.Unit * BODY_MANIPULATE_REACH
-end
-end
-end
-end
-bodyManipulateOffsets = offsets
-end
-for _, offset in ipairs(bodyManipulateOffsets) do
-local candidate = origin + offset
-if bodyManipulateClear(candidate, target) then
-return true, { Origin = candidate, Part = targetPart }
-end
-end
-return false, nil
-end
-
-local function bodyManipulate(origin, targetPart)
-if typeof(origin) ~= "Vector3" or typeof(targetPart) ~= "Instance"
-    or not targetPart:IsA("BasePart") or not targetPart:IsDescendantOf(workspace) then
-return false, nil
-end
-local character = targetPart:FindFirstAncestorOfClass("Model")
-if not character then return false, nil end
-refreshBodyManipulateFilter()
-local targetPosition = targetPart.Position
-if bodyManipulateClear(origin, targetPosition) then
-return true, nil
-end
-local _, floorHit = bodyManipulateClear(origin, origin + Vector3.new(0, -BODY_MANIPULATE_FLOOR_DEPTH, 0))
-local ground = floorHit and floorHit.Instance
-if not ground or not ground:IsA("BasePart") then
-return bodyManipulateAround(origin, targetPosition, targetPart)
-end
-local floorDistance = floorHit.Distance
-local depth = floorDistance + math.min(ground.Size.Y * 0.99, BODY_MANIPULATE_REACH - floorDistance)
-if depth <= 0 or depth > BODY_MANIPULATE_REACH then
-return bodyManipulateAround(origin, targetPosition, targetPart)
-end
-local below = origin + Vector3.new(0, -depth, 0)
-if bodyManipulateClear(below, targetPosition) then
-return true, { Origin = below, Part = targetPart }
-end
-local drop = Vector3.new(0, -targetPart.Size.Y / 2.01, 0)
-if not bodyManipulateClear(below, targetPosition + drop) then
-return bodyManipulateAround(origin, targetPosition, targetPart)
-end
-return true, { Origin = below, Part = targetPart, HitOffset = drop }
-end
 
 local function fn36(arg6, arg7, arg8)
 if manipulate.Enabled then
 local mode = manipulate.Mode
+
 if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
-if manipulate.Type == "Body" then
-local bodyTarget = bodyManipulateHead(arg7)
-if bodyTarget == nil then
-obj[arg7] = nil
-return false
+local v135, v136 = v132(arg3, arg6, arg7)
+
+if not v135 then
+obj[arg7] = v136
 end
-local allowed, bodyResult = bodyManipulate(arg6, bodyTarget)
-if not allowed then
-obj[arg7] = nil
-return false
-end
--- Keep a non-nil marker for the direct-visible case so the indicator reflects
--- that the selected shot has a valid Body destination even without an offset.
-obj[arg7] = bodyResult or { Part = bodyTarget, Direct = true }
-return true
-end
-local visible, candidateOrigin = v132(arg3, arg6, arg7)
-if visible then
-obj[arg7] = nil
-else
-obj[arg7] = candidateOrigin
-end
-return candidateOrigin ~= nil
+
+return v136 ~= nil
 end
 end
+
 obj[arg7] = nil
 return not targetConditions.Visible or arg3:Check(arg6, arg7, arg7.Parent)
 end
@@ -59002,9 +58552,6 @@ arg._targetScreenPosition = nil
 end
 
 if not arg._targetAcquisition:Acquire(arg2, v134, arg4.ReactionTime, arg4.SwitchDelay) then
-arg._currentTarget = nil
-arg._currentHitbox = nil
-arg._targetScreenPosition = nil
 return
 end
 arg._currentTarget = v134
@@ -59016,9 +58563,7 @@ if arg2.Type ~= "StartShooting" then
 return
 end
 local currentHitbox = arg._currentHitbox
-if currentHitbox == nil or typeof(currentHitbox) ~= "Instance"
-or not currentHitbox:IsA("BasePart") or currentHitbox.Parent == nil
-or not currentHitbox:IsDescendantOf(workspace) then
+if currentHitbox == nil then
 return
 end
 local inner = arg._playerContext.Inner
@@ -59037,143 +58582,33 @@ end
 if v102(v102(v134, "Info"), "Type") ~= "Gun" then
 return
 end
+local _v135, v136 = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
 local v137 = arg2.Args["\1"]
 if type(v137) ~= "table" then
 return
 end
 local v138 = v116.decode(v137["\0"])
 local v139 = v116.decode(v137["\1"])
-if typeof(v138) ~= "CFrame" or typeof(v139) ~= "CFrame" then
+if v138 == nil or v139 == nil then
 return
 end
 local position = v138.Position
-local manipulationResult = nil
-local manipulatedOrigin = nil
-local manipulatedHitOffset = nil
-local manipulatedHitbox = currentHitbox
-if manipulate.Enabled then
-if manipulate.Type == "Body" then
-local bodyTarget = bodyManipulateHead(currentHitbox)
-if bodyTarget == nil then
-    -- Never silently fall back to the original Head hitbox in Body mode.
-    return
+local v140 = v131(position, currentHitbox, v136)
+if v140 == nil then
+return
 end
-local allowed, bodyResult = bodyManipulate(position, bodyTarget)
-if allowed then
-    manipulatedHitbox = bodyTarget
-    if bodyResult ~= nil then manipulationResult = bodyResult end
+local v141 = arg._visibleOriginByHitbox[currentHitbox]
+
+if v141 ~= nil then
+v137["\0"] = v116.encode(CFrame.lookAt(v141, v136))
+v137["\1"] = v116.encode(CFrame.lookAt(v141, v136))
 else
-    local cachedResult = obj[currentHitbox]
-    local cachedValid = type(cachedResult) == "table" and cachedResult.Part == bodyTarget
-        and typeof(cachedResult.Origin) == "Vector3"
-    if cachedValid then
-        refreshBodyManipulateFilter()
-        local cachedHitPoint = bodyTarget.Position
-        if typeof(cachedResult.HitOffset) == "Vector3" then
-            cachedHitPoint += cachedResult.HitOffset
-        end
-        cachedValid = bodyManipulateClear(cachedResult.Origin, cachedHitPoint)
-    end
-    if not cachedValid then
-        -- Stale/blocked Body route: cancel this shot rather than send it to Head.
-        return
-    end
-    manipulatedHitbox = bodyTarget
-    manipulationResult = cachedResult
+v137["\0"] = v116.encode(CFrame.lookAt(position, v136))
+v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, v136))
 end
-else
-local visible, freshOrigin = v132(arg3, position, currentHitbox)
-if not visible then
-    if typeof(freshOrigin) == "Vector3" then
-        manipulationResult = freshOrigin
-    else
-        local cachedOrigin = obj[currentHitbox]
-        if typeof(cachedOrigin) == "Vector3" then
-            local cacheVisible = v132(arg3, cachedOrigin, currentHitbox)
-            if cacheVisible then
-                manipulationResult = cachedOrigin
-            end
-        end
-    end
-end
-end
-end
-if type(manipulationResult) == "table" then
-manipulatedOrigin = manipulationResult.Origin
-if typeof(manipulationResult.Part) == "Instance" and manipulationResult.Part:IsA("BasePart") then
-manipulatedHitbox = manipulationResult.Part
-end
-if typeof(manipulationResult.HitOffset) == "Vector3" then
-    local offsetOk, localOffset = pcall(function()
-        local worldHitPoint = manipulatedHitbox.Position + manipulationResult.HitOffset
-        return manipulatedHitbox.CFrame:PointToObjectSpace(worldHitPoint)
-    end)
-    if offsetOk and typeof(localOffset) == "Vector3" then
-        manipulatedHitOffset = localOffset
-    end
-end
-elseif typeof(manipulationResult) == "Vector3" then
-manipulatedOrigin = manipulationResult
-end
-local targetPointOk, _, v136 = pcall(
-    arg._computeTargetPoint, workspace.CurrentCamera, v133(), manipulatedHitbox
-)
-if not targetPointOk or typeof(v136) ~= "Vector3" then
-    if manipulate.Enabled and manipulate.Type == "Body" then
-        -- Body mode is fail-closed through the complete payload build; do not
-        -- switch back to the originally selected Head if Body aim-point fails.
-        return
-    end
-    if manipulatedHitbox ~= currentHitbox then
-        manipulatedHitbox = currentHitbox
-        manipulatedOrigin = nil
-        manipulatedHitOffset = nil
-        targetPointOk, _, v136 = pcall(
-            arg._computeTargetPoint, workspace.CurrentCamera, v133(), currentHitbox
-        )
-    end
-end
-if targetPointOk and typeof(v136) == "Vector3" then
-    local shotOrigin = typeof(manipulatedOrigin) == "Vector3" and manipulatedOrigin or position
-    local v140 = manipulatedHitOffset
-    if typeof(v140) ~= "Vector3" then
-        local offsetOk, offsetResult = pcall(v131, shotOrigin, manipulatedHitbox, v136)
-        if offsetOk then v140 = offsetResult end
-    end
-    if typeof(v140) ~= "Vector3" and manipulate.Enabled and manipulate.Type == "Body" then
-        -- An incomplete Body hit offset must cancel the shot, never degrade to Head.
-        return
-    end
-    if typeof(v140) ~= "Vector3" and manipulatedHitbox ~= currentHitbox then
-        local fallbackPointOk, _, fallbackPoint = pcall(
-            arg._computeTargetPoint, workspace.CurrentCamera, v133(), currentHitbox
-        )
-        if fallbackPointOk and typeof(fallbackPoint) == "Vector3" then
-            local fallbackOffsetOk, fallbackOffset = pcall(v131, position, currentHitbox, fallbackPoint)
-            if fallbackOffsetOk and typeof(fallbackOffset) == "Vector3" then
-                manipulatedHitbox = currentHitbox
-                shotOrigin = position
-                v136 = fallbackPoint
-                v140 = fallbackOffset
-            end
-        end
-    end
-    if typeof(v140) == "Vector3" then
-        local encodedOk, encodedOrigin, encodedViewOrigin, encodedHitOffset = pcall(function()
-            return v116.encode(CFrame.lookAt(shotOrigin, v136)),
-                v116.encode(CFrame.lookAt(v139.Position, v136)),
-                v116.encode(CFrame.new(v140))
-        end)
-        if encodedOk then
-            v137["\0"] = encodedOrigin
-            v137["\1"] = encodedViewOrigin
-            v137["\2"] = manipulatedHitbox
-            v137["\3"] = encodedHitOffset
-        elseif manipulate.Enabled and manipulate.Type == "Body" then
-            return
-        end
-    end
-end
+
+v137["\2"] = currentHitbox
+v137["\3"] = v116.encode(CFrame.new(v140))
 end
 
 index2.Destroy = function(arg)
@@ -64904,7 +64339,7 @@ return ie.c
 end
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=125,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
     if enabled == false then
@@ -64935,7 +64370,7 @@ end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=125,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
@@ -65834,42 +65269,6 @@ local startUnderground, stopUnderground
 local UndergroundRootDesync = {}
 UndergroundRootDesync.__index = UndergroundRootDesync
 
-local function undergroundRestoreGateOwnsRoot(rootPart)
-    if rootPart == nil or not ragebotPoseRestoreGateIsActive() then return false end
-    local gate = ragebotPoseRestoreGateRead()
-    if type(gate) ~= "table" then return false end
-    local gateRoot = rawget(gate, "rootPart")
-    local gatePose = rawget(gate, "pose")
-    return gateRoot ~= nil and gateRoot == rootPart and typeof(gatePose) == "CFrame"
-end
-
-local function undergroundRestoreGateBlocksRoot(rootPart)
-    if not ragebotPoseRestoreGateIsActive() then return false end
-    local gate = ragebotPoseRestoreGateRead()
-    if type(gate) ~= "table" then return false end
-    local gateRoot = rawget(gate, "rootPart")
-    return gateRoot == nil or gateRoot == rootPart
-end
-
-local function undergroundApplyRestoreGatePose(rootPart)
-    if not undergroundRestoreGateOwnsRoot(rootPart) then return false end
-    local gate = ragebotPoseRestoreGateRead()
-    local pose = type(gate) == "table" and rawget(gate, "pose") or nil
-    local validOk, valid = pcall(function()
-        return rootPart ~= nil and rootPart:IsA("BasePart")
-            and rootPart:IsDescendantOf(workspace) and typeof(pose) == "CFrame"
-    end)
-    if not validOk or not valid then return false end
-    local writeOk = pcall(function() rootPart.CFrame = pose end)
-    local readOk, actual = pcall(function() return rootPart.CFrame end)
-    if not writeOk or not readOk or actual ~= pose then return false end
-    pcall(function()
-        rootPart.AssemblyLinearVelocity = Vector3.zero
-        rootPart.AssemblyAngularVelocity = Vector3.zero
-    end)
-    return true
-end
-
 function UndergroundRootDesync.new(rootPart)
     local self = setmetatable({
         _rootPart = rootPart,
@@ -65878,10 +65277,9 @@ function UndergroundRootDesync.new(rootPart)
         _cframe = nil,
     }, UndergroundRootDesync)
     RunService:BindToRenderStep(self._boundId, Enum.RenderPriority.First.Value, function()
-        if undergroundRestoreGateBlocksRoot(self._rootPart) then
-            if undergroundApplyRestoreGatePose(self._rootPart) then
-                self._oldCFrame = nil
-            end
+        if ragebotPoseRestoreGateIsActive() then
+
+            self._oldCFrame = nil
             self._cframe = nil
             return
         end
@@ -65895,8 +65293,7 @@ function UndergroundRootDesync.new(rootPart)
                 return
             end
             local okRestore = pcall(function() root.CFrame = old end)
-            local readOk, actual = pcall(function() return root.CFrame end)
-            if okRestore and readOk and actual == old then
+            if okRestore then
                 self._oldCFrame = nil
             end
         end
@@ -65906,35 +65303,10 @@ end
 
 function UndergroundRootDesync:SetServerCFrame(cf)
     if cf == nil then
+
         self._cframe = nil
-        local rootPart = self._rootPart
-        if undergroundRestoreGateOwnsRoot(rootPart) then
-            if undergroundApplyRestoreGatePose(rootPart) then
-                self._oldCFrame = nil
-                return true
-            end
-            return false
-        end
-        if undergroundRestoreGateBlocksRoot(rootPart) then
-            return false
-        end
-        local restoreCFrame = self._oldCFrame
-        if restoreCFrame == nil then return true end
-        local validOk, validResult = pcall(function()
-            return rootPart ~= nil and rootPart:IsA("BasePart")
-                and rootPart:IsDescendantOf(workspace)
-        end)
-        if not validOk or not validResult then
-            self._oldCFrame = nil
-            return true
-        end
-        local writeOk = pcall(function() rootPart.CFrame = restoreCFrame end)
-        local readOk, actual = pcall(function() return rootPart.CFrame end)
-        if writeOk and readOk and actual == restoreCFrame then
-            self._oldCFrame = nil
-            return true
-        end
-        return false
+        self._oldCFrame = nil
+        return true
     end
     if typeof(cf) ~= 'CFrame' then
         self._cframe = nil
@@ -65953,14 +65325,22 @@ function UndergroundRootDesync:SetServerCFrame(cf)
         self._cframe = nil
         return false
     end
-    if undergroundRestoreGateBlocksRoot(self._rootPart) then
+    if ragebotPoseRestoreGateIsActive() then
+
         self._cframe = nil
-        if not undergroundRestoreGateOwnsRoot(self._rootPart) then
+        self._oldCFrame = nil
+        local rootPart = self._rootPart
+        local gate = ragebotPoseRestoreGateRead()
+        local approvedPose = type(gate) == "table" and rawget(gate, "pose") or nil
+        local approvedRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
+        if rootPart == nil or not rootPart:IsA("BasePart")
+            or not rootPart:IsDescendantOf(Workspace)
+            or approvedRoot == nil or approvedRoot ~= rootPart
+            or typeof(approvedPose) ~= "CFrame" then
             return false
         end
-        local applied = undergroundApplyRestoreGatePose(self._rootPart)
-        if applied then self._oldCFrame = nil end
-        return applied
+        local writeOk = pcall(function() rootPart.CFrame = approvedPose end)
+        return writeOk
     end
     self._cframe = cf
     return true
@@ -65972,29 +65352,21 @@ function UndergroundRootDesync:GetClientCFrame()
 end
 
 function UndergroundRootDesync:HeartbeatUpdate()
-    if undergroundRestoreGateBlocksRoot(self._rootPart) then
+    if ragebotPoseRestoreGateIsActive() then
         self._cframe = nil
-        if undergroundApplyRestoreGatePose(self._rootPart) then
-            self._oldCFrame = nil
-            return true
-        end
+        self._oldCFrame = nil
         return false
     end
     local rootPart = self._rootPart
     local cf = self._cframe
     if not rootPart or cf == nil then return false end
-    local validRootOk, validRoot = pcall(function()
-        return rootPart:IsA("BasePart") and rootPart:IsDescendantOf(workspace)
+    local okRead, current, hasParent = pcall(function()
+        return rootPart.CFrame, rootPart.Parent ~= nil
     end)
-    if not validRootOk or not validRoot then
+    if not okRead or not hasParent or typeof(current) ~= 'CFrame' then
         self._cframe = nil
         self._oldCFrame = nil
         self._rootPart = nil
-        return false
-    end
-    local okRead, current = pcall(function() return rootPart.CFrame end)
-    if not okRead or typeof(current) ~= 'CFrame' then
-        self._cframe = nil
         return false
     end
     local delta = (cf.Position - current.Position).Magnitude
@@ -66005,8 +65377,8 @@ function UndergroundRootDesync:HeartbeatUpdate()
     end
     self._oldCFrame = current
     local okWrite = pcall(function() rootPart.CFrame = cf end)
-    local readOk, appliedCFrame = pcall(function() return rootPart.CFrame end)
-    if not okWrite or not readOk or appliedCFrame ~= cf then
+    if not okWrite then
+
         self._cframe = nil
         local parentOk, hasParentAfter = pcall(function() return rootPart.Parent ~= nil end)
         if not parentOk or not hasParentAfter then
@@ -66030,39 +65402,30 @@ end
 
 function UndergroundRootDesync:Destroy(skipPositionRestore)
     local rootPart = self._rootPart
-    local skipRestore = skipPositionRestore == true
-    local gateBlocksRoot = undergroundRestoreGateBlocksRoot(rootPart)
-    local gateOwnsThisRoot = undergroundRestoreGateOwnsRoot(rootPart)
-    local restoreCFrame = self._oldCFrame
-    if skipRestore or gateBlocksRoot or gateOwnsThisRoot then
-        restoreCFrame = nil
-    end
-    pcall(function() RunService:UnbindFromRenderStep(self._boundId) end)
 
-    local restored = restoreCFrame == nil
-    if not skipRestore and not gateBlocksRoot and rootPart ~= nil and restoreCFrame ~= nil then
-        local validOk, valid = pcall(function()
-            return rootPart:IsA("BasePart") and rootPart:IsDescendantOf(workspace)
+    local gateActive = ragebotPoseRestoreGateIsActive()
+    local gate = gateActive and ragebotPoseRestoreGateRead() or nil
+    local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
+    local gateOwnsThisRoot = gateActive and gateRoot ~= nil and gateRoot == rootPart
+    local restoreCFrame = self._oldCFrame
+    if gateActive or skipPositionRestore == true then restoreCFrame = nil end
+    pcall(function() RunService:UnbindFromRenderStep(self._boundId) end)
+     
+    if skipPositionRestore ~= true and rootPart ~= nil and restoreCFrame ~= nil then
+        pcall(function()
+            if rootPart.Parent ~= nil then rootPart.CFrame = restoreCFrame end
         end)
-        if validOk and valid then
-            local writeOk = pcall(function() rootPart.CFrame = restoreCFrame end)
-            local readOk, actual = pcall(function() return rootPart.CFrame end)
-            restored = writeOk and readOk and actual == restoreCFrame
-        end
-    elseif gateOwnsThisRoot and not skipRestore and rootPart ~= nil then
+    elseif gateOwnsThisRoot and skipPositionRestore ~= true and rootPart ~= nil then
         pcall(function()
             if rootPart:IsA("BasePart") and rootPart:IsDescendantOf(workspace) then
                 rootPart.AssemblyLinearVelocity = Vector3.zero
                 rootPart.AssemblyAngularVelocity = Vector3.zero
             end
         end)
-        restored = true
     end
-
     self._rootPart = nil
     self._oldCFrame = nil
     self._cframe = nil
-    return restored
 end
 
 local function undergroundGetCharacter()
@@ -66460,134 +65823,6 @@ local function undergroundCapture(char, root, humanoid)
     undergroundSnapshotCharacter = char
 end
 
-local undergroundRestoreRetryGeneration = 0
-local undergroundRestoreRetryActive = false
-local undergroundRestoreRetrySnapshot = nil
-local undergroundRestoreNextWarningAt = 0
-
-local function undergroundClearSnapshot(snapshot)
-    if snapshot == nil or undergroundSnapshot == snapshot then
-        undergroundSnapshot = nil
-        undergroundSnapshotCharacter = nil
-        undergroundRestoreRetryGeneration = undergroundRestoreRetryGeneration + 1
-        undergroundRestoreRetryActive = false
-        undergroundRestoreRetrySnapshot = nil
-    end
-end
-
-local function undergroundTryRestoreSnapshot(snapshot, root, humanoid, desiredCFrame, gateOwnsRoot, gatePose)
-    local rootValidOk, rootValid = pcall(function()
-        return root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace)
-    end)
-    if not rootValidOk or not rootValid then return false end
-    if gateOwnsRoot and typeof(gatePose) ~= "CFrame" then return false end
-    local writeOk = pcall(function()
-        if gateOwnsRoot then
-            root.CFrame = gatePose
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-        else
-            if typeof(desiredCFrame) ~= "CFrame" then error("missing Underground restore CFrame") end
-            root.CFrame = desiredCFrame
-            local restoreVelocity = snapshot.rootVelocity
-            local restoreAngular = snapshot.rootAngularVelocity
-            if typeof(restoreVelocity) ~= "Vector3" or restoreVelocity.Magnitude > 250 then
-                restoreVelocity = Vector3.zero
-            end
-            if typeof(restoreAngular) ~= "Vector3" or restoreAngular.Magnitude > 250 then
-                restoreAngular = Vector3.zero
-            end
-            root.AssemblyLinearVelocity = restoreVelocity
-            root.AssemblyAngularVelocity = restoreAngular
-        end
-    end)
-    if not writeOk then return false end
-    if not gateOwnsRoot then
-        local readOk, actual = pcall(function() return root.CFrame end)
-        if not readOk or actual ~= desiredCFrame then return false end
-    elseif typeof(gatePose) == "CFrame" then
-        local readOk, actual = pcall(function() return root.CFrame end)
-        if not readOk or actual ~= gatePose then return false end
-    end
-    if humanoid ~= nil then
-        local okHumanoid = pcall(function()
-            if snapshot.humanoidAutoRotate ~= nil then
-                humanoid.AutoRotate = snapshot.humanoidAutoRotate
-            end
-            if snapshot.humanoidState then
-                humanoid:ChangeState(snapshot.humanoidState)
-            end
-        end)
-        if not okHumanoid then return false end
-    end
-    return true
-end
-
-local function undergroundScheduleRestoreRetry(snapshot, desiredCFrame)
-    if type(task) ~= "table" or type(task.delay) ~= "function" then return end
-    if undergroundRestoreRetryActive and undergroundRestoreRetrySnapshot == snapshot then
-        return
-    end
-    if undergroundRestoreRetryActive and undergroundRestoreRetrySnapshot ~= snapshot then
-        undergroundRestoreRetryGeneration = undergroundRestoreRetryGeneration + 1
-        undergroundRestoreRetryActive = false
-        undergroundRestoreRetrySnapshot = nil
-    end
-    undergroundRestoreRetryActive = true
-    undergroundRestoreRetrySnapshot = snapshot
-    undergroundRestoreRetryGeneration = undergroundRestoreRetryGeneration + 1
-    local generation = undergroundRestoreRetryGeneration
-    local attempts = 0
-    local function finishRetryOwner()
-        if generation == undergroundRestoreRetryGeneration then
-            undergroundRestoreRetryActive = false
-            undergroundRestoreRetrySnapshot = nil
-        end
-    end
-    local function retry()
-        local callOk, completed = pcall(function()
-            if generation ~= undergroundRestoreRetryGeneration or undergroundSnapshot ~= snapshot then
-                finishRetryOwner()
-                return true
-            end
-            local currentChar = undergroundGetCharacter()
-            if currentChar ~= snapshot.character then
-                undergroundClearSnapshot(snapshot)
-                return true
-            end
-            local currentRoot = undergroundGetRoot(currentChar)
-            local currentHumanoid = undergroundGetHumanoid(currentChar)
-            local gateActive = ragebotPoseRestoreGateIsActive()
-            local gate = gateActive and ragebotPoseRestoreGateRead() or nil
-            local gateRoot = type(gate) == "table" and rawget(gate, "rootPart") or nil
-            if gateActive and gateRoot ~= nil and gateRoot == currentRoot then
-                local gatePose = rawget(gate, "pose")
-                if undergroundTryRestoreSnapshot(snapshot, currentRoot, currentHumanoid, desiredCFrame, true, gatePose) then
-                    undergroundClearSnapshot(snapshot)
-                    return true
-                end
-            elseif not (gateActive and gateRoot == nil) then
-                if undergroundTryRestoreSnapshot(snapshot, currentRoot, currentHumanoid, desiredCFrame, false, nil) then
-                    undergroundClearSnapshot(snapshot)
-                    return true
-                end
-            end
-            return false
-        end)
-        if callOk and completed == true then return end
-        attempts = attempts + 1
-        if attempts == 20 and os.clock() >= undergroundRestoreNextWarningAt then
-            undergroundRestoreNextWarningAt = os.clock() + 5
-            warn("[Underground] Position restore is still pending; preserving the original snapshot and retrying.")
-        end
-        local delay = attempts < 20 and 0.05 or 0.25
-        local scheduled = pcall(task.delay, delay, retry)
-        if not scheduled then finishRetryOwner() end
-    end
-    local scheduled = pcall(task.delay, 0.05, retry)
-    if not scheduled then finishRetryOwner() end
-end
-
 local function undergroundRestore(preferredClientCFrame, skipPositionRestore)
     local skipPoseWrite = skipPositionRestore == true
     local snapshot = undergroundSnapshot
@@ -66602,40 +65837,52 @@ local function undergroundRestore(preferredClientCFrame, skipPositionRestore)
         undergroundDesync = nil
     end
     undergroundLastServerCFrame = nil
-    if not snapshot then
+    if not snapshot or char ~= snapshot.character then
+        undergroundSnapshot = nil
         undergroundSnapshotCharacter = nil
         return
     end
-    if char ~= snapshot.character then
-        undergroundClearSnapshot(snapshot)
-        return
-    end
-    if skipPoseWrite then
-        undergroundClearSnapshot(snapshot)
-        return
-    end
-
     local root = undergroundGetRoot(char)
     local humanoid = undergroundGetHumanoid(char)
     local restoreGateActive = ragebotPoseRestoreGateIsActive()
     local restoreGate = restoreGateActive and ragebotPoseRestoreGateRead() or nil
     local gatedPose = type(restoreGate) == "table" and rawget(restoreGate, "pose") or nil
     local gatedRoot = type(restoreGate) == "table" and rawget(restoreGate, "rootPart") or nil
-    local gateOwnsRoot = restoreGateActive and undergroundRestoreGateOwnsRoot(root)
-    local gateBlocksAll = restoreGateActive and gatedRoot == nil
-    local desiredCFrame = typeof(liveClientCFrame) == "CFrame" and liveClientCFrame
-        or (typeof(cachedClientCFrame) == "CFrame" and cachedClientCFrame or snapshot.rootCFrame)
-
-    local gateBlocksThisRoot = restoreGateActive and (gatedRoot == nil or gatedRoot == root)
-    if gateBlocksAll or (gateBlocksThisRoot and not gateOwnsRoot) then
-        undergroundScheduleRestoreRetry(snapshot, desiredCFrame)
-        return
+    local gateOwnsRoot = not restoreGateActive or (gatedRoot ~= nil and gatedRoot == root)
+    if root and not skipPoseWrite and gateOwnsRoot then
+        pcall(function()
+            if restoreGateActive then
+                 
+                if typeof(gatedPose) == "CFrame" then root.CFrame = gatedPose end
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            else
+                root.CFrame = liveClientCFrame or cachedClientCFrame or snapshot.rootCFrame
+                local restoreVelocity = snapshot.rootVelocity
+                local restoreAngular = snapshot.rootAngularVelocity
+                if typeof(restoreVelocity) ~= 'Vector3' or restoreVelocity.Magnitude > 250 then
+                    restoreVelocity = Vector3.zero
+                end
+                if typeof(restoreAngular) ~= 'Vector3' or restoreAngular.Magnitude > 250 then
+                    restoreAngular = Vector3.zero
+                end
+                root.AssemblyLinearVelocity = restoreVelocity
+                root.AssemblyAngularVelocity = restoreAngular
+            end
+        end)
     end
-    if undergroundTryRestoreSnapshot(snapshot, root, humanoid, desiredCFrame, gateOwnsRoot, gatedPose) then
-        undergroundClearSnapshot(snapshot)
-        return
+    if humanoid and not skipPoseWrite and gateOwnsRoot then
+        pcall(function()
+            if snapshot.humanoidAutoRotate ~= nil then
+                humanoid.AutoRotate = snapshot.humanoidAutoRotate
+            end
+            if snapshot.humanoidState then
+                humanoid:ChangeState(snapshot.humanoidState)
+            end
+        end)
     end
-    undergroundScheduleRestoreRetry(snapshot, desiredCFrame)
+    undergroundSnapshot = nil
+    undergroundSnapshotCharacter = nil
 end
 
 local function undergroundServerCFrame(char, root)
@@ -66880,6 +66127,7 @@ startUnderground = function()
             undergroundLastServerCFrame = nil
             if undergroundDesync then
                 undergroundDesync:SetServerCFrame(nil)
+                undergroundDesync._oldCFrame = currentRoot.CFrame
             end
         end
         if undergroundDesync then
@@ -69808,88 +69056,223 @@ end
 
 index2.GetTarget = function(arg)
 local prioritizeHackers = v115.Data.Ragebot.PrioritizeHackers == true
+local Players = game:GetService("Players")
 local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
-if localEnvironmentId == nil then return nil end
-
-local localRoot = nil
-pcall(function()
-    local localState = arg._fighters.LocalState
-    local localCharacter = localState ~= nil and localState.Character or nil
-    local characterState = localCharacter ~= nil and localCharacter.State or nil
-    localRoot = characterState ~= nil and characterState.RootPart or nil
-    if localRoot == nil and localState ~= nil then localRoot = localState.RootPart end
-end)
-local function distanceTo(fighter)
-    if typeof(localRoot) ~= "Instance" or not localRoot:IsA("BasePart")
-        or not localRoot:IsDescendantOf(workspace) then
-        return math.huge
+local localPosition = nil
+local okLocalPosition, localPositionValue = pcall(function()
+    local localPlayer = Players.LocalPlayer
+    local character = localPlayer and localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace) then
+        return root.Position
     end
-    local distance
-    local okDistance = pcall(function()
-        local character = fighter ~= nil and fighter.Character or nil
-        local state = character ~= nil and character.State or nil
-        local root = state ~= nil and state.RootPart or nil
+    return nil
+end)
+if okLocalPosition and typeof(localPositionValue) == "Vector3" then
+    localPosition = localPositionValue
+end
+
+local function isHacker(player)
+    local okTag, tagged = pcall(arg._playerTags.Has, arg._playerTags, player, "Hacker")
+    return okTag and tagged == true
+end
+
+local function distanceTo(fighter)
+    if localPosition == nil then return nil end
+    local okDistance, distance = pcall(function()
+        local character = fighter.Character
+        local state = character and character.State or nil
+        local root = state and state.RootPart or nil
         if root == nil or not root:IsA("BasePart") or not root:IsDescendantOf(workspace) then
-            error("target root unavailable")
+            return nil
         end
-        distance = (root.Position - localRoot.Position).Magnitude
+        return (root.Position - localPosition).Magnitude
     end)
     if not okDistance or type(distance) ~= "number" or distance ~= distance
-        or distance == math.huge or distance < 0 then return math.huge end
+        or distance == math.huge or distance == -math.huge or distance < 0 then
+        return nil
+    end
     return distance
 end
-local function chooseFromPlayers(players, stateByPlayer, skipTaggedHackers)
-    local bestTarget, bestDistance, firstTarget = nil, math.huge, nil
-    for key, value in pairs(players) do
-        local player, fighter = nil, nil
-        if stateByPlayer ~= nil then
-            if typeof(value) == "Instance" then
-                player = value
-            elseif typeof(key) == "Instance" then
-                player = key
-            end
-            if player ~= nil then fighter = stateByPlayer[player] end
-        else
-            if typeof(key) == "Instance" then
-                player, fighter = key, value
-            elseif typeof(value) == "Instance" then
-                player = value
-                fighter = arg._fighters.StateByPlayer[player]
-            end
-        end
-        if fighter ~= nil and player ~= nil then
-            local isHacker = false
-            if skipTaggedHackers then
-                local okTag, tagged = pcall(arg._playerTags.Has, arg._playerTags, player, "Hacker")
-                isHacker = okTag and tagged == true
-            end
-            if not isHacker and fn36(fighter, player, localEnvironmentId) then
-                local target = fn37(fighter)
-                if target ~= nil then
-                    if firstTarget == nil then firstTarget = target end
-                    local distance = distanceTo(fighter)
-                    if distance < bestDistance then
-                        bestDistance = distance
-                        bestTarget = target
-                    end
-                end
-            end
-        end
+
+local function isExplicitlyProtected(fighter)
+    if fighter == nil then return false end
+    local okInvincible, isInvincible = pcall(fighter.IsInvincible, fighter)
+    if okInvincible and isInvincible then
+        return true
     end
-    return bestTarget or firstTarget
+    local okObserver, itemObserver = pcall(function() return fighter.ItemObserver end)
+    if not okObserver or itemObserver == nil then return false end
+    local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
+    if not okMelee or melee == nil then return false end
+    local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
+    return not okDeflecting or isDeflecting == true
 end
 
+local LOCKED_TARGET_UNAVAILABLE_TIMEOUT = 2.0
+local LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT = 0.5
+local LOCKED_TARGET_UNATTACKABLE_TIMEOUT = 0.5
+
+local function resetLockedTargetTimers()
+    arg._lockedUnavailableSince = nil
+    arg._lockedEnemyMismatchSince = nil
+    arg._lockedUnattackableSince = nil
+    arg._lockedReadFailureSince = nil
+end
+
+local function clearLockedTarget()
+    arg._lockedFighter = nil
+    arg._lockedPlayer = nil
+    arg._lockedTargetAt = nil
+    resetLockedTargetTimers()
+end
+
+if localEnvironmentId == nil then
+    clearLockedTarget()
+    return nil
+end
+
+local function lockTimeoutStatus(field, timeout)
+    local now = os.clock()
+    local started = arg[field]
+    if type(started) ~= "number" or started ~= started or started == math.huge or started == -math.huge then
+        started = now
+        arg[field] = now
+    end
+    if now - started >= timeout then
+        return "release", nil, nil
+    end
+    return "hold", nil, nil
+end
+
+local function rememberTarget(fighter, player)
+    arg._lockedFighter = fighter
+    arg._lockedPlayer = player
+    arg._lockedTargetAt = os.clock()
+    resetLockedTargetTimers()
+    return fn37(fighter)
+end
+
+local prioritizedHacker, prioritizedHackerDistance, prioritizedHackerPlayer = nil, math.huge, nil
 if prioritizeHackers then
     local okPlayers, hackerPlayers = pcall(function()
         return arg._playerTags:GetPlayersWith("Hacker")
     end)
     if okPlayers and type(hackerPlayers) == "table" then
-        local hackerTarget = chooseFromPlayers(hackerPlayers, arg._fighters.StateByPlayer, false)
-        if hackerTarget ~= nil then return hackerTarget end
+        for _, player in ipairs(hackerPlayers) do
+            local fighter = arg._fighters.StateByPlayer[player]
+            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
+                local distance = distanceTo(fighter)
+                if distance ~= nil and distance < prioritizedHackerDistance then
+                    prioritizedHacker = fighter
+                    prioritizedHackerDistance = distance
+                    prioritizedHackerPlayer = player
+                end
+            end
+        end
     end
 end
 
-return chooseFromPlayers(arg._fighters.EnemyByPlayer, nil, prioritizeHackers)
+local lockedFighter = arg._lockedFighter
+local lockedPlayer = arg._lockedPlayer
+if lockedFighter ~= nil and lockedPlayer ~= nil
+    and prioritizeHackers and prioritizedHacker ~= nil
+    and not isHacker(lockedPlayer) and prioritizedHackerPlayer ~= lockedPlayer then
+    return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
+end
+if lockedFighter ~= nil and lockedPlayer ~= nil then
+    local lockStatus = "hold"
+    local lockedTarget = nil
+    local lockedDistance = nil
+    local okLock, status, targetValue, distanceValue = pcall(function()
+        if lockedPlayer.Parent ~= Players then
+            return "release", nil, nil
+        end
+        local character = lockedFighter.Character
+        if character == nil then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        local state = character.State
+        if state == nil then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        if state.Alive == false then
+            return "release", nil, nil
+        end
+        if state.Alive ~= true then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        arg._lockedUnavailableSince = nil
+
+        if lockedFighter.IsEnemy ~= true then
+            arg._lockedUnattackableSince = nil
+            return lockTimeoutStatus("_lockedEnemyMismatchSince", LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT)
+        end
+        arg._lockedEnemyMismatchSince = nil
+        if localEnvironmentId ~= nil and lockedFighter.EnvironmentId ~= localEnvironmentId then
+            return "release", nil, nil
+        end
+
+        local distance = distanceTo(lockedFighter)
+        if distance == nil then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        if isExplicitlyProtected(lockedFighter) then
+            return "release", nil, nil
+        end
+        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId) then
+            return lockTimeoutStatus("_lockedUnattackableSince", LOCKED_TARGET_UNATTACKABLE_TIMEOUT)
+        end
+        arg._lockedUnattackableSince = nil
+
+        local target = fn37(lockedFighter)
+        if target == nil then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        arg._lockedUnavailableSince = nil
+        arg._lockedReadFailureSince = nil
+        return "locked", target, distance
+    end)
+    if okLock then
+        lockStatus, lockedTarget, lockedDistance = status, targetValue, distanceValue
+
+        arg._lockedReadFailureSince = nil
+    else
+        local failureStatus = lockTimeoutStatus("_lockedReadFailureSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        if failureStatus ~= "release" then
+
+            return nil
+        end
+        lockStatus = "release"
+    end
+    if lockStatus == "release" then
+        clearLockedTarget()
+    elseif lockStatus == "hold" then
+        return nil
+    elseif lockStatus == "locked" then
+
+        return lockedTarget
+    end
+end
+
+if prioritizedHacker ~= nil then
+    return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
+end
+
+local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
+for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
+    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
+        local distance = distanceTo(fighter)
+        if distance ~= nil and distance < bestTargetDistance then
+            bestTarget, bestTargetDistance, bestTargetPlayer = fighter, distance, player
+        end
+    end
+end
+if bestTarget ~= nil then
+    return rememberTarget(bestTarget, bestTargetPlayer)
+end
+clearLockedTarget()
+return nil
 end
 
 index2.Reset = function(arg)
@@ -69972,7 +69355,7 @@ tbl17.jB()
 local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -0.7, 0.05)
-local vector2 = Vector3.new(0, -0.7, 0.05)
+local vector2 = Vector3.new(0, -3.85, 0.05)
 local function ragebotSafeEstimatedDelay(callback)
 if type(callback) ~= "function" then return 0 end
 local ok, value = pcall(callback)
@@ -70489,7 +69872,19 @@ if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
 arg:ClearTeleport()
 end
 
-ragebotObserveFakePosition(targetRoot, os.clock())
+local desyncRecentlyDetected = ragebotObserveFakePosition(targetRoot, os.clock())
+if desyncRecentlyDetected then
+    local nowForGlue = os.clock()
+    local track = RAGEBOT_FAKE_POSITION_TRACKS[targetRoot]
+    local lastRefresh = type(track) == "table" and tonumber(track.lastHitscanGlueRefreshAt) or -math.huge
+    if not ragebotFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
+    local state = ragebotVoidSpamState()
+    local hidePhaseActive = ragebotVoidSpamConfig() and state.phase == "hide"
+    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
+        arg:ClearTeleport()
+        if type(track) == "table" then track.lastHitscanGlueRefreshAt = nowForGlue end
+    end
+end
 local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
 if typeof(v120) ~= "CFrame" then
 ragebotVoidSpamReleasePendingForUnavailableTarget()
@@ -70510,14 +69905,6 @@ local shootFrames = tonumber(ragebot.ShootFrames) or 1
 if shootFrames ~= shootFrames or shootFrames == math.huge or shootFrames == -math.huge then
 shootFrames = 1
 end
-local function releaseAndHoldSourcePose()
-    arg:ClearTeleport()
-    local okPose, sourcePose = pcall(function()
-        return arg5 ~= nil and arg5.CFrame or nil
-    end)
-    if okPose and typeof(sourcePose) == "CFrame" then return sourcePose end
-    return n
-end
 local safeDt = tonumber(arg2) or 0
 if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0 then
 safeDt = 0
@@ -70532,17 +69919,22 @@ if voidSpamEnabled then
     if state.phase == "hide" and now < (tonumber(state.activeUntil) or 0) then
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
-        return releaseAndHoldSourcePose(), nil
+        return n, nil
     end
 
     if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
-        return releaseAndHoldSourcePose(), nil
+        return n, nil
     end
 else
     local state = ragebotVoidSpamState()
     ragebotVoidSpamReset(state)
     if not arg._shootLock:ShouldFire(arg6, safeDt * shootFrames) then
-        return releaseAndHoldSourcePose(), nil
+        local random2 = math.random
+        return CFrame.new(
+            math.random(-1000000, 1000000),
+            math.random(5000, 10000),
+            random2(-1000000, 1000000)
+        ), nil
     end
 end
 
@@ -70749,7 +70141,7 @@ tbl17.jB()
 local v117 = tbl17.jy()
 local v118 = tbl17.jC()
 local vector = Vector3.new(0, -v86[195], 0.05)
-local vector2 = Vector3.new(v86[186], -0.7, 0.05)
+local vector2 = Vector3.new(v86[186], -3.85, 0.05)
 
 local tbl18 = {
 ["\0"] = -9e37,
@@ -70788,6 +70180,11 @@ local tbl21 = {
 }
 
 local tbl22 = { ["\0"] = 0, ["\1"] = 1, ["\2"] = v86[186], ["\3"] = 0, ["\4"] = 0, ["\5"] = 0 }
+
+local function fn36()
+local random2 = math.random
+return CFrame.new(math.random(-10000000, -100000), math.random(5000, 10000), random2(-10000000, -100000))
+end
 
 local function fn37(arg, arg2)
 return { Kind = "Normalized", Pitch = math.deg(arg), Yaw = math.deg(arg2) }
@@ -70855,7 +70252,24 @@ arg:ResetState()
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
 end
 
-ragebotObserveFakePosition(rootPart, os.clock())
+local meleeDesyncRecentlyDetected = ragebotObserveFakePosition(rootPart, os.clock())
+if meleeDesyncRecentlyDetected then
+    local nowForGlue = os.clock()
+    local track = RAGEBOT_FAKE_POSITION_TRACKS[rootPart]
+    local lastRefresh = type(track) == "table" and tonumber(track.lastMeleeGlueRefreshAt) or -math.huge
+    if not fakePositionFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
+    local state = rawget(_G, "__CrefyRagebotVoidSpamState")
+    local hidePhaseActive = type(state) == "table" and state.phase == "hide"
+    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
+        local previousSource = arg._gluedOurPart
+        local partGlue = arg._partGlue
+        if previousSource ~= nil and type(partGlue) == "table" and type(partGlue.Free) == "function" then
+            pcall(partGlue.Free, partGlue, previousSource)
+        end
+        arg._gluedOurPart = nil
+        if type(track) == "table" then track.lastMeleeGlueRefreshAt = nowForGlue end
+    end
+end
 
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
@@ -71057,7 +70471,7 @@ if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
 
         return n, fn37(v121, v122), nil
     end
-    return gluedOurPart ~= nil and gluedOurPart.CFrame or n, nil, nil
+    return fn36(), nil, nil
 end
 
 if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
@@ -71385,7 +70799,7 @@ local fallbackBaseRadius = tonumber(projectileBreaker.FallbackBaseRadius) or 100
 if fallbackBaseRadius ~= fallbackBaseRadius or fallbackBaseRadius == math.huge or fallbackBaseRadius == -math.huge then
 fallbackBaseRadius = 100
 end
-fallbackBaseRadius = math.clamp(fallbackBaseRadius, 5, 125)
+fallbackBaseRadius = math.clamp(fallbackBaseRadius, 5, 100000000)
 local fallbackRadiusRandomFactor = tonumber(projectileBreaker.FallbackRadiusRandomFactor)
 if fallbackRadiusRandomFactor == nil or fallbackRadiusRandomFactor ~= fallbackRadiusRandomFactor
     or fallbackRadiusRandomFactor == math.huge or fallbackRadiusRandomFactor == -math.huge then
@@ -71394,13 +70808,22 @@ end
 fallbackRadiusRandomFactor = math.clamp(fallbackRadiusRandomFactor, 0, 1)
 local n = fallbackBaseRadius + fallbackBaseRadius * fallbackRadiusRandomFactor
 local position = arg.Position
-local anchor = projectileBreaker.FallbackAnchorFromCharacter == true
-    and position or Vector3.new(v86[186], position.Y, v86[186])
-local v121 = v117(anchor, fallbackBaseRadius, n)
-if (v121.Position - position).Magnitude > 250 then
-    v121 = v117(position, fallbackBaseRadius, n)
+local v121 = v117(projectileBreaker.FallbackAnchorFromCharacter == true and position or Vector3.new(v86[186], position.Y, v86[186]), fallbackBaseRadius, n)
+local v122 = v120:NextInteger(v86[63], 3)
+local position2 = v121.Position
+local x = position2.X
+local y = position2.Y
+local z = position2.Z
+
+if v122 == 1 then
+x = 1073741824
+elseif v122 == v86[56] then
+y = 1073741824
+else
+z = 1073741824
 end
-return v121
+
+return v121 - position2 + Vector3.new(x, y, z)
 end
 
 local function fn45(surface)
@@ -71732,7 +71155,7 @@ local baseRadius = tonumber(random2.BaseRadius) or 100
 if baseRadius ~= baseRadius or baseRadius == math.huge or baseRadius == -math.huge then
 baseRadius = 100
 end
-baseRadius = math.clamp(baseRadius, 5, 125)
+baseRadius = math.clamp(baseRadius, 5, 100000000)
 local radiusRandomFactor = tonumber(random2.RadiusRandomFactor)
 if radiusRandomFactor == nil or radiusRandomFactor ~= radiusRandomFactor
     or radiusRandomFactor == math.huge or radiusRandomFactor == -math.huge then
@@ -71741,13 +71164,22 @@ end
 radiusRandomFactor = math.clamp(radiusRandomFactor, 0, 1)
 local n = baseRadius + baseRadius * radiusRandomFactor
 local position = arg.Position
-local anchor = random2.AnchorFromCharacter == true
-    and position or Vector3.new(0, position.Y, 0)
-local v118 = v116(anchor, baseRadius, n)
-if (v118.Position - position).Magnitude > 250 then
-    v118 = v116(position, baseRadius, n)
+local v118 = v116(random2.AnchorFromCharacter == true and position or Vector3.new(0, position.Y, 0), baseRadius, n)
+local v119 = v117:NextInteger(v86[63], 3)
+local position2 = v118.Position
+local x = position2.X
+local y = position2.Y
+local z = position2.Z
+
+if v119 == 1 then
+x = 1073741824
+elseif v119 == 2 then
+y = 1073741824
+else
+z = 1073741824
 end
-return v118
+
+return v118 - position2 + Vector3.new(x, y, z)
 end }
 end
 
@@ -71869,7 +71301,7 @@ if typeof(arg) ~= "CFrame" then
 error("Translocate.compute expected a CFrame")
 end
 local function fallback()
-return arg
+return v116(arg.Position, 10000, 1e9)
 end
 if not arg2 then
 return fallback()
@@ -71907,16 +71339,7 @@ end
 return partCFrame * CFrame.new(0, -partSize.Y / 2 + offset, 0)
 end)
 if okCompute and typeof(result) == "CFrame" then
-    local destination = result.Position
-    local origin = arg.Position
-    local finite = destination.X == destination.X and destination.Y == destination.Y and destination.Z == destination.Z
-        and destination.X ~= math.huge and destination.X ~= -math.huge
-        and destination.Y ~= math.huge and destination.Y ~= -math.huge
-        and destination.Z ~= math.huge and destination.Z ~= -math.huge
-    if finite and (destination - origin).Magnitude <= 250
-        and destination.Y >= origin.Y - 50 then
-        return result
-    end
+return result
 end
 return fallback()
 end }
@@ -73704,10 +73127,16 @@ arg._nextGetActionWarningAt = warningNow + 5
 warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
 end
 elseif actionResult == nil then
-    -- No selected action is an ordinary idle state; keep the retry silent.
+
+local warningNow = os.clock()
+if warningNow >= (arg._nextNoActionWarningAt or 0) then
+arg._nextNoActionWarningAt = warningNow + 5
+warn("[Ragebot] No weapon action selected; if a valid target exists, movement will hold this update and retry")
+end
 end
 
 local repRootCounterActive = false
+local repRootCounterTarget = nil
 if okAction and (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker")
     and arg._reloadGun == nil and (v130 == nil or v130.Type ~= "Reload") then
     local nowForRepRoot = os.clock()
@@ -73739,6 +73168,7 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
             storedCounterTarget = nil
         elseif storedTargetValid and targetPolicyValid then
             repRootCounterActive = true
+            repRootCounterTarget = storedCounterTarget
         end
 
     end
@@ -73814,10 +73244,11 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                 arg._repRootTranslocateBlockUntil = nowForRepRoot + 0.75
                 arg._repRootRestoreRetryAt = nil
                 repRootCounterActive = true
+                repRootCounterTarget = detectedTarget
                 if nowForRepRoot >= (arg._nextRepRootCounterNoticeAt or 0) then
                     arg._nextRepRootCounterNoticeAt = nowForRepRoot + 5
                     if detectedKind == "rep-root-contact" then
-                        warn("[Ragebot] Observable RepRoot/PartGlue signature detected; evasion is paused during local pose restoration. Normal Ragebot target selection remains active.")
+                        warn("[Ragebot] Observable RepRoot/PartGlue signature detected; evasion paused and Ragebot is focusing the detected attacker.")
                     elseif detectedKind == "fake-position-memory" then
                         warn("[Ragebot] Recently observed FakePosition threat resumed/changed state; consuming one bounded response window.")
                     elseif detectedKind == "knife-cooldown-predict" then
@@ -74050,6 +73481,7 @@ if arg._repRootCounterRestorePending == true then
             local resumedPolicyValid = resumedHasConfirmedSignature or resumedKnifeState == false
             if okCounterTarget and validCounterTarget == true and resumedPolicyValid then
                 repRootCounterActive = true
+                repRootCounterTarget = targetToResume
                 arg._repRootCounterUntil = math.max(priorCounterUntil, responseUntil)
             else
 
@@ -74058,6 +73490,7 @@ if arg._repRootCounterRestorePending == true then
                 arg._repRootCounterUntil = 0
                 arg._repRootCounterActionAt = nil
                 repRootCounterActive = false
+                repRootCounterTarget = nil
             end
         end
     elseif nowRestore < deadlineRestore then
@@ -74166,41 +73599,12 @@ if not clearAnglesOk and os.clock() >= (arg._nextTranslocateAngleClearWarningAt 
     warn("[Ragebot] Could not clear stale Knife camera angles before Translocate: " .. tostring(clearAnglesError))
 end
 arg:_ApplyForcedCrouch(v86[153])
-local didTranslocate = false
 local okTranslocate, translocateError = pcall(function()
 local destination = v125.compute(clientCFrame, arg._targetSelection:HasTargets())
 if typeof(destination) ~= "CFrame" then
-    return
+error("Translocate returned an invalid destination CFrame")
 end
-local serverDestination = arg:_ApplyUndergroundOffset(destination, characterController)
-if typeof(serverDestination) ~= "CFrame" or typeof(clientCFrame) ~= "CFrame" then
-    return
-end
-
-local origin = clientCFrame.Position
-local targetPosition = serverDestination.Position
-local coordinatesFinite = fakePositionFiniteNumber(targetPosition.X)
-    and fakePositionFiniteNumber(targetPosition.Y)
-    and fakePositionFiniteNumber(targetPosition.Z)
-    and fakePositionFiniteNumber(origin.X)
-    and fakePositionFiniteNumber(origin.Y)
-    and fakePositionFiniteNumber(origin.Z)
-local insideWorldBounds = coordinatesFinite
-    and math.abs(targetPosition.X) <= 50000
-    and math.abs(targetPosition.Z) <= 50000
-    and math.abs(targetPosition.Y) <= 10000
-local movementBounded = insideWorldBounds
-    and (targetPosition - origin).Magnitude <= 250
-    and targetPosition.Y >= origin.Y - 50
-if not movementBounded then
-    return
-end
-
-local setResult = characterController:SetServerCFrame(serverDestination)
-if setResult ~= true then
-    error("SetServerCFrame did not confirm the Translocate destination: " .. tostring(setResult))
-end
-didTranslocate = true
+characterController:SetServerCFrame(arg:_ApplyUndergroundOffset(destination, characterController))
 end)
 if not okTranslocate then
 local warningNow = os.clock()
@@ -74209,21 +73613,26 @@ arg._nextTranslocateWarningAt = warningNow + 5
 warn("[Ragebot] Translocate failed; resetting controller: " .. tostring(translocateError))
 end
 pcall(arg._Reset, arg)
-elseif didTranslocate then
+else
 ragebotMarkActiveLifecycle(arg)
 end
 return
 end
 
 local target
-local okTarget, resultTarget = pcall(arg._targetSelection.GetTarget, arg._targetSelection)
-if okTarget then
-    target = resultTarget
+if repRootCounterActive then
+
+    target = repRootCounterTarget
 else
-    local warningNow = os.clock()
-    if warningNow >= (arg._nextTargetWarningAt or 0) then
-        arg._nextTargetWarningAt = warningNow + 5
-        warn("[Ragebot] Target selection failed: " .. tostring(resultTarget))
+    local okTarget, resultTarget = pcall(arg._targetSelection.GetTarget, arg._targetSelection)
+    if okTarget then
+        target = resultTarget
+    else
+        local warningNow = os.clock()
+        if warningNow >= (arg._nextTargetWarningAt or 0) then
+            arg._nextTargetWarningAt = warningNow + 5
+            warn("[Ragebot] Target selection failed: " .. tostring(resultTarget))
+        end
     end
 end
 
@@ -74274,6 +73683,7 @@ if repRootCounterActive then
     arg._repRootCounterUntil = 0
     arg._repRootCounterActionAt = nil
     repRootCounterActive = false
+    repRootCounterTarget = nil
 end
 arg._lastTargetWorld = nil
 ragebotSafeDeactivateTargetState(arg)
@@ -74294,8 +73704,19 @@ end
 pcall(arg._Reset, arg)
 return
 end
--- RepRoot restoration is not a combat target pose. Never overwrite the
--- freshly planned Ragebot CFrame with a stale counter snapshot here.
+local counterHoldUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
+local counterRestoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
+local counterHoldCFrame = arg._repRootCounterHoldCFrame
+if arg._repRootCounterRestorePending ~= true
+    and type(counterRestoreVerifiedAt) == "number"
+    and counterRestoreVerifiedAt == counterRestoreVerifiedAt
+    and counterRestoreVerifiedAt ~= math.huge and counterRestoreVerifiedAt ~= -math.huge
+    and os.clock() < counterHoldUntil
+    and arg._repRootCounterHoldRootPart == rootPart
+    and typeof(counterHoldCFrame) == "CFrame" then
+
+    v131.CFrame = counterHoldCFrame
+end
 local okApply, applyError = pcall(arg._ApplyPlan, arg, v131, target, innerContext)
 if not okApply then
 local warningNow = os.clock()
@@ -74396,6 +73817,13 @@ if actionOk and v132 ~= nil and shotRequestCount ~= nil then
         and countAfter ~= math.huge and countAfter ~= -math.huge
         and countAfter > shotRequestCount
 end
+if shotRequestAdvanced and repRootCounterActive and target == repRootCounterTarget then
+
+    arg._repRootCounterActionAt = os.clock()
+
+    arg._repRootCounterStationaryUntil = 0
+end
+
 if shotRequestAdvanced then
 local okExpected, expectedAmmo = pcall(function() return v132:GetExpectedAmmoAfterPendingShots() end)
 local okAmmoAfter, ammoAfter = pcall(function() return v132:GetAmmo() end)
@@ -74489,17 +73917,14 @@ local function ragebotUsesExternalRiotCamera(item, target, owner)
     local player = fighter ~= nil and fighter.Player or nil
     local targetModel = player ~= nil and player.Character or (aliveState ~= nil and aliveState.Model or nil)
     local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
-    local targetHitbox = aliveState ~= nil and aliveState.HitboxHead or nil
     local localRoot = nil
     local okRoots = pcall(function()
         local character = Players.LocalPlayer and Players.LocalPlayer.Character or nil
         localRoot = character ~= nil and character:FindFirstChild("HumanoidRootPart") or nil
-        if targetModel == nil or targetRoot == nil or targetHitbox == nil or localRoot == nil
+        if targetModel == nil or targetRoot == nil or localRoot == nil
             or not targetModel:IsDescendantOf(workspace)
-            or not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(targetModel)
-            or not targetHitbox:IsA("BasePart") or not targetHitbox:IsDescendantOf(targetModel)
-            or not localRoot:IsA("BasePart") or not localRoot:IsDescendantOf(workspace) then
-            error("Riot target model/root/hitbox mismatch")
+            or not targetRoot:IsA("BasePart") or not localRoot:IsA("BasePart") then
+            error("missing Riot target root")
         end
     end)
     if not okRoots then
@@ -74632,44 +74057,10 @@ local function ragebotBuildRiotKnifeViewAngles(target)
     if not okPart or candidatePart == nil then return nil end
     anglePart = candidatePart
 
-    local fighterState = target ~= nil and target.FighterState or nil
     local okAngles, pitch, yaw = pcall(function()
-        local player = fighterState ~= nil and fighterState.Player or nil
-        local model = aliveState ~= nil and aliveState.Model or nil
-        if model == nil or player == nil or player.Character ~= model
-            or not hitbox:IsDescendantOf(model) or not anglePart:IsDescendantOf(model) then
-            return nil, nil
-        end
-        -- Match the stable root-facing source used by AlwaysBackstab.Knife.
-        -- If Aimbot owns this exact target, use its already-controlled local camera
-        -- instead of fighting its aim with the opponent's facing direction.
-        local rotationSource = anglePart
-        local aimbotState = ragebotStateGet("__CrefyAimbotTargetState")
-        if type(aimbotState) == "table"
-            and rawget(aimbotState, "active") == true
-            and rawget(aimbotState, "pending") ~= true
-            and rawget(aimbotState, "character") == model then
-            local updatedAt = tonumber(rawget(aimbotState, "updatedAt")) or 0
-            local age = os.clock() - updatedAt
-            if age >= 0 and age <= 0.35 then
-                local currentCamera = workspace.CurrentCamera
-                if currentCamera ~= nil then rotationSource = currentCamera end
-            end
-        end
-        local rotation = rotationSource.CFrame
-        local p, y = rotation:ToOrientation()
-        if type(p) ~= "number" or type(y) ~= "number"
-            or p ~= p or y ~= y
-            or p == math.huge or p == -math.huge
-            or y == math.huge or y == -math.huge then
-            return nil, nil
-        end
-        return p, y
+        return anglePart.CFrame:ToOrientation()
     end)
-    if not okAngles or type(pitch) ~= "number" or type(yaw) ~= "number" then
-        return nil
-    end
-    if type(pitch) ~= "number" or type(yaw) ~= "number"
+    if not okAngles or type(pitch) ~= "number" or type(yaw) ~= "number"
         or pitch ~= pitch or yaw ~= yaw
         or pitch == math.huge or pitch == -math.huge
         or yaw == math.huge or yaw == -math.huge then
@@ -74807,6 +74198,18 @@ if not okTargetParts or not targetPartsValid then
 arg4 = nil
 end
 end
+local counterUntil = tonumber(arg._repRootCounterUntil) or 0
+local counterKind = arg._repRootCounterKind
+local counterTarget = arg._repRootCounterTarget
+local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "table"
+    and (counterTarget == arg4 or (counterTarget.FighterState ~= nil
+        and counterTarget.FighterState == arg4.FighterState))
+
+local stationaryUntil = tonumber(arg._repRootCounterStationaryUntil) or 0
+local stationaryCounterResponse = arg._enabled == true and os.clock() < stationaryUntil
+    and (counterKind == "rep-root-contact"
+        or counterKind == "knife-cooldown-predict")
+    and counterTargetMatches
 local actionItem = arg3 ~= nil and arg3.Item or nil
 local shouldLockKnifeCamera = arg._enabled
 and arg4 ~= nil
@@ -74847,6 +74250,10 @@ end
 if arg3 == nil then
 arg._hitscanStrategy:ResetState()
 arg._meleeStrategy:ResetState()
+if stationaryCounterResponse and typeof(arg6) == "CFrame" then
+    return { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
+end
+
 if arg4 ~= nil and typeof(arg6) == "CFrame" then
     return { CFrame = arg6, HoldPosition = true }
 end
@@ -74858,7 +74265,11 @@ arg._hitscanStrategy:ResetState()
 arg._meleeStrategy:ResetState()
 local item = arg3.Item
 local v131
-v131 = arg:_EvadePlan(arg6, arg7)
+if stationaryCounterResponse and typeof(arg6) == "CFrame" then
+    v131 = { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
+else
+    v131 = arg:_EvadePlan(arg6, arg7)
+end
 
 v131.WeaponAction = function()
 item:Equip()
@@ -75146,40 +74557,11 @@ index2._EvadePlan = function(arg, arg2, arg3)
 if arg3 == "Off" then
 return {}
 end
-if typeof(arg2) ~= "CFrame" then
-    return { CFrame = arg2 }
-end
 
-local candidate
-local shouldSkipDefense = false
 if arg3 == "ProjectileBreaker" then
-    shouldSkipDefense = v86[34]
-    local okCandidate, result = pcall(function()
-        return arg._projectileBreakerTeleport:Compute(arg2)
-    end)
-    if okCandidate then candidate = result end
-else
-    local okCandidate, result = pcall(function()
-        return v121.compute(arg2)
-    end)
-    if okCandidate then candidate = result end
+return { CFrame = arg._projectileBreakerTeleport:Compute(arg2), ShouldSkipDefense = v86[34] }
 end
-
-local safe = typeof(candidate) == "CFrame"
-if safe then
-    local origin = arg2.Position
-    local destination = candidate.Position
-    safe = destination.X == destination.X and destination.Y == destination.Y and destination.Z == destination.Z
-        and destination.X ~= math.huge and destination.X ~= -math.huge
-        and destination.Y ~= math.huge and destination.Y ~= -math.huge
-        and destination.Z ~= math.huge and destination.Z ~= -math.huge
-        and math.abs(destination.X) <= 50000 and math.abs(destination.Z) <= 50000
-        and math.abs(destination.Y) <= 10000
-        and (destination - origin).Magnitude <= 250
-        and destination.Y >= origin.Y - 50
-end
-if not safe then candidate = arg2 end
-return { CFrame = candidate, ShouldSkipDefense = shouldSkipDefense }
+return { CFrame = v121.compute(arg2) }
 end
 
 local function ragebotCFrameOrientationMatches(a, b)
@@ -75671,7 +75053,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
             and targetZ ~= math.huge and targetZ ~= -math.huge
         local cachedHideYOffset = tonumber(voidSpamState.fakePositionHideYOffset)
         local cachedYOffsetValid = cachedHideYOffset == 0 or cachedHideYOffset == -24
-        local cachedHideStateCompatible = voidSpamState.fakePositionSafetyVersion == 4
+        local cachedHideStateCompatible = voidSpamState.fakePositionSafetyVersion == 3
             and voidSpamState.fakePositionHideUndergroundIntegrated == undergroundIntegrated
             and cachedYOffsetValid
         if voidSpamState.fakePositionTargetReady == true and targetIsFinite and cachedHideStateCompatible then
@@ -75693,7 +75075,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
             if baseRadius ~= baseRadius or baseRadius == math.huge or baseRadius == -math.huge then
                 baseRadius = 100
             end
-            baseRadius = math.clamp(baseRadius, 5, 125)
+            baseRadius = math.clamp(baseRadius, 5, 100000000)
 
             local radiusRandomFactor = tonumber(randomSettings.RadiusRandomFactor)
             if radiusRandomFactor == nil or radiusRandomFactor ~= radiusRandomFactor
@@ -75736,16 +75118,21 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
                 return checkOk and isUsableSurface == true
             end
 
-            -- Keep non-collidable trigger volumes in the query too; KillBricks and
-            -- hazard parts are often CanCollide=false and must still be rejected.
-            pcall(function() overlapParams.RespectCanCollide = false end)
             local function isSafeHideDestination(x, z)
-                if type(x) ~= "number" or type(z) ~= "number"
-                    or x ~= x or z ~= z or x == math.huge or x == -math.huge
-                    or z == math.huge or z == -math.huge then
-                    return false
+                local destination = Vector3.new(x, hidePosition.Y + hideYOffset, z)
+                local overlapOk, overlappingParts = pcall(function()
+                    return workspace:GetPartBoundsInBox(
+                        CFrame.new(destination), Vector3.new(6, 8, 6), overlapParams
+                    )
+                end)
+
+                if not overlapOk or type(overlappingParts) ~= "table" then return false end
+                for _, part in ipairs(overlappingParts) do
+                    if isUnsafeHidePart(part) then return false end
                 end
+
                 local rayOk, rayResult = pcall(function()
+
                     return workspace:Raycast(
                         Vector3.new(x, hidePosition.Y + 6, z),
                         Vector3.new(0, -120, 0),
@@ -75753,33 +75140,8 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
                     )
                 end)
                 if not rayOk or rayResult == nil then return false end
-                if rayResult.Normal.Y < 0.5 or not isSafeHideSurface(rayResult.Instance) then
+                if rayResult.Normal.Y < 0.35 or not isSafeHideSurface(rayResult.Instance) then
                     return false
-                end
-
-                -- Check the usable standing space above the support surface, not the
-                -- underground fake CFrame itself. This prevents wall/solid overlap while
-                -- allowing the intentional -24-stud hidden offset.
-                local groundY = rayResult.Position.Y
-                local heightDelta = groundY - hidePosition.Y
-                if heightDelta ~= heightDelta or math.abs(heightDelta) > 16 then
-                    return false
-                end
-                local standingCenter = Vector3.new(x, groundY + 4.05, z)
-                local overlapOk, overlappingParts = pcall(function()
-                    return workspace:GetPartBoundsInBox(
-                        CFrame.new(standingCenter), Vector3.new(5.5, 7.5, 5.5), overlapParams
-                    )
-                end)
-                if not overlapOk or type(overlappingParts) ~= "table" then return false end
-                for _, part in ipairs(overlappingParts) do
-                    if part ~= rayResult.Instance then
-                        if isUnsafeHidePart(part) then return false end
-                        local collideOk, canCollide = pcall(function()
-                            return part:IsA("BasePart") and part.CanCollide == true
-                        end)
-                        if not collideOk or canCollide then return false end
-                    end
                 end
                 return true
             end
@@ -75798,55 +75160,33 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
             end
 
             targetX, targetZ = pickSafeDestination(anchorX, anchorZ)
-            local function hideDestinationNearPlayer(x, z)
-                if x == nil or z == nil then return false end
-                local dx = x - hidePosition.X
-                local dz = z - hidePosition.Z
-                return dx == dx and dz == dz
-                    and math.abs(dx) <= 250 and math.abs(dz) <= 250
-                    and dx * dx + dz * dz <= 250 * 250
-            end
-            if not hideDestinationNearPlayer(targetX, targetZ) then
+            if (targetX == nil or targetZ == nil) and not anchorFromCharacter then
+
                 targetX, targetZ = pickSafeDestination(hidePosition.X, hidePosition.Z)
             end
             if targetX == nil or targetZ == nil then
+
                 targetX, targetZ = hidePosition.X, hidePosition.Z
-                if isSafeHideDestination(targetX, targetZ) then
+                if not isSafeHideDestination(targetX, targetZ) then
                     hideYOffset = 0
-                else
-                    targetX, targetZ = nil, nil
                 end
             end
 
-            if targetX ~= nil and targetZ ~= nil then
-                voidSpamState.fakePositionTargetX = targetX
-                voidSpamState.fakePositionTargetZ = targetZ
-                voidSpamState.fakePositionHideYOffset = hideYOffset
-                voidSpamState.fakePositionHideUndergroundIntegrated = undergroundIntegrated
-                voidSpamState.fakePositionSafetyVersion = 4
-                voidSpamState.fakePositionTargetReady = true
-            else
-                voidSpamState.fakePositionTargetX = nil
-                voidSpamState.fakePositionTargetZ = nil
-                voidSpamState.fakePositionTargetReady = false
-                voidSpamState.fakePositionActive = false
-                hideYOffset = 0
-            end
+            voidSpamState.fakePositionTargetX = targetX
+            voidSpamState.fakePositionTargetZ = targetZ
+            voidSpamState.fakePositionHideYOffset = hideYOffset
+            voidSpamState.fakePositionHideUndergroundIntegrated = undergroundIntegrated
+            voidSpamState.fakePositionSafetyVersion = 3
+            voidSpamState.fakePositionTargetReady = true
         end
 
-        if voidSpamState.fakePositionTargetReady == true
-            and type(targetX) == "number" and type(targetZ) == "number" then
-            local panicX = targetX - hidePosition.X
-            local panicZ = targetZ - hidePosition.Z
-            if panicX ~= panicX or panicX == math.huge or panicX == -math.huge then panicX = 0 end
-            if panicZ ~= panicZ or panicZ == math.huge or panicZ == -math.huge then panicZ = 0 end
-            cframe = cframe + Vector3.new(panicX, hideYOffset, panicZ)
-            voidSpamState.fakePositionActive = true
-        else
-            -- Fail closed: retain the unmodified Ragebot pose rather than teleporting
-            -- to an unverified point or into the void.
-            voidSpamState.fakePositionActive = false
-        end
+        local panicX = targetX - hidePosition.X
+        local panicZ = targetZ - hidePosition.Z
+        if panicX ~= panicX or panicX == math.huge or panicX == -math.huge then panicX = 0 end
+        if panicZ ~= panicZ or panicZ == math.huge or panicZ == -math.huge then panicZ = 0 end
+
+        cframe = cframe + Vector3.new(panicX, hideYOffset, panicZ)
+        voidSpamState.fakePositionActive = true
     else
         voidSpamState.fakePositionActive = false
         voidSpamState.fakePositionOffsetX = nil
@@ -75978,33 +75318,6 @@ local characterController = arg4 ~= nil and arg4.CharacterController or nil
 if characterController == nil then
 return
 end
-local function setServerCFrameOrError(value, stage)
-    if typeof(value) ~= "CFrame" then
-        error(tostring(stage) .. ": invalid server CFrame", 2)
-    end
-    local setOk, setResult = pcall(
-        characterController.SetServerCFrame, characterController, value
-    )
-    if not setOk then
-        error(tostring(stage) .. ": SetServerCFrame failed: " .. tostring(setResult), 2)
-    end
-    if setResult ~= true then
-        error(tostring(stage) .. ": SetServerCFrame did not confirm the pose: " .. tostring(setResult), 2)
-    end
-    return true
-end
-local function clearServerCFrameOrError(stage)
-    local clearOk, clearResult = pcall(
-        characterController.SetServerCFrame, characterController, nil
-    )
-    if not clearOk then
-        error(tostring(stage) .. ": SetServerCFrame(nil) failed: " .. tostring(clearResult), 2)
-    end
-    if clearResult == false then
-        error(tostring(stage) .. ": SetServerCFrame(nil) could not verify pose restoration", 2)
-    end
-    return true
-end
 if arg._knifeExternalRiotCamera == true then
     if arg._externalRiotCameraSlotCleared ~= true then
         local clearOk, clearError = pcall(function()
@@ -76086,7 +75399,7 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
             end
         end
     end
-    setServerCFrameOrError(heldServerCFrame, "hold-position plan")
+    characterController:SetServerCFrame(heldServerCFrame)
     if arg._knifeExternalRiotCamera ~= true then
         local viewAngleSlot = (arg._knifeCameraLocked == true or arg._knifeActionExpected == true) and 20 or v86[9]
         local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
@@ -76096,13 +75409,27 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
 end
 
 if cFrame == nil or arg3 == nil or shouldSkipDefense then
--- No valid combat target/pose: do not replay a previous RepRoot snapshot.
--- Reuse only the current plan's own safe pose, otherwise clear the override.
-local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
-if typeof(safeFallbackCFrame) == "CFrame" then
-    setServerCFrameOrError(safeFallbackCFrame, "fallback plan")
+local holdCFrame = arg._repRootCounterHoldCFrame
+local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
+local restoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
+local useVerifiedCounterHold = arg._repRootCounterRestorePending ~= true
+    and holdRootMatches
+    and typeof(holdCFrame) == "CFrame"
+    and type(restoreVerifiedAt) == "number"
+    and restoreVerifiedAt == restoreVerifiedAt
+    and restoreVerifiedAt ~= math.huge and restoreVerifiedAt ~= -math.huge
+    and os.clock() < holdUntil
+if useVerifiedCounterHold then
+    characterController:SetServerCFrame(holdCFrame)
+    if arg2 ~= nil and arg2.IsAimPose == true and type(arg2.WeaponAction) == "function" then
+        arg._lastAimServerCFrame = holdCFrame
+    end
 else
-    clearServerCFrameOrError("empty movement plan")
+    local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
+
+    if typeof(safeFallbackCFrame) == "CFrame" then
+        characterController:SetServerCFrame(safeFallbackCFrame)
+    end
 end
 if arg._knifeExternalRiotCamera ~= true then
     characterController:SendViewAngles(20, defensiveViewAngles)
@@ -76115,15 +75442,26 @@ end
 
 local aliveState = arg3.AliveState
 local v130 = v129(arg4.ItemBehaviors)
--- Combat pose must come from this frame's plan and this frame's target.
--- RepRoot counter snapshots are reserved for explicit defensive hold/restore
--- handling and must never replace an active aim/attack pose.
-local v131 = v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
-local finalServerCFrame = arg:_ApplyUndergroundOffset(v131, characterController)
+local holdCFrame = arg._repRootCounterHoldCFrame
+local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
+local restoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
+local useVerifiedCounterHold = arg._repRootCounterRestorePending ~= true
+    and holdRootMatches
+    and typeof(holdCFrame) == "CFrame"
+    and type(restoreVerifiedAt) == "number"
+    and restoreVerifiedAt == restoreVerifiedAt
+    and restoreVerifiedAt ~= math.huge and restoreVerifiedAt ~= -math.huge
+    and os.clock() < holdUntil
+local v131 = useVerifiedCounterHold
+    and holdCFrame
+    or v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
+local finalServerCFrame = useVerifiedCounterHold
+    and holdCFrame
+    or arg:_ApplyUndergroundOffset(v131, characterController)
 if arg2.IsAimPose == true and type(arg2.WeaponAction) == "function" and typeof(finalServerCFrame) == "CFrame" then
 arg._lastAimServerCFrame = finalServerCFrame
 end
-setServerCFrameOrError(finalServerCFrame, "final combat plan")
+characterController:SetServerCFrame(finalServerCFrame)
 
 if arg2.IsAimPose or arg2.ShouldDefendInPlace then
 arg._lastDefensiveViewAngles = v116.getDefensiveViewAngles(v130, arg3.FighterState)
