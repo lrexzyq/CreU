@@ -13,7 +13,7 @@ local K = { connections = {}, cleanups = {}, destroyed = false }
 function K.track(c) K.connections[#K.connections + 1] = c return c end
 function K.onUnload(f) K.cleanups[#K.cleanups + 1] = f end
 getgenv().KiciaRun = K
-K.Diagnostics={Build="Rivals-2026-11-03-kicia-ui-r25",Errors={},Calls={}}
+K.Diagnostics={Build="Rivals-2026-11-03-kicia-ui-r26",Errors={},Calls={}}
 function K.RecordError(feature,problem)
     local now=os.clock()
     local record=K.Diagnostics.Errors[feature]or{Count=0}
@@ -76404,7 +76404,7 @@ end
 do 
 local function fn35()
     local copy,hitboxes,ordered,defaults=tbl17.dX(),tbl17.h2(),tbl17.h3(),tbl17.a7()
-    return function(section,feature,conditions,hitboxSpec,selection)
+    return function(section,feature,conditions,hitboxSpec,selection,grid)
         local labels=table.clone(conditions.Labels or {})
         labels.Visible="Wall check";labels.NotShielded="Not shielded";labels.WithinFOV="Inside FOV"
         local choices={}
@@ -76414,10 +76414,13 @@ local function fn35()
         end
         section:AddMultiDropdown({Label="Other target filters",Options=choices,
             Default=copy(defaults(conditions.Options)),Labels=labels,Config={feature,"TargetConditions"}})
-        local pointSection=feature=="Aimbot" and section:AddSection({Title="Aim point",Side="left"}) or section
+        local pointSection=section
+        if feature=="Aimbot" and grid then
+            pointSection=grid:AddSection({Title="Aim point",Side="left"})
+        end
         pointSection:AddDropdown({Label="Aim point",Options={"Center","Surface"},
             Labels={Center="Center",Surface="Closest point"},Config={feature,"HitboxPoint","Type"}})
-        local partsSection=section:AddSection({Title="Hitboxes",Side="right"}) or section
+        local partsSection=grid and grid:AddSection({Title="Hitboxes",Side="right"}) or section
         return hitboxes(partsSection,feature,hitboxSpec)
     end
 end
@@ -76435,7 +76438,7 @@ return h4.c
 end
 end
 do 
-local function fn35() tbl17 .aF(); tbl17 .aE();local I,W= tbl17 .h1(), tbl17 .h4();return function(l,N,P)local a,e=l:AddSection({Title="Targeting",Side="left"}),l:AddSection({Title="Targeting FOV",Side="right"});l=W(a,N,P.TargetConditions,P.TargetHitboxes,P.RandomHitboxPercentages);I(e,N);return l;end;end
+local function fn35() tbl17 .aF(); tbl17 .aE();local I,W= tbl17 .h1(), tbl17 .h4();return function(l,N,P)local a,e=l:AddSection({Title="Targeting",Side="left"}),l:AddSection({Title="Targeting FOV",Side="right"});l=W(a,N,P.TargetConditions,P.TargetHitboxes,P.RandomHitboxPercentages,l);I(e,N);return l;end;end
 
 tbl17.h5 = function()
 local h5 = tbl17.cache.h5
@@ -87176,7 +87179,7 @@ end
 local env = type(getgenv)=="function" and getgenv() or _G
 local chunk,problem=loadstring(source,"@kicia/rerun.lua")
 if not chunk then error("[Kicia] Packaged source could not compile: "..tostring(problem),0) end
-local launch={Build="Rivals-2026-11-03-kicia-ui-r25",Source=source}
+local launch={Build="Rivals-2026-11-03-kicia-ui-r26",Source=source}
 env.__KiciaLaunch=launch
 local ok,reason=xpcall(chunk,debug.traceback)
 if env.__KiciaLaunch==launch then env.__KiciaLaunch=nil end
