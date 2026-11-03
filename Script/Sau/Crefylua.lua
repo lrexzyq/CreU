@@ -56022,59 +56022,169 @@ local function partGlueRestoreSourceReference(sourcePart, info)
 end
 
 local function fn37(arg, arg2)
-if arg == nil or type(arg2) ~= "table" then return false end
-local allRestored = true
-local originalCFrame = arg2.OriginalCFrame
-local originalPart1 = arg2.OriginalPart1
-local originalPart1ToTarget = arg2.OriginalPart1ToTarget
-local weld = arg2.Weld
-if typeof(originalCFrame) ~= "CFrame" or type(arg2.OriginalAnchored) ~= "boolean" then
-    return false
-end
-
-local function restoreProperty(instance, property, value)
-    local function verify()
-        local readOk, current = pcall(function() return instance[property] end)
-        return readOk and current == value
+    if arg == nil or type(arg2) ~= "table" then
+        return false, "restore target or snapshot is invalid"
     end
-    local writers = {}
-    if type(v117) == "function" then writers[#writers + 1] = v117 end
-    if type(v104) == "function" and v104 ~= v117 then writers[#writers + 1] = v104 end
-    for _, writer in ipairs(writers) do
-        local ok = pcall(writer, instance, property, value)
-        if ok and verify() then return true end
+
+    local parentOk, targetParent = pcall(function() return arg.Parent end)
+    if not parentOk then
+        return false, "target Parent could not be read"
     end
-    local directOk = pcall(function() instance[property] = value end)
-    return directOk and verify()
-end
-
-if weld ~= nil and originalPart1 ~= nil then
-    if not restoreProperty(weld, "Part1", originalPart1) then allRestored = false end
-end
-
-if originalPart1 ~= nil and originalPart1ToTarget ~= nil then
-    local okOriginalCFrame, computedCFrame = pcall(function()
-        return originalPart1.CFrame * originalPart1ToTarget
-    end)
-    if okOriginalCFrame and typeof(computedCFrame) == "CFrame" then
-        originalCFrame = computedCFrame
-    else
-        allRestored = false
+    if targetParent == nil then
+        -- The character part was removed; there is no live instance left to restore.
+        return true
     end
-end
 
-if not restoreProperty(arg, v86[127], originalCFrame) then allRestored = false end
-if not restoreProperty(arg, "Anchored", arg2.OriginalAnchored) then allRestored = false end
+    local originalCFrame = arg2.OriginalCFrame
+    local originalPart1 = arg2.OriginalPart1
+    local originalPart1ToTarget = arg2.OriginalPart1ToTarget
+    local originalAnchored = arg2.OriginalAnchored
+    local weld = arg2.Weld
+    if typeof(originalCFrame) ~= "CFrame" or type(originalAnchored) ~= "boolean" then
+        return false, "snapshot is missing OriginalCFrame or OriginalAnchored"
+    end
 
-local finalCFrameOk, finalCFrame = pcall(function() return arg.CFrame end)
-local finalAnchoredOk, finalAnchored = pcall(function() return arg.Anchored end)
-if not finalCFrameOk or finalCFrame ~= originalCFrame then allRestored = false end
-if not finalAnchoredOk or finalAnchored ~= arg2.OriginalAnchored then allRestored = false end
-if weld ~= nil and originalPart1 ~= nil then
-    local finalPart1Ok, finalPart1 = pcall(function() return weld.Part1 end)
-    if not finalPart1Ok or finalPart1 ~= originalPart1 then allRestored = false end
-end
-return allRestored
+    local errors = {}
+    local function addError(message)
+        errors[#errors + 1] = tostring(message)
+    end
+
+    local function cframeNear(actual, expected)
+        if typeof(actual) ~= "CFrame" or typeof(expected) ~= "CFrame" then return false end
+        local ok, positionDelta, angleDelta = pcall(function()
+            local delta = expected:ToObjectSpace(actual)
+            local _, angle = delta:ToAxisAngle()
+            return (actual.Position - expected.Position).Magnitude, math.abs(angle)
+        end)
+        return ok and positionDelta <= 0.12 and angleDelta <= math.rad(2)
+    end
+
+    local function readProperty(instance, property)
+        local ok, value = pcall(function() return instance[property] end)
+        return ok, value
+    end
+
+    local function writeExact(instance, property, value)
+        local readOk, current = readProperty(instance, property)
+        if readOk and current == value then return true end
+        local writers = {}
+        if type(v117) == "function" then writers[#writers + 1] = v117 end
+        if type(v104) == "function" and v104 ~= v117 then writers[#writers + 1] = v104 end
+        for _, writer in ipairs(writers) do
+            pcall(writer, instance, property, value)
+            local verifyOk, verifyValue = readProperty(instance, property)
+            if verifyOk and verifyValue == value then return true end
+        end
+        local directOk = pcall(function() instance[property] = value end)
+        local verifyOk, verifyValue = readProperty(instance, property)
+        return directOk and verifyOk and verifyValue == value
+    end
+
+    local function writeCFrame(instance, expected)
+        local readOk, current = readProperty(instance, "CFrame")
+        if readOk and cframeNear(current, expected) then return true end
+        local writers = {}
+        if type(v117) == "function" then writers[#writers + 1] = v117 end
+        if type(v104) == "function" and v104 ~= v117 then writers[#writers + 1] = v104 end
+        for _, writer in ipairs(writers) do
+            pcall(writer, instance, "CFrame", expected)
+            local verifyOk, verifyValue = readProperty(instance, "CFrame")
+            if verifyOk and cframeNear(verifyValue, expected) then return true end
+        end
+        local directOk = pcall(function() instance.CFrame = expected end)
+        local verifyOk, verifyValue = readProperty(instance, "CFrame")
+        return directOk and verifyOk and cframeNear(verifyValue, expected)
+    end
+
+    local part1Alive = false
+    if originalPart1 ~= nil then
+        local part1Ok, part1Parent, isBasePart = pcall(function()
+            return originalPart1.Parent, originalPart1:IsA("BasePart")
+        end)
+        part1Alive = part1Ok and part1Parent ~= nil and isBasePart == true
+    end
+
+    -- Keep the part anchored while restoring CFrame and the original weld.
+    -- Releasing Anchored first allows physics to move it before verification.
+    if not writeExact(arg, "Anchored", true) then
+        addError("could not temporarily anchor target for restoration")
+    end
+
+    local expectedCFrame = originalCFrame
+    if part1Alive and typeof(originalPart1ToTarget) == "CFrame" then
+        local offsetOk, computedCFrame = pcall(function()
+            return originalPart1.CFrame * originalPart1ToTarget
+        end)
+        if offsetOk and typeof(computedCFrame) == "CFrame" then
+            expectedCFrame = computedCFrame
+        else
+            addError("could not compute target CFrame from original Weld Part1")
+        end
+    end
+
+    if not writeCFrame(arg, expectedCFrame) then
+        addError("target CFrame could not be restored while anchored")
+    end
+
+    local weldAlive = false
+    if weld ~= nil then
+        local weldOk, weldParent = pcall(function() return weld.Parent end)
+        weldAlive = weldOk and weldParent ~= nil
+    end
+    if weldAlive and part1Alive then
+        local currentPart1Ok, currentPart1 = readProperty(weld, "Part1")
+        if currentPart1Ok and currentPart1 == nil then
+            if not writeExact(weld, "Part1", originalPart1) then
+                addError("original Weld Part1 could not be reattached")
+            end
+        elseif not currentPart1Ok then
+            addError("Weld Part1 could not be read during restoration")
+        elseif currentPart1 ~= originalPart1 then
+            -- Another owner changed the weld while PartGlue was active. Preserve
+            -- that newer relationship instead of keeping the entire restore blocked.
+        end
+    end
+
+    -- Re-sample the moving parent after reattaching the weld. Its CFrame may
+    -- have advanced while the restore transaction was running.
+    if part1Alive and typeof(originalPart1ToTarget) == "CFrame" then
+        local offsetOk, computedCFrame = pcall(function()
+            return originalPart1.CFrame * originalPart1ToTarget
+        end)
+        if offsetOk and typeof(computedCFrame) == "CFrame" then
+            expectedCFrame = computedCFrame
+        end
+    end
+    local verifyCFrameOk, verifyCFrame = readProperty(arg, "CFrame")
+    if not verifyCFrameOk or not cframeNear(verifyCFrame, expectedCFrame) then
+        -- One final correction while still anchored; never verify after physics is released.
+        if not writeCFrame(arg, expectedCFrame) then
+            addError("target CFrame mismatch after Weld restoration")
+        end
+    end
+
+    if not writeExact(arg, "Anchored", originalAnchored) then
+        addError("original Anchored value could not be restored")
+    end
+    local finalAnchoredOk, finalAnchored = readProperty(arg, "Anchored")
+    if not finalAnchoredOk or finalAnchored ~= originalAnchored then
+        addError("final Anchored verification failed")
+    end
+
+    -- An originally-unanchored character part can move immediately after it is
+    -- released to physics. Its post-release CFrame is therefore not a valid
+    -- rollback check; the pose was verified before restoring Anchored=false.
+    if originalAnchored then
+        local finalCFrameOk, finalCFrame = readProperty(arg, "CFrame")
+        if not finalCFrameOk or not cframeNear(finalCFrame, expectedCFrame) then
+            addError("final anchored CFrame verification failed")
+        end
+    end
+
+    if #errors > 0 then
+        return false, table.concat(errors, "; ")
+    end
+    return true
 end
 
 local PARTGLUE_PENDING_RESTORE_KEY = "__CrefyPendingPartGlueRestores"
@@ -56561,17 +56671,19 @@ if type(globalPending) == "table"
     if existing ~= nil and existing.RestorePending ~= true then
         error("cross-execution PartGlue restore is pending for an actively owned target", 2)
     end
-    local globalRestoreCallOk, globalRestored = pcall(fn37, arg2, globalPending)
+    local globalRestoreCallOk, globalRestored, globalRestoreDetail = pcall(fn37, arg2, globalPending)
     if not globalRestoreCallOk or globalRestored ~= true then
-        error("previous cross-execution PartGlue state still requires restoration", 2)
+        error("previous cross-execution PartGlue state still requires restoration: " ..
+            tostring(globalRestoreCallOk and globalRestoreDetail or globalRestored), 2)
     end
     partGlueClearPendingRestore(arg2, globalPending)
 end
 if existing ~= nil then
     if existing.RestorePending == true then
-        local restoreCallOk, restored = pcall(fn37, arg2, existing)
+        local restoreCallOk, restored, restoreDetail = pcall(fn37, arg2, existing)
         if not restoreCallOk or restored ~= true then
-            error("previous PartGlue state still requires restoration", 2)
+            error("previous PartGlue state still requires restoration: " ..
+                tostring(restoreCallOk and restoreDetail or restored), 2)
         end
         arg._glueInfoByTargetPart[arg2] = nil
         existing.RestorePending = false
@@ -70387,7 +70499,9 @@ if typeof(v120) ~= "CFrame" then
 ragebotVoidSpamReleasePendingForUnavailableTarget()
 arg:ClearTeleport()
 arg._shootLock:Reset()
-return arg5 and arg5.CFrame or nil, nil
+-- A failed PartGlue transaction means the target hitbox cannot be trusted.
+-- Do not apply the old local pose as a substitute combat/teleport plan.
+return nil, nil
 end
 arg._gluedPart = arg5
 local n
@@ -70777,10 +70891,10 @@ if not orientationOk or not fakePositionFiniteNumber(v121)
 end
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
 if typeof(v120) ~= "CFrame" then
-
-if not isKnifeItem then arg:ResetState() end
-return gluedOurPart ~= nil and gluedOurPart.CFrame or nil,
-    isKnifeItem and fn37(v121, v122) or nil, nil, false, nil
+-- No valid PartGlue means the target pose is not trustworthy. Release any
+-- stale melee/knife plan and never emit a movement pose without an attack.
+arg:ResetState()
+return nil, nil, nil, false, nil
 end
 arg._gluedOurPart = gluedOurPart
 local n
