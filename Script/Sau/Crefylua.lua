@@ -433,8 +433,6 @@ local function ragebotObserveFakePosition(rootPart, now)
             flipCount = 0,
             flipWindowStartedAt = now,
             lastDesyncAt = -math.huge,
-            lastHitscanGlueRefreshAt = -math.huge,
-            lastMeleeGlueRefreshAt = -math.huge,
         }
         RAGEBOT_FAKE_POSITION_TRACKS[rootPart] = track
         return false, false
@@ -33228,6 +33226,8 @@ lastEncoded = nil,
 payload = nil,
 lastAngleAt = 0,
 aimPart = nil,
+viewAngleApplied = false,
+characterController = nil,
 triggerDistance = 25,
 hookInstalled = false,
 hookTarget = nil,
@@ -33364,14 +33364,6 @@ local function riotEnsureRemote()
             return remote.Parent ~= nil and type(remote.FireServer) == "function"
         end)
         if ok and isValid then
-            local hookState = riotStateGet(RIOT_FIRE_HOOK_KEY)
-            if type(hookState) == "table" and hookState.installed == true then
-                hookState.remote = remote
-                hookState.riotState = riotState
-                riotStateSet(RIOT_FIRE_HOOK_KEY, hookState)
-            else
-                pcall(riotInstallFireServerHook)
-            end
             return true
         end
         remote = nil
@@ -33383,7 +33375,6 @@ local function riotEnsureRemote()
     if ok and candidate ~= nil then
         remote = candidate
         nextRemoteWarningAt = 0
-        pcall(riotInstallFireServerHook)
         return true
     end
     if now >= nextRemoteWarningAt then
@@ -33615,6 +33606,8 @@ local DEFAULT_TRIGGER_DIST = 25
 local MIN_TRIGGER_DIST = 25
 local MAX_TRIGGER_DIST = 1000000000000
 local FIRE_INTERVAL = 1 / 60
+local KNIFE_VIEW_ANGLE_SLOT = 10
+local RIOT_VIEW_ANGLE_SLOT = 15
 local lastFireAt = 0
 
 local function sanitizeTriggerDistance(value)
@@ -33632,62 +33625,198 @@ local function getConfiguredTriggerDistance()
     return sanitizeTriggerDistance(configured)
 end
 
+local function getRiotOriginPosition()
+    if lp == nil then return nil end
+    local myCharacter = lp.Character
+    if myCharacter == nil then return nil end
+    local myRoot = myCharacter:FindFirstChild("HumanoidRootPart")
+    local myHumanoid = myCharacter:FindFirstChildOfClass("Humanoid")
+    if myRoot == nil or not myRoot:IsA("BasePart") or myRoot.Parent == nil
+        or myHumanoid == nil or myHumanoid.Health <= 0 then
+        return nil
+    end
+
+    local myPosition = myRoot.Position
+    local controller = riotState.characterController
+    if controller == nil and type(riotState.innerContext) == "table" then
+        controller = riotState.innerContext.CharacterController
+    end
+    if controller ~= nil then
+        local originOk, serverOrigin = pcall(function()
+            return controller:GetServerHeadOrigin()
+        end)
+        if originOk and typeof(serverOrigin) == "CFrame" then
+            local candidate = serverOrigin.Position
+            if typeof(candidate) == "Vector3"
+                and candidate.X == candidate.X and candidate.Y == candidate.Y and candidate.Z == candidate.Z
+                and candidate.X ~= math.huge and candidate.X ~= -math.huge
+                and candidate.Y ~= math.huge and candidate.Y ~= -math.huge
+                and candidate.Z ~= math.huge and candidate.Z ~= -math.huge then
+                myPosition = candidate
+            end
+        end
+    end
+    return myPosition
+end
+
+local function getRiotCharacterRoot(character)
+    if character == nil then return nil end
+    local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
+    local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
+    if type(enemies) == "table" then
+        for player, fighter in pairs(enemies) do
+            local sameCharacter = false
+            pcall(function() sameCharacter = player ~= nil and player.Character == character end)
+            if sameCharacter and fighter ~= nil then
+                local okState, stateRoot = pcall(function()
+                    local fighterCharacter = fighter.Character
+                    local state = fighterCharacter ~= nil and fighterCharacter.State or nil
+                    if state == nil or state.Alive ~= true then return nil end
+                    local stateModel = state.Model
+                    if stateModel ~= nil and stateModel ~= character then return nil end
+                    return state.RootPart
+                end)
+                if okState and stateRoot ~= nil then
+                    local validRoot = false
+                    pcall(function()
+                        validRoot = stateRoot:IsA("BasePart") and stateRoot:IsDescendantOf(character)
+                    end)
+                    if validRoot then return stateRoot end
+                end
+            end
+        end
+    end
+    local root = nil
+    pcall(function() root = character:FindFirstChild("HumanoidRootPart") end)
+    if root ~= nil then
+        local validRoot = false
+        pcall(function()
+            validRoot = root:IsA("BasePart") and root:IsDescendantOf(character)
+        end)
+        if validRoot then return root end
+    end
+    return nil
+end
+
 local function findNearest(triggerDistance, preferredCharacter)
     triggerDistance = sanitizeTriggerDistance(triggerDistance)
-    if lp == nil then return nil end
-    local myChar = lp.Character
-    if not myChar then return nil end
-    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-    local myHum  = myChar:FindFirstChildOfClass("Humanoid")
-    if myRoot == nil or not myRoot:IsA("BasePart") or myRoot.Parent == nil or myHum == nil or myHum.Health <= 0 then return nil end
+    local myPosition = getRiotOriginPosition()
+    if myPosition == nil then return nil end
 
-    local myPos  = myRoot.Position
-    local myTeam = lp:GetAttribute("TeamID")
-    local myEnv  = lp:GetAttribute("EnvironmentID")
+    local bestCharacter, bestDistance = nil, math.huge
+    local preferredDistance = math.huge
+    local myEnvironment = nil
+    pcall(function() myEnvironment = lp:GetAttribute("EnvironmentID") end)
 
-    if myTeam == nil or myEnv == nil then return nil end
+    local function considerCandidate(player, fighter, useFrameworkEnemyList)
+        local okCandidate, character, distance = pcall(function()
+            if player == nil or player == lp or player.Parent ~= Players then return nil, nil end
+            if fighter ~= nil and fighter.IsEnemy == false then return nil, nil end
 
-    local best, bestDist = nil, math.huge
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == lp then continue end
-        local candidateEnv = p:GetAttribute("EnvironmentID")
-        local candidateTeam = p:GetAttribute("TeamID")
-        if candidateEnv == nil or candidateTeam == nil then continue end
-        if candidateEnv ~= myEnv then continue end
-        if candidateTeam == myTeam then continue end
+            local character = player.Character
+            if character == nil or not character:IsA("Model") or character.Parent == nil then return nil, nil end
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid == nil or humanoid.Health <= 0 then return nil, nil end
 
-        local char = p.Character
-        if not char then continue end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        local hum  = char:FindFirstChildOfClass("Humanoid")
-        if root == nil or not root:IsA("BasePart") or root.Parent == nil or hum == nil or hum.Health <= 0 then continue end
+            local root = nil
+            if fighter ~= nil then
+                local fighterCharacter = fighter.Character
+                local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
+                if fighterState ~= nil then
+                    if fighterState.Alive ~= true then return nil, nil end
+                    local stateRoot = fighterState.RootPart
+                    if stateRoot ~= nil and stateRoot:IsA("BasePart")
+                        and stateRoot:IsDescendantOf(character) then
+                        root = stateRoot
+                    end
+                    local stateModel = fighterState.Model
+                    if stateModel ~= nil and stateModel ~= character then return nil, nil end
+                end
+                if myEnvironment ~= nil and fighter.EnvironmentId ~= nil
+                    and fighter.EnvironmentId ~= myEnvironment then
+                    return nil, nil
+                end
+            end
+            if root == nil then root = character:FindFirstChild("HumanoidRootPart") end
+            if root == nil or not root:IsA("BasePart") or root.Parent == nil
+                or not root:IsDescendantOf(workspace) then
+                return nil, nil
+            end
 
-        local dist = (root.Position - myPos).Magnitude
-        if dist ~= dist or dist == math.huge or dist < 0 then continue end
-        if dist > triggerDistance then continue end
-        if preferredCharacter ~= nil and char == preferredCharacter then
-            return char
+            if not useFrameworkEnemyList then
+                local candidateEnvironment, candidateTeam, myTeam = nil, nil, nil
+                candidateEnvironment = player:GetAttribute("EnvironmentID")
+                candidateTeam = player:GetAttribute("TeamID")
+                myTeam = lp:GetAttribute("TeamID")
+                if myEnvironment == nil or myTeam == nil
+                    or candidateEnvironment == nil or candidateTeam == nil
+                    or candidateEnvironment ~= myEnvironment or candidateTeam == myTeam then
+                    return nil, nil
+                end
+            end
+
+            local distance = (root.Position - myPosition).Magnitude
+            if distance ~= distance or distance == math.huge or distance == -math.huge
+                or distance < 0 or distance > triggerDistance then
+                return nil, nil
+            end
+            return character, distance
+        end)
+        if not okCandidate or character == nil or type(distance) ~= "number" then return end
+        if character == preferredCharacter then preferredDistance = distance end
+        if distance < bestDistance then
+            bestCharacter, bestDistance = character, distance
         end
-        if dist < bestDist then bestDist = dist; best = char end
     end
-    return best
+
+    local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
+    local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
+    local usedFrameworkEnemyList = false
+    if type(enemies) == "table" then
+        for player, fighter in pairs(enemies) do
+            if player ~= nil and fighter ~= nil then
+                usedFrameworkEnemyList = true
+                considerCandidate(player, fighter, true)
+            end
+        end
+    end
+
+    if not usedFrameworkEnemyList or bestCharacter == nil then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= lp and (bestCharacter == nil or player.Character ~= bestCharacter) then
+                considerCandidate(player, nil, false)
+            end
+        end
+    end
+
+    -- Small hysteresis prevents ties/one-frame distance jitter from swapping targets,
+    -- while still allowing a clearly closer enemy to take over.
+    if preferredCharacter ~= nil and preferredDistance < math.huge and bestCharacter ~= nil then
+        local hysteresis = math.max(1.0, bestDistance * 0.08)
+        if preferredDistance <= bestDistance + hysteresis then
+            return preferredCharacter
+        end
+    end
+    return bestCharacter
 end
 
 local RIOT_RAGEBOT_CONTROL_KEY = "__CrefyRagebotControlState"
 local function riotCharacterWithinTriggerDistance(character, triggerDistance)
     if character == nil or lp == nil then return false end
     local maxDistance = sanitizeTriggerDistance(triggerDistance or getConfiguredTriggerDistance())
+    local origin = getRiotOriginPosition()
+    if origin == nil then return false end
     local ok, within = pcall(function()
-        local myCharacter = lp.Character
-        local myRoot = myCharacter ~= nil and myCharacter:FindFirstChild("HumanoidRootPart") or nil
-        local targetRoot = character:FindFirstChild("HumanoidRootPart")
-        if myRoot == nil or targetRoot == nil
-            or not myRoot:IsA("BasePart") or not targetRoot:IsA("BasePart")
-            or not myRoot:IsDescendantOf(workspace) or not targetRoot:IsDescendantOf(workspace) then
+        local targetRoot = getRiotCharacterRoot(character)
+        local targetHumanoid = character:FindFirstChildOfClass("Humanoid")
+        if targetRoot == nil or not targetRoot:IsA("BasePart")
+            or not targetRoot:IsDescendantOf(workspace)
+            or targetHumanoid == nil or targetHumanoid.Health <= 0 then
             return false
         end
-        local distance = (myRoot.Position - targetRoot.Position).Magnitude
-        return distance == distance and distance >= 0 and distance ~= math.huge and distance <= maxDistance
+        local distance = (targetRoot.Position - origin).Magnitude
+        return distance == distance and distance >= 0 and distance ~= math.huge
+            and distance ~= -math.huge and distance <= maxDistance
     end)
     return ok and within == true
 end
@@ -33701,16 +33830,30 @@ local function riotCharacterHasInventoryItem(character, wantedName)
         local sameCharacter = false
         pcall(function() sameCharacter = player ~= nil and player.Character == character end)
         if sameCharacter then
-            local observer = fighter ~= nil and fighter.ItemObserver or nil
-            if observer == nil then return false end
-            local okItems, hasItem = pcall(function()
-                for _, inventoryItem in observer:GetItems() do
-                    if inventoryItem ~= nil and inventoryItem.Name == wantedName then return true end
-                end
-                local equipped = observer:GetEquippedItem()
-                return equipped ~= nil and equipped.Name == wantedName
+            if player == nil or player.Parent ~= Players or fighter == nil then return false end
+            local stateOk, characterState = pcall(function()
+                local fighterCharacter = fighter.Character
+                return fighterCharacter ~= nil and fighterCharacter.State or nil
             end)
-            return okItems and hasItem == true
+            if not stateOk or characterState == nil or characterState.Alive ~= true then
+                return false
+            end
+            local stateModel = nil
+            pcall(function() stateModel = characterState.Model end)
+            if stateModel ~= nil and stateModel ~= character then return false end
+
+            local observer = fighter.ItemObserver
+            if observer == nil then return false end
+            local okEquipped, equipped = pcall(function()
+                local melee = type(observer.EquippedItemAsMelee) == "function"
+                    and observer:EquippedItemAsMelee() or nil
+                if melee ~= nil then return melee end
+                if type(observer.GetEquippedItem) == "function" then
+                    return observer:GetEquippedItem()
+                end
+                return nil
+            end)
+            return okEquipped and equipped ~= nil and equipped.Name == wantedName
         end
     end
     return false
@@ -33729,7 +33872,7 @@ local function findRiotTarget(triggerDistance)
             and riotCharacterHasInventoryItem(character, "Riot Shield") then
             local root = nil
             local valid = pcall(function()
-                root = character:FindFirstChild("HumanoidRootPart")
+                root = getRiotCharacterRoot(character)
                 local hum = character:FindFirstChildOfClass("Humanoid")
                 if root == nil or not root:IsA("BasePart") or not root:IsDescendantOf(workspace)
                     or hum == nil or hum.Health <= 0
@@ -33740,7 +33883,7 @@ local function findRiotTarget(triggerDistance)
             if valid and root ~= nil then return character end
         end
     end
-    return findNearest(triggerDistance, nil)
+    return findNearest(triggerDistance, riotState.targetCharacter)
 end
 
 local function riotRagebotHasPriority()
@@ -33777,7 +33920,58 @@ local function riotRagebotHasPriority()
     return false
 end
 
+local function writeViewAngleSlot(controller, slot, payload, ownerName)
+    ownerName = type(ownerName) == "string" and ownerName or "camera"
+    if controller == nil then return false, "CharacterController unavailable" end
+    local sendCallOk, sendResult = pcall(function()
+        return controller:SendViewAngles(slot, payload)
+    end)
+    if not sendCallOk then return false, tostring(sendResult) end
+    if type(sendResult) ~= "table" or rawget(sendResult, "Ok") ~= true then
+        local detail = type(sendResult) == "table" and type(rawget(sendResult, "Error")) == "table"
+            and rawget(rawget(sendResult, "Error"), "Detail") or sendResult
+        return false, "SendViewAngles rejected " .. ownerName .. " slot " .. tostring(slot) .. ": " .. tostring(detail)
+    end
+
+    local flushCallOk, flushResult = pcall(function()
+        return controller:FlushViewAngles()
+    end)
+    if not flushCallOk then return false, "FlushViewAngles raised: " .. tostring(flushResult) end
+    -- A clear with no remaining winner schedules a delayed restore and returns false.
+    -- For an active payload, success must be explicitly confirmed by the driver.
+    if payload ~= nil and flushResult ~= true then
+        return false, "FlushViewAngles did not confirm " .. ownerName .. " slot " .. tostring(slot)
+    end
+    return true
+end
+
+local function riotWriteViewAngle(controller, payload)
+    return writeViewAngleSlot(controller, RIOT_VIEW_ANGLE_SLOT, payload, "Riot")
+end
+
 local function riotClearActiveTarget()
+    local controller = riotState.characterController
+    if controller == nil and type(riotState.innerContext) == "table" then
+        controller = riotState.innerContext.CharacterController
+    end
+    local cleared = true
+    if riotState.viewAngleApplied == true then
+        if controller ~= nil then
+            local clearOk, clearError = riotWriteViewAngle(controller, nil)
+            if clearOk then
+                riotState.viewAngleApplied = false
+            else
+                cleared = false
+                local now = os.clock()
+                if now >= (riotState.nextClearWarningAt or 0) then
+                    riotState.nextClearWarningAt = now + 5
+                    warn("[AlwaysBackstab.Riot] Failed to clear camera slot " .. tostring(RIOT_VIEW_ANGLE_SLOT) .. ": " .. tostring(clearError))
+                end
+            end
+        else
+            cleared = false
+        end
+    end
     silentActive = false
     riotState.active = false
     riotState.targetCharacter = nil
@@ -33785,6 +33979,10 @@ local function riotClearActiveTarget()
     riotState.payload = nil
     riotState.aimPart = nil
     riotState.lastAngleAt = 0
+    riotState.filteredPitch = nil
+    riotState.filteredYaw = nil
+    riotState.lastAngleSampleAt = nil
+    return cleared
 end
 
 local function isLiveBasePart(part, expectedModel)
@@ -33798,34 +33996,27 @@ local function isLiveBasePart(part, expectedModel)
 end
 
 local function riotHeartbeatStep()
-
     if not riotState.enabled or riotRagebotHasPriority() then
         riotClearActiveTarget()
         return
     end
 
     local now = os.clock()
-    if not hookInstalled and now >= nextHookRetryAt then
-        nextHookRetryAt = now + 1
-        nextHookScanAt = math.max(nextHookScanAt or 0, now + 1)
-        local okHook, resultHook = pcall(installReplicationHook)
-        hookInstalled = okHook and resultHook == true
-        riotState.hookInstalled = hookInstalled
-        if not hookInstalled and now >= nextHookWarningAt then
-            nextHookWarningAt = now + 5
-            warn("[AlwaysBackstab.Riot] Camera replication hook unavailable; retrying.")
-        end
-    end
-
-    if not riotEnsureRemote() then
+    local context = riotState.innerContext
+    local itemBehaviors = context ~= nil and context.ItemBehaviors or nil
+    local knifeEquipped = false
+    local knifeCheckOk = pcall(function()
+        local equippedMelee = itemBehaviors ~= nil and itemBehaviors:EquippedItemAsMelee() or nil
+        knifeEquipped = equippedMelee ~= nil and equippedMelee.Name == "Knife"
+    end)
+    if not knifeCheckOk or not knifeEquipped then
         riotClearActiveTarget()
         return
     end
 
     riotState.triggerDistance = getConfiguredTriggerDistance()
     local targetChar = findRiotTarget(riotState.triggerDistance)
-
-    if not targetChar then
+    if targetChar == nil then
         riotClearActiveTarget()
         return
     end
@@ -33835,62 +34026,94 @@ local function riotHeartbeatStep()
         return
     end
     local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    if targetHumanoid ~= nil and targetHumanoid.Health <= 0 then
+    if targetHumanoid == nil or targetHumanoid.Health <= 0 then
         riotClearActiveTarget()
         return
     end
 
-    local head = targetChar:FindFirstChild("HumanoidRootPart")
-    if not isLiveBasePart(head, targetChar) then
-        head = targetChar:FindFirstChild("Head")
-    end
-    if not isLiveBasePart(head, targetChar) then
+    local targetRoot = getRiotCharacterRoot(targetChar)
+    if not isLiveBasePart(targetRoot, targetChar) then
         riotClearActiveTarget()
         return
     end
 
-    local pitch, yaw = head.CFrame:ToOrientation()
-    if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge or yaw == math.huge or yaw == -math.huge then
+    local controller = riotState.characterController
+    if controller == nil then
+        local context = riotState.innerContext
+        controller = context ~= nil and context.CharacterController or nil
+    end
+    if controller == nil then
         riotClearActiveTarget()
         return
     end
-    local encoded = encodeByte(pitch) .. encodeByte(yaw)
 
-    lastEncoded = encoded
-    silentActive = true
-    riotState.active = true
-    riotState.targetCharacter = targetChar
-    riotState.lastEncoded = encoded
-    riotState.payload = nil
-    riotState.aimPart = head
-    riotState.lastAngleAt = os.clock()
-
-    local fireNow = os.clock()
-    if fireNow - lastFireAt < FIRE_INTERVAL then return end
-    lastFireAt = fireNow
-    riotState.lastFireAt = fireNow
-
-    local fireOk, fireError = pcall(function()
-        remote:FireServer(encoded, nil)
-    end)
-    if fireOk then
-        riotState.sendCount = (tonumber(riotState.sendCount) or 0) + 1
-    end
-    if not fireOk then
-        remote = nil
-        nextRemoteResolveAt = 0
-
+    local pitch, yaw = targetRoot.CFrame:ToOrientation()
+    if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge
+        or yaw == math.huge or yaw == -math.huge then
         riotClearActiveTarget()
-        if fireNow >= (riotState.nextFireWarningAt or 0) then
-            riotState.nextFireWarningAt = fireNow + 5
-            warn("[AlwaysBackstab.Riot] UpdateCameraRotation FireServer failed: " .. tostring(fireError))
+        return
+    end
+
+    local targetPitch = math.deg(pitch)
+    local targetYaw = math.deg(yaw)
+    local targetChanged = riotState.targetCharacter ~= targetChar
+    if targetChanged or type(riotState.filteredPitch) ~= "number"
+        or type(riotState.filteredYaw) ~= "number" then
+        riotState.lastAngleAt = 0
+        riotState.filteredPitch = targetPitch
+        riotState.filteredYaw = targetYaw
+        riotState.lastAngleSampleAt = now
+    else
+        local sampleAt = tonumber(riotState.lastAngleSampleAt) or now
+        local sampleDt = math.clamp(now - sampleAt, 0, 0.1)
+        if sampleDt > 0 then
+            local alpha = 1 - math.exp(-sampleDt / 0.035)
+            local yawDelta = (targetYaw - riotState.filteredYaw + 180) % 360 - 180
+            riotState.filteredPitch += (targetPitch - riotState.filteredPitch) * alpha
+            riotState.filteredYaw += yawDelta * alpha
         end
+        riotState.lastAngleSampleAt = now
     end
+    riotState.targetCharacter = targetChar
+    riotState.aimPart = targetRoot
+    if now - (tonumber(riotState.lastAngleAt) or 0) < FIRE_INTERVAL then
+        return
+    end
+
+    local payload = {
+        Kind = "Normalized",
+        Pitch = riotState.filteredPitch,
+        -- Keep yaw unwrapped internally so crossing +/-180 follows the short arc.
+        Yaw = riotState.filteredYaw,
+    }
+    -- SendViewAngles may assign the slot before FlushViewAngles fails. Treat it as
+    -- owned until a successful clear proves otherwise.
+    riotState.characterController = controller
+    riotState.viewAngleApplied = true
+    local sendOk, sendError = riotWriteViewAngle(controller, payload)
+    if not sendOk then
+        riotClearActiveTarget()
+        if now >= (riotState.nextFireWarningAt or 0) then
+            riotState.nextFireWarningAt = now + 5
+            warn("[AlwaysBackstab.Riot] CharacterController camera update failed: " .. tostring(sendError))
+        end
+        return
+    end
+
+    riotState.active = true
+    riotState.viewAngleApplied = true
+    riotState.payload = payload
+    riotState.lastAngleAt = now
+    riotState.lastFireAt = now
+    riotState.sendCount = (tonumber(riotState.sendCount) or 0) + 1
 end
 
 local function riotStop()
+    local controllerForCleanup = riotState.characterController
+    local slotCleared = riotClearActiveTarget()
     riotState.enabled = false
     riotState.generation = (tonumber(riotState.generation) or 0) + 1
+    local stopGeneration = riotState.generation
     if riotState.heartbeat then
         pcall(function() riotState.heartbeat:Disconnect() end)
         riotState.heartbeat = nil
@@ -33900,10 +34123,41 @@ local function riotStop()
     riotState.active = false
     riotState.targetCharacter = nil
     riotState.innerContext = nil
+    if slotCleared then
+        riotState.characterController = nil
+        riotState.viewAngleApplied = false
+    elseif controllerForCleanup ~= nil then
+        local function retrySlotClear(attempt)
+            task.delay(0.12, function()
+                if riotState.enabled or riotState.generation ~= stopGeneration
+                    or riotState.characterController ~= controllerForCleanup
+                    or riotState.viewAngleApplied ~= true then
+                    return
+                end
+                local retryOk = riotWriteViewAngle(controllerForCleanup, nil)
+                if retryOk then
+                    riotState.viewAngleApplied = false
+                    riotState.characterController = nil
+                elseif attempt < 3 then
+                    retrySlotClear(attempt + 1)
+                else
+                    local now = os.clock()
+                    if now >= (riotState.nextClearWarningAt or 0) then
+                        riotState.nextClearWarningAt = now + 5
+                        warn("[AlwaysBackstab.Riot] Camera slot cleanup remained pending after retries")
+                    end
+                end
+            end)
+        end
+        retrySlotClear(1)
+    end
     riotState.fighters = nil
     riotState.lastEncoded = nil
     riotState.payload = nil
     riotState.lastAngleAt = 0
+    riotState.filteredPitch = nil
+    riotState.filteredYaw = nil
+    riotState.lastAngleSampleAt = nil
     riotState.aimPart = nil
     riotState.triggerDistance = DEFAULT_TRIGGER_DIST
     riotState.initializing = false
@@ -33924,21 +34178,33 @@ end
 riotState.stop = riotStop
 
 local function riotStart(distance, characterController, fighters, innerContext)
+    local previousController = riotState.characterController
+    if riotState.viewAngleApplied == true and previousController ~= nil
+        and previousController ~= characterController then
+        local oldSlotCleared, clearError = riotWriteViewAngle(previousController, nil)
+        if not oldSlotCleared then
+            -- Stop the old heartbeat before exposing the new context. Repeated writes
+            -- through a stale controller can keep the wrong camera slot alive.
+            riotState.enabled = false
+            if riotState.heartbeat ~= nil then
+                pcall(function() riotState.heartbeat:Disconnect() end)
+                riotState.heartbeat = nil
+            end
+            silentActive = false
+            restoreReplicationHook()
+            local now = os.clock()
+            if now >= (riotState.nextClearWarningAt or 0) then
+                riotState.nextClearWarningAt = now + 5
+                warn("[AlwaysBackstab.Riot] Could not clear previous controller slot before context swap: " .. tostring(clearError))
+            end
+            return false
+        end
+        riotState.viewAngleApplied = false
+    end
     riotState.triggerDistance = sanitizeTriggerDistance(distance)
     riotState.fighters = fighters
     riotState.innerContext = innerContext
-    local hookNow = os.clock()
-    if hookNow >= nextHookScanAt then
-        nextHookScanAt = hookNow + 1
-        local okHook, resultHook = pcall(installReplicationHook)
-        hookInstalled = okHook and resultHook == true
-        nextHookRetryAt = hookNow + 1
-    elseif not hookInstalled and hookNow >= nextHookRetryAt then
-        nextHookRetryAt = hookNow + 1
-        local okHook, resultHook = pcall(installReplicationHook)
-        hookInstalled = okHook and resultHook == true
-    end
-    riotState.hookInstalled = hookInstalled
+    riotState.characterController = characterController
     riotState.enabled = true
     if riotState.heartbeat ~= nil then return true end
     local connectOk, connection = pcall(function()
@@ -34008,15 +34274,27 @@ end)
 end
 
 index2._ClearAnglePayload = function(arg, characterController)
-characterController = characterController or arg._lastCharacterController
-if arg._anglePayloadApplied and characterController ~= nil then
-pcall(function()
-characterController:SendViewAngles(10, nil)
-characterController:FlushViewAngles()
-end)
+local ownerController = arg._anglePayloadController or characterController or arg._lastCharacterController
+if not arg._anglePayloadApplied and not arg._anglePayloadPending then
+    arg._anglePayloadController = nil
+    arg._lastRiotTarget = nil
+    return true
 end
-arg._anglePayloadApplied = false
-arg._lastRiotTarget = nil
+if ownerController == nil then return false end
+local clearOk, clearError = writeViewAngleSlot(ownerController, KNIFE_VIEW_ANGLE_SLOT, nil, "Knife")
+if clearOk then
+    arg._anglePayloadApplied = false
+    arg._anglePayloadPending = false
+    arg._anglePayloadController = nil
+    arg._lastRiotTarget = nil
+    return true
+end
+local now = os.clock()
+if now >= (arg._nextKnifeClearWarningAt or 0) then
+    arg._nextKnifeClearWarningAt = now + 5
+    warn("[AlwaysBackstab.Knife] Failed to clear camera slot " .. tostring(KNIFE_VIEW_ANGLE_SLOT) .. ": " .. tostring(clearError))
+end
+return false
 end
 
 index2._FindClosestEnemy = function(arg, origin, maxDistance)
@@ -34058,8 +34336,10 @@ index2._UpdateRiot = function(arg, innerContext, triggerDistance)
 riotState.fighters = arg._fighters
 riotState.innerContext = innerContext
 if riotRagebotHasPriority() then
-if arg._anglePayloadApplied then
-arg:_ClearAnglePayload(innerContext ~= nil and innerContext.CharacterController or nil)
+if arg._anglePayloadApplied or arg._anglePayloadPending then
+    if not arg:_ClearAnglePayload(innerContext ~= nil and innerContext.CharacterController or nil) then
+        return
+    end
 end
 if riotState.enabled or riotState.heartbeat ~= nil or hookInstalled then
 riotStop()
@@ -34070,8 +34350,8 @@ if innerContext == nil or innerContext.CharacterController == nil then
 riotStop()
 return
 end
-if arg._anglePayloadApplied then
-arg:_ClearAnglePayload(innerContext.CharacterController)
+if arg._anglePayloadApplied or arg._anglePayloadPending then
+    if not arg:_ClearAnglePayload(innerContext.CharacterController) then return end
 end
 riotStart(triggerDistance, innerContext.CharacterController, arg._fighters, innerContext)
 end
@@ -34081,6 +34361,14 @@ local innerContext = arg._innerContext
 local characterController = innerContext ~= nil and innerContext.CharacterController or nil
 if characterController ~= nil then
 arg._lastCharacterController = characterController
+end
+
+-- A context replacement must clear slot 10 on the controller that actually owns it.
+-- Never silently move the ownership flag to a new controller while the old slot remains.
+if arg._anglePayloadController ~= nil and characterController ~= nil
+    and arg._anglePayloadController ~= characterController
+    and (arg._anglePayloadApplied == true or arg._anglePayloadPending == true) then
+    if not arg:_ClearAnglePayload(characterController) then return end
 end
 
 if innerContext == nil then
@@ -34102,7 +34390,10 @@ mode = "Knife"
 end
 if arg._lastBackstabMode ~= nil and arg._lastBackstabMode ~= mode then
 riotStop()
-arg:_ClearAnglePayload(characterController)
+local knifeCleared = arg:_ClearAnglePayload(characterController)
+if not knifeCleared or riotState.viewAngleApplied == true then
+    return
+end
 end
 arg._lastBackstabMode = mode
 
@@ -34113,10 +34404,7 @@ end
 
 riotStop()
 if arg._cameraArbiter ~= nil and arg._cameraArbiter.isBlockedFor("AlwaysBackstab.Knife", 0) then
-if arg._anglePayloadApplied and characterController ~= nil then
-pcall(function() characterController:SendViewAngles(10, nil) end)
-end
-arg._anglePayloadApplied = false
+arg:_ClearAnglePayload(characterController)
 return
 end
 
@@ -34141,13 +34429,26 @@ return
 end
 
 local pitch, yaw = targetRoot.CFrame:ToOrientation()
-characterController:SendViewAngles(10, {
+local knifePayload = {
 Kind = "Normalized",
 Pitch = math.deg(pitch),
 Yaw = math.deg(yaw),
-})
-characterController:FlushViewAngles()
+}
+arg._anglePayloadPending = true
+arg._anglePayloadController = characterController
+local knifeSendOk, knifeSendError = writeViewAngleSlot(characterController, KNIFE_VIEW_ANGLE_SLOT, knifePayload, "Knife")
+if not knifeSendOk then
+    arg:_ClearAnglePayload(characterController)
+    local now = os.clock()
+    if now >= (arg._nextKnifeSendWarningAt or 0) then
+        arg._nextKnifeSendWarningAt = now + 5
+        warn("[AlwaysBackstab.Knife] Camera update failed: " .. tostring(knifeSendError))
+    end
+    return
+end
 arg._anglePayloadApplied = true
+arg._anglePayloadPending = false
+arg._anglePayloadController = characterController
 end
 
 index2.Destroy = function(arg)
@@ -55597,6 +55898,13 @@ if not previousReferenceKnown then
     return false, "original PhysicsRepRootRef could not be read; refusing an un-restorable mutation"
 end
 
+-- Acquire is called every Ragebot plan tick. If this source already points at
+-- the requested target, do not rewrite the hidden property every frame.
+if previousReference == arg2 then
+    if restoreIdentity then pcall(identitySetter, oldIdentity) end
+    return true, nil, previousReference, previousReferenceKnown
+end
+
 local function writeAndVerifyReference(writer, value)
     return partGlueWriteSourceReferenceVerified(arg, writer, value)
 end
@@ -56093,6 +56401,19 @@ warn("[PartGlue] Acquire skipped safely: " .. tostring(referenceError))
 end
 return nil
 end
+if previousReference == reference then
+    local existingReferenceInfo = arg._sourceReferenceInfoBySourcePart[arg2]
+    if type(existingReferenceInfo) ~= "table"
+        or existingReferenceInfo.OriginalReferenceKnown ~= true
+        or existingReferenceInfo.InstalledReference ~= reference then
+        local warningNow = os.clock()
+        if warningNow >= (arg._nextAcquireWarningAt or 0) then
+            arg._nextAcquireWarningAt = warningNow + 5
+            warn("[PartGlue] Acquire blocked: source already references this target but its original reference snapshot is unavailable")
+        end
+        return nil
+    end
+end
 local v119 = arg._targetPartBySourcePart[arg2]
 local function restoreSourceReference()
     if not previousReferenceKnown then return false, "previous value unavailable" end
@@ -56158,7 +56479,12 @@ arg._targetPartBySourcePart[arg2] = arg3
 end
 
 local requestedTargetCFrame = CFrame.new(cframe.Position)
-local moveOk, moveError = pcall(v117, arg3, "CFrame", requestedTargetCFrame)
+local existingCFrameOk, existingTargetCFrame = pcall(function() return arg3.CFrame end)
+local moveOk, moveError = true, nil
+if not existingCFrameOk or typeof(existingTargetCFrame) ~= "CFrame"
+    or existingTargetCFrame ~= requestedTargetCFrame then
+    moveOk, moveError = pcall(v117, arg3, "CFrame", requestedTargetCFrame)
+end
 local readbackOk, actualTargetCFrame = pcall(function() return arg3.CFrame end)
 local moveVerified = moveOk and moveError ~= false and readbackOk
     and typeof(actualTargetCFrame) == "CFrame" and actualTargetCFrame == requestedTargetCFrame
@@ -58333,7 +58659,94 @@ end
 do
 local function fn35()
 tbl17.c_()
-return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
+local function finiteVector3(value)
+    return typeof(value) == "Vector3"
+        and value.X == value.X and value.Y == value.Y and value.Z == value.Z
+        and value.X ~= math.huge and value.X ~= -math.huge
+        and value.Y ~= math.huge and value.Y ~= -math.huge
+        and value.Z ~= math.huge and value.Z ~= -math.huge
+end
+return function(raycaster, origin, targetPart)
+    if raycaster == nil or not finiteVector3(origin) or targetPart == nil then
+        return false, nil
+    end
+    local parent, position, size, frame
+    local partOk = pcall(function()
+        if not targetPart:IsA("BasePart") or targetPart.Parent == nil
+            or not targetPart:IsDescendantOf(workspace) then
+            error("target hitbox is no longer live")
+        end
+        parent = targetPart.Parent
+        position = targetPart.Position
+        size = targetPart.Size
+        frame = targetPart.CFrame
+    end)
+    if not partOk or not finiteVector3(position) or not finiteVector3(size)
+        or typeof(frame) ~= "CFrame" then
+        return false, nil
+    end
+
+    local checkOk, directlyVisible, hitResult = pcall(function()
+        return raycaster:Check(origin, targetPart, parent)
+    end)
+    if not checkOk then return false, nil end
+    if directlyVisible then return true, origin end
+
+    local delta = position - origin
+    local distance = delta.Magnitude
+    if distance ~= distance or distance == math.huge or distance == -math.huge then
+        return false, nil
+    end
+
+    -- When the shot origin is at the hitbox centre, P / |P| is undefined.
+    -- Use the target's facing direction as a deterministic basis instead.
+    local direction
+    if distance > 1e-4 then
+        direction = delta / distance
+    else
+        local look = frame.LookVector
+        direction = finiteVector3(look) and look.Magnitude > 1e-4 and look.Unit or Vector3.zAxis
+    end
+    if not finiteVector3(direction) then return false, nil end
+
+    local radius = math.min(9.9, distance - size.Magnitude / 2)
+    local triedForward = false
+    local hitDistance = nil
+    if hitResult ~= nil then
+        pcall(function() hitDistance = hitResult.Distance end)
+    end
+    if type(hitDistance) == "number" and hitDistance == hitDistance
+        and radius > 0 and hitDistance < radius then
+        local candidate = origin + direction * radius
+        local candidateOk, visible = pcall(function()
+            return raycaster:Check(candidate, targetPart, parent)
+        end)
+        if candidateOk and visible then return false, candidate end
+        triedForward = true
+    end
+
+    local referenceAxis = Vector3.yAxis
+    if math.abs(direction:Dot(referenceAxis)) > 0.99 then
+        referenceAxis = Vector3.xAxis
+    end
+    local right = direction:Cross(referenceAxis)
+    if right.Magnitude <= 1e-4 then return false, nil end
+    right = right.Unit
+    local tangent = right:Cross(direction)
+    if tangent.Magnitude <= 1e-4 then return false, nil end
+    tangent = tangent.Unit
+
+    local sampleCount = triedForward and 6 or 7
+    for index = 0, sampleCount - 1 do
+        local angle = math.tau * index / sampleCount
+        local candidate = origin + (right * math.cos(angle) + tangent * math.sin(angle)) * 9.9
+        local candidateOk, visible = pcall(function()
+            return raycaster:Check(candidate, targetPart, parent)
+        end)
+        if candidateOk and visible then return false, candidate end
+    end
+    return false, nil
+end
 end
 
 tbl17.gU = function()
@@ -58385,11 +58798,7 @@ local silentAim2 = data.SilentAim
 local fov = silentAim2.Fov
 local targetConditions = silentAim2.TargetConditions
 
-local headOnlyHitboxesByClass = {
-Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
-Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
-}
-local v134 = headOnlyHitboxesByClass[v127.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
+local v134 = silentAim2.TargetHitboxes[v127.DefaultProfile.Class]
 local manipulate = silentAim2.Manipulate
 local obj = setmetatable({}, { __mode = "k" })
 
@@ -58399,8 +58808,10 @@ local mode = manipulate.Mode
 
 if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
 local v135, v136 = v132(arg3, arg6, arg7)
-
-if not v135 then
+-- Direct visibility must clear any alternate origin cached on an earlier frame.
+if v135 then
+obj[arg7] = nil
+else
 obj[arg7] = v136
 end
 
@@ -58448,7 +58859,7 @@ arg4:SetHandler(function(arg6)
 tbl18:_HandleInput(arg6)
 end)
 
-local v138 = v129(arg2, silentAim, "features.SilentAim", v137, function() return headOnlyHitboxesByClass end)
+local v138 = v129(arg2, silentAim, "features.SilentAim", v137, function() return data.SilentAim.TargetHitboxes end)
 local function fn37(selection) tbl18._targetSelection:SetHitboxSelectionMode(v115.buildHitboxSelectionMode(selection)) end
 local function fn38(m)
 manipulate = m
@@ -58527,6 +58938,10 @@ arg._textIndicatorList:Show("Manipulated", "Manipulated", v120.Manipulate)
 end
 
 index2._Reset = function(arg)
+local previousHitbox = arg._currentHitbox
+if previousHitbox ~= nil then
+    arg._visibleOriginByHitbox[previousHitbox] = nil
+end
 arg._currentTarget = nil
 arg._currentHitbox = nil
 arg._targetScreenPosition = nil
@@ -58552,7 +58967,13 @@ arg._targetScreenPosition = nil
 end
 
 if not arg._targetAcquisition:Acquire(arg2, v134, arg4.ReactionTime, arg4.SwitchDelay) then
-return
+    if arg._currentTarget ~= v134 or arg._currentHitbox ~= v135 then
+        local previousHitbox = arg._currentHitbox
+        if previousHitbox ~= nil then arg._visibleOriginByHitbox[previousHitbox] = nil end
+        arg._currentTarget = nil
+        arg._currentHitbox = nil
+    end
+    return
 end
 arg._currentTarget = v134
 arg._currentHitbox = v135
@@ -58562,10 +58983,35 @@ index2._HandleInput = function(arg, arg2)
 if arg2.Type ~= "StartShooting" then
 return
 end
+local currentTarget = arg._currentTarget
 local currentHitbox = arg._currentHitbox
-if currentHitbox == nil then
+if currentTarget == nil or currentHitbox == nil then
 return
 end
+
+local targetHitboxValid = false
+local validationOk = pcall(function()
+    if not currentHitbox:IsA("BasePart") or currentHitbox.Parent == nil
+        or not currentHitbox:IsDescendantOf(workspace) then
+        return
+    end
+    local character = currentTarget.Character
+    local state = character ~= nil and character.State or nil
+    if state == nil or state.Alive ~= true then return end
+    local partsByName = state.TargetPartsByName
+    if type(partsByName) ~= "table" then return end
+    for _, candidate in pairs(partsByName) do
+        if candidate == currentHitbox then
+            targetHitboxValid = true
+            return
+        end
+    end
+end)
+if not validationOk or not targetHitboxValid then
+    arg:_Reset()
+    return
+end
+
 local inner = arg._playerContext.Inner
 if inner == nil then
 return
@@ -58582,29 +59028,87 @@ end
 if v102(v102(v134, "Info"), "Type") ~= "Gun" then
 return
 end
-local _v135, v136 = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
-local v137 = arg2.Args["\1"]
+local pointOk, targetPoint = pcall(function()
+    local _, computedPoint = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
+    return computedPoint
+end)
+if not pointOk then return end
+local shotArgs = arg2.Args
+if type(shotArgs) ~= "table" then
+return
+end
+local v137 = shotArgs["\1"]
 if type(v137) ~= "table" then
 return
 end
-local v138 = v116.decode(v137["\0"])
-local v139 = v116.decode(v137["\1"])
-if v138 == nil or v139 == nil then
+local decodeOk, v138, v139 = pcall(function()
+    return v116.decode(v137["\0"]), v116.decode(v137["\1"])
+end)
+if not decodeOk or typeof(v138) ~= "CFrame" or typeof(v139) ~= "CFrame"
+    or typeof(targetPoint) ~= "Vector3"
+    or targetPoint.X ~= targetPoint.X or targetPoint.Y ~= targetPoint.Y or targetPoint.Z ~= targetPoint.Z
+    or targetPoint.X == math.huge or targetPoint.X == -math.huge
+    or targetPoint.Y == math.huge or targetPoint.Y == -math.huge
+    or targetPoint.Z == math.huge or targetPoint.Z == -math.huge then
 return
 end
-local position = v138.Position
-local v140 = v131(position, currentHitbox, v136)
-if v140 == nil then
-return
-end
-local v141 = arg._visibleOriginByHitbox[currentHitbox]
-
-if v141 ~= nil then
-v137["\0"] = v116.encode(CFrame.lookAt(v141, v136))
-v137["\1"] = v116.encode(CFrame.lookAt(v141, v136))
+local originalOrigin = v138.Position
+local effectiveOrigin = originalOrigin
+local useManipulate = manipulate.Enabled == true
+    and (manipulate.Mode == "OnAllTargets" or manipulate.Mode == "OnBestTarget")
+if useManipulate then
+    local manipulateCallOk, directlyVisible, alternateOrigin = pcall(v132, arg3, originalOrigin, currentHitbox)
+    if not manipulateCallOk then
+        arg._visibleOriginByHitbox[currentHitbox] = nil
+        return
+    end
+    if directlyVisible then
+        arg._visibleOriginByHitbox[currentHitbox] = nil
+    else
+        if typeof(alternateOrigin) ~= "Vector3"
+            or alternateOrigin.X ~= alternateOrigin.X or alternateOrigin.Y ~= alternateOrigin.Y or alternateOrigin.Z ~= alternateOrigin.Z
+            or alternateOrigin.X == math.huge or alternateOrigin.X == -math.huge
+            or alternateOrigin.Y == math.huge or alternateOrigin.Y == -math.huge
+            or alternateOrigin.Z == math.huge or alternateOrigin.Z == -math.huge then
+            arg._visibleOriginByHitbox[currentHitbox] = nil
+            return
+        end
+        effectiveOrigin = alternateOrigin
+        arg._visibleOriginByHitbox[currentHitbox] = alternateOrigin
+    end
 else
-v137["\0"] = v116.encode(CFrame.lookAt(position, v136))
-v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, v136))
+    arg._visibleOriginByHitbox[currentHitbox] = nil
+end
+
+local surfaceOk, v140 = pcall(v131, effectiveOrigin, currentHitbox, targetPoint)
+if not surfaceOk or v140 == nil then
+return
+end
+
+-- Recheck target ownership immediately before mutating the outgoing shot payload.
+local stillOwned = false
+local finalCheckOk = pcall(function()
+    local currentCharacter = currentTarget.Character
+    local state = currentCharacter ~= nil and currentCharacter.State or nil
+    if state == nil or state.Alive ~= true then return end
+    local partsByName = state.TargetPartsByName
+    if type(partsByName) ~= "table" then return end
+    for _, candidate in pairs(partsByName) do
+        if candidate == currentHitbox then stillOwned = true; return end
+    end
+end)
+if not finalCheckOk or not stillOwned then
+    arg:_Reset()
+    return
+end
+
+if effectiveOrigin ~= originalOrigin then
+    local shotCFrame = CFrame.lookAt(effectiveOrigin, targetPoint)
+    v137["\0"] = v116.encode(shotCFrame)
+    v137["\1"] = v116.encode(shotCFrame)
+else
+    v137["\0"] = v116.encode(CFrame.lookAt(originalOrigin, targetPoint))
+    v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, targetPoint))
 end
 
 v137["\2"] = currentHitbox
@@ -69109,7 +69613,9 @@ local function isExplicitlyProtected(fighter)
     return not okDeflecting or isDeflecting == true
 end
 
-local LOCKED_TARGET_UNAVAILABLE_TIMEOUT = 2.0
+-- Keep a valid target locked, but release transiently invalid state quickly so
+-- a stale FighterState cannot stall reacquisition for multiple seconds.
+local LOCKED_TARGET_UNAVAILABLE_TIMEOUT = 0.75
 local LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT = 0.5
 local LOCKED_TARGET_UNATTACKABLE_TIMEOUT = 0.5
 
@@ -69872,19 +70378,10 @@ if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
 arg:ClearTeleport()
 end
 
-local desyncRecentlyDetected = ragebotObserveFakePosition(targetRoot, os.clock())
-if desyncRecentlyDetected then
-    local nowForGlue = os.clock()
-    local track = RAGEBOT_FAKE_POSITION_TRACKS[targetRoot]
-    local lastRefresh = type(track) == "table" and tonumber(track.lastHitscanGlueRefreshAt) or -math.huge
-    if not ragebotFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
-    local state = ragebotVoidSpamState()
-    local hidePhaseActive = ragebotVoidSpamConfig() and state.phase == "hide"
-    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
-        arg:ClearTeleport()
-        if type(track) == "table" then track.lastHitscanGlueRefreshAt = nowForGlue end
-    end
-end
+-- Keep sampling FakePosition for RepRoot detection, but never tear down and
+-- reacquire PartGlue on a timer. Rebinding every 0.20s made the target hitbox
+-- oscillate between restored and glued poses.
+ragebotObserveFakePosition(targetRoot, os.clock())
 local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
 if typeof(v120) ~= "CFrame" then
 ragebotVoidSpamReleasePendingForUnavailableTarget()
@@ -70252,24 +70749,9 @@ arg:ResetState()
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
 end
 
-local meleeDesyncRecentlyDetected = ragebotObserveFakePosition(rootPart, os.clock())
-if meleeDesyncRecentlyDetected then
-    local nowForGlue = os.clock()
-    local track = RAGEBOT_FAKE_POSITION_TRACKS[rootPart]
-    local lastRefresh = type(track) == "table" and tonumber(track.lastMeleeGlueRefreshAt) or -math.huge
-    if not fakePositionFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
-    local state = rawget(_G, "__CrefyRagebotVoidSpamState")
-    local hidePhaseActive = type(state) == "table" and state.phase == "hide"
-    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
-        local previousSource = arg._gluedOurPart
-        local partGlue = arg._partGlue
-        if previousSource ~= nil and type(partGlue) == "table" and type(partGlue.Free) == "function" then
-            pcall(partGlue.Free, partGlue, previousSource)
-        end
-        arg._gluedOurPart = nil
-        if type(track) == "table" then track.lastMeleeGlueRefreshAt = nowForGlue end
-    end
-end
+-- Keep the detector's history current. Do not Free/re-Acquire the glued target
+-- periodically: that creates a visible/server-side pose discontinuity.
+ragebotObserveFakePosition(rootPart, os.clock())
 
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local ragebot = v115.Data.Ragebot
@@ -73704,19 +74186,8 @@ end
 pcall(arg._Reset, arg)
 return
 end
-local counterHoldUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
-local counterRestoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
-local counterHoldCFrame = arg._repRootCounterHoldCFrame
-if arg._repRootCounterRestorePending ~= true
-    and type(counterRestoreVerifiedAt) == "number"
-    and counterRestoreVerifiedAt == counterRestoreVerifiedAt
-    and counterRestoreVerifiedAt ~= math.huge and counterRestoreVerifiedAt ~= -math.huge
-    and os.clock() < counterHoldUntil
-    and arg._repRootCounterHoldRootPart == rootPart
-    and typeof(counterHoldCFrame) == "CFrame" then
-
-    v131.CFrame = counterHoldCFrame
-end
+-- Do not replace a freshly-built combat plan with a saved RepRoot snapshot.
+-- A verified snapshot is only valid for the explicit HoldPosition path below.
 local okApply, applyError = pcall(arg._ApplyPlan, arg, v131, target, innerContext)
 if not okApply then
 local warningNow = os.clock()
@@ -75409,28 +75880,10 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
 end
 
 if cFrame == nil or arg3 == nil or shouldSkipDefense then
-local holdCFrame = arg._repRootCounterHoldCFrame
-local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
-local restoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
-local useVerifiedCounterHold = arg._repRootCounterRestorePending ~= true
-    and holdRootMatches
-    and typeof(holdCFrame) == "CFrame"
-    and type(restoreVerifiedAt) == "number"
-    and restoreVerifiedAt == restoreVerifiedAt
-    and restoreVerifiedAt ~= math.huge and restoreVerifiedAt ~= -math.huge
-    and os.clock() < holdUntil
-if useVerifiedCounterHold then
-    characterController:SetServerCFrame(holdCFrame)
-    if arg2 ~= nil and arg2.IsAimPose == true and type(arg2.WeaponAction) == "function" then
-        arg._lastAimServerCFrame = holdCFrame
-    end
-else
-    local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
-
-    if typeof(safeFallbackCFrame) == "CFrame" then
-        characterController:SetServerCFrame(safeFallbackCFrame)
-    end
-end
+-- Match the original no-plan behavior: clear the server pose override instead
+-- of replaying an old RepRoot snapshot from a previous target/frame.
+local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
+characterController:SetServerCFrame(typeof(safeFallbackCFrame) == "CFrame" and safeFallbackCFrame or nil)
 if arg._knifeExternalRiotCamera ~= true then
     characterController:SendViewAngles(20, defensiveViewAngles)
     if arg._knifeActionExpected == true and defensiveViewAngles ~= nil then
@@ -75442,22 +75895,8 @@ end
 
 local aliveState = arg3.AliveState
 local v130 = v129(arg4.ItemBehaviors)
-local holdCFrame = arg._repRootCounterHoldCFrame
-local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
-local restoreVerifiedAt = tonumber(arg._repRootCounterRestoreVerifiedAt)
-local useVerifiedCounterHold = arg._repRootCounterRestorePending ~= true
-    and holdRootMatches
-    and typeof(holdCFrame) == "CFrame"
-    and type(restoreVerifiedAt) == "number"
-    and restoreVerifiedAt == restoreVerifiedAt
-    and restoreVerifiedAt ~= math.huge and restoreVerifiedAt ~= -math.huge
-    and os.clock() < holdUntil
-local v131 = useVerifiedCounterHold
-    and holdCFrame
-    or v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
-local finalServerCFrame = useVerifiedCounterHold
-    and holdCFrame
-    or arg:_ApplyUndergroundOffset(v131, characterController)
+local v131 = v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
+local finalServerCFrame = arg:_ApplyUndergroundOffset(v131, characterController)
 if arg2.IsAimPose == true and type(arg2.WeaponAction) == "function" and typeof(finalServerCFrame) == "CFrame" then
 arg._lastAimServerCFrame = finalServerCFrame
 end
