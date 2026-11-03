@@ -1,9 +1,9 @@
--- Absense packaged entry point: Rivals-2026-10-30-velocity-r22
--- Running this file supplies the complete source to the Auto Load cache.
+
+
 local source = [=====[
---==========================================================================
---  Absense  -  Rivals
---==========================================================================
+
+
+
 if getgenv().AbsenseRun and getgenv().AbsenseRun.Unload then
     pcall(getgenv().AbsenseRun.Unload)
 end
@@ -11,8 +11,10 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 
 local getthreadidentity_,setthreadidentity_
 local K = { connections = {}, cleanups = {}, destroyed = false }
+function K.track(c) K.connections[#K.connections + 1] = c return c end
+function K.onUnload(f) K.cleanups[#K.cleanups + 1] = f end
 getgenv().AbsenseRun = K
-K.Diagnostics={Build="Rivals-2026-10-30-velocity-r22",Errors={},Calls={}}
+K.Diagnostics={Build="Rivals-2026-11-03-kicia-ui-r23",Errors={},Calls={}}
 function K.RecordError(feature,problem)
     local now=os.clock()
     local record=K.Diagnostics.Errors[feature]or{Count=0}
@@ -47,7 +49,7 @@ function K.FramePhase(fn)
     end
 end
 
--- Install cleanup before any native module or optional feature can fail.
+
 function K.Unload()
     if K.destroyed then return end
     K.destroyed=true
@@ -68,12 +70,12 @@ local player = Players.LocalPlayer
 
 local rawget, rawset = rawget, rawset
 
--- Kicia UI framework (isolated scope; adapted from Kicia_UIFramework_Standalone.lua)
+
 local KiciaUIFramework = (function()
--- Kicia Embedded UI Framework (standalone extraction from the audited Kicia build)
--- Contains the framework foundation, widgets, Menu, Settings UI, theme/color
--- binding, watermark, mobile layout support, search, dialogs, notifications,
--- persistence helpers and related UI primitives.
+
+
+
+
 
 local K = { connections = {}, cleanups = {}, destroyed = false }
 K.LithiumLogo = nil
@@ -18903,14 +18905,14 @@ end
 end
 
 
--- Public framework interface
+
 local KiciaUIFramework = tbl17.aE()
 KiciaUIFramework.Internal = tbl17
 return KiciaUIFramework
 
 end)()
 
--- Ensure the Kicia menu and its owner trove are cleaned on script re-run/unload.
+
 K.onUnload(function()
     local currentMenu=getgenv().AbsenseMenu
     if currentMenu and currentMenu._kiciaFramework==KiciaUIFramework then
@@ -18950,12 +18952,10 @@ local function hudParent()
 end
 K.hudParent = hudParent
 
-function K.track(c) K.connections[#K.connections + 1] = c return c end
-function K.onUnload(f) K.cleanups[#K.cleanups + 1] = f end
 
---==========================================================================
---  Signal / Trove (Absense's own small versions)
---==========================================================================
+
+
+
 local Signal = {}
 Signal.__index = Signal
 function Signal.new() return setmetatable({ _handlers = {} }, Signal) end
@@ -19003,7 +19003,7 @@ local function cleanItem(o)
     elseif t == "thread" then pcall(task.cancel, o)
     elseif type(o) == "function" then pcall(o)
     elseif type(o) == "table" then
-        --  some objects (Absense's signal connections) error on unknown fields
+        
         local function member(k)
             local ok, v = pcall(function() return o[k] end)
             return ok and type(v) == "function" and v or nil
@@ -19026,7 +19026,7 @@ function Trove:Remove(o, keep)
         if not keep then cleanItem(o) end
     end
 end
---  Promise held until it settles; cancelled if the trove is cleaned first.
+
 function Trove:AddPromise(promise)
     if tostring(promise:getStatus()) == "Started" then
         self:Add(promise)
@@ -19036,7 +19036,7 @@ function Trove:AddPromise(promise)
     end
     return promise
 end
---  Sub-trove that cleans itself up when `instance` is destroyed.
+
 function Trove:AttachExtend(instance)
     local sub = self:Extend()
     sub:Connect(instance.Destroying, function() self:Remove(sub) end)
@@ -19052,9 +19052,9 @@ end
 Trove.Destroy = Trove.Clean
 K.Trove = Trove
 
---==========================================================================
---  Absense's constant pool (v86[...]) as recovered from usage in the dump
---==========================================================================
+
+
+
 local C = {
     [3] = "Toggle", [9] = 20, [12] = 12, [18] = "0", [26] = 4, [34] = true, [44] = "Enabled",
     [45] = 90, [48] = 2, [53] = 20, [55] = "Mode", [56] = 2, [62] = 0.1, [63] = 1, [68] = "table",
@@ -19065,26 +19065,26 @@ local C = {
 }
 K.C = C
 
---==========================================================================
---  Absense's own UI, settings store and Combat menu (lifted from the dump)
---==========================================================================
---  [cleaned] Absense's constant pool v86[...] was inlined at every use
---  (2351 lookups replaced by their literal values).
 
---  Environment Absense's modules expect: the module table and the aliases its
---  loader set up before them (v102 = rawget, v103 = rawset, v107 = pcall).
+
+
+
+
+
+
+
 local tbl17 = { cache = {} }
 K.Modules=tbl17
 local v102, v103, v107 = rawget, rawset, pcall
---  The obfuscator's integrity counters. Every check in the lifted code has one
---  branch that hangs and one that runs the real code; these values sit inside
---  the window where all of them take the real branch (n26 in [4790, 4809),
---  n25 in [3866, 3887]).
+
+
+
+
 local cloneref = K.fn("cloneref") or function(x) return x end
 local gethui = K.fn("gethui") or function() return game:GetService("CoreGui") end
 local getthreadidentity = K.fn("getthreadidentity") or K.fn("getidentity") or function() return 8 end
 local setthreadidentity = K.fn("setthreadidentity") or K.fn("setidentity") or function() end
---  The rest of the loader's locals (clonefunction'd so hooks on them can't see us).
+
 local function clonefn(f)
     local c = K.fn("clonefunction")
     if c and f then
@@ -19110,13 +19110,13 @@ local InstanceHandle
 pcall(function() InstanceHandle = getfenv(0).InstanceHandle end)
 if InstanceHandle == nil then pcall(function() InstanceHandle = getgenv().InstanceHandle end) end
 if InstanceHandle == nil then InstanceHandle = { new = function(x) return x end } end
---  The modules the decompiler lost (their bodies are `fn35(...) end` in
---  the dump), rebuilt from how the rest of Absense's code calls them.
 
---  k: Trove
+
+
+
 tbl17.k = function() return { new = function(name) return Trove.new(name) end } end
 
---  w: viewport / pointer / key / path helpers
+
 do
     local UIS = UserInputService
     local GuiService = game:GetService("GuiService")
@@ -19234,8 +19234,8 @@ do
     tbl17.w = function() return W end
 end
 
---  P: two-way link between a control and a settings path. Sliders ask for
---  Debounce so dragging writes once per short burst instead of every frame.
+
+
 do
     local P = {}
     function P.bind(trove, config, control, path, opts)
@@ -19261,7 +19261,7 @@ do
     tbl17.P = function() return P end
 end
 
---  c5: the critically damped Spring (Position, Velocity, Target, Speed, Damper).
+
 do
     local Spring = {}
     local function posVel(self, now)
@@ -19346,13 +19346,13 @@ do
     tbl17.c5 = function() return Spring end
 end
 
---  ca: the AI aim mode's network weights. They are not in the dump; cc falls
---  back to Linear movement without them.
+
+
 tbl17.ca = function() return nil end
 
---  hH: weather emitter specs and lightning / thunder constants. Absense's own
---  values are not in the dump; these fit every field the weather module reads
---  and use particle textures that ship with Roblox.
+
+
+
 do
     local soft = "rbxasset://textures/particles/smoke_main.dds"
     local sparkle = "rbxasset://textures/particles/sparkles_main.dds"
@@ -19397,8 +19397,8 @@ do
     tbl17.hH = function() return W end
 end
 
---  iQ: the Visuals > Player ESP page. Its builder is lost; rebuilt with the
---  same menu calls Absense's other pages use, over Absense's own Esp settings.
+
+
 tbl17.iQ = function()
     return function(_, _, grid)
         local enable = tbl17.h6()
@@ -19426,7 +19426,7 @@ tbl17.iQ = function()
         local function side(title, key, where)
             local s = grid:AddSection({ Title = title, Side = where })
             local function Q(...) return P(key, ...) end
-            --  Absense's ESP draws a side only when Main AND this side are enabled
+            
             enable(s, "Enable " .. title .. " ESP", { "Always", "Toggle", "Hold" }, P(key), true)
             local function color(label, path, transparency)
                 local t = s:AddToggle({ Label = label, Config = Q(path, "Enabled") })
@@ -19481,8 +19481,8 @@ tbl17.iQ = function()
     end
 end
 
---  eZ: Absense's online user service (sessions with the online user service). Offline here:
---  nothing is sent anywhere, connecting is refused.
+
+
 tbl17.eZ = function()
     local Offline = {}
     Offline.__index = Offline
@@ -19509,8 +19509,8 @@ tbl17.eZ = function()
     end
     return Offline
 end
---  Absense's own modules, lifted from the dump (extract.py). Do not edit by hand.
-do -- a
+
+do 
 local function fn35()
 return {
 ok = function(arg)
@@ -19539,7 +19539,7 @@ end
 return a.c
 end
 end
-do -- b
+do 
 local function fn35()
 tbl17.a()
 local v115 = nil
@@ -19566,7 +19566,7 @@ end
 return b.c
 end
 end
-do -- d
+do 
 local function fn35()
 local function copy(t)
 if type(t) ~= "table" then return t end
@@ -19588,7 +19588,7 @@ end
 return d.c
 end
 end
-do -- e
+do 
 local function fn35()
 local v115 = tbl17.a()
 
@@ -19627,7 +19627,7 @@ end
 return e.c
 end
 end
-do -- f
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.d()
@@ -19903,7 +19903,7 @@ end
 return f.c
 end
 end
-do -- g
+do 
 local function fn35()local I;local function W(N,...)local P=I;I=nil;N(...);I=P;end;local function N(...)W(...);while true do W(coroutine.yield());end;end;local W={};W.__index=W;W.Disconnect=function(P)if not P.Connected then return;end;P.Connected=false;if P._signal._handlerListHead==P then P._signal._handlerListHead=P._next;else local a=P._signal._handlerListHead;while a and a._next~=P do a=a._next;end;if a then a._next=P._next;end;end;end;W.Destroy=W.Disconnect;setmetatable(W,{__index=function(P,P)error(("Attempt to get Connection::%s (not a valid member)"):format(tostring(P)),2);end,__newindex=function(P,P,a)error(("Attempt to set Connection::%s (not a valid member)"):format(tostring(P)),2);end});local P={};P.__index=P;P.new=function()return(setmetatable({_handlerListHead=false,_proxyHandler=nil,_yieldedThreads=nil},P));end;P.Wrap=function(a)assert(typeof(a)=="RBXScriptSignal","Argument #1 to Signal.Wrap must be a RBXScriptSignal; got "..typeof(a));local e=P.new();e._proxyHandler=a:Connect(function(...)e:Fire(...);end);return e;end;P.Is=function(a)return type(a)=="table"and getmetatable(a)==P;end;P.Connect=function(a,e)local c=setmetatable({Connected=true,_signal=a,_fn=e,_next=false},W);if a._handlerListHead then c._next=a._handlerListHead;a._handlerListHead=c;else a._handlerListHead=c;end;return c;end;P.ConnectOnce=function(W,a)return W:Once(a);end;P.Once=function(W,a)local e;local c=false;e=W:Connect(function(...)if c then return;end;c=true;e:Disconnect();a(...);end);return e;end;P.GetConnections=function(W)local a,e={},W._handlerListHead;while e do table.insert(a,e);e=e._next;end;return a;end;P.DisconnectAll=function(W)local a=W._handlerListHead;while a do a.Connected=false;a=a._next;end;W._handlerListHead=false;a= v102 (W,"_yieldedThreads");if a then for e in a,nil,nil do if coroutine.status(e)=="suspended"then warn(debug.traceback(e,"signal disconnected; yielded thread cancelled",2));task.cancel(e);end;end;table.clear(W._yieldedThreads);end;end;P.Fire=function(W,...)local a=W._handlerListHead;while a do if a.Connected then W=I;if not W then I=coroutine.create(N);end;task.spawn(I,a._fn,...);end;a=a._next;end;end;P.FireDeferred=function(I,...)local W=I._handlerListHead;while W do local I=W;task.defer(function(...)if I.Connected then I._fn(...);end;end,...);W=W._next;end;end;P.Wait=function(I)local W= v102 (I,"_yieldedThreads");if not W then W={}; v103 (I,"_yieldedThreads",W);end;local N=coroutine.running();W[N]=true;I:Once(function(...)W[N]=nil;if coroutine.status(N)=="suspended"then task.spawn(N,...);end;end);return coroutine.yield();end;P.Destroy=function(I)I:DisconnectAll();local W= v102 (I,"_proxyHandler");if W then W:Disconnect();end;end;return table.freeze({new=P.new,Wrap=P.Wrap,Is=P.Is});end
 
 tbl17.g = function()
@@ -19918,7 +19918,7 @@ end
 return g.c
 end
 end
-do -- h
+do 
 local function fn35()
 local v115 = tbl17.g()
 local index2 = {}
@@ -19973,7 +19973,7 @@ end
 return h.c
 end
 end
-do -- i
+do 
 local function fn35()
 local tbl18 = {}
 
@@ -19998,7 +19998,7 @@ end
 return i.c
 end
 end
-do -- j
+do 
 local function fn35()
 local isAtomic = tbl17.i().isAtomic
 local tbl18
@@ -20028,7 +20028,7 @@ end
 return j.c
 end
 end
-do -- l
+do 
 local function fn35()
 local v115 = tbl17.f()
 local v116 = tbl17.h()
@@ -20367,7 +20367,7 @@ end
 return l.c
 end
 end
-do -- m
+do 
 local function fn35()
 local tbl18
 
@@ -20478,7 +20478,7 @@ end
 return m.c
 end
 end
-do -- n
+do 
 local function fn35()
 local GlobalTrove = tbl17.k().new("GlobalTrove")
 
@@ -20499,7 +20499,7 @@ end
 return n.c
 end
 end
-do -- r
+do 
 local function fn35()
 tbl17.l()
 tbl17.g()
@@ -20518,7 +20518,7 @@ end
 return r.c
 end
 end
-do -- s
+do 
 local function fn35()return table.freeze({Medium=Font.fromEnum(Enum.Font.GothamMedium),SemiBold=Font.fromEnum(Enum.Font.GothamSemibold),Bold=Font.fromEnum(Enum.Font.GothamBold)});end
 
 tbl17.s = function()
@@ -20533,7 +20533,7 @@ end
 return s.c
 end
 end
-do -- t
+do 
 local function fn35()return{Players=cloneref(game:GetService("Players")),GuiService=cloneref(game:GetService("GuiService")),UserInputService=cloneref(game:GetService("UserInputService")),RunService=cloneref(game:GetService("RunService")),TweenService=cloneref(game:GetService("TweenService")),HttpService=cloneref(game:GetService("HttpService")),CoreGui=cloneref(game:GetService("CoreGui"))};end
 
 tbl17.t = function()
@@ -20548,7 +20548,7 @@ end
 return t.c
 end
 end
-do -- u
+do 
 local function fn35()local I= tbl17 .t();local l,W,N=I.GuiService,I.UserInputService,{DesignSize=UDim2.fromOffset(919,643),MinSize=UDim2.fromOffset(700,400),Scale=1};local function I()return workspace.CurrentCamera;end;local function P(a)if not a then return false;end;a=I();if a==nil then return false;end;local I=a.ViewportSize;return math.min(I.X,I.Y)>500;end;local function I(a)if a then return false;end;a=W.PreferredInput;if a==Enum.PreferredInput.Touch then return true;end;if a==Enum.PreferredInput.KeyboardAndMouse or a==Enum.PreferredInput.Gamepad then return false;end;a=W:GetLastInputType();if a==Enum.UserInputType.Touch then return true;end;if a==Enum.UserInputType.MouseButton1 or a==Enum.UserInputType.MouseButton2 or a==Enum.UserInputType.MouseMovement or a==Enum.UserInputType.Keyboard then return false;end;return W.TouchEnabled and not W.KeyboardEnabled;end;local a=l:IsTenFootInterface();local l=I(a);local I;N.IsMobile=function()return l;end;N.ForceMobileLayout=function(e)l=true;I=e==true;end;N.IsTablet=function()local l=I;if l==nil then l=P(N.IsMobile());I=l;end;return l;end;N.HasTouch=function()return not a and W.TouchEnabled;end;N.WantsMobileButtons=function()return N.HasTouch()or(N.IsMobile());end;return N;end
 
 tbl17.u = function()
@@ -20563,7 +20563,7 @@ end
 return u.c
 end
 end
-do -- v
+do 
 local function fn35()local I,W,N,P= tbl17 .u(),{},table.freeze({IsCompact=false,Rail=table.freeze({Width=104,HeaderHeight=56,TabsTop=66,TabSize=34,TabGap=4,TabIconSize=26,LogoSize=Vector2.new(48,37),ShowLabels=true}),Page=table.freeze({HasTitleBlock=true,OuterInset=12,HorizontalInset=12,HeaderHeight=38,TabsHeight=36,BottomInset=10,TitleTextSize=13,DescriptionTextSize=10,TabMinWidth=40,TabHeight=30,TabIconSize=24,TabTextSize=13,TabGap=6,TabPaddingLeft=8,TabPaddingRight=8,SearchCollapsedWidth=90,SearchExpandedWidth=260,SearchHeight=33,SearchRightInset=14}),Navigation=table.freeze({CueDepth=12,RevealPadding=4,VisibilityEpsilon=1}),Grid=table.freeze({Gap=14,MinColumnWidth=240}),Section=table.freeze({Gap=12,TitleGap=8,InnerPadding=12,ElementGap=6,GroupGap=10,TitleTextSize=11,MultiHeaderHeight=45,MultiHeaderGap=12,MultiHeaderPadding=12,MultiPaneTop=57,MultiTabTextSize=16}),Row=table.freeze({Height=32,TextSize=13,ControlVerticalInset=0,ControlHeight=22,AttachmentGap=11,ListRowHeight=32}),Button=table.freeze({RowHeight=32,VisualHeight=26,Gap=8})}),table.freeze({IsCompact=true,Rail=table.freeze({Width=52,HeaderHeight=48,TabsTop=52,TabSize=44,TabGap=2,TabIconSize=20,LogoSize=Vector2.new(24,19),ShowLabels=false}),Page=table.freeze({HasTitleBlock=true,OuterInset=12,HorizontalInset=12,HeaderHeight=44,TabsHeight=40,BottomInset=12,TitleTextSize=16,DescriptionTextSize=10,TabMinWidth=44,TabHeight=34,TabIconSize=18,TabTextSize=13,TabGap=6,TabPaddingLeft=8,TabPaddingRight=10,SearchCollapsedWidth=32,SearchExpandedWidth=220,SearchHeight=32,SearchRightInset=8}),Navigation=table.freeze({CueDepth=12,RevealPadding=4,VisibilityEpsilon=1}),Grid=table.freeze({Gap=12,MinColumnWidth=220}),Section=table.freeze({Gap=12,TitleGap=8,InnerPadding=8,ElementGap=8,GroupGap=8,TitleTextSize=15,MultiHeaderHeight=36,MultiHeaderGap=8,MultiHeaderPadding=8,MultiPaneTop=44,MultiTabTextSize=13}),Row=table.freeze({Height=32,TextSize=14,ControlVerticalInset=4,ControlHeight=24,AttachmentGap=8,ListRowHeight=32}),Button=table.freeze({RowHeight=32,VisualHeight=30,Gap=8})});local l=table.freeze({IsCompact=true,Rail=P.Rail,Page=table.freeze({HasTitleBlock=false,OuterInset=12,HorizontalInset=12,HeaderHeight=0,TabsHeight=44,BottomInset=12,TitleTextSize=16,DescriptionTextSize=10,TabMinWidth=44,TabHeight=36,TabIconSize=18,TabTextSize=14,TabGap=6,TabPaddingLeft=8,TabPaddingRight=10,SearchCollapsedWidth=32,SearchExpandedWidth=220,SearchHeight=32,SearchRightInset=8}),Navigation=P.Navigation,Grid=table.freeze({Gap=12,MinColumnWidth=330}),Section=P.Section,Row=table.freeze({Height=40,TextSize=15,ControlVerticalInset=6,ControlHeight=28,AttachmentGap=8,ListRowHeight=40}),Button=table.freeze({RowHeight=40,VisualHeight=36,Gap=8})});W.get=function()if not I.IsMobile()then return N;end;if I.IsTablet()then return P;end;return l;end;return W;end
 
 tbl17.v = function()
@@ -20577,7 +20577,7 @@ end
 return v115.c
 end
 end
-do -- x
+do 
 local function fn35() tbl17 .k();local I,W= tbl17 .t(), tbl17 .w();local l,N,P=I.UserInputService,{},setmetatable({},{__mode="k"});N.suppressActivation=function(I)P[I]=true;end;local I=W.findScrollingAncestor;N.connectPress=function(a,e,c,E)local p,T,t,x=false;local function S(J)if not p then return;end;p,T,t=false,nil,nil;if x~=nil then x:Disconnect();x=nil;end;E(J);end;a:Add({Destroy=function()p,T,t=false,nil,nil;if x~=nil then x:Disconnect();x=nil;end;end});a:Connect(e.InputBegan,function(E)if p then return;end;local J=E.UserInputType;if J~=Enum.UserInputType.MouseButton1 and J~=Enum.UserInputType.Touch then return;end;T,t,p=E,J,true;c();x=l.InputEnded:Connect(function(c)if T==nil then return;end;if not W.matchesPointerDrag(c,T,Enum.UserInputType.MouseButton1)then return;end;S(false);end);end);a:Connect(e.MouseLeave,function()if t==Enum.UserInputType.MouseButton1 then S(true);end;end);end;N.connectClick=function(a,e,c)if e:IsA("GuiButton")then a:Connect(e.Activated,function(E,p)if P[E]then P[E]=nil;return;end;c();end);return;end;a:Connect(e.InputBegan,function(P)local a=P.UserInputType;if a==Enum.UserInputType.MouseButton1 or a==Enum.UserInputType.Touch then c();end;end);end;N.connectDrag=function(P,a,e,c)local E,p,T,t,x=c or function(c,c)end;local c,S,J,B,X=false,false,0;local function H()J+=1;if B~=nil then B:Disconnect();B=nil;end;if X~=nil then X:Disconnect();X=nil;end;p,T,t,x,c,S=nil,nil,nil,nil,false,false;end;local function k(D)local Q=c;H();if Q then E(false,D);end;end;local function D()if p==nil or c or S then return;end;c=true;E(true,false);end;P:Add({Destroy=H});P:Connect(a.InputBegan,function(P)local E=P.UserInputType;if E~=Enum.UserInputType.MouseButton1 and E~=Enum.UserInputType.Touch then return;end;H();p=P;T=P.Position;t=I(a);x=t and t.CanvasPosition or nil;J+=1;local I=J;task.delay(0.3,function()if J==I then D();end;end);X=l.InputEnded:Connect(function(I)if p==nil then return;end;if not W.matchesPointerDrag(I,p,Enum.UserInputType.MouseButton1)then return;end;J+=1;k(false);end);B=l.InputChanged:Connect(function(l)if p==nil or S then return;end;if not W.matchesPointerDrag(l,p,Enum.UserInputType.MouseMovement)then return;end;local I,W=t,x;if I~=nil and W~=nil then local P=I.CanvasPosition-W;if P.X*P.X+P.Y*P.Y>0.25 then if c then k(true);else S=true;J+=1;end;return;end;end;if not c and T~=nil then W,I=l.Position.X-T.X,l.Position.Y-T.Y;if W*W+I*I>=100 then D();end;end;if c then e(l);end;end);end);end;return N;end
 
 tbl17.x = function()
@@ -20591,7 +20591,7 @@ end
 return x.c
 end
 end
-do -- y
+do 
 local function fn35()
 tbl17.k()
 tbl17.r()
@@ -20667,7 +20667,7 @@ end
 return y.c
 end
 end
-do -- z
+do 
 local function fn35()return{Accent=Color3.fromRGB(124,92,255),Outline=Color3.fromRGB(34,34,40),Background=Color3.fromRGB(11,11,13),ElementBackground=Color3.fromRGB(20,20,23),TabButtonSelected=Color3.fromRGB(27,27,34),Unselected=Color3.fromRGB(154,154,164),TextColor=Color3.fromRGB(236,236,239),ToggleCircleUnselected=Color3.fromRGB(240,240,240),ToggleBackgroundUnselected=Color3.fromRGB(38,38,46),GradientTop=Color3.fromRGB(18,18,21),GradientMid=Color3.fromRGB(15,15,18),GradientDark=Color3.fromRGB(12,12,14),GradientDeep=Color3.fromRGB(9,9,11),TabHighlight=Color3.fromRGB(124,92,255),TabShadow=Color3.fromRGB(14,14,16)};end
 
 tbl17.z = function()
@@ -20682,7 +20682,7 @@ end
 return z.c
 end
 end
-do -- A
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.z()
@@ -20836,7 +20836,7 @@ end
 return a.c
 end
 end
-do -- B
+do 
 local function fn35()
 local v115 = tbl17.k()
 tbl17.r()
@@ -21422,7 +21422,7 @@ end
 return b.c
 end
 end
-do -- C
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -21728,7 +21728,7 @@ end
 return c.c
 end
 end
-do -- D
+do 
 local function fn35() tbl17 .r();local l={};local function I(W)local N={};for P,P in W.Keypoints,nil,nil do table.insert(N,{Time=P.Time,Value=P.Value});end;return N;end;local function W(N)local P={};for a,a in N,nil,nil do table.insert(P,ColorSequenceKeypoint.new(a.Time,a.Value));end;return ColorSequence.new(P);end;local function N(P)local a=P[1].Value;for e=2,#P,1 do if P[e].Value~=a then return false;end;end;return true;end;local function P(a)if type(a)=="number"then return 1-a;end;return 1;end;l.decodeSolid=function(a,e)if typeof(a)~="Color3"then return nil;end;return{Rgb=a,Alpha=P(e),Stops={}};end;l.encodeSolid=function(a)return a.Rgb,1-a.Alpha;end;l.decodeSequence=function(a,e)if typeof(a)~="ColorSequence"then return nil;end;local c=I(a);if#c==0 then return nil;end;a=P(e);if N(c)then return{Rgb=c[1].Value,Alpha=a,Stops={}};end;return{Rgb=c[1].Value,Alpha=a,Stops=c};end;l.encodeSequence=function(I)local N=I.Stops;if N~=nil and#N>=2 then return W(N),1-I.Alpha;end;return ColorSequence.new(I.Rgb),1-I.Alpha;end;return l;end
 
 tbl17.D = function()
@@ -21742,7 +21742,7 @@ end
 return d.c
 end
 end
-do -- E
+do 
 local function fn35() tbl17 .r();local l;l={clone=function(I)local W={};if type(I)=="table"then for N,P in I,nil,nil do if type(P)=="table"then N=P.Value;if typeof(N)=="Color3"then table.insert(W,{Time=math.clamp(tonumber(P.Time)or 0,0,1),Value=N});end;end;end;end;return W;end,sort=function(I,W)table.sort(I,function(N,P)return N.Time<P.Time;end);if W~=nil then for N,P in I,nil,nil do if P==W then return N;end;end;end;return math.max(#I,1);end,ensure=function(I,W)local N=l.clone(I);if#N>=2 then l.sort(N);N[1].Time=0;N[#N].Time=1;return N;end;return{{Time=0,Value=W},{Time=1,Value=W}};end,toSequence=function(I)local W=l.clone(I);if#W==0 then return ColorSequence.new(Color3.new(1,1,1));end;l.sort(W);local I,N,P={},W[1],W[#W];if N.Time>0 then table.insert(I,ColorSequenceKeypoint.new(0,N.Value));end;for a,a in W,nil,nil do N=math.clamp(a.Time,0,1);table.insert(I,ColorSequenceKeypoint.new(if#I>0 then(math.max(N,I[#I].Time))else N,a.Value));end;if I[#I].Time<1 then table.insert(I,ColorSequenceKeypoint.new(1,P.Value));end;return ColorSequence.new(I);end};return l;end
 
 tbl17.E = function()
@@ -21756,7 +21756,7 @@ end
 return e.c
 end
 end
-do -- F
+do 
 local function fn35()
 tbl17.A()
 
@@ -21802,7 +21802,7 @@ end
 return f.c
 end
 end
-do -- G
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.F()
@@ -22093,7 +22093,7 @@ end
 return g.c
 end
 end
-do -- H
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -22895,7 +22895,7 @@ end
 return h.c
 end
 end
-do -- I
+do 
 local function fn35()
 tbl17.r()
 local v115 = tbl17.s()
@@ -23024,7 +23024,7 @@ end
 return i.c
 end
 end
-do -- J
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -23310,7 +23310,7 @@ end
 return j.c
 end
 end
-do -- K
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -23580,7 +23580,7 @@ end
 return k.c
 end
 end
-do -- L
+do 
 local function fn35()
 local v115 = tbl17.E()
 tbl17.r()
@@ -24549,7 +24549,7 @@ end
 return l.c
 end
 end
-do -- M
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -25049,7 +25049,7 @@ end
 return m.c
 end
 end
-do -- N
+do 
 local function fn35()local I= tbl17 .D(); tbl17 .M(); tbl17 .r();local l={bind=function(W,N)local P=false;local function a()if P or W.Dragging then return;end;local e=N.Read();if e~=nil then W:Set(e,true);end;end;W:OnChanged(function(e)P=true;N.Write(e);P=false;end);for P,P in N.Changed,nil,nil do W:Connect(P,a);end;a();return W;end};local function W(N,P)if N.GetBase~=nil then return N:GetBase(P);end;return N:Get(P);end;l.bindConfig=function(N,P,a)local e,c,E=a.Config,a.Transparency,a.Gradient=="editable"or a.Gradient=="only";a={P:Changed(e)};if c~=nil then table.insert(a,P:Changed(c));end;return l.bind(N,{Read=function()local N,p=W(P,e),if c~=nil then(W(P,c))else nil;if E then return I.decodeSequence(N,p);end;return I.decodeSolid(N,p);end,Write=function(W)local N;if E then local E;E,N=I.encodeSequence(W);P:Set(e,E);else local E;E,N=I.encodeSolid(W);P:Set(e,E);end;if c~=nil then P:Set(c,N);end;end,Changed=a});end;return l;end
 
 tbl17.N = function()
@@ -25064,7 +25064,7 @@ end
 return n.c
 end
 end
-do -- Q
+do 
 local function fn35()
 tbl17.g()
 tbl17.k()
@@ -25174,7 +25174,7 @@ end
 return q.c
 end
 end
-do -- R
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -25378,7 +25378,7 @@ end
 return r.c
 end
 end
-do -- S
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -25565,7 +25565,7 @@ end
 return s.c
 end
 end
-do -- T
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -26139,7 +26139,7 @@ end
 return t.c
 end
 end
-do -- U
+do 
 local function fn35()
 tbl17.g()
 tbl17.k()
@@ -26260,7 +26260,7 @@ end
 return u.c
 end
 end
-do -- V
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -26728,7 +26728,7 @@ end
 return v115.c
 end
 end
-do -- W
+do 
 local function fn35()
 local v115 = tbl17.F()
 local v116 = tbl17.v()
@@ -26796,7 +26796,7 @@ end
 return w.c
 end
 end
-do -- X
+do 
 local function fn35()
 tbl17.g()
 tbl17.k()
@@ -27047,7 +27047,7 @@ end
 return x.c
 end
 end
-do -- Y
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -27372,7 +27372,7 @@ end
 return y.c
 end
 end
-do -- Z
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -28148,7 +28148,7 @@ end
 return z.c
 end
 end
-do -- _
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -28345,7 +28345,7 @@ end
 return tbl18.c
 end
 end
-do -- aa
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.F()
@@ -28589,7 +28589,7 @@ end
 return aa.c
 end
 end
-do -- ab
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -29521,7 +29521,7 @@ end
 return ab.c
 end
 end
-do -- ac
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.F()
@@ -30949,7 +30949,7 @@ end
 return ac.c
 end
 end
-do -- ad
+do 
 local function fn35()
 local v115 = tbl17.b()
 tbl17.a()
@@ -31009,7 +31009,7 @@ end
 return ad.c
 end
 end
-do -- ae
+do 
 local function fn35()local I,W= tbl17 .f(), tbl17 .ad(); tbl17 .a(); tbl17 .r();local l={};l.__index=l;local N={AutoSave=false,AutoSaveConfigName=nil,AutoLoad=false,AutoLoadConfigName=nil,Keybind="RightShift",Size=nil,Position=nil,KeybindsListPosition=nil,WatermarkPosition=nil,MobileButtonPositions=nil,ShowKeybinds=nil,ShowWatermark=nil,MenuKeybindInList=nil,HideMobileMenuButton=nil,SilentLoad=nil,PerWeaponPick=nil,PerWeaponSeen=nil};local function P(a)return(a:gsub("%.json$",""));end;local function a(e)if type(e)~="table"then return nil;end;local c,E=e[1],e[2];if type(c)~="number"or type(E)~="number"then return nil;end;if c~=c or E~=E then return nil;end;return{c,E};end;local function e(c)if type(c)~="table"then return nil;end;local E,p={},false;for T,t in c,nil,nil do if type(T)~="string"or T==""then continue;end;local c=a(t);if c==nil then continue;end;E[T]=c;p=true;end;return p and E or nil;end;local function c(E)local p=table.clone(N);if type(E)~="table"then return p;end;if type(E.AutoSave)=="boolean"then p.AutoSave=E.AutoSave;end;if type(E.AutoSaveConfigName)=="string"then p.AutoSaveConfigName=P(E.AutoSaveConfigName);end;if type(E.AutoLoad)=="boolean"then p.AutoLoad=E.AutoLoad;end;if type(E.AutoLoadConfigName)=="string"then p.AutoLoadConfigName=P(E.AutoLoadConfigName);end;if type(E.Keybind)=="string"then p.Keybind=E.Keybind;end;if type(E.ShowKeybinds)=="boolean"then p.ShowKeybinds=E.ShowKeybinds;end;if type(E.ShowWatermark)=="boolean"then p.ShowWatermark=E.ShowWatermark;end;if type(E.MenuKeybindInList)=="boolean"then p.MenuKeybindInList=E.MenuKeybindInList;end;if type(E.HideMobileMenuButton)=="boolean"then p.HideMobileMenuButton=E.HideMobileMenuButton;end;if type(E.SilentLoad)=="boolean"then p.SilentLoad=E.SilentLoad;end;if type(E.PerWeaponPick)=="table"then p.PerWeaponPick=E.PerWeaponPick;end;if type(E.PerWeaponSeen)=="table"then p.PerWeaponSeen=E.PerWeaponSeen;end;p.Size=a(E.Size);p.Position=a(E.Position);p.KeybindsListPosition=a(E.KeybindsListPosition);p.WatermarkPosition=a(E.WatermarkPosition);p.MobileButtonPositions=e(E.MobileButtonPositions);return p;end;local function P(a)if type(a)~="table"then return{};end;local e=table.clone(a);a=e.autosave;e.autosave=nil;if type(a)=="string"then e.AutoSave=true;e.AutoSaveConfigName=a;end;a=e.autoload;e.autoload=nil;if type(a)=="string"then e.AutoLoad=true;e.AutoLoadConfigName=a;end;return e;end;local function a(e)if type(e)~="table"then return{};end;local E,p=table.clone(e),{"autoSave","autoSaveConfigName","autoLoad","autoLoadConfigName","keybind","size","position","keybindsListPosition","watermarkPosition","mobileButtonPositions","showKeybinds","showWatermark","menuKeybindInList","hideMobileMenuButton","silentLoad"};for T,T in p,nil,nil do e=string.upper(string.sub(T,1,1))..string.sub(T,2);if E[e]==nil then E[e]=E[T];end;E[T]=nil;end;return E;end;l.new=function(e)return setmetatable({_errorReporter=W.new(),_manager=I.new({DefaultConfig=N,CurrentVersion=3,SavePath=e,Deserialize=c,Migrations={[1]=P,[2]=a}})},l);end;l.Load=function(I)if not I._manager:Exists("general")then return I._manager:Reset();end;local W=I._manager:LoadFromFile("general");if W.Ok then return W.Value;end;I._errorReporter:Report(W.Error);return I._manager:Reset();end;l.Save=function(I,W)I._manager:SetData(W);return I._errorReporter:ReportResult(I._manager:SaveToFile("general"));end;l.Destroy=function(I)I._errorReporter:Destroy();end;return l;end
 
 tbl17.ae = function()
@@ -31023,7 +31023,7 @@ end
 return ae.c
 end
 end
-do -- af
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.ab()
@@ -31300,7 +31300,7 @@ end
 return af.c
 end
 end
-do -- ag
+do 
 local function fn35() tbl17 .k();local I= tbl17 .t();local l,W,N,P=I.UserInputService,I.RunService,I.HttpService,{};P.__index=P;P.new=function(I)return setmetatable({_trove=I,_unlocked=false,_textbox=nil,_binding=nil,_oldMouseIconEnabled=nil},P);end;local function I(a)local e=a._textbox;if e~=nil then return e;end;e=Instance.new("TextBox");a._textbox=e;a._trove:Add(e);return e;end;P.Set=function(a,e)if a._unlocked==e then return;end;a._unlocked=e;if not l.KeyboardEnabled then return;end;if e then local e=I(a);a._oldMouseIconEnabled=l.MouseIconEnabled;local I=N:GenerateGUID(false);a._binding=I;W:BindToRenderStep(I,Enum.RenderPriority.Camera.Value+1,function()if not l.MouseIconEnabled then a._oldMouseIconEnabled=l.MouseIconEnabled;l.MouseIconEnabled=true;end;local f=l:GetFocusedTextBox();if f==nil or f==e then e:CaptureFocus();end;end);else if a._binding~=nil then W:UnbindFromRenderStep(a._binding);a._binding=nil;end;if a._oldMouseIconEnabled~=nil then l.MouseIconEnabled=a._oldMouseIconEnabled;a._oldMouseIconEnabled=nil;end;if a._textbox~=nil then a._textbox:ReleaseFocus(false);end;end;end;P.Destroy=function(l)l:Set(false);end;return P;end
 
 tbl17.ag = function()
@@ -31314,7 +31314,7 @@ end
 return ag.c
 end
 end
-do -- ah
+do 
 local function fn35()local I= tbl17 .k(); tbl17 .r();local W,N= tbl17 .t().UserInputService,{};N.__index=N;N.new=function(l)local P=I.new();local I={_trove=P,_captureTrove=P:Extend(),_active=nil,_pending=nil,_generation=0,_deliveryTrove=P:Extend(),_capturedInputSet={}};setmetatable(I._capturedInputSet,{__mode="k"});P=setmetatable(I,N);l:Add(P);return P;end;N.ShouldBlockMenuToggle=function(l,I)return l._active~=nil or l._capturedInputSet[I]==true;end;N.Begin=function(l,I)l:Cancel();l._generation=l._generation+1;local P=l._generation;l._active=I;l._captureTrove:Connect(W.InputBegan,function(I,W)if I.UserInputType==Enum.UserInputType.Touch then l:Cancel();return;end;local a=I.UserInputType;local e,c=a==Enum.UserInputType.Keyboard,a==Enum.UserInputType.MouseButton1 or a==Enum.UserInputType.MouseButton2 or a==Enum.UserInputType.MouseButton3;if not e and not c then return;end;c=e and I.KeyCode==Enum.KeyCode.Escape;if e and not c and W then return;end;local W=l._active;l:_Disarm();if W==nil then return;end;local E="None";if not c then if e then E=I.KeyCode;else E=a;end;end;l._capturedInputSet[I]=true;l._pending=W;l._deliveryTrove:Add(task.defer(function()if l._generation~=P or l._pending~=W then return;end;l._pending=nil;l._capturedInputSet[I]=nil;W(E);end));end);return function()if l._generation==P then l:Cancel();end;end;end;N._Disarm=function(l)l._captureTrove:Clean();l._active=nil;end;N.Cancel=function(l)local I=l._active or l._pending;l._generation=l._generation+1;l._deliveryTrove:Clean();l:_Disarm();l._pending=nil;table.clear(l._capturedInputSet);if I~=nil then I(nil);end;end;N.Destroy=function(l)l:Cancel();l._trove:Destroy();end;return N;end
 
 tbl17.ah = function()
@@ -31328,7 +31328,7 @@ end
 return ah.c
 end
 end
-do -- ai
+do 
 local function fn35()
 tbl17.k()
 tbl17.r()
@@ -31724,7 +31724,7 @@ end
 return ai.c
 end
 end
-do -- aj
+do 
 local function fn35()
 tbl17.k()
 tbl17.r()
@@ -32129,7 +32129,7 @@ end
 return aj.c
 end
 end
-do -- ak
+do 
 local function fn35()
 tbl17.g()
 tbl17.k()
@@ -32483,7 +32483,7 @@ end
 return ak.c
 end
 end
-do -- al
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.F()
@@ -33202,7 +33202,7 @@ end
 return al.c
 end
 end
-do -- am
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.v()
@@ -33365,7 +33365,7 @@ end
 return am.c
 end
 end
-do -- an
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -33726,7 +33726,7 @@ end
 return an.c
 end
 end
-do -- ao
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.F()
@@ -34014,7 +34014,7 @@ end
 return ao.c
 end
 end
-do -- ap
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -34102,7 +34102,7 @@ end
 return ap.c
 end
 end
-do -- aq
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.F()
@@ -34280,7 +34280,7 @@ end
 return aq.c
 end
 end
-do -- ar
+do 
 local function fn35()
 local v115 = tbl17.g()
 tbl17.k()
@@ -34493,7 +34493,7 @@ end
 return ar.c
 end
 end
-do -- as
+do 
 local function fn35()
 tbl17.g()
 tbl17.k()
@@ -34659,7 +34659,7 @@ end
 return as.c
 end
 end
-do -- at
+do 
 local function fn35()
 local tweenService = tbl17.t().TweenService
 local index2 = {}
@@ -34713,7 +34713,7 @@ end
 return at.c
 end
 end
-do -- au
+do 
 local function fn35()local I,W= tbl17 .t().RunService,{};W.__index=W;W.new=function(l)return setmetatable({_onDisplay=l,_running=false,_frames=0,_smooth=60,_displayed=-1,_connection=nil,_loopToken=0},W);end;local function l(N)local P,a=N._loopToken,os.clock();task.delay(0.5,function()if N._loopToken~=P then return;end;local P=os.clock()-a;if P>0 then local a=N._frames/P;N._smooth=N._smooth+(a-N._smooth)*0.5;end;N._frames=0;P=math.floor(N._smooth+0.5);if P~=N._displayed then N._displayed=P;N._onDisplay(P);end;l(N);end);end;W.SetRunning=function(N,P)if N._running==P then return;end;N._running=P;N._loopToken=N._loopToken+1;if not P then local P=N._connection;if P~=nil then P:Disconnect();N._connection=nil;end;return;end;N._frames=0;N._connection=I.RenderStepped:Connect(function()N._frames=N._frames+1;end);l(N);end;W.Destroy=function(l)l:SetRunning(false);end;return W;end
 
 tbl17.au = function()
@@ -34728,7 +34728,7 @@ end
 return au.c
 end
 end
-do -- av
+do 
 local function fn35()
 tbl17.k()
 tbl17.r()
@@ -34906,7 +34906,7 @@ end
 return av.c
 end
 end
-do -- aw
+do 
 local function fn35()
 local v115 = tbl17.u()
 local v116 = tbl17.w()
@@ -35001,7 +35001,7 @@ end
 return aw.c
 end
 end
-do -- ax
+do 
 local function fn35()
 tbl17.k()
 local v115 = tbl17.F()
@@ -35416,7 +35416,7 @@ end
 return ax.c
 end
 end
-do -- ay
+do 
 local function fn35()local I={__mode="k"};local function W(N)if type(N)=="function"then return true;end;if type(N)=="table"then local P=getmetatable(N);if P and type( v102 (P,"__call"))=="function"then return true;end;end;return false;end;local function N(P,a)local e={};for c,c in ipairs(a)do e[c]=c;end;return setmetatable(e,{__index=function(a,a)error(string.format("%s is not in %s!",a,P),2);end,__newindex=function()error(string.format("Creating new members in %s is not allowed!",P),2);end});end;local P;P={Kind=N("Promise.Error.Kind",{"ExecutionError","AlreadyCancelled","NotResolvedInTime","TimedOut"})};P.__index=P;P.new=function(a,e)a=a or{};return setmetatable({error=tostring(a.error)or"[This error has no error text.]",trace=a.trace,context=a.context,kind=a.kind,parent=e,createdTick=os.clock(),createdTrace=debug.traceback()},P);end;P.is=function(a)if type(a)=="table"then local e=getmetatable(a);if type(e)=="table"then return  v102 (a,"error")~=nil and type( v102 (e,"extend"))=="function";end;end;return false;end;P.isKind=function(a,e)assert(e~=nil,"Argument #2 to Promise.Error.isKind must not be nil");return P.is(a)and a.kind==e;end;P.extend=function(a,e)e=e or{};e.kind=e.kind or a.kind;return P.new(e,a);end;P.getErrorChain=function(a)local e={a};while e[#e].parent do table.insert(e,e[#e].parent);end;return e;end;P.__tostring=function(a)local e={string.format("-- Promise.Error(%s) --",a.kind or"?")};for c,c in ipairs(a:getErrorChain())do table.insert(e,table.concat({c.trace or c.error,c.context},"\10"));end;return table.concat(e,"\10");end;local function a(...)return select("#",...),{...};end;local function e(c,...)return c,select("#",...),{...};end;local function c(E)assert(E~=nil,"traceback is nil");return function(p)if type(p)=="table"then return p;end;return P.new({error=p,kind=P.Kind.ExecutionError,trace=debug.traceback(tostring(p),2),context="Promise created at:\10\10"..E});end;end;local function E(p,T,...)return e(xpcall(T,c(p),...));end;local function e(c,p,T,t)return function(...)local x,S,J=E(c,p,...);if x then T(unpack(J,1,S));else t(J[1]);end;end;end;local function c(p)return next(p)==nil;end;local p={Error=P,Status=N("Promise.Status",{"Started","Resolved","Rejected","Cancelled"}),_getTime=os.clock,_timeEvent=game:GetService("RunService").Heartbeat,_unhandledRejectionCallbacks={},prototype={}};p.__index=p.prototype;p._new=function(N,T,t)if t~=nil and not p.is(t)then error("Argument #2 to Promise.new must be a promise or nil",2);end;local x={_thread=nil,_source=N,_status=p.Status.Started,_values=nil,_valuesLength=-1,_unhandledRejection=true,_queuedResolve={},_queuedReject={},_queuedFinally={},_cancellationHook=nil,_parent=t,_consumers=setmetatable({},I)};if t and t._status==p.Status.Started then t._consumers[x]=true;end;setmetatable(x,p);local function I(...)x:_resolve(...);end;local function N(...)x:_reject(...);end;local function t(S)if S then if x._status==p.Status.Cancelled then S();else x._cancellationHook=S;end;end;return x._status==p.Status.Cancelled;end;x._thread=coroutine.create(function()local S,J,J=E(x._source,T,I,N,t);if not S then N(J[1]);end;end);task.spawn(x._thread);return x;end;p.new=function(I)return p._new(debug.traceback(nil,2),I);end;p.__tostring=function(I)return string.format("Promise(%s)",I._status);end;p.defer=function(I)local N=debug.traceback(nil,2);return(p._new(N,function(T,t,x)local S;S=p._timeEvent:Connect(function()S:Disconnect();local S,J,J=E(N,I,T,t,x);if not S then t(J[1]);end;end);end));end;p.async=p.defer;p.resolve=function(...)local I,N=a(...);return p._new(debug.traceback(nil,2),function(E)E(unpack(N,1,I));end);end;p.reject=function(...)local I,N=a(...);return p._new(debug.traceback(nil,2),function(E,E)E(unpack(N,1,I));end);end;p._try=function(I,N,...)local E,T=a(...);return p._new(I,function(I)I(N(unpack(T,1,E)));end);end;p.try=function(I,...)return p._try(debug.traceback(nil,2),I,...);end;p._all=function(I,N,E)if type(N)~="table"then error(string.format("Please pass a list of promises to %s","Promise.all"),3);end;for T,t in pairs(N)do if not p.is(t)then error(string.format("Non-promise value passed into %s at index %s","Promise.all",tostring(T)),3);end;end;if#N==0 or E==0 then return p.resolve({});end;return p._new(I,function(I,T,t)local x,S,J,B,X={},{},0,0,false;local function H()for k,k in ipairs(S)do k:cancel();end;end;local function k(D,...)if X then return;end;J+=1;if E==nil then x[D]=...;else x[J]=...;end;if J>=(E or#N)then X=true;I(x);H();end;end;t(H);for I,t in ipairs(N)do S[I]=t:andThen(function(...)k(I,...);end,function(...)B+=1;if E==nil or#N-B<E then H();X=true;T(...);end;end);end;if X then H();end;end);end;p.all=function(I)return p._all(debug.traceback(nil,2),I);end;p.fold=function(I,N,E)assert(type(I)=="table","Bad argument #1 to Promise.fold: must be a table");assert(W(N),"Bad argument #2 to Promise.fold: must be a function");local T=p.resolve(E);return p.each(I,function(I,E)T=T:andThen(function(t)return N(t,I,E);end);end):andThen(function()return T;end);end;p.some=function(I,N)assert(type(N)=="number","Bad argument #2 to Promise.some: must be a number");return p._all(debug.traceback(nil,2),I,N);end;p.any=function(I)return p._all(debug.traceback(nil,2),I,1):andThen(function(I)return I[1];end);end;p.allSettled=function(I)if type(I)~="table"then error(string.format("Please pass a list of promises to %s","Promise.allSettled"),2);end;for N,E in pairs(I)do if not p.is(E)then error(string.format("Non-promise value passed into %s at index %s","Promise.allSettled",tostring(N)),2);end;end;if#I==0 then return p.resolve({});end;return p._new(debug.traceback(nil,2),function(N,E,E)local T,t,x={},{},0;local function S(J,...)x+=1;T[J]=...;if x>=#I then N(T);end;end;E(function()for N,N in ipairs(t)do N:cancel();end;end);for N,E in ipairs(I)do t[N]=E:finally(function(...)S(N,...);end);end;end);end;p.race=function(I)assert(type(I)=="table",string.format("Please pass a list of promises to %s","Promise.race"));for N,E in pairs(I)do assert(p.is(E),string.format("Non-promise value passed into %s at index %s","Promise.race",tostring(N)));end;return p._new(debug.traceback(nil,2),function(N,E,T)local t,x={},false;local function S()for J,J in ipairs(t)do J:cancel();end;end;local function J(B)return function(...)S();x=true;return B(...);end;end;if T((J(E)))then return;end;for T,B in ipairs(I)do t[T]=B:andThen(J(N),(J(E)));end;if x then S();end;end);end;p.each=function(I,N)assert(type(I)=="table",string.format("Please pass a list of promises to %s","Promise.each"));assert(W(N),string.format("Please pass a handler function to %s!","Promise.each"));return p._new(debug.traceback(nil,2),function(E,T,t)local x,S,J={},{},false;local function B()for X,X in ipairs(S)do X:cancel();end;end;t(function()J=true;B();end);t={};for X,H in ipairs(I)do if p.is(H)then if H:getStatus()==p.Status.Cancelled then B();return T(P.new({error="Promise is cancelled",kind=P.Kind.AlreadyCancelled,context=string.format("The Promise that was part of the array at index %d passed into Promise.each was already cancelled when Promise.each began.\10\10That Promise was created at:\10\10%s",X,H._source)}));elseif H:getStatus()==p.Status.Rejected then B();return T(select(2,H:await()));end;local I=H:andThen(function(...)return...;end);table.insert(S,I);t[X]=I;else t[X]=H;end;end;for I,X in ipairs(t)do if p.is(X)then local t;t,X=X:await();if not t then B();return T(X);end;end;if J then return;end;local t=p.resolve(N(X,I));table.insert(S,t);local N,S=t:await();if not N then B();return T(S);end;x[I]=S;end;E(x);end);end;p.is=function(I)if type(I)~="table"then return false;end;local N=getmetatable(I);if N==p then return true;elseif N==nil then return W(I.andThen);elseif type(N)=="table"and type( v102 (N,"__index"))=="table"and(W( v102 ( v102 (N,"__index"),"andThen")))then return true;end;return false;end;p.promisify=function(l)return function(...)return p._try(debug.traceback(nil,2),l,...);end;end;do local l,I;p.delay=function(N)assert(type(N)=="number","Bad argument #1 to Promise.delay, must be a number.");if not(N>=0.016666666666666666)or N==math.huge then N=0.016666666666666666;end;return p._new(debug.traceback(nil,2),function(E,T,t)T=p._getTime();local x=T+N;local N={resolve=E,startTime=T,endTime=x};if I==nil then l=N;I=p._timeEvent:Connect(function()local S=p._getTime();while l~=nil and l.endTime<S do local S=l;local J=S;l=S.next;if l==nil then I:Disconnect();I=nil;else l.previous=nil;end;J.resolve(p._getTime()-J.startTime);end;end);elseif l.endTime<x then T=l;E=T.next;while E~=nil and E.endTime<x do E,T=E.next,E;end;T.next=N;N.previous=T;if E~=nil then N.next=E;E.previous=N;end;else N.next=l;l.previous=N;l=N;end;t(function()local E=N.next;if l==N then if E==nil then I:Disconnect();I=nil;else E.previous=nil;end;l=E;else local l=N.previous;l.next=E;if E~=nil then E.previous=l;end;end;end);end);end;end;p.prototype.timeout=function(l,I,N)local E=debug.traceback(nil,2);return p.race({p.delay(I):andThen(function()return p.reject(N==nil and(P.new({kind=P.Kind.TimedOut,error="Timed out",context=string.format("Timeout of %d seconds exceeded.\10:timeout() called at:\10\10%s",I,E)}))or N);end),l});end;p.prototype.getStatus=function(l)return l._status;end;p.prototype._andThen=function(l,I,N,E)l._unhandledRejection=false;if l._status==p.Status.Cancelled then local T=p.new(function()end);T:cancel();return T;end;return p._new(I,function(T,t,x)local S=T;if N then S=e(I,N,T,t);end;local N=t;if E then N=e(I,E,T,t);end;if l._status==p.Status.Started then table.insert(l._queuedResolve,S);table.insert(l._queuedReject,N);x(function()if l._status==p.Status.Started then table.remove(l._queuedResolve,table.find(l._queuedResolve,S));table.remove(l._queuedReject,table.find(l._queuedReject,N));end;end);elseif l._status==p.Status.Resolved then S(unpack(l._values,1,l._valuesLength));elseif l._status==p.Status.Rejected then N(unpack(l._values,1,l._valuesLength));end;end,l);end;p.prototype.andThen=function(l,I,N)assert(I==nil or(W(I)),string.format("Please pass a handler function to %s!","Promise:andThen"));assert(N==nil or(W(N)),string.format("Please pass a handler function to %s!","Promise:andThen"));return l:_andThen(debug.traceback(nil,2),I,N);end;p.prototype.catch=function(l,I)assert(I==nil or(W(I)),string.format("Please pass a handler function to %s!","Promise:catch"));return l:_andThen(debug.traceback(nil,2),nil,I);end;p.prototype.tap=function(l,I)assert(W(I),string.format("Please pass a handler function to %s!","Promise:tap"));return l:_andThen(debug.traceback(nil,2),function(...)local l=I(...);if p.is(l)then local I,N=a(...);return l:andThen(function()return unpack(N,1,I);end);end;return...;end);end;p.prototype.andThenCall=function(l,I,...)assert(W(I),string.format("Please pass a handler function to %s!","Promise:andThenCall"));local N,e=a(...);return l:_andThen(debug.traceback(nil,2),function()return I(unpack(e,1,N));end);end;p.prototype.andThenReturn=function(l,...)local I,N=a(...);return l:_andThen(debug.traceback(nil,2),function()return unpack(N,1,I);end);end;p.prototype.cancel=function(l)if l._status~=p.Status.Started then return;end;l._status=p.Status.Cancelled;if l._cancellationHook then l._cancellationHook();end;coroutine.close(l._thread);if l._parent then l._parent:_consumerCancelled(l);end;for I in pairs(l._consumers)do I:cancel();end;l:_finalize();end;p.prototype._consumerCancelled=function(l,I)if l._status~=p.Status.Started then return;end;l._consumers[I]=nil;if next(l._consumers)==nil then l:cancel();end;end;p.prototype._finally=function(l,I,N)l._unhandledRejection=false;return(p._new(I,function(I,e,E)local T;E(function()l:_consumerCancelled(l);if T then T:cancel();end;end);E=if N then function(...)local t=N(...);if p.is(t)then T=t;t:finally(function(N)if N~=p.Status.Rejected then I(l);end;end):catch(function(...)e(...);end);else I(l);end;end else I;if l._status==p.Status.Started then table.insert(l._queuedFinally,E);else E(l._status);end;end));end;p.prototype.finally=function(l,I)assert(I==nil or(W(I)),string.format("Please pass a handler function to %s!","Promise:finally"));return l:_finally(debug.traceback(nil,2),I);end;p.prototype.finallyCall=function(l,I,...)assert(W(I),string.format("Please pass a handler function to %s!","Promise:finallyCall"));local N,e=a(...);return l:_finally(debug.traceback(nil,2),function()return I(unpack(e,1,N));end);end;p.prototype.finallyReturn=function(l,...)local I,N=a(...);return l:_finally(debug.traceback(nil,2),function()return unpack(N,1,I);end);end;p.prototype.awaitStatus=function(l)l._unhandledRejection=false;if l._status==p.Status.Started then local I=coroutine.running();l:finally(function()task.spawn(I);end):catch(function()end);coroutine.yield();end;if l._status==p.Status.Resolved then return l._status,unpack(l._values,1,l._valuesLength);elseif l._status==p.Status.Rejected then return l._status,unpack(l._values,1,l._valuesLength);end;return l._status;end;local function l(I,...)return I==p.Status.Resolved,...;end;p.prototype.await=function(I)return l(I:awaitStatus());end;local function l(I,...)if I~=p.Status.Resolved then error(...==nil and"Expected Promise rejected with no value."or(...),3);end;return...;end;p.prototype.expect=function(I)return l(I:awaitStatus());end;p.prototype.awaitValue=p.prototype.expect;p.prototype._unwrap=function(l)if l._status==p.Status.Started then error("Promise has not resolved or rejected.",2);end;return l._status==p.Status.Resolved,unpack(l._values,1,l._valuesLength);end;p.prototype._resolve=function(l,...)if l._status~=p.Status.Started then if p.is(...)then(...):_consumerCancelled(l);end;return;end;if p.is(...)then if select("#",...)>1 then warn((string.format("When returning a Promise from andThen, extra arguments are discarded! See:\10\10%s",l._source)));end;local I=...;local N=I:andThen(function(...)l:_resolve(...);end,function(...)local e=I._values[1];e=if I._error then(P.new({error=I._error,kind=P.Kind.ExecutionError,context="No stack trace available as this Promise originated from an older version of the Promise library (< v2)"}))else e;if P.isKind(e,P.Kind.ExecutionError)then return l:_reject(e:extend({error="This Promise was chained to a Promise that errored.",trace="",context=string.format("The Promise at:\10\10%s\10...Rejected because it was chained to the following Promise, which encountered an error:\10",l._source)}));end;l:_reject(...);end);if N._status==p.Status.Cancelled then l:cancel();elseif N._status==p.Status.Started then l._parent=N;N._consumers[l]=true;end;return;end;l._status=p.Status.Resolved;l._valuesLength,l._values=a(...);for I,I in ipairs(l._queuedResolve)do coroutine.wrap(I)(...);end;l:_finalize();end;p.prototype._reject=function(l,...)if l._status~=p.Status.Started then return;end;l._status=p.Status.Rejected;l._valuesLength,l._values=a(...);if not c(l._queuedReject)then for I,I in ipairs(l._queuedReject)do coroutine.wrap(I)(...);end;else local I=tostring(...);coroutine.wrap(function()p._timeEvent:Wait();if not l._unhandledRejection then return;end;local N=string.format("Unhandled Promise rejection:\10\10%s\10\10%s",I,l._source);for I,I in ipairs(p._unhandledRejectionCallbacks)do task.spawn(I,l,unpack(l._values,1,l._valuesLength));end;if p.TEST then return;end;warn(N);end)();end;l:_finalize();end;p.prototype._finalize=function(l)for I,I in ipairs(l._queuedFinally)do coroutine.wrap(I)(l._status);end;l._queuedFinally=nil;l._queuedReject=nil;l._queuedResolve=nil;if not p.TEST then l._parent=nil;l._consumers=nil;end;task.defer(coroutine.close,l._thread);end;p.prototype.now=function(l,I)local N=debug.traceback(nil,2);if l._status==p.Status.Resolved then return l:_andThen(N,function(...)return...;end);else return p.reject(I==nil and(P.new({kind=P.Kind.NotResolvedInTime,error="This Promise was not resolved in time for :now()",context=":now() was called at:\10\10"..N}))or I);end;end;p.retry=function(l,I,...)assert(W(l),"Parameter #1 to Promise.retry must be a function");assert(type(I)=="number","Parameter #2 to Promise.retry must be a number");local N,P={...},select("#",...);return p.resolve(l(...)):catch(function(...)if I>0 then return p.retry(l,I-1,unpack(N,1,P));else return p.reject(...);end;end);end;p.retryWithDelay=function(l,I,N,...)assert(W(l),"Parameter #1 to Promise.retry must be a function");assert(type(I)=="number","Parameter #2 (times) to Promise.retry must be a number");assert(type(N)=="number","Parameter #3 (seconds) to Promise.retry must be a number");local W,P={...},select("#",...);return p.resolve(l(...)):catch(function(...)if I>0 then p.delay(N):await();return p.retryWithDelay(l,I-1,N,unpack(W,1,P));else return p.reject(...);end;end);end;p.fromEvent=function(l,I)I=I or function()return true;end;return p._new(debug.traceback(nil,2),function(W,N,N)local P;local a=false;local function e()P:Disconnect();P=nil;end;P=l:Connect(function(...)local l=I(...);if l==true then W(...);if P then e();else a=true;end;elseif type(l)~="boolean"then error("Promise.fromEvent predicate should always return a boolean");end;end);if a and P then e();return;end;N(e);end);end;p.onUnhandledRejection=function(l)table.insert(p._unhandledRejectionCallbacks,l);return function()local I=table.find(p._unhandledRejectionCallbacks,l);if I then table.remove(p._unhandledRejectionCallbacks,I);end;end;end;return p;end
 
 tbl17.ay = function()
@@ -35431,7 +35431,7 @@ end
 return ay.c
 end
 end
-do -- az
+do 
 local function fn35()
 local v115 = tbl17.b()
 local v116 = tbl17.ay()
@@ -35578,7 +35578,7 @@ end
 return az.c
 end
 end
-do -- aA
+do 
 local function fn35()
 local v115 = tbl17.k()
 local tweenService = tbl17.t().TweenService
@@ -35770,7 +35770,7 @@ end
 return aa.c
 end
 end
-do -- aB
+do 
 local function fn35()
 tbl17.r()
 local v115 = tbl17.aA()
@@ -36069,7 +36069,7 @@ end
 return ab.c
 end
 end
-do -- aC
+do 
 local function fn35()
 tbl17.ab()
 tbl17.r()
@@ -36480,10 +36480,10 @@ end
 return ac.c
 end
 end
-do -- aD
+do 
 local function fn35()
--- Absense port: the old menu stack is scrapped; the compat layer renders the
--- lifted section builders into the new engine (tabs k0/k2/k1).
+
+
 return tbl17.k1()
 end
 
@@ -36498,7 +36498,7 @@ end
 return aD.c
 end
 end
-do -- aE
+do 
 local function fn35()
 tbl17.C()
 local v115 = tbl17.N()
@@ -36549,7 +36549,7 @@ end
 return ae.c
 end
 end
--- Shared target-part and cosmetic-catalog definitions for Absense Rivals.
+
 local absenseCatalogParts = (function()
     local API = {}
     local limbs = {
@@ -36652,7 +36652,7 @@ local absenseCatalogParts = (function()
     function API.MigrateRarities(selected, options, schema)
         local result = table.clone(selected or {})
         if schema == 1 then return result end
-        -- Old "all rarities" saves predate Genuine. Keep custom filters intact.
+        
         for _, name in ipairs(legacyRarities) do if result[name] ~= true then return result end end
         for _, name in ipairs(options) do if result[name] == nil then result[name] = true end end
         return result
@@ -36665,7 +36665,7 @@ local absenseCatalogParts = (function()
 end)()
 
 
-do -- aH
+do 
 local function fn35()
     tbl17.aG()
     local standard = absenseCatalogParts.Profile("Standard")
@@ -36690,7 +36690,7 @@ end
 return ah.c
 end
 end
-do -- aI
+do 
 local function fn35()
 local tbl18 = {}
 
@@ -36714,7 +36714,7 @@ end
 return ai.c
 end
 end
-do -- aJ
+do 
 local function fn35()
 tbl17.aF()
 local profile = tbl17.aI().profile
@@ -36822,10 +36822,10 @@ end
 return aj.c
 end
 end
-do -- aR
+do 
 local function fn35()
--- Resolve paths, and let the game initialize its controllers before requiring
--- them. A failed require is cached by Roblox; retrying it cannot repair it.
+
+
 local loadedModules=K.fn("getloadedmodules")
 local function isLoaded(module)
     if not loadedModules then return nil end
@@ -36834,8 +36834,8 @@ local function isLoaded(module)
     local path=module:GetFullName()
     for _,entry in pairs(list) do
         if entry==module then return true end
-        -- Executor cloneref wrappers can compare unequal to the same native
-        -- Instance returned by getloadedmodules. Match its canonical path.
+        
+        
         local named,name=pcall(function() return entry:GetFullName() end)
         if named and name==path then return true end
     end
@@ -36857,8 +36857,8 @@ return function(root,path,loadModule,timeout)
     if not loadModule then return root end
     local fullName=root:GetFullName()
     K.loadingModule=fullName
-    -- Existence of the Controllers folder is not evidence that its modules
-    -- have initialized. Never race the game's first require of a controller.
+    
+    
     local controller=string.find(fullName,"PlayerScripts.Controllers.",1,true)~=nil
         or root.Name=="ReplicatedController"
     if controller then
@@ -36896,7 +36896,7 @@ end
 return maR.c
 end
 end
-do -- aS
+do 
 local function fn35()
 tbl17.aP()
 tbl17.aL()
@@ -37057,7 +37057,7 @@ end
 return as.c
 end
 end
-do -- aT
+do 
 local function fn35()
 tbl17.aK()
 local tbl18 = {}
@@ -37084,7 +37084,7 @@ end
 return at.c
 end
 end
-do -- aU
+do 
 local function fn35()
 tbl17.aF()
 tbl17.aG()
@@ -37156,7 +37156,7 @@ end
 return au.c
 end
 end
-do -- aV
+do 
 local function fn35()
 tbl17.aF()
 local atomic = tbl17.i().atomic
@@ -37261,7 +37261,7 @@ end
 return av.c
 end
 end
-do -- aW
+do 
 local function fn35()
 tbl17.aF()
 tbl17.aG()
@@ -37343,7 +37343,7 @@ end
 return aw.c
 end
 end
-do -- aX
+do 
 local function fn35()
 tbl17.aF()
 local atomic = tbl17.i().atomic
@@ -37410,7 +37410,7 @@ end
 return ax.c
 end
 end
-do -- aY
+do 
 local function fn35()
 tbl17.aF()
 tbl17.aG()
@@ -37467,7 +37467,7 @@ end
 return ay.c
 end
 end
-do -- a2
+do 
 local function fn35()
 return (table.freeze({ Desktop = "MouseKeyboard", Mobile = "Touch", Console = "Gamepad", VR = "VR" }))
 end
@@ -37483,7 +37483,7 @@ end
 return a2.c
 end
 end
-do -- a6
+do 
 local function fn35()
 return function(arg, arg2)
 local v115 = table.clone(arg)
@@ -37503,7 +37503,7 @@ end
 return a6.c
 end
 end
-do -- a7
+do 
 local function fn35()
 return function(arg)
 local tbl18 = {}
@@ -37529,7 +37529,7 @@ end
 return a7.c
 end
 end
-do -- a8
+do 
 local function fn35()local I,W,N= tbl17 .a6(), tbl17 .a7(),{Ghost=Enum.Material.ForceField,Flat=Enum.Material.Neon,Foil=Enum.Material.Foil,Custom=Enum.Material.SmoothPlastic,Reflective=Enum.Material.Glass};local l=W(N);return{List=I({"Original"},l),Names=l,Map=N};end
 
 tbl17.a8 = function()
@@ -37543,7 +37543,7 @@ end
 return a8.c
 end
 end
-do -- bc
+do 
 local function fn35()
 local v115 = tbl17.m()
 local tbl18 = { "KeyCode", "UserInputType" }
@@ -37621,7 +37621,7 @@ end
 return bc.c
 end
 end
-do -- bd
+do 
 local function fn35() tbl17 .o();local I= tbl17 .i().atomic;return{AutoPickupDrops={Enabled=false,Types=I({})},AutoRespawn={Enabled=false},AntiKatana={Enabled=true},SubspaceTripmines={AutoTrigger=false,TeamTrigger=false},AutoQueue={Enabled=false,Queue="1v1"},AutoVote={Enabled=false,Maps=I({})},AutoBan={Enabled=false,FirstWeapons=I({}),SecondWeapons=I({})},AutoLoadout={Enabled=false,PerMap=false,MultipleLoadouts=false,Loadouts=I({})},HackerDetector={Enabled=false,Notify=false,Color=Color3.fromRGB(250,170,70)},ModDetector={Enabled=false,Moderators=I({}),ModFriends=I({}),Color=Color3.fromRGB(250,170,70)}};end
 
 tbl17.bd = function()
@@ -37636,7 +37636,7 @@ end
 return bd.c
 end
 end
-do -- be
+do 
 local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload",PreferProjectiles=false},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},Targeting={Priority="LowestHealth",PriorityPlayers=I({}),VoidDistance=1000000},WildcatPullDown=tbl17.k7().WildcatPullDown,Safety=tbl17.k7().Safety,Engine=tbl17.k7().Engine,SilentAim=tbl17.k7().SilentAim,AntiAim=tbl17.k7().AntiAim,VoidSpam=tbl17.k7().VoidSpam,UtilizeHealthLead=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
@@ -37651,7 +37651,7 @@ end
 return be.c
 end
 end
-do -- bf
+do 
 local function fn35() tbl17 .a_();local I= tbl17 .i().atomic;return{UserServer={ShowActive=false,ShareSkins=false},UnlockAll={Enabled=false,Cosmetics=I({}),Rarities=I({})}};end
 
 tbl17.bf = function()
@@ -37665,7 +37665,7 @@ end
 return bf.c
 end
 end
-do -- bg
+do 
 local function fn35() tbl17 .a0();local I,W= tbl17 .i().atomic, tbl17 .d();local function l()return{Enabled=false,Kind="Shimmer",Shimmer={Speed=0.65,Color=Color3.fromRGB(40,40,40)},Perimeter={Speed=1,Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(0,200,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(255,255,255))})},PingPong={Speed=1,BackgroundColor=Color3.fromRGB(20,20,20),MainColor=Color3.fromRGB(0,200,255),Rotation=0}};end;local N={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Name={Enabled=false,Color=Color3.fromRGB(255,255,255),Transparency=0,Animation=l()},Box={Enabled=false,Style="Full",Color=Color3.fromRGB(255,255,255),Animation=l()},FilledBox={Enabled=false,Color=ColorSequence.new(Color3.new(1,1,1)),Transparency=0.8,Animate=false},BoxImage={Enabled=false,Name="",Transparency=0},HealthBar={Enabled=false,Color=ColorSequence.new(Color3.new(1,1,1),Color3.new(0,1,0)),ColorMode="Reactive",Animate=false},HealthNumber={Enabled=false,Color=Color3.new(1,1,1)},HeldWeapon={Enabled=false,Color=Color3.new(1,1,1),Transparency=0,Animation=l()},AmmoBar={Enabled=false,Color=ColorSequence.new(Color3.new(1,1,1),Color3.new(0,1,0)),ColorMode="Reactive",Animate=false},Distance={Enabled=false,Color=Color3.new(1,1,1),Animation=l()},Rank={Enabled=false,Color=Color3.new(1,1,1),Animation=l()},Winstreak={Enabled=false,Color=Color3.new(1,1,1),Animation=l()},Deflecting={Enabled=false,Color=Color3.new(1,1,1),Transparency=0,Animation=l()},Chams={Enabled=false,Kind="Legacy",InnerColor=Color3.fromRGB(255,0,0),InnerTransparency=0,OutlineColor=Color3.fromRGB(100,0,0),OutlineTransparency=0.6,Glow=false,GlowColor=Color3.fromRGB(255,0,0)},Skeleton={Enabled=false,Color=ColorSequence.new(Color3.new(1,1,1)),Transparency=0,Thickness=1},HeadMarker={Enabled=false,Shape="Cross",Filled=true,Outline=false,Color=Color3.fromRGB(255,80,80),Transparency=0,OutlineColor=Color3.new(0,0,0),OutlineTransparency=0},Tracer={Enabled=false,Color=ColorSequence.new(Color3.new(1,1,1)),Transparency=0,Thickness=1,Origin="Bottom",Target="Feet",Outline=false,OutlineColor=Color3.new(0,0,0),OutlineTransparency=0,OutlineThickness=1}};return{Esp={Main={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Mode="Static"},Enemy=N,Team=W(N),Settings={UseDisplayName=false,Font="Inconsolata",FlagFont="Inconsolata",FontSize=16,FlagFontSize=12,TextCase="Standard",FlagTextCase="UPPERCASE",OverrideRectSize={Enabled=false,Width=1,Height=1},Spacing={Left=1,Top=1,Right=1,Bottom=1},TextSurround="None",FlagTextSurround="None",DistanceScaling=false,DistanceScalingRef=50}},SoundVisualizer={Enabled=false,Source="All",Types=I({Footsteps=true,Other=true}),MinVolume=0,Footsteps={Mode="Circle",UseLoudnessColor=true,Color=Color3.fromRGB(0,255,100)},Other={Mode="Origin",UseLoudnessColor=true,Color=Color3.fromRGB(0,200,255)}}};end
 
 tbl17.bg = function()
@@ -37680,7 +37680,7 @@ end
 return bg.c
 end
 end
-do -- bh
+do 
 local function fn35() tbl17 .bb();return{PerProfile={Overrides={}}};end
 
 tbl17.bh = function()
@@ -37694,7 +37694,7 @@ end
 return bh.c
 end
 end
-do -- bi
+do 
 local function fn35() tbl17 .a3();return{Movement={WalkSpeed={Enabled=false,Speed=2,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},JumpPower={Enabled=false,Speed=2,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=false,Invisible=false}},Flight={Enabled=false,Speed=100,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},Sliding={Enabled=false,Speed=10,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},Noclip={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},AutoStrafe={Enabled=false,Speed=50,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},LongJump={Enabled=false,Keybind={State=false,Kind="Tap",Bind=nil,ShowInList=true,Invisible=false},Mode="Under Feet",Force=60,UpwardVelocity=20,Behind=8},MovementRecorder={Enabled=false,HideUI=false,HideNotifications=false,OpenDistance=3,RenderDistance=50,LookAlignSpeed=180,AlignSnapDistance=0.2,LookSmoothing=35,Record={Keybind={State=false,Kind="Toggle",Bind=nil,ShowInList=true,Invisible=false}},Replay={Keybind={State=false,Kind="Toggle",Bind=nil,ShowInList=true,Invisible=false}}}},Removables={NoFlashbang=false,NoBurnEffect=false,NoAdsVignette=false,NoScopeOverlay=false,NoScopeReticle=false,NoGunTracers=false,NoMuzzleFlash=false,NoHitmarker=false},ThirdPerson={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},ShowReplica=false,RayCheck=false,X=3,Y=2,Z=6},CameraFov={Enabled=false,Value=70},StretchedResolution={Enabled=false,X=13,Y=10},CustomCrosshair={Enabled=false,Style="Lines",Image={Name="",Size=32,Transparency=0},Length=12,Thickness=2,Gap=6,Outline={Enabled=false,Color=Color3.fromRGB(0,0,0),Thickness=1},Animation={Enabled=false,Kind="Shimmer",Speed=1,Shimmer={Color=Color3.fromRGB(40,40,40)},Perimeter={Color=ColorSequence.new(Color3.fromRGB(255,0,0),Color3.fromRGB(0,0,255))},PingPong={BackgroundColor=Color3.fromRGB(0,0,0),MainColor=Color3.fromRGB(255,255,255),Rotation=0}},Rotation={Enabled=false,Angle=0,Speed=90},Spread={Enabled=false,Range={Min=4,Max=16},Speed=3},Top={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Bottom={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Left={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Right={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Text={Enabled=false,Content="",Font="Inconsolata",Size=14,Offset=24,Color=ColorSequence.new(Color3.fromRGB(255,255,255)),Outline={Enabled=false,Color=Color3.fromRGB(0,0,0),Thickness=1},Animation={Enabled=false,Kind="Shimmer",Speed=1,Shimmer={Color=Color3.fromRGB(40,40,40)},Perimeter={Color=ColorSequence.new(Color3.fromRGB(255,0,0),Color3.fromRGB(0,0,255))},PingPong={BackgroundColor=Color3.fromRGB(0,0,0),MainColor=Color3.fromRGB(255,255,255),Rotation=0}}},FollowTarget={Enabled=false,Mode="Crosshair",Speed=20,Damper=1,SnapDistance=5}},AnimationPlayer={Enabled=false,Animation="Cat Girl Bounce",CustomId="",Speed=1,Start=0,End=100},DeviceSpoof={Enabled=false,SpoofType="VR"},PlayerSpoofer={LocalPlayer={Name={Enabled=false,Value="Nosniy"},DisplayName={Enabled=false,Value="Nosniy"},Avatar={Enabled=false,Value="20349956"},Ping={Enabled=false,Value="Low"},Keys={Enabled=false,Value=999},EventCurrency={Enabled=false,Value=9999},Winstreak={Enabled=false,Value=999},Level={Enabled=false,Value=999},CasualWins={Enabled=false,Value=99999},RankedWins={Enabled=false,Value=9999},CasualWinPercent={Enabled=false,Value=100},RankedWinPercent={Enabled=false,Value=100},RankedElo={Enabled=false,Value=3600},LeaderboardRank={Enabled=false,Value=1},FavoriteMap={Enabled=false,Value="Arena"},NametagStatus={Enabled=false,Value="Prime"},Influencer={Enabled=false,Value=true},RobloxEmployee={Enabled=false,Value=true},NosniyTeam={Enabled=false}},OtherPlayers={Name={Enabled=false,Value=""},DisplayName={Enabled=false,Value=""},Avatar={Enabled=false,Value=""},Winstreak={Enabled=false,Value=0},Level={Enabled=false,Value=0},CasualWins={Enabled=false,Value=0},RankedWins={Enabled=false,Value=0},CasualWinPercent={Enabled=false,Value=0},RankedWinPercent={Enabled=false,Value=0},RankedElo={Enabled=false,Value=0},LeaderboardRank={Enabled=false,Value=200},FavoriteMap={Enabled=false,Value=""},NametagStatus={Enabled=false,Value="Prime"},Influencer={Enabled=false},RobloxEmployee={Enabled=false},NosniyTeam={Enabled=false}}}};end
 
 tbl17.bi = function()
@@ -37709,7 +37709,7 @@ end
 return bi.c
 end
 end
-do -- bj
+do 
 local function fn35() tbl17 .a5();return{ColorAnimations={Entries= tbl17 .i().atomic({})},Notifications={Enabled=true,Side="TopLeft",Size=15,Font="Inconsolata",Offset=0},Theme={Accent=Color3.fromRGB(124,92,255),Outline=Color3.fromRGB(34,34,40),Background=Color3.fromRGB(11,11,13),ElementBackground=Color3.fromRGB(20,20,23),TabButtonSelected=Color3.fromRGB(27,27,34),Unselected=Color3.fromRGB(154,154,164),TextColor=Color3.fromRGB(236,236,239),ToggleCircleUnselected=Color3.fromRGB(240,240,240),ToggleBackgroundUnselected=Color3.fromRGB(38,38,46)},AutoExecuteScript={Enabled=false}};end
 
 tbl17.bj = function()
@@ -37723,7 +37723,7 @@ end
 return bj.c
 end
 end
-do -- bk
+do 
 local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
@@ -37738,7 +37738,7 @@ end
 return bk.c
 end
 end
-do -- bl
+do 
 local function fn35() tbl17 .ba();return{Lighting={Enabled=false,Ambient={Enabled=false,Indoor=Color3.new(0.231373,0.796078,1),Outdoor=Color3.new(0.003922,0.4,0.545098)},ClockTime={Enabled=false,Value=12},Brightness={Enabled=false,Value=2},ColorShift={Enabled=false,Top=Color3.fromRGB(100,160,255),Bottom=Color3.fromRGB(20,40,90)},EnvironmentDiffuseScale={Enabled=false,Value=0},EnvironmentSpecularScale={Enabled=false,Value=0},ExposureCompensation={Enabled=false,Value=0},Fog={Enabled=false,Color=Color3.fromRGB(192,192,192),Start=0,End=100000},GeographicLatitude={Enabled=false,Value=41.733},DisableGlobalShadows=false,ShadowSoftness={Enabled=false,Value=0.5},LightingStyle={Enabled=false,Value="Realistic"},ShadowColor={Enabled=false,Value=Color3.new(0.7,0.7,0.72)},PrioritizeLightingQuality=false},Skybox={Enabled=false,Preset=""},Bloom={Enabled=false,Intensity=0.4,Size=24,Threshold=0.95},ColorCorrection={Enabled=false,TintColor=Color3.new(1,1,1),Saturation=0,Brightness=0,Contrast=0},ColorGrading={Enabled=false,TonemapperPreset="Default"},DepthOfField={Enabled=false,FarIntensity=0.75,FocusDistance=0.05,InFocusRadius=10,NearIntensity=0.75},SunRays={Enabled=false,Intensity=0.25,Spread=1},Atmosphere={Enabled=false,Color=Color3.new(0.7843,0.6667,0.4235),Decay=Color3.new(0.3608,0.2353,0.0549),Density=0.395,Offset=0,Glare=0,Haze=0},MotionBlur={Enabled=false,Intensity=10,Sensitivity=1},Weather={Enabled=false,Preset="Snow",Intensity=1,Rate=1,Height=45,Color=Color3.fromRGB(255,255,255),Lightning={Enabled=false,Color=ColorSequence.new(Color3.fromRGB(214,230,255)),Interval=2,Distance=80,Height=220,Thickness=4,Jaggedness=7,Branches=12,Flash=8,Sparks={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(238,246,255)),Count=18,Thickness=2.2,Distance=22,Speed=22,Jaggedness=4},Explosion={Enabled=true,Size=0.45,Bolts=14,Color=ColorSequence.new(Color3.fromRGB(150,200,255))},Sound={Enabled=true,Volume=1,Delay=true,SoundId=""}},Wind={Strength=0,Angle=0},Speed=1,Glow=0.6,Size=1,Spread=25},Ambience={Enabled=false,Sound="",CustomSound="",Volume=1}};end
 
 tbl17.bl = function()
@@ -37752,7 +37752,7 @@ end
 return bl.c
 end
 end
-do -- bm
+do 
 local function fn35()
 local v115 = tbl17.bd()
 local v116 = tbl17.be()
@@ -37787,7 +37787,7 @@ end
 return bm.c
 end
 end
-do -- bn
+do 
 local function fn35()
 local tbl18 = { "Box", "Name", "HeldWeapon", "Distance", "Rank", "Winstreak", "Deflecting" }
 
@@ -37948,7 +37948,7 @@ end
 return bn.c
 end
 end
-do -- bo
+do 
 local function fn35()
 local tbl18 = { { R = 30, G = 30, B = 38 }, { R = 40, G = 32, B = 44 } }
 local tbl19 = { { R = 100, G = 102, B = 120 }, { R = 108, G = 100, B = 114 } }
@@ -38011,7 +38011,7 @@ end
 return bo.c
 end
 end
-do -- bp
+do 
 local function fn35()
 local function fn36(arg, arg2)
 arg2(arg)
@@ -38131,7 +38131,7 @@ end
 return bp.c
 end
 end
-do -- bq
+do 
 local function fn35()
 return function(arg, arg2, arg3)
 arg3(arg[arg2])
@@ -38172,7 +38172,7 @@ end
 return bq.c
 end
 end
-do -- br
+do 
 local function fn35()
 local v115 = tbl17.bq()
 
@@ -38220,7 +38220,7 @@ end
 return br.c
 end
 end
-do -- bs
+do 
 local function fn35()
 local fn36 = nil
 
@@ -38363,7 +38363,7 @@ end
 return bs.c
 end
 end
-do -- bt
+do 
 local function fn35()
 local tbl18 = { "Aimbot", "SilentAim", "Triggerbot" }
 local tbl19 = { "Air", "Ground" }
@@ -38532,7 +38532,7 @@ end
 return bt.c
 end
 end
-do -- bu
+do 
 local function fn35()
 local function fn36(arg)
 if type(arg) ~= "table" then
@@ -38576,7 +38576,7 @@ end
 return bu.c
 end
 end
-do -- bv
+do 
 local function fn35()
 return function(arg, arg2)
 return {
@@ -38598,7 +38598,7 @@ end
 return bv.c
 end
 end
-do -- bw
+do 
 local function fn35()
 local v115 = tbl17.bv()
 
@@ -38665,7 +38665,7 @@ end
 return bw.c
 end
 end
-do -- bx
+do 
 local function fn35()
 local fn36
 
@@ -38702,7 +38702,7 @@ end
 return bx.c
 end
 end
-do -- by
+do 
 local function fn35()
 local function fn36(arg)
 if type(arg) ~= "table" then
@@ -38753,7 +38753,7 @@ end
 return by.c
 end
 end
-do -- bz
+do 
 local function fn35()
 local fn36 = nil
 
@@ -38792,7 +38792,7 @@ end
 return bz.c
 end
 end
-do -- bA
+do 
 local function fn35()
 local v115 = tbl17.d()
 local fn36 = nil
@@ -38900,7 +38900,7 @@ end
 return ba.c
 end
 end
-do -- bB
+do 
 local function fn35()
 local v115 = tbl17.bv()
 local v116 = tbl17.bq()
@@ -38998,7 +38998,7 @@ end
 return bb.c
 end
 end
-do -- bC
+do 
 local function fn35()
 local v115 = tbl17.d()
 local v116 = tbl17.bq()
@@ -39165,7 +39165,7 @@ end
 return bc.c
 end
 end
-do -- bD
+do 
 local function fn35()
 local v115 = tbl17.d()
 local v116 = tbl17.bq()
@@ -39319,7 +39319,7 @@ end
 return bd.c
 end
 end
-do -- bE
+do 
 local function fn35()
 local v115 = tbl17.bq()
 
@@ -39389,7 +39389,7 @@ end
 return be.c
 end
 end
-do -- bF
+do 
 local function fn35()
 tbl17.f()
 local v115 = tbl17.bn()
@@ -39431,7 +39431,7 @@ end
 return bf.c
 end
 end
-do -- bG
+do 
 local function fn35()
 local v115 = tbl17.l()
 local v116 = tbl17.m()
@@ -39461,7 +39461,7 @@ end
 return bg.c
 end
 end
-do -- bI
+do 
 local function fn35()
 return {
 Notifications = 10,
@@ -39485,7 +39485,7 @@ end
 return bi.c
 end
 end
-do -- bK
+do 
 local function fn35()
 local v115 = tbl17.g()
 local v116 = tbl17.k()
@@ -39560,7 +39560,7 @@ end
 return bk.c
 end
 end
-do -- bL
+do 
 local function fn35()
 tbl17.bK()
 local v115 = tbl17.g()
@@ -39672,7 +39672,7 @@ end
 return bl.c
 end
 end
-do -- bM
+do 
 local function fn35()
 tbl17.bK()
 local v115 = tbl17.g()
@@ -39802,7 +39802,7 @@ end
 return bm.c
 end
 end
-do -- bN
+do 
 local function fn35()
 local v115 = tbl17.j()
 local isAtomic = tbl17.i().isAtomic
@@ -40185,7 +40185,7 @@ end
 return bn.c
 end
 end
-do -- bP
+do 
 local function fn35()
 local v115 = tbl17.ay()
 local v116 = cloneref(game:GetService("HttpService"))
@@ -40268,7 +40268,7 @@ end
 return bp.c
 end
 end
-do -- bQ
+do 
 local function fn35()
 local v115 = tbl17.bP()
 local v116 = tbl17.ay()
@@ -40329,7 +40329,7 @@ end
 return bq.c
 end
 end
-do -- bR
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.aB()
@@ -40675,7 +40675,7 @@ end
 return br.c
 end
 end
-do -- bU
+do 
 local function fn35()
 return function(trove,observe)
     local players=game:GetService("Players")
@@ -40717,7 +40717,7 @@ end
 return bu.c
 end
 end
-do -- bV
+do 
 local function fn35()
 tbl17.bL()
 local v115 = tbl17.k()
@@ -40882,7 +40882,7 @@ end
 return bv.c
 end
 end
-do -- bW
+do 
 local function fn35()
 local v115 = cloneref(game:GetService("Players"))
 local localPlayer = v115.LocalPlayer
@@ -40909,7 +40909,7 @@ end
 return bw.c
 end
 end
-do -- bX
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local localPlayer = cloneref(game:GetService("Players")).LocalPlayer
@@ -40932,7 +40932,7 @@ end
 return bx.c
 end
 end
-do -- bY
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.k()
@@ -40964,7 +40964,7 @@ end
 return by.c
 end
 end
-do -- bZ
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.bV()
@@ -41051,7 +41051,7 @@ end
 return bz.c
 end
 end
-do -- b_
+do 
 local function fn35()
 local v115 = tbl17.ad()
 local v116 = tbl17.ay()
@@ -41481,7 +41481,7 @@ return b.c
 
 end
 end
-do -- b0
+do 
 local function fn35()
 local v115 = tbl17.bG()
 
@@ -41507,7 +41507,7 @@ end
 return b0.c
 end
 end
-do -- b1
+do 
 local function fn35()
 local v115 = tbl17.b_()
 local v116 = tbl17.bG()
@@ -41625,7 +41625,7 @@ end
 return b1.c
 end
 end
-do -- b2
+do 
 local function fn35()
 return function(arg, arg2)
 return compareinstances ~= nil and compareinstances(arg, arg2) or arg == arg2
@@ -41643,7 +41643,7 @@ end
 return b2.c
 end
 end
-do -- b3
+do 
 local function fn35()
 return function(arg, ...)
 local v115 = getthreadidentity()
@@ -41676,7 +41676,7 @@ end
 return b3.c
 end
 end
-do -- b4
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.b2()
@@ -41849,7 +41849,7 @@ end
 return b4.c
 end
 end
-do -- b5
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.bU()
@@ -41972,7 +41972,7 @@ end
 return b5.c
 end
 end
-do -- b6
+do 
 local function fn35()
 local v115 = tbl17.b1()
 tbl17.bJ()
@@ -42048,7 +42048,7 @@ end
 return b6.c
 end
 end
-do -- b9
+do 
 local function fn35()
 return {
 compute = function(l,I,W)local N=I-l;l=N.Magnitude;if l<1 then return nil;end;return N.Unit*math.min(l,W);end,
@@ -42066,7 +42066,7 @@ end
 return b9.c
 end
 end
-do -- cb
+do 
 local function fn35()return{Fm={1.04148555,-7.31470346,260.25164795,0.78539002,42.90404892,-89.04760742,1975.32495117,1.418E-5,-2.125E-5,0.25296983,0.00198651,512.86315918},Fs={439.23733521,100.2024765,367.82281494,2.48278117,2860.34350586,765.34002686,2207.97900391,0.01001292,0.01000869,0.21624292,0.01095532,648.22216797},Tm={1.045E-5,-7.18E-5,0.56350559},Ts={2.88572407,0.82672387,0.23866774}};end
 
 tbl17.cb = function()
@@ -42081,7 +42081,7 @@ end
 return cb.c
 end
 end
-do -- cc
+do 
 local function fn35()
 local v115 = tbl17.ca()
 local v116 = tbl17.cb()
@@ -42129,7 +42129,7 @@ end
 return cc.c
 end
 end
-do -- cd
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -42486,7 +42486,7 @@ end
 return cd.c
 end
 end
-do -- ce
+do 
 local function fn35()
 local function fn36(arg, arg2, arg3, arg4, arg5)
 local n = 2 / arg4
@@ -42539,9 +42539,9 @@ end
 return ce.c
 end
 end
-do -- cf
+do 
 local function fn35()
--- Aim movement: Human follows a smooth curved path with coherent variation.
+
 local linear = tbl17.b9().compute
 local Sigma = tbl17.cd()
 local Modes = {}
@@ -42592,14 +42592,14 @@ function Modes:TrackPoint(camera, origin, part, center, dt, mode)
         end
     end
     if radius == math.huge then return center end
-    -- Use the part's actual rotated volume, keeping the point inside it.
+    
     local world = part.CFrame:PointToWorldSpace(direction * radius * 0.9)
     local point = camera:WorldToViewportPoint(world)
     if point.Z <= 0 then return center end
     return center * (1 - amount) + Vector2.new(point.X, point.Y) * amount
 end
 
--- Release carries only a bounded residual velocity, with no target reference.
+
 function Modes:Release(dt, mode)
     local smoothness = math.clamp(tonumber(mode.Smoothness) or 0.5, 0, 1)
     if mode.Type ~= "Human" or smoothness == 0 then self:Reset(); return false end
@@ -42679,7 +42679,7 @@ function Modes:_Human(target, dt, mode, targetKey)
     local a = 1 - u
     local desired = state.start * (a * a * a) + c1 * (3 * a * a * u)
         + c2 * (3 * a * u * u) + target * (u * u * u)
-    -- Smooth lateral variation fades to zero at both ends; no frame jitter.
+    
     local variation = math.sin(math.pi * t) ^ 2
         * math.sin(state.phase + t * math.pi * 2 * state.frequency)
         * math.min(distance, 300) * randomness * 0.06
@@ -42721,7 +42721,7 @@ end
 return mcf.c
 end
 end
-do -- ci
+do 
 local function fn35()
 tbl17.ch()
 tbl17.cg()
@@ -42804,7 +42804,7 @@ end
 return ci.c
 end
 end
-do -- cj
+do 
 local function fn35()
 return function(arg)
 return function(I,W)local N=W.Name;return(N=="HitboxHead"or N=="HitboxHeadSmall")==(I< arg );end
@@ -42822,7 +42822,7 @@ end
 return cj.c
 end
 end
-do -- ck
+do 
 local function fn35()
 tbl17.cg()
 return function(l)local I,W,N,P=l*l,-1,-1,0;return function(l,a)local e,c,E=l.ViewportSize.Y,l.FieldOfView;if e~=W or c~=N then W,N=e,c;local W=e/2/math.tan(math.rad(c)/2);local N=W*W;E=N/(N+I);P=E;else E=P;end;e=l.CFrame;l=a-e.Position;a=l:Dot(e.LookVector);if a<=0 then return nil;end;e,c=l:Dot(l),a*a;if c<E*e then return nil;end;return(e-c)/c;end;end
@@ -42839,7 +42839,7 @@ end
 return ck.c
 end
 end
-do -- cl
+do 
 local function fn35()
 local function fn36(l,I,W,N,P)local a,e,c,E=I.Position,I.CFrame,I.Size,l:ViewportPointToRay(W.X,W.Y);W,l=e:PointToObjectSpace(E.Origin+E.Direction*E.Direction:Dot(a-E.Origin)),(c-c*N/100*(P and(Vector3.new(1,1,0))or 1))/2;return e*Vector3.new(math.clamp(W.X,-l.X,l.X),math.clamp(W.Y,-l.Y,l.Y),math.clamp(W.Z,-l.Z,l.Z));end
 local function fn37(l,I,I)local W=I.Position;I=l:WorldToViewportPoint(W);return Vector2.new(I.X,I.Y),W;end
@@ -42858,7 +42858,7 @@ end
 return cl.c
 end
 end
-do -- cm
+do 
 local function fn35()
 return function(l,I)local W=l.CFrame;l=I-W.Position;I=l:Dot(W.LookVector);if I<=0 then return nil;end;local W,N=l:Dot(l),I*I;return(W-N)/N;end
 end
@@ -42875,7 +42875,7 @@ end
 return cm.c
 end
 end
-do -- cn
+do 
 local function fn35()
 tbl17.aF()
 tbl17.cg()
@@ -42903,7 +42903,7 @@ end
 return cn.c
 end
 end
-do -- co
+do 
 local function fn35()
 local tbl18 = {}
 
@@ -42937,7 +42937,7 @@ end
 return co.c
 end
 end
-do -- cp
+do 
 local function fn35()
 local cameraController = tbl17.aS().CameraController
 local setRotation = v102(v102(getmetatable(cameraController), "__index"), "SetRotation")
@@ -42956,7 +42956,7 @@ end
 return cp.c
 end
 end
-do -- cq
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -43051,7 +43051,7 @@ end
 return cq.c
 end
 end
-do -- cr
+do 
 local function fn35()
 local v115 = tbl17.g()
 local v116 = tbl17.k()
@@ -43176,7 +43176,7 @@ end
 return cr.c
 end
 end
-do -- cs
+do 
 local function fn35()
 local v115 = cloneref(game:GetService("RunService"))
 local v116 = cloneref(game:GetService("HttpService"))
@@ -43259,7 +43259,7 @@ end
 return cs.c
 end
 end
-do -- ct
+do 
 local function fn35()
 return tbl17.g().new().Connect
 end
@@ -43276,7 +43276,7 @@ end
 return ct.c
 end
 end
-do -- cu
+do 
 local function fn35()
 tbl17.g()
 local v115 = tbl17.ct()
@@ -43302,7 +43302,7 @@ end
 return cu.c
 end
 end
-do -- cv
+do 
 local function fn35()
 tbl17.aM()
 
@@ -43322,7 +43322,7 @@ end
 return cv.c
 end
 end
-do -- cw
+do 
 local function fn35()
 local v115 = tbl17.cr()
 tbl17.aM()
@@ -43473,7 +43473,7 @@ end
 return cw.c
 end
 end
-do -- cx
+do 
 local function fn35()
 local seasonLibrary = tbl17.aS().SeasonLibrary
 
@@ -43530,7 +43530,7 @@ end
 return cx.c
 end
 end
-do -- cy
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.cx()
@@ -43575,7 +43575,7 @@ end
 return cy.c
 end
 end
-do -- cz
+do 
 local function fn35()
 tbl17.aO()
 local index2 = {}
@@ -43607,7 +43607,7 @@ end
 return cz.c
 end
 end
-do -- cA
+do 
 local function fn35()
 tbl17.aO()
 local index2 = {}
@@ -43666,7 +43666,7 @@ end
 return ca.c
 end
 end
-do -- cB
+do 
 local function fn35()
 tbl17.aO()
 local index2 = {}
@@ -43709,7 +43709,7 @@ end
 return cb.c
 end
 end
-do -- cC
+do 
 local function fn35()
 tbl17.aO()
 local index2 = {}
@@ -43734,7 +43734,7 @@ end
 return cc.c
 end
 end
-do -- cD
+do 
 local function fn35()
 local v115 = tbl17.cz()
 tbl17.aM()
@@ -43893,7 +43893,7 @@ end
 return cd.c
 end
 end
-do -- cE
+do 
 local function fn35()
 local v115 = tbl17.cr()
 tbl17.aM()
@@ -43998,7 +43998,7 @@ end
 return ce.c
 end
 end
-do -- cF
+do 
 local function fn35()
 tbl17.aM()
 tbl17.aO()
@@ -44243,7 +44243,7 @@ end
 return cf.c
 end
 end
-do -- cG
+do 
 local function fn35()
 tbl17.cr()
 tbl17.cF()
@@ -44282,7 +44282,7 @@ end
 return cg.c
 end
 end
-do -- cH
+do 
 local function fn35()
 local tbl18
 
@@ -44331,7 +44331,7 @@ end
 return ch.c
 end
 end
-do -- cI
+do 
 local function fn35()
 tbl17.aM()
 local v115 = tbl17.a()
@@ -44593,7 +44593,7 @@ end
 return ci.c
 end
 end
-do -- cJ
+do 
 local function fn35()
 tbl17.cr()
 local mechanicsController = tbl17.aS().MechanicsController
@@ -44719,7 +44719,7 @@ end
 return cj.c
 end
 end
-do -- cK
+do 
 local function fn35()
 local enumLibrary = tbl17.aS().EnumLibrary
 local v115 = v102(enumLibrary, "_to_enum")
@@ -44747,7 +44747,7 @@ end
 return ck.c
 end
 end
-do -- cL
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.g()
@@ -44789,7 +44789,7 @@ end
 return cl.c
 end
 end
-do -- cM
+do 
 local function fn35()
 local v115 = tbl17.cK()
 tbl17.aM()
@@ -44906,7 +44906,7 @@ end
 return cm.c
 end
 end
-do -- cN
+do 
 local function fn35()
 return {
 encode = function(arg)
@@ -44951,7 +44951,7 @@ end
 return cn.c
 end
 end
-do -- cO
+do 
 local function fn35()
 return function(arg, arg2, arg3)
 local raycastParams = RaycastParams.new()
@@ -44980,7 +44980,7 @@ end
 return co.c
 end
 end
-do -- cP
+do 
 local function fn35()
 local v115 = tbl17.cN()
 local v116 = tbl17.cO()
@@ -45010,7 +45010,7 @@ end
 return cp.c
 end
 end
-do -- cQ
+do 
 local function fn35()
 local itemLibrary = tbl17.aS().ItemLibrary
 
@@ -45031,7 +45031,7 @@ end
 return cq.c
 end
 end
-do -- cR
+do 
 local function fn35()
 local v115 = tbl17.cN()
 local v116 = tbl17.cK()
@@ -45271,7 +45271,7 @@ end
 return cr.c
 end
 end
-do -- cS
+do 
 local function fn35()
 local v115 = tbl17.cN()
 local v116 = tbl17.cK()
@@ -45376,7 +45376,7 @@ end
 return cs.c
 end
 end
-do -- cT
+do 
 local function fn35()
 local v115 = tbl17.cK()
 tbl17.aM()
@@ -45460,7 +45460,7 @@ end
 return ct.c
 end
 end
-do -- cU
+do 
 local function fn35()
 local v115 = tbl17.cM()
 tbl17.cF()
@@ -45716,7 +45716,7 @@ end
 return cu.c
 end
 end
-do -- cV
+do 
 local function fn35()
 return tbl17.g().new().Once
 end
@@ -45732,7 +45732,7 @@ end
 return cv.c
 end
 end
-do -- cW
+do 
 local function fn35()
 tbl17.cF()
 local v115 = tbl17.ay()
@@ -45807,7 +45807,7 @@ end
 return cw.c
 end
 end
-do -- cX
+do 
 local function fn35()
 local v115 = tbl17.cJ()
 tbl17.cF()
@@ -45929,7 +45929,7 @@ end
 return cx.c
 end
 end
-do -- cY
+do 
 local function fn35()
 tbl17.aN()
 tbl17.aM()
@@ -46179,7 +46179,7 @@ end
 return cy.c
 end
 end
-do -- cZ
+do 
 local function fn35()
 tbl17.cY()
 tbl17.cX()
@@ -46456,8 +46456,8 @@ end
 return cz.c
 end
 end
--- Visibility is a clear path to a real target point, not a required hit on
--- an invisible hitbox. Only the aimbot opts into exposed-surface sampling.
+
+
 local absenseVisibility = (function()
     local Visibility = {}
     Visibility.__index = Visibility
@@ -46509,8 +46509,8 @@ local absenseVisibility = (function()
 
     function Visibility:_Ignore(part)
         if not part:IsA("BasePart") then return nil end
-        -- Onyx's invisible columns are the real map collision meshes. A local
-        -- wall-fade effect or transparency must never erase those collisions.
+        
+        
         if part.CanCollide then return nil end
         local accessory=owner(part,"Accessory") or owner(part,"Tool")
         if accessory then
@@ -46519,8 +46519,8 @@ local absenseVisibility = (function()
                 return accessory
             end
         end
-        -- Only genuinely invisible, non-solid helpers are excluded. Ignore
-        -- LocalTransparencyModifier: it is cosmetic and may hide real walls.
+        
+        
         if part.Transparency>=0.98 then return part end
         return nil
     end
@@ -46710,9 +46710,9 @@ local absenseVisibility = (function()
                 local solid=self._world:Raycast(origin,direction,params)
                 if solid and (not hit or solid.Distance<hit.Distance) then hit=solid end
                 if not hit then
-                    -- This engine-supported query also sees non-queryable map
-                    -- meshes. Run it only after the fast collision queries are
-                    -- clear, rather than scanning all geometry for every wall.
+                    
+                    
+                    
                     local supported=pcall(function()
                         params.BruteForceAllSlow=true
                         params.RespectCanCollide=false
@@ -46773,8 +46773,8 @@ local absenseVisibility = (function()
         local revision = self._worldInclude and self._worldInclude.GetMapRevision
             and self._worldInclude:GetMapRevision() or 0
         local cached = self._cache[part]
-        -- Clear paths are always rechecked so moving doors, streamed walls,
-        -- collision-group changes, and mesh changes cannot reuse a stale pass.
+        
+        
         if cached and not cached.Visible and cached.Hit and cached.Hit.Instance:IsA("BasePart")
             and cached.BlockerCFrame==cached.Hit.Instance.CFrame and cached.BlockerSize==cached.Hit.Instance.Size
             and cached.BlockerCollide==cached.Hit.Instance.CanCollide
@@ -46840,7 +46840,7 @@ local absenseVisibility = (function()
 end)()
 
 
-do -- c_
+do 
 local function fn35()
     tbl17.cX()
     tbl17.cZ()
@@ -46858,7 +46858,7 @@ end
 return c.c
 end
 end
-do -- c0
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -46914,7 +46914,7 @@ end
 return c0.c
 end
 end
-do -- c1
+do 
 local function fn35()
 tbl17.c0()
 local v115 = tbl17.k()
@@ -47085,7 +47085,7 @@ end
 return c1.c
 end
 end
-do -- c2
+do 
 local function fn35()
 local v115 = tbl17.c0()
 tbl17.c1()
@@ -47266,7 +47266,7 @@ end
 return c2.c
 end
 end
-do -- c3
+do 
 local function fn35()
 local v115 = tbl17.a6()
 
@@ -47293,7 +47293,7 @@ end
 return c3.c
 end
 end
-do -- c4
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.ad()
@@ -47408,7 +47408,7 @@ end
 return c4.c
 end
 end
-do -- c6
+do 
 local function fn35()
 local v115 = tbl17.c5()
 local index2 = {}
@@ -47447,7 +47447,7 @@ end
 return c6.c
 end
 end
-do -- c7
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -47511,7 +47511,7 @@ end
 return c7.c
 end
 end
-do -- c8
+do 
 local function fn35()
 tbl17.ci()
 local v115 = cloneref(game:GetService("UserInputService"))
@@ -47586,7 +47586,7 @@ end
 return c8.c
 end
 end
-do -- c9
+do 
 local function fn35()
 local tbl18
 
@@ -47615,7 +47615,7 @@ end
 return c9.c
 end
 end
-do -- da
+do 
 local function fn35()
 tbl17.cF()
 tbl17.cU()
@@ -47667,7 +47667,7 @@ end
 return da.c
 end
 end
-do -- db
+do 
 local function fn35()
 local cameraController = tbl17.aS().CameraController
 local getCameraCFrame = v102(v102(v111(cameraController), "__index"), "GetCameraCFrame")
@@ -47686,7 +47686,7 @@ end
 return db.c
 end
 end
-do -- dc
+do 
 local function fn35()
 tbl17.cr()
 tbl17.aG()
@@ -47763,7 +47763,7 @@ end
 return dc.c
 end
 end
-do -- dd
+do 
 local function fn35()
 tbl17.aG()
 tbl17.cU()
@@ -47783,7 +47783,7 @@ end
 return dd.c
 end
 end
-do -- de
+do 
 local function fn35()
 tbl17.aG()
 tbl17.cU()
@@ -47826,7 +47826,7 @@ end
 return de.c
 end
 end
-do -- df
+do 
 local function fn35()
 return function(l,l,I,I)return l<I;end
 end
@@ -47842,7 +47842,7 @@ end
 return df.c
 end
 end
-do -- dg
+do 
 local function fn35()
 return function()return workspace.CurrentCamera.ViewportSize*0.5;end
 end
@@ -47858,7 +47858,7 @@ end
 return dg.c
 end
 end
-do -- dh
+do 
 local function fn35()
 local v115 = tbl17.cf()
 local v116 = tbl17.cn()
@@ -48076,7 +48076,7 @@ end
 return mdh.c
 end
 end
-do -- di
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cF()
@@ -48165,7 +48165,7 @@ end
 return di.c
 end
 end
-do -- dj
+do 
 local function fn35()local l,I,W={{Id="10713990381",Name="Bodybuilder Posing"},{Id="10714340543",Name="Floss Dance"},{Id="73171328255147",Name="Hyper Circle Scootin'"},{Id="10714068222",Name="Dolphin Dance"},{Id="15963314052",Name="Halloween Dance 2"},{Id="126275747804327",Name="Standing Twerk"},{Id="10214311282",Name="Breakdancing"},{Id="112082806790047",Name="Fish Air Swimming"},{Id="107728954756412",Name="Character Shooting Gun"},{Id="129764254213842",Name="Gangnam Style"},{Id="103606174140721",Name="Cat Girl Bounce"},{Id="10714369624",Name="Hype Dance"},{Id="80754582835479",Name="Laying Down Legs"},{Id="10714383856",Name="Line Dance"},{Id="17360699557",Name="Floor Driving"},{Id="136418721245851",Name="Pole / Jenga Tower"},{Id="18225053113",Name="Some Dance"},{Id="10714386947",Name="Cha Cha Dance"},{Id="11444443576",Name="Still Standing"},{Id="117500772997394",Name="Character Spiral"},{Id="86806707642727",Name="Character Vortex"},{Id="10714293450",Name="Ballet Spin"},{Id="10714345459",Name="Take Me Under (Zara Larsson)"},{Id="112024753958948",Name="Worm Dance"},{Id="84744842499780",Name="Take the L"}},{},{};for N,N in l,nil,nil do table.insert(I,N.Name);W[N.Name]=N.Id;end;return{List=l,Names=I,IdByName=W};end
 
 tbl17.dj = function()
@@ -48180,7 +48180,7 @@ end
 return dj.c
 end
 end
-do -- dk
+do 
 local function fn35()
 local v115 = tbl17.dj()
 tbl17.cr()
@@ -48386,7 +48386,7 @@ end
 return dk.c
 end
 end
-do -- dl
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -48423,7 +48423,7 @@ end
 return dl.c
 end
 end
-do -- dm
+do 
 local function fn35()
 local Binding=tbl17.dl()
 local Result=tbl17.a()
@@ -48478,7 +48478,7 @@ end
 return mdm.c
 end
 end
-do -- dn
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.cN()
@@ -48563,7 +48563,7 @@ end
 return dn.c
 end
 end
-do -- dp
+do 
 local function fn35()
 tbl17.aP()
 tbl17.aM()
@@ -48596,7 +48596,7 @@ end
 return dp.c
 end
 end
-do -- dq
+do 
 local function fn35()
 tbl17.aP()
 tbl17.aM()
@@ -48846,7 +48846,7 @@ end
 return dq.c
 end
 end
-do -- dr
+do 
 local function fn35()
 tbl17.aP()
 tbl17.aM()
@@ -49025,7 +49025,7 @@ end
 return dr.c
 end
 end
-do -- ds
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dr()
@@ -49251,7 +49251,7 @@ end
 return ds.c
 end
 end
-do -- dt
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cX()
@@ -49382,7 +49382,7 @@ end
 return dt.c
 end
 end
-do -- du
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -49413,7 +49413,7 @@ end
 return du.c
 end
 end
-do -- dv
+do 
 local function fn35()
 local v115 = tbl17.dl()
 tbl17.aP()
@@ -49554,7 +49554,7 @@ end
 return dv.c
 end
 end
-do -- dw
+do 
 local function fn35()
 tbl17.aP()
 local v115 = tbl17.du()
@@ -49730,7 +49730,7 @@ end
 return dw.c
 end
 end
-do -- dx
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dv()
@@ -49782,7 +49782,7 @@ end
 return dx.c
 end
 end
-do -- dy
+do 
 local function fn35()return{ByName={Plain="",Beam="rbxassetid://12781852245",Lightning="rbxassetid://446111271",Trail="rbxassetid://6419989824",Zigzag="rbxassetid://1274380363",Heartrate="rbxassetid://5830549480",Chain="rbxassetid://9632168658",Glitch="rbxassetid://8089467613",Swirl="rbxassetid://5638168605"},Names={"Plain","Beam","Lightning","Trail","Zigzag","Heartrate","Chain","Glitch","Swirl"}};end
 
 tbl17.dy = function()
@@ -49796,7 +49796,7 @@ end
 return dy.c
 end
 end
-do -- dz
+do 
 local function fn35()
 local v115 = tbl17.c5()
 local v116 = tbl17.k()
@@ -49894,7 +49894,7 @@ end
 return dz.c
 end
 end
-do -- dA
+do 
 local function fn35()
 local v115 = tbl17.dy()
 local v116 = tbl17.dz()
@@ -50012,7 +50012,7 @@ end
 return da.c
 end
 end
-do -- dB
+do 
 local function fn35()
 tbl17.cF()
 local v115 = tbl17.g()
@@ -50140,7 +50140,7 @@ end
 return db.c
 end
 end
-do -- dC
+do 
 local function fn35()
 local v115 = tbl17.k()
 local index2 = {}
@@ -50605,7 +50605,7 @@ end
 return dc.c
 end
 end
-do -- dD
+do 
 local function fn35()
 tbl17.aM()
 local v115 = tbl17.a()
@@ -50820,7 +50820,7 @@ end
 return dd.c
 end
 end
-do -- dE
+do 
 local function fn35()
 return function(arg)
 local archivable = arg.Archivable
@@ -50842,7 +50842,7 @@ end
 return de.c
 end
 end
-do -- dF
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.dE()
@@ -50945,7 +50945,7 @@ end
 return df.c
 end
 end
-do -- dG
+do 
 local function fn35()
 local v115 = tbl17.ay()
 
@@ -51003,7 +51003,7 @@ end
 return dg.c
 end
 end
-do -- dH
+do 
 local function fn35()
 local v115 = tbl17.dF()
 tbl17.dD()
@@ -51126,7 +51126,7 @@ end
 return dh.c
 end
 end
-do -- dI
+do 
 local function fn35()
 tbl17.aO()
 
@@ -51154,7 +51154,7 @@ end
 return di.c
 end
 end
-do -- dJ
+do 
 local function fn35()
 local v115 = tbl17.a()
 local clientViewModel = tbl17.aS().ClientViewModel
@@ -51231,7 +51231,7 @@ end
 return dj.c
 end
 end
-do -- dK
+do 
 local function fn35()
 tbl17.dB()
 local v115 = tbl17.dD()
@@ -51441,7 +51441,7 @@ end
 return dk.c
 end
 end
-do -- dL
+do 
 local function fn35()
 local v115 = tbl17.dC()
 tbl17.cr()
@@ -51666,7 +51666,7 @@ end
 return dl.c
 end
 end
-do -- dM
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dL()
@@ -51737,7 +51737,7 @@ end
 return dm.c
 end
 end
-do -- dN
+do 
 local function fn35()
 return {
 opposite = function(arg)
@@ -51789,7 +51789,7 @@ end
 return dn.c
 end
 end
-do -- dO
+do 
 local function fn35()
 local v115 = tbl17.dN()
 local v116 = tbl17.k()
@@ -51919,7 +51919,7 @@ end
 return do_.c
 end
 end
-do -- dP
+do 
 local function fn35()
 return function(arg, arg2)
 if type(arg2) == "string" then
@@ -51945,7 +51945,7 @@ end
 return dp.c
 end
 end
-do -- dQ
+do 
 local function fn35()
 return function(arg)
 local v115 = getmetatable(arg)
@@ -51975,7 +51975,7 @@ end
 return dq.c
 end
 end
-do -- dR
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.dP()
@@ -52135,7 +52135,7 @@ end
 return dr.c
 end
 end
-do -- dS
+do 
 local function fn35()
 tbl17.cr()
 tbl17.aN()
@@ -52248,7 +52248,7 @@ end
 return ds.c
 end
 end
-do -- dT
+do 
 local function fn35()
 local function fn36(arg, arg2)
 return arg.Priority > arg2.Priority
@@ -52345,7 +52345,7 @@ end
 return dt.c
 end
 end
-do -- dU
+do 
 local function fn35()
 tbl17.aL()
 local v115 = tbl17.dT()
@@ -52477,7 +52477,7 @@ end
 return du.c
 end
 end
-do -- dV
+do 
 local function fn35()
 return table.freeze({ NoneCosmetic = "NONE_COSMETIC", RandomCosmetic = "RANDOM_COSMETIC" })
 end
@@ -52493,7 +52493,7 @@ end
 return dv.c
 end
 end
-do -- dX
+do 
 local function fn35()
 return function(arg)
 local tbl18 = {}
@@ -52517,7 +52517,7 @@ end
 return dx.c
 end
 end
-do -- dY
+do 
 local function fn35()
 tbl17.aL()
 local tbl18 = { "Skin", "Wrap", "Charm", "Finisher" }
@@ -52544,7 +52544,7 @@ end
 return dy.c
 end
 end
-do -- dZ
+do 
 local function fn35()
 tbl17.aL()
 local cosmeticLibrary = tbl17.aS().CosmeticLibrary
@@ -52730,7 +52730,7 @@ end
 return dz.c
 end
 end
-do -- d_
+do 
 local function fn35()
 tbl17.aL()
 tbl17.dU()
@@ -52818,7 +52818,7 @@ end
 return d.c
 end
 end
-do -- d0
+do 
 local function fn35()
 tbl17.dR()
 tbl17.d_()
@@ -52899,7 +52899,7 @@ end
 return d0.c
 end
 end
-do -- d1
+do 
 local function fn35()
 tbl17.aL()
 local v115 = tbl17.a()
@@ -53036,7 +53036,7 @@ end
 return d1.c
 end
 end
-do -- d2
+do 
 local function fn35()
 tbl17.aL()
 tbl17.dR()
@@ -53115,7 +53115,7 @@ end
 return d2.c
 end
 end
-do -- d3
+do 
 local function fn35()
 return function(l,I)for W,N in next,l,nil do local P=I[W];if P==nil then return false;end;for W in N,nil,nil do if P[W]~=true then return false;end;end;for W in P,nil,nil do if N[W]~=true then return false;end;end;end;for W in I,nil,nil do if l[W]==nil then return false;end;end;return true;end
 end
@@ -53131,7 +53131,7 @@ end
 return d3.c
 end
 end
-do -- d4
+do 
 local function fn35()
 local v115 = tbl17.g()
 local v116 = tbl17.d3()
@@ -53232,7 +53232,7 @@ end
 return d4.c
 end
 end
-do -- d5
+do 
 local function fn35()
 tbl17.d4()
 local v115 = tbl17.g()
@@ -53324,7 +53324,7 @@ end
 return d5.c
 end
 end
-do -- d6
+do 
 local function fn35()
 tbl17.aL()
 local v115 = tbl17.g()
@@ -53444,7 +53444,7 @@ end
 return d6.c
 end
 end
-do -- d7
+do 
 local function fn35()
 local seasonLibrary = tbl17.aS().SeasonLibrary
 
@@ -53546,7 +53546,7 @@ end
 return d7.c
 end
 end
-do -- d8
+do 
 local function fn35()
 local v115 = tbl17.d7()
 local v116 = tbl17.g()
@@ -53627,7 +53627,7 @@ end
 return d8.c
 end
 end
-do -- d9
+do 
 local function fn35()
 local Binding=tbl17.dl()
 local Reporter=tbl17.ad()
@@ -53683,7 +53683,7 @@ end
 return md9.c
 end
 end
-do -- ea
+do 
 local function fn35()
 tbl17.aL()
 tbl17.dW()
@@ -53784,7 +53784,7 @@ end
 return ea.c
 end
 end
-do -- eb
+do 
 local function fn35()
 local v115 = tbl17.ea()
 local v116 = tbl17.k()
@@ -53892,7 +53892,7 @@ end
 return eb.c
 end
 end
-do -- ec
+do 
 local function fn35()
 local v115 = tbl17.dP()
 local equipment = tbl17.aS().Equipment
@@ -53951,7 +53951,7 @@ end
 return ec.c
 end
 end
-do -- ed
+do 
 local function fn35()
 local v115 = tbl17.dV()
 tbl17.ea()
@@ -54030,7 +54030,7 @@ end
 return ed.c
 end
 end
-do -- ee
+do 
 local function fn35()
 tbl17.ea()
 
@@ -54071,7 +54071,7 @@ end
 return ee.c
 end
 end
-do -- ef
+do 
 local function fn35()
 tbl17.d9()
 local v115 = tbl17.a()
@@ -54140,7 +54140,7 @@ end
 return ef.c
 end
 end
-do -- eg
+do 
 local function fn35()
 local v115 = tbl17.cK()
 tbl17.d8()
@@ -54212,7 +54212,7 @@ end
 return eg.c
 end
 end
-do -- eh
+do 
 local function fn35()
 tbl17.dR()
 local v115 = tbl17.a()
@@ -54358,7 +54358,7 @@ return function(controller,...)
     local name=type(args[1])=="string"and args[1]or native.Name
     if type(name)~="string"then return native end
     local selection=arg._store:Get(localPlayer,name)
-    -- Start from the complete native row: progress and new game fields survive.
+    
     local data=table.clone(native)
     local changed=false
     if selection then
@@ -54405,7 +54405,7 @@ end
 return meh.c
 end
 end
-do -- ei
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.b3()
@@ -54467,7 +54467,7 @@ end
 return mei.c
 end
 end
-do -- ej
+do 
 local function fn35()
 tbl17.dR()
 tbl17.ad()
@@ -54634,7 +54634,7 @@ end
 return ej.c
 end
 end
-do -- ek
+do 
 local function fn35()
 tbl17.aL()
 local v115 = tbl17.dT()
@@ -54932,7 +54932,7 @@ end
 return ek.c
 end
 end
-do -- el
+do 
 local function fn35()
 tbl17.aL()
 local item = tbl17.dY().Item
@@ -55129,7 +55129,7 @@ end
 return el.c
 end
 end
-do -- em
+do 
 local function fn35()
 local v115 = tbl17.aR()
 local cosmeticLibrary = tbl17.aS().CosmeticLibrary
@@ -55368,7 +55368,7 @@ end
 return em.c
 end
 end
-do -- en
+do 
 local function fn35()
 local fighterController = tbl17.aS().FighterController
 local v115 = tbl17.dV()
@@ -55456,7 +55456,7 @@ end
 return en.c
 end
 end
-do -- eo
+do 
 local function fn35()
 tbl17.ad()
 local v115 = tbl17.a()
@@ -55600,7 +55600,7 @@ end
 return eo.c
 end
 end
-do -- ep
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.en()
@@ -55685,7 +55685,7 @@ end
 return ep.c
 end
 end
-do -- eq
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.en()
@@ -55759,7 +55759,7 @@ end
 return eq.c
 end
 end
-do -- er
+do 
 local function fn35()
 tbl17.ad()
 local v115 = tbl17.a()
@@ -55918,7 +55918,7 @@ end
 return er.c
 end
 end
-do -- es
+do 
 local function fn35()
 tbl17.ad()
 local v115 = tbl17.eo()
@@ -55977,7 +55977,7 @@ end
 return es.c
 end
 end
-do -- et
+do 
 local function fn35()
 tbl17.dB()
 tbl17.cF()
@@ -56173,7 +56173,7 @@ end
 return et.c
 end
 end
-do -- eu
+do 
 local function fn35()
 tbl17.aN()
 local v115 = tbl17.a()
@@ -56279,7 +56279,7 @@ if arg._restore ~= nil then
 return v115.VoidOk
 end
 arg._finisherCloneCache:Load()
--- Undo the legacy constant rewrite if a failed older run left it installed.
+
 local replicateFromServer=v102(v119,"ReplicateFromServer")
 if type(replicateFromServer)=="function" and v102(v119,"_PlayFinisher\0hello")~=nil then
     local ok,constants=pcall(debug.getconstants,replicateFromServer)
@@ -56377,7 +56377,7 @@ end
 return meu.c
 end
 end
-do -- ev
+do 
 local function fn35()
 local v115 = tbl17.dV()
 tbl17.ea()
@@ -56443,7 +56443,7 @@ end
 return ev.c
 end
 end
-do -- ew
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.a()
@@ -56483,8 +56483,8 @@ end)
 return tbl18
 end
 
--- Apply to the explicit creation payload rather than reading a constructor
--- stack or replacing an obfuscated constructor upvalue.
+
+
 index2._PreparePayload = function(arg, item, payload)
     if type(item)~="table" or type(payload)~="table" then return payload end
     local dataKey=v116.encode("Data") or "Data"
@@ -56608,7 +56608,7 @@ end
 return mew.c
 end
 end
-do -- ex
+do 
 local function fn35()
 local v115 = tbl17.cK()
 
@@ -56635,7 +56635,7 @@ end
 return ex.c
 end
 end
-do -- ey
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.k()
@@ -56765,7 +56765,7 @@ end
 return ey.c
 end
 end
-do -- ez
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.g().new()
@@ -56790,7 +56790,7 @@ end
 return ez.c
 end
 end
-do -- eA
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.k()
@@ -56932,7 +56932,7 @@ if not configured then
     K.RecordError("skin refresh",problem)
     return
 end
--- Commit only after creation and setup succeed. Failures retain the old model.
+
 pcall(secure,destroy,old)
 local spring=rawget(candidate,"_equip_spring")
 if type(spring)=="table"then rawset(spring,"_position0",0);rawset(spring,"_velocity0",0)end
@@ -56958,7 +56958,7 @@ end
 return meA.c
 end
 end
-do -- eB
+do 
 local function fn35()
 tbl17.dB()
 local v115 = tbl17.dV()
@@ -57169,7 +57169,7 @@ end
 return eb.c
 end
 end
-do -- eC
+do 
 local function fn35()
 tbl17.dB()
 tbl17.aL()
@@ -57423,7 +57423,7 @@ end
 return ec.c
 end
 end
-do -- eD
+do 
 local function fn35()
 return table.freeze({ Unlocker = 0, SkinChanger = 100 })
 end
@@ -57439,7 +57439,7 @@ end
 return ed.c
 end
 end
-do -- eE
+do 
 local function fn35()
 local v115 = tbl17.a()
 tbl17.dU()
@@ -57707,7 +57707,7 @@ end
 return ee.c
 end
 end
-do -- eF
+do 
 local function fn35()
 tbl17.dR()
 tbl17.d5()
@@ -57770,7 +57770,7 @@ end
 return ef.c
 end
 end
-do -- eG
+do 
 local function fn35()
 tbl17.aL()
 local v115 = tbl17.a()
@@ -57844,7 +57844,7 @@ end
 return eg.c
 end
 end
-do -- eH
+do 
 local function fn35()
 tbl17.aL()
 local equipmentState = v102(tbl17.aS().Equipment, "EquipmentState")
@@ -57877,7 +57877,7 @@ end
 return eh.c
 end
 end
-do -- eI
+do 
 local function fn35()
 local v115 = tbl17.ay()
 local equipment = tbl17.aS().Equipment
@@ -57902,7 +57902,7 @@ end
 return ei.c
 end
 end
-do -- eJ
+do 
 local function fn35()
 tbl17.aL()
 tbl17.dR()
@@ -57983,7 +57983,7 @@ end
 return ej.c
 end
 end
-do -- eK
+do 
 local function fn35()
 local v115 = tbl17.g()
 local v116 = tbl17.eI()
@@ -58037,7 +58037,7 @@ end
 return ek.c
 end
 end
-do -- eL
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.g()
@@ -58131,7 +58131,7 @@ end
 return el.c
 end
 end
-do -- eM
+do 
 local function fn35()
 local Result=tbl17.a()
 local Compat=tbl17.kC()
@@ -58144,7 +58144,7 @@ function Hook:Initialize()
     local data=remotes and remotes:FindFirstChild("Data")
     if not data then return Result.err("RemoteEventBlocker","remote_lookup","Data remotes unavailable")end
     local restores={}
-    -- Only the cosmetic editor's equip/favorite writes are local overrides.
+    
     for _,name in ipairs({"EquipCosmetic","FavoriteCosmetic"})do
         local remote=data:FindFirstChild(name)
         if remote then
@@ -58175,7 +58175,7 @@ end
 return meM.c
 end
 end
-do -- eN
+do 
 local function fn35()
 tbl17.aL()
 local v115 = tbl17.a()
@@ -58270,7 +58270,7 @@ end
 return en.c
 end
 end
-do -- eO
+do 
 local function fn35()
 tbl17.aL()
 tbl17.dR()
@@ -58415,7 +58415,7 @@ end
 return eo.c
 end
 end
-do -- eP
+do 
 local function fn35()
 tbl17.dR()
 tbl17.dZ()
@@ -58485,7 +58485,7 @@ end
 return ep.c
 end
 end
-do -- eQ
+do 
 local function fn35()
 tbl17.dR()
 tbl17.ad()
@@ -58566,7 +58566,7 @@ end
 return eq.c
 end
 end
-do -- eR
+do 
 local function fn35()
 local tbl18 = {}
 local tbl19 = {}
@@ -58654,7 +58654,7 @@ end
 return er.c
 end
 end
-do -- eS
+do 
 local function fn35()
 local v115 = tbl17.eR()
 local bxor = v115.bxor
@@ -58695,7 +58695,7 @@ end
 return es.c
 end
 end
-do -- eT
+do 
 local function fn35()
 tbl17.aL()
 local tbl18 = { Skins = {}, Wraps = {}, Charms = {}, Finishers = {}, Emotes = {}, Images = {} }
@@ -58753,7 +58753,7 @@ end
 return et.c
 end
 end
-do -- eU
+do 
 local function fn35()
 local v115 = tbl17.dV()
 local v116 = tbl17.eS()
@@ -58816,7 +58816,7 @@ end
 return eu.c
 end
 end
-do -- eV
+do 
 local function fn35()
 tbl17.d_()
 tbl17.ad()
@@ -59232,7 +59232,7 @@ end
 return ev.c
 end
 end
-do -- e_
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.d_()
@@ -59372,7 +59372,7 @@ end
 return e.c
 end
 end
-do -- e0
+do 
 local function fn35()
 tbl17.dB()
 tbl17.aL()
@@ -59767,7 +59767,7 @@ end
 return e0.c
 end
 end
-do -- e1
+do 
 local function fn35()
 tbl17.aL()
 return absenseCatalogParts.Rarities(tbl17.aS().CosmeticLibrary)
@@ -59785,7 +59785,7 @@ end
 return e1.c
 end
 end
-do -- e2
+do 
 local function fn35()
 local v115 = tbl17.f()
 tbl17.e0()
@@ -59916,7 +59916,7 @@ end
 return e2.c
 end
 end
-do -- e3
+do 
 local function fn35()
 local v115 = tbl17.f()
 tbl17.aL()
@@ -60309,7 +60309,7 @@ end
 return e3.c
 end
 end
-do -- e4
+do 
 local function fn35()
 tbl17.cX()
 local v115 = tbl17.g()
@@ -60403,7 +60403,7 @@ end
 return e4.c
 end
 end
-do -- e5
+do 
 local function fn35()
 local function fn36(arg)
 return arg:match("^%s*(.-)%s*$") or ""
@@ -60453,7 +60453,7 @@ end
 return e5.c
 end
 end
-do -- e7
+do 
 local function fn35()
 local v115 = tbl17.e5()
 local str7 = tbl17.eS().str
@@ -60591,7 +60591,7 @@ end
 return e7.c
 end
 end
-do -- e8
+do 
 local function fn35()
 tbl17.e6()
 return {}
@@ -60608,7 +60608,7 @@ end
 return e8.c
 end
 end
-do -- e9
+do 
 local function fn35()
 local v115 = tbl17.e5()
 tbl17.e6()
@@ -60838,7 +60838,7 @@ end
 return e9.c
 end
 end
-do -- fa
+do 
 local function fn35()
 tbl17.e9()
 local v115 = tbl17.g()
@@ -60949,7 +60949,7 @@ end
 return fa.c
 end
 end
-do -- fb
+do 
 local function fn35()
 return {
 None = table.freeze({ Kind = "None" }),
@@ -60982,7 +60982,7 @@ end
 return fb.c
 end
 end
-do -- fc
+do 
 local function fn35()
 local tbl18 = {}
 local tbl19 = { -1, 0, 1 }
@@ -61124,7 +61124,7 @@ end
 return fc.c
 end
 end
-do -- fd
+do 
 local function fn35()
 return {
 offset = function(arg)
@@ -61152,7 +61152,7 @@ end
 return fd.c
 end
 end
-do -- fe
+do 
 local function fn35()
 local v115 = tbl17.fb()
 local v116 = tbl17.fc()
@@ -61299,7 +61299,7 @@ end
 return fe.c
 end
 end
-do -- ff
+do 
 local function fn35()
 local v115 = tbl17.fb()
 tbl17.a3()
@@ -61352,7 +61352,7 @@ end
 return ff.c
 end
 end
-do -- fg
+do 
 local function fn35()
 local v115 = tbl17.fb()
 local v116 = tbl17.az()
@@ -61418,7 +61418,7 @@ end
 return fg.c
 end
 end
-do -- fh
+do 
 local function fn35()
 local v115 = tbl17.e()
 local v116 = table.create(256, 0)
@@ -61591,7 +61591,7 @@ end
 return fh.c
 end
 end
-do -- fi
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.fh()
@@ -61777,7 +61777,7 @@ end
 return fi.c
 end
 end
-do -- fj
+do 
 local function fn35()
 tbl17.cU()
 tbl17.aO()
@@ -61980,7 +61980,7 @@ end
 return fj.c
 end
 end
-do -- fk
+do 
 local function fn35()
 return function(arg, arg2)
 local n = math.clamp(arg2, 0, 1)
@@ -62022,7 +62022,7 @@ end
 return fk.c
 end
 end
-do -- fl
+do 
 local function fn35()
 local v115 = tbl17.fk()
 
@@ -62048,7 +62048,7 @@ end
 return fl.c
 end
 end
-do -- fm
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.fa()
@@ -62286,7 +62286,7 @@ end
 return fm.c
 end
 end
-do -- fn
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cX()
@@ -62437,7 +62437,7 @@ end
 return fn36.c
 end
 end
-do -- fo
+do 
 local function fn35() tbl17 .h(); tbl17 .l();local I= tbl17 .g(); tbl17 .bN();local W= tbl17 .k(); tbl17 .r();local l={};l.__index=l;l.new=function(N,P,a)local e=W.new();local W=e:Add(I.new());local c=setmetatable({_trove=e,_reactiveStore=P,_profiles=N,_active=true,_signalByKey={},_pathByKey={},_changedConnectionByKey={},_persistentKeySet={},Pins={Icon=a,CanPin=function(P)return N:CanPin(P);end,IsPinned=function(P)return N:IsPinned(P);end,Toggle=function(P)if N:IsPinned(P)then N:Unpin(P);return;end;N:Pin(P);end,Changed=W,GetContextLabel=function()return N:GetContext();end,SetContext=function(c)return N:SetContext(c);end,GetContext=function()return N:GetContext();end,GetContexts=function()local t={}for k in pairs(N._profileBranchByKey)do table.insert(t,k)end table.sort(t)return t;end}},l);e:Connect(N.PinsChanged,function()W:Fire();end);e:Connect(N.ContextChanged,function()W:Fire();end);return c;end;l.Get=function(W,N)return W._reactiveStore:Get(N,true);end;l.GetBase=function(W,N)local pin=W._profiles._appliedPinByPathKey[table.concat(N,".")];if pin~=nil then return pin.Base;end;return W._reactiveStore:GetBase(N);end;l.Set=function(W,N,P)W._reactiveStore:Set(N,P);end;l.Changed=function(W,N,P)local a=table.concat(N,".");if P and W._persistentKeySet[a]==nil then W._persistentKeySet[a]=true;local e=W._changedConnectionByKey[a];if e~=nil and not W._active then e:Enable();end;end;P=W._signalByKey[a];if P then return P;end;local P,e=W._trove:Add(I.new()),table.clone(N);W._signalByKey[a]=P;W._pathByKey[a]=e;N=W._reactiveStore:GetPropertyChangedSignal(e):Connect(function()P:Fire(W:Get(e));end);W._changedConnectionByKey[a]=W._trove:Add(N);return P;end;l.SetActive=function(I,W)if W==I._active then return;end;I._active=W;for N,P in I._changedConnectionByKey,nil,nil do if I._persistentKeySet[N]then continue;end;if W then P:Enable();else P:Disable();end;end;if W then for W,N in I._signalByKey,nil,nil do if not I._persistentKeySet[W]then N:Fire(I:Get(I._pathByKey[W]));end;end;end;end;l.Destroy=function(I)I._trove:Destroy();end;return l;end
 
 tbl17.fo = function()
@@ -62451,7 +62451,7 @@ end
 return fo.c
 end
 end
-do -- fp
+do 
 local function fn35()
 local Store=tbl17.bG()
 local Other=tbl17.aS().ItemInterfaceOther
@@ -62489,7 +62489,7 @@ end
 return mfp.c
 end
 end
-do -- fq
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.cK()
@@ -62537,7 +62537,7 @@ end
 return fq.c
 end
 end
-do -- fr
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.cK()
@@ -62575,7 +62575,7 @@ end
 return fr.c
 end
 end
-do -- fs
+do 
 local function fn35()
 local Store=tbl17.bG()
 local Result=tbl17.a()
@@ -62607,7 +62607,7 @@ end
 return mfs.c
 end
 end
-do -- ft
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.fj()
@@ -62643,7 +62643,7 @@ end
 return ft.c
 end
 end
-do -- fu
+do 
 local function fn35()
 local Store=tbl17.bG()
 local Result=tbl17.a()
@@ -62682,7 +62682,7 @@ end
 return mfu.c
 end
 end
-do -- fv
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.a()
@@ -62777,7 +62777,7 @@ end
 return fv.c
 end
 end
-do -- fw
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.fv()
@@ -62811,7 +62811,7 @@ end
 return fw.c
 end
 end
-do -- fx
+do 
 local function fn35()
 local v115 = tbl17.ad()
 tbl17.fj()
@@ -62860,7 +62860,7 @@ end
 return fx.c
 end
 end
-do -- fy
+do 
 local function fn35()
 local v115 = tbl17.k()
 local function fn36(l)local I,W,N=l.X*0.5,l.Y*0.5,l.Z*0.5;return{Vector3.new(-I,-W,-N),Vector3.new(I,-W,-N),Vector3.new(-I,W,-N),Vector3.new(I,W,-N),Vector3.new(-I,-W,N),Vector3.new(I,-W,N),Vector3.new(-I,W,N),Vector3.new(I,W,N)};end
@@ -62930,7 +62930,7 @@ end
 return fy.c
 end
 end
-do -- fA
+do 
 local function fn35()
 local v115 = tbl17.c5()
 local v116 = tbl17.fk()
@@ -63078,7 +63078,7 @@ end
 return fa.c
 end
 end
-do -- fC
+do 
 local function fn35()
 tbl17.fA()
 tbl17.fB()
@@ -63135,7 +63135,7 @@ end
 return fc.c
 end
 end
-do -- fD
+do 
 local function fn35()
 local v115 = tbl17.fb()
 local v116 = tbl17.fl()
@@ -63212,7 +63212,7 @@ end
 return fd.c
 end
 end
-do -- fE
+do 
 local function fn35()
 local v115 = tbl17.fD()
 tbl17.fb()
@@ -63329,7 +63329,7 @@ end
 return fe.c
 end
 end
-do -- fF
+do 
 local function fn35()
 local v115 = tbl17.fb()
 local v116 = tbl17.fl()
@@ -63522,7 +63522,7 @@ end
 return ff.c
 end
 end
-do -- fG
+do 
 local function fn35()
 tbl17.fb()
 local v115 = tbl17.fF()
@@ -63649,7 +63649,7 @@ end
 return fg.c
 end
 end
-do -- fH
+do 
 local function fn35()
 local v115 = tbl17.fE()
 local v116 = tbl17.fb()
@@ -63804,7 +63804,7 @@ end
 return fh.c
 end
 end
-do -- fI
+do 
 local function fn35()
 local v115 = tbl17.fb()
 tbl17.a0()
@@ -63857,7 +63857,7 @@ end
 return fi.c
 end
 end
-do -- fJ
+do 
 local function fn35()
 tbl17.fH()
 tbl17.fB()
@@ -63922,7 +63922,7 @@ end
 return fj.c
 end
 end
-do -- fK
+do 
 local function fn35()
 return {
 onCharacterAdded = function(parent, adornee, fillColor, fillTransparency, outlineColor, outlineTransparency)
@@ -63965,7 +63965,7 @@ end
 return fk.c
 end
 end
-do -- fL
+do 
 local function fn35()
 return {
 onCharacterAdded = function()
@@ -64051,7 +64051,7 @@ end
 return fl.c
 end
 end
-do -- fM
+do 
 local function fn35()return{Head=true,Torso=true,UpperTorso=true,LowerTorso=true,LeftUpperLeg=true,LeftLowerLeg=true,LeftFoot=true,RightUpperLeg=true,RightLowerLeg=true,RightFoot=true,LeftUpperArm=true,LeftLowerArm=true,LeftHand=true,RightUpperArm=true,RightLowerArm=true,RightHand=true,LeftLeg=true,RightLeg=true,LeftArm=true,RightArm=true};end
 
 tbl17.fM = function()
@@ -64066,7 +64066,7 @@ end
 return fm.c
 end
 end
-do -- fN
+do 
 local function fn35()
 return function(l)return Color3.new(l.R*5,l.G*5,l.B*5);end
 end
@@ -64082,7 +64082,7 @@ end
 return fn36.c
 end
 end
-do -- fO
+do 
 local function fn35()
 local v115 = tbl17.fK()
 local v116 = tbl17.fL()
@@ -64173,7 +64173,7 @@ end
 return fo.c
 end
 end
-do -- fP
+do 
 local function fn35()
 tbl17.fO()
 tbl17.fB()
@@ -64206,7 +64206,7 @@ end
 return fp.c
 end
 end
-do -- fQ
+do 
 local function fn35()
 local v115 = tbl17.fb()
 local v116 = tbl17.fe()
@@ -64295,7 +64295,7 @@ end
 return fq.c
 end
 end
-do -- fR
+do 
 local function fn35()
 tbl17.fQ()
 tbl17.fB()
@@ -64356,7 +64356,7 @@ end
 return fr.c
 end
 end
-do -- fS
+do 
 local function fn35()
 tbl17.fQ()
 local v115 = tbl17.fR()
@@ -64404,7 +64404,7 @@ end
 return fs.c
 end
 end
-do -- fT
+do 
 local function fn35()
 tbl17.fQ()
 local v115 = tbl17.fR()
@@ -64452,7 +64452,7 @@ end
 return ft.c
 end
 end
-do -- fU
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = cloneref(game:GetService("UserInputService"))
@@ -64498,7 +64498,7 @@ end
 return fu.c
 end
 end
-do -- fV
+do 
 local function fn35()
 return function(l)local I,W=workspace.CurrentCamera:WorldToViewportPoint(l);return Vector2.new(I.X,I.Y):Floor(),I.Z,W;end
 end
@@ -64514,7 +64514,7 @@ end
 return fv.c
 end
 end
-do -- fW
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.fV()
@@ -64713,7 +64713,7 @@ end
 return fw.c
 end
 end
-do -- fX
+do 
 local function fn35()
 tbl17.fW()
 tbl17.fB()
@@ -64750,7 +64750,7 @@ end
 return fx.c
 end
 end
-do -- fY
+do 
 local function fn35()
 tbl17.fA()
 tbl17.fB()
@@ -64796,7 +64796,7 @@ end
 return fy.c
 end
 end
-do -- fZ
+do 
 local function fn35()
 tbl17.fQ()
 local v115 = tbl17.fR()
@@ -64841,7 +64841,7 @@ end
 return fz.c
 end
 end
-do -- f_
+do 
 local function fn35()
 tbl17.fQ()
 local v115 = tbl17.fR()
@@ -64881,7 +64881,7 @@ end
 return f.c
 end
 end
-do -- f0
+do 
 local function fn35()return{CenterPanePreset={Side="CENTER",AnchorPoint=Vector2.zero,PositionScale=Vector2.zero,SpacingDirection=Vector2.zero,Size=UDim2.fromScale(1,1),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Center,VerticalAlignment=Enum.VerticalAlignment.Center},LeftPanePreset={Side="LEFT",AnchorPoint=Vector2.new(1,0),PositionScale=Vector2.zero,SpacingDirection=Vector2.new(-1,0),Size=UDim2.fromScale(100,1),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Right,VerticalAlignment=Enum.VerticalAlignment.Top},RightPanePreset={Side="RIGHT",AnchorPoint=Vector2.zero,PositionScale=Vector2.new(1,0),SpacingDirection=Vector2.new(1,0),Size=UDim2.fromScale(100,1),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Left,VerticalAlignment=Enum.VerticalAlignment.Top},TopPanePreset={Side="TOP",AnchorPoint=Vector2.new(0,1),PositionScale=Vector2.zero,SpacingDirection=Vector2.new(0,-1),Size=UDim2.fromScale(1,100),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Center,VerticalAlignment=Enum.VerticalAlignment.Bottom},BottomPanePreset={Side="BOTTOM",AnchorPoint=Vector2.zero,PositionScale=Vector2.new(0,1),SpacingDirection=Vector2.new(0,1),Size=UDim2.fromScale(1,100),FillDirection=Enum.FillDirection.Vertical,HorizontalAlignment=Enum.HorizontalAlignment.Center,VerticalAlignment=Enum.VerticalAlignment.Top}};end
 
 tbl17.f0 = function()
@@ -64896,7 +64896,7 @@ end
 return f0.c
 end
 end
-do -- f1
+do 
 local function fn35()
 tbl17.f0()
 
@@ -64918,7 +64918,7 @@ end
 return f1.c
 end
 end
-do -- f2
+do 
 local function fn35()
 tbl17.f0()
 local v115 = tbl17.k()
@@ -65000,7 +65000,7 @@ end
 return f2.c
 end
 end
-do -- f3
+do 
 local function fn35()
 tbl17.fQ()
 local v115 = tbl17.fR()
@@ -65039,7 +65039,7 @@ end
 return f3.c
 end
 end
-do -- f4
+do 
 local function fn35()
 return function(l,I,W,N)local P=W-I;local a,e=P.Magnitude,(I+W)*0.5;l.Position=UDim2.fromOffset(math.floor(e.X)+0.5,math.floor(e.Y)+0.5);l.Size=UDim2.fromOffset(a,N);l.Rotation=math.deg(math.atan2(P.Y,P.X));end
 end
@@ -65055,7 +65055,7 @@ end
 return f4.c
 end
 end
-do -- f5
+do 
 local function fn35()
 local v115 = tbl17.fM()
 local v116 = tbl17.k()
@@ -65221,7 +65221,7 @@ end
 return f5.c
 end
 end
-do -- f6
+do 
 local function fn35()
 tbl17.f5()
 tbl17.fB()
@@ -65259,7 +65259,7 @@ end
 return f6.c
 end
 end
-do -- f7
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = tbl17.f4()
@@ -65475,7 +65475,7 @@ end
 return f7.c
 end
 end
-do -- f8
+do 
 local function fn35()
 tbl17.f7()
 tbl17.fB()
@@ -65514,7 +65514,7 @@ end
 return f8.c
 end
 end
-do -- f9
+do 
 local function fn35()
 tbl17.fQ()
 local v115 = tbl17.fR()
@@ -65559,7 +65559,7 @@ end
 return f9.c
 end
 end
-do -- ga
+do 
 local function fn35()
 local v115 = tbl17.fC()
 local v116 = tbl17.fA()
@@ -65688,7 +65688,7 @@ end
 return ga.c
 end
 end
-do -- gb
+do 
 local function fn35()
 local v115 = tbl17.fV()
 return function(I,W,N,P,a)local e,c,E= v115 (I:GetPivot().Position);if E then I=N/1080/(c*W*2)*1000;local l,W=4*I*(P or 1),6.5*I*(a or 1);return Vector2.new(e.X-l/2,e.Y-W/2):Floor(),(Vector2.new(math.max(8,l),math.max(13,W)):Floor());else return nil,nil;end;end
@@ -65706,7 +65706,7 @@ end
 return gb.c
 end
 end
-do -- gc
+do 
 local function fn35()
 tbl17.cr()
 local v115 = tbl17.bG()
@@ -66133,7 +66133,7 @@ end
 return gc.c
 end
 end
-do -- gd
+do 
 local function fn35()
 local v115 = tbl17.cN()
 local v116 = tbl17.bG()
@@ -66231,7 +66231,7 @@ end
 return gd.c
 end
 end
-do -- ge
+do 
 local function fn35()
 tbl17.aM()
 tbl17.cX()
@@ -66286,7 +66286,7 @@ end
 return ge.c
 end
 end
-do -- gf
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = cloneref(game:GetService("HttpService"))
@@ -66370,7 +66370,7 @@ end
 return gf.c
 end
 end
-do -- gg
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cF()
@@ -66496,7 +66496,7 @@ end
 return gg.c
 end
 end
-do -- gh
+do 
 local function fn35()
 local fn36 = nil
 
@@ -66534,7 +66534,7 @@ end
 return gh.c
 end
 end
-do -- gi
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.gh()
@@ -66628,7 +66628,7 @@ end
 return gi.c
 end
 end
-do -- gj
+do 
 local function fn35()
 local API=tbl17.aS()
 local Result=tbl17.a()
@@ -66658,8 +66658,8 @@ function Hook:_Load()
             local tracks=rawget(animator,"_animation_tracks")
             local track=type(tracks)=="table"and tracks[key]
             if track==nil then return original(animator,key,...)end
-            -- Keep native timing, events and effect callbacks, replacing only
-            -- this call's track playback. No assumptions about caller constants.
+            
+            
             local dummy=setmetatable({Play=function()end,Stop=function()end},{__index=function(_,name)
                 local value=track[name]
                 if type(value)=="function"then return function(_,...)return value(track,...)end end
@@ -66696,7 +66696,7 @@ end
 return mgj.c
 end
 end
-do -- gk
+do 
 local function fn35()
 local v115 = tbl17.a()
 local cameraController = tbl17.aS().CameraController
@@ -66802,7 +66802,7 @@ end
 return gk.c
 end
 end
-do -- gl
+do 
 local function fn35()
 local v115 = tbl17.a()
 local cameraController = tbl17.aS().CameraController
@@ -66917,7 +66917,7 @@ end
 return gl.c
 end
 end
-do -- gm
+do 
 local function fn35()
 tbl17.aO()
 tbl17.cX()
@@ -67042,7 +67042,7 @@ end
 return gm.c
 end
 end
-do -- gn
+do 
 local function fn35()
 local v115 = tbl17.gi()
 tbl17.dm()
@@ -67197,7 +67197,7 @@ end
 return gn.c
 end
 end
-do -- go
+do 
 local function fn35()
 tbl17.aO()
 tbl17.cw()
@@ -67442,7 +67442,7 @@ end
 return go.c
 end
 end
-do -- gp
+do 
 local function fn35()
 tbl17.aO()
 tbl17.cw()
@@ -67591,7 +67591,7 @@ end
 return gp.c
 end
 end
-do -- gq
+do 
 local function fn35()
 tbl17.dm()
 tbl17.cX()
@@ -67646,7 +67646,7 @@ end
 return gq.c
 end
 end
-do -- gr
+do 
 local function fn35()
 local v115 = tbl17.gj()
 local v116 = tbl17.gk()
@@ -67874,7 +67874,7 @@ end
 return gr.c
 end
 end
-do -- gs
+do 
 local function fn35()
 local Store=tbl17.bG()
 local Binds=tbl17.c4()
@@ -67938,7 +67938,7 @@ end
 return mgs.c
 end
 end
-do -- gu
+do 
 local function fn35() tbl17 .gt();return{{Name="AR2 Head",SoundId="rbxassetid://2062016772"},{Name="AR2 Body",SoundId="rbxassetid://2062015952"},{Name="AR2 Limb",SoundId="rbxassetid://6659353525"},{Name="BB HitM",SoundId="rbxassetid://4645745735"},{Name="BB Kill",SoundId="rbxassetid://2636743632"},{Name="PD Head",SoundId="rbxassetid://4585351098"},{Name="PD Body",SoundId="rbxassetid://4585364605"},{Name="Neverlose",SoundId="rbxassetid://6607204501"},{Name="Gamesense",SoundId="rbxassetid://4817809188"},{Name="Baimware",SoundId="rbxassetid://3124331820"},{Name="Steve",SoundId="rbxassetid://4965083997"},{Name="Body",SoundId="rbxassetid://3213738472"},{Name="Ding",SoundId="rbxassetid://7149516994"},{Name="Mario",SoundId="rbxassetid://2815207981"},{Name="Mario 2",SoundId="rbxassetid://5709456554"},{Name="Minecraft",SoundId="rbxassetid://4018616850"},{Name="Among Us",SoundId="rbxassetid://5700183626"},{Name="Button",SoundId="rbxassetid://12221967"},{Name="Oof",SoundId="rbxassetid://4792539171"},{Name="Sparkle",SoundId="rbxassetid://132463144859699"},{Name="Osu",SoundId="rbxassetid://7149919358"},{Name="Osu Combobreak",SoundId="rbxassetid://3547118594"},{Name="Bambi",SoundId="rbxassetid://8437203821"},{Name="Click",SoundId="rbxassetid://8053704437"},{Name="Snow",SoundId="rbxassetid://6455527632"},{Name="Stone",SoundId="rbxassetid://3581383408"},{Name="Rust",SoundId="rbxassetid://5043539486"},{Name="Splat",SoundId="rbxassetid://12222152"},{Name="Bell",SoundId="rbxassetid://6534947240"},{Name="Slime",SoundId="rbxassetid://6916371803"},{Name="Saber",SoundId="rbxassetid://8415678813"},{Name="Bat",SoundId="rbxassetid://3333907347"},{Name="Bubble",SoundId="rbxassetid://6534947588"},{Name="Pick",SoundId="rbxassetid://1347140027"},{Name="Pop",SoundId="rbxassetid://18803667669"},{Name="EmptyGun",SoundId="rbxassetid://203691822"},{Name="Bamboo",SoundId="rbxassetid://3769434519"},{Name="Stomp",SoundId="rbxassetid://200632875"},{Name="Bag",SoundId="rbxassetid://364942410"},{Name="Hitmarker",SoundId="rbxassetid://1129547534"},{Name="LaserSlash",SoundId="rbxassetid://199145497"},{Name="RailGunF",SoundId="rbxassetid://199145534"},{Name="Bruh",SoundId="rbxassetid://4275842574"},{Name="Crit",SoundId="rbxassetid://296102734"},{Name="Bonk",SoundId="rbxassetid://3765689841"},{Name="Clink",SoundId="rbxassetid://711751971"},{Name="CoD",SoundId="rbxassetid://160432334"},{Name="Lazer Beam",SoundId="rbxassetid://130791043"},{Name="Windows",SoundId="rbxassetid://9066167010"},{Name="HL Med Kit",SoundId="rbxassetid://4720445506"},{Name="HL Door",SoundId="rbxassetid://4996094887"},{Name="HL Crowbar",SoundId="rbxassetid://546410481"},{Name="HL Revolver",SoundId="rbxassetid://1678424590"},{Name="HL Elevator",SoundId="rbxassetid://237877850"},{Name="TF2 HitSound",SoundId="rbxassetid://3455144981"},{Name="TF2",SoundId="rbxassetid://8255306220"},{Name="TF2 Squasher",SoundId="rbxassetid://3466981613"},{Name="TF2 Retro",SoundId="rbxassetid://3466984142"},{Name="TF2 Space",SoundId="rbxassetid://3466982899"},{Name="TF2 Vortex",SoundId="rbxassetid://3466980212"},{Name="TF2 Beepo",SoundId="rbxassetid://3466987025"},{Name="TF2 Bat",SoundId="rbxassetid://3333907347"},{Name="TF2 Pow",SoundId="rbxassetid://679798995"},{Name="TF2 You Suck",SoundId="rbxassetid://1058417264"},{Name="Quake Hitsound",SoundId="rbxassetid://4868633804"},{Name="Fart",SoundId="rbxassetid://131314452"},{Name="Fart2",SoundId="rbxassetid://6367774932"},{Name="FortniteGuns",SoundId="rbxassetid://3008769599"},{Name="Crickets",SoundId="rbxassetid://2101148"},{Name="ScreamingKid",SoundId="rbxassetid://5980352978"},{Name="BitchBot",SoundId="rbxassetid://5709456554"},{Name="BitchBot Head",SoundId="rbxassetid://5043539486"},{Name="BitchBot Body",SoundId="rbxassetid://3744371342"},{Name="Minecraft Experience",SoundId="rbxassetid://1053296915"},{Name="BameWare",SoundId="rbxassetid://7898991882"},{Name="Fatality",SoundId="rbxassetid://7347423703"},{Name="Fatality MKX",SoundId="rbxassetid://6721975770"},{Name="Fatality Original",SoundId="rbxassetid://158012252"},{Name="Doublekill 1",SoundId="rbxassetid://1950547222"},{Name="Doublekill 2",SoundId="rbxassetid://130819307"},{Name="Killing Spree 1",SoundId="rbxassetid://723054723"},{Name="Killing Spree 2",SoundId="rbxassetid://937898383"},{Name="Sit Dog",SoundId="rbxassetid://7349055654"},{Name="Csgo",SoundId="rbxassetid://5764885315"},{Name="Bop",SoundId="rbxassetid://8829676038"},{Name="Grenade Hit",SoundId="rbxassetid://5684745272"},{Name="KillTrocity",SoundId="rbxassetid://6818544945"},{Name="Double Kill",SoundId="rbxassetid://6818527307"},{Name="Triple kill",SoundId="rbxassetid://6818526855"},{Name="Over Kill",SoundId="rbxassetid://6818526995"},{Name="Kill Tacular",SoundId="rbxassetid://6818527070"},{Name="Kill Imanjaro",SoundId="rbxassetid://6818527258"},{Name="Kill Tastrophe",SoundId="rbxassetid://6818526916"},{Name="Kill Pocalypse",SoundId="rbxassetid://6818527144"},{Name="Kill Ionaire",SoundId="rbxassetid://6818527200"},{Name="Killing Spree",SoundId="rbxassetid://6822465178"},{Name="Killing Frenzy",SoundId="rbxassetid://6822465319"},{Name="Carrier Kill",SoundId="rbxassetid://7139067012"},{Name="Clutch Kill",SoundId="rbxassetid://7379106527"},{Name="Taco Bell",SoundId="rbxassetid://5689199277"},{Name="Kombat",SoundId="rbxassetid://8527433497"},{Name="Headshot",SoundId="rbxassetid://8418469749"},{Name="Elevator",SoundId="rbxassetid://8322227967"}};end
 
 tbl17.gu = function()
@@ -67952,7 +67952,7 @@ end
 return gu.c
 end
 end
-do -- gv
+do 
 local function fn35()
 local v115 = tbl17.e5()
 local v116 = tbl17.f()
@@ -68176,7 +68176,7 @@ end
 return gv.c
 end
 end
-do -- gw
+do 
 local function fn35()
 tbl17.e9()
 local v115 = tbl17.a()
@@ -68435,7 +68435,7 @@ end
 return gw.c
 end
 end
-do -- gx
+do 
 local function fn35()
 local v115 = tbl17.g()
 local v116 = tbl17.k()
@@ -68650,10 +68650,10 @@ end
 return gx.c
 end
 end
-do -- gy
+do 
 local function fn35()
--- Local-player boundary protection with explicit ownership and cleanup.
--- Other players and spectator subjects retain the game's native checks.
+
+
 local Guard={}
 Guard.__index=Guard
 
@@ -68686,8 +68686,8 @@ function Guard:_isLocal(machine)
         return false
     end
     if matches(subject) then return true end
-    -- GetSubject may temporarily return nil during character initialization.
-    -- Only use a local owner as the fallback, never a global false result.
+    
+    
     return subject==nil and type(machine)=="table" and matches(machine._fighter_subject)
 end
 
@@ -68756,7 +68756,7 @@ end
 return mgy.c
 end
 end
-do -- gz
+do 
 local function fn35()
 local v115 = tbl17.k()
 local v116 = cloneref(game:GetService("CollectionService"))
@@ -68819,7 +68819,7 @@ end
 return gz.c
 end
 end
-do -- gA
+do 
 local function fn35()
 local v115 = v114
 local v116 = v113
@@ -69005,7 +69005,7 @@ end
 return mgA.c
 end
 end
-do -- gB
+do 
 local function fn35()
 tbl17.cr()
 local v115 = tbl17.bG()
@@ -69065,7 +69065,7 @@ end
 return gb.c
 end
 end
-do -- gC
+do 
 local function fn35()
 tbl17.cr()
 local v115 = tbl17.bG()
@@ -69159,7 +69159,7 @@ end
 return gc.c
 end
 end
-do -- gD
+do 
 local function fn35()
 tbl17.cr()
 local v115 = tbl17.c4()
@@ -69285,7 +69285,7 @@ end
 return gd.c
 end
 end
-do -- gE
+do 
 local function fn35()
 local store=tbl17.bG()
 local v115 = tbl17.gB()
@@ -69355,7 +69355,7 @@ end
 return ge.c
 end
 end
-do -- gF
+do 
 local function fn35()
 local v115 = tbl17.k()
 local index2 = {}
@@ -69444,7 +69444,7 @@ end
 return gf.c
 end
 end
-do -- gG
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.gF()
@@ -69521,7 +69521,7 @@ end
 return gg.c
 end
 end
-do -- gH
+do 
 local function fn35()
 local v115 = tbl17.bG()
 
@@ -69542,7 +69542,7 @@ end
 return gh.c
 end
 end
-do -- gI
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.c4()
@@ -69637,7 +69637,7 @@ end
 return gi.c
 end
 end
-do -- gJ
+do 
 local function fn35()
 local v115 = tbl17.gG()
 tbl17.dK()
@@ -69747,7 +69747,7 @@ end
 return gj.c
 end
 end
-do -- gK
+do 
 local function fn35()
 local v115 = tbl17.a8()
 local v116 = tbl17.k()
@@ -69831,7 +69831,7 @@ end
 return gk.c
 end
 end
-do -- gL
+do 
 local function fn35()
 local v115 = tbl17.c5()
 local v116 = tbl17.k()
@@ -70108,7 +70108,7 @@ end
 return gl.c
 end
 end
-do -- gM
+do 
 local function fn35()
 local v115 = cloneref(game:GetService("SoundService"))
 
@@ -70135,7 +70135,7 @@ end
 return gm.c
 end
 end
-do -- gN
+do 
 local function fn35()
 local v115 = cloneref(game:GetService("Players"))
 
@@ -70158,7 +70158,7 @@ end
 return gn.c
 end
 end
-do -- gO
+do 
 local function fn35()
 local v115 = tbl17.gK()
 local v116 = tbl17.bG()
@@ -70331,7 +70331,7 @@ end
 return go.c
 end
 end
-do -- gP
+do 
 local function fn35()
 local v115 = tbl17.a()
 local clientViewModel = tbl17.aS().ClientViewModel
@@ -70393,7 +70393,7 @@ end
 return gp.c
 end
 end
-do -- gQ
+do 
 local function fn35()
 local v115 = tbl17.gK()
 local v116 = tbl17.bG()
@@ -70583,7 +70583,7 @@ end
 return gq.c
 end
 end
-do -- gR
+do 
 local function fn35()
 local constants = tbl17.aS().Constants
 
@@ -70605,7 +70605,7 @@ end
 return gr.c
 end
 end
-do -- gS
+do 
 local function fn35()
 return { Manipulate = 0 }
 end
@@ -70622,7 +70622,7 @@ end
 return gs.c
 end
 end
-do -- gT
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -70733,8 +70733,8 @@ end
 return gt.c
 end
 end
--- Search only the origin displacement the existing native shot path supports.
--- Every candidate uses the same geometry checks as the camera visibility test.
+
+
 local function searchShotOrigin(visibility,origin,part,radius,budget)
     if not visibility or not part or not part.Parent then return false,nil end
     radius=math.clamp(tonumber(radius) or 9.9,0,9.9)
@@ -70757,7 +70757,7 @@ local function searchShotOrigin(visibility,origin,part,radius,budget)
         for _,p in ipairs(candidates) do if (offset-p).Magnitude<.12 then return end end
         candidates[#candidates+1]=offset
     end
-    -- Try the far side of a thin obstruction before sampling around its edges.
+    
     if hit and hit.Distance then add(forward*math.min(radius,hit.Distance+.3)) end
     add(forward*math.min(radius,math.max(0,distance-part.Size.Magnitude*.5-.05)))
     add(up*radius);add(-up*radius);add(right*radius);add(-right*radius)
@@ -70780,7 +70780,7 @@ local function searchShotOrigin(visibility,origin,part,radius,budget)
 end
 
 
-do -- gU
+do 
 local function fn35()
 return function(visibility,origin,part) return searchShotOrigin(visibility,origin,part,9.9,28) end
 end
@@ -70796,7 +70796,7 @@ end
 return gu.c
 end
 end
-do -- gV
+do 
 local function fn35()
 local v115 = tbl17.cn()
 local v116 = tbl17.cN()
@@ -71091,7 +71091,7 @@ end
 return gv.c
 end
 end
-do -- gX
+do 
 local function fn35() tbl17 .gW();return{GreenHaze={SkyboxUp="rbxassetid://160193458",SkyboxBk="rbxassetid://160193404",SkyboxFt="rbxassetid://160193461",SunAngularSize=0,SkyboxLf="rbxassetid://160193469",SkyboxRt="rbxassetid://160193463",SkyboxDn="rbxassetid://160193466"},Space2={StarCount=3000,SkyboxUp="rbxassetid://11844053742",MoonTextureId="rbxassetid://11844121592",SkyboxBk="rbxassetid://11844076072",SkyboxDn="rbxassetid://11844069700",SkyboxFt="rbxassetid://11844067209",SunAngularSize=11,SkyboxLf="rbxassetid://11844063543",SkyboxRt="rbxassetid://11844058446",MoonAngularSize=20},PinkMountains={StarCount=3000,SkyboxUp="rbxassetid://160188588",SkyboxFt="rbxassetid://160188609",SkyboxLf="rbxassetid://160188589",SkyboxDn="rbxassetid://160188614",SunAngularSize=21,SkyboxBk="rbxassetid://160188495",SkyboxRt="rbxassetid://160188597",MoonAngularSize=0},Valentines={StarCount=3000,SkyboxUp="rbxassetid://11427771954",SkyboxFt="rbxassetid://11427769401",SkyboxLf="rbxassetid://11427769401",SkyboxDn="rbxassetid://11427770685",SunAngularSize=21,SkyboxBk="rbxassetid://11427769401",SkyboxRt="rbxassetid://11427769401",MoonAngularSize=0},PinkArt={StarCount=3000,SkyboxUp="rbxassetid://79190209626172",SkyboxFt="rbxassetid://104560113223878",SkyboxLf="rbxassetid://80395333901607",SkyboxDn="rbxassetid://78865378050055",SunAngularSize=21,SkyboxBk="rbxassetid://71607054149497",SkyboxRt="rbxassetid://87570388049514",MoonAngularSize=0},PurplePlanet={StarCount=3000,SkyboxUp="rbxassetid://16262366016",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://16262360469",SkyboxLf="rbxassetid://16262362003",SkyboxDn="rbxassetid://16262358026",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxBk="rbxassetid://16262356578",SkyboxRt="rbxassetid://16262363873",MoonAngularSize=0},Blizzard={StarCount=3000,SkyboxUp="rbxassetid://16653228333",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://16653221738",SkyboxFt="rbxassetid://16653224051",SkyboxDn="rbxassetid://16653222701",SunTextureId="rbxassetid://6196665106",SunAngularSize=21,SkyboxLf="rbxassetid://16653225849",SkyboxRt="rbxassetid://16653227200",MoonAngularSize=0},Winter={StarCount=3000,SkyboxUp="rbxassetid://155674931",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://155657655",SkyboxFt="rbxassetid://155657609",SkyboxLf="rbxassetid://155657671",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxDn="rbxassetid://155674246",SkyboxRt="rbxassetid://155657619",MoonAngularSize=11},FlamingSunset={StarCount=3000,SkyboxUp="rbxassetid://415688354",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://415688378",SkyboxFt="rbxassetid://415688242",SkyboxDn="rbxassetid://415688193",SunTextureId="rbxassetid://6196665106",SunAngularSize=0,SkyboxLf="rbxassetid://415688310",SkyboxRt="rbxassetid://415688274",MoonAngularSize=0},Mountains={StarCount=3000,SkyboxUp="rbxassetid://15359412677",SkyboxLf="rbxassetid://15359411633",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://15359411132",SkyboxBk="rbxassetid://15359410490",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://15359412131",SkyboxRt="rbxassetid://15359417656",MoonAngularSize=0},FPSBoost={StarCount=3000,SkyboxUp="rbxassetid://11457548274",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://11457548274",SkyboxLf="rbxassetid://11457548274",SkyboxDn="rbxassetid://11457548274",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxBk="rbxassetid://11457548274",SkyboxRt="rbxassetid://11457548274",MoonAngularSize=0},AestheticMountains={StarCount=3000,SkyboxUp="rbxassetid://15470207755",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://15470202648",SkyboxBk="rbxassetid://15470198023",SkyboxFt="rbxassetid://15470200128",SunTextureId="rbxassetid://6196665106",SunAngularSize=21,SkyboxDn="rbxassetid://15470151245",SkyboxRt="rbxassetid://15470204862",MoonAngularSize=11},BetterNight3={StarCount=500,SkyboxUp="rbxassetid://2670644331",MoonTextureId="rbxassetid://1075087760",SkyboxLf="rbxassetid://2670643070",SkyboxBk="rbxassetid://2670643994",SkyboxFt="rbxassetid://2670643214",SunTextureId="rbxassetid://6196665106",SunAngularSize=21,SkyboxDn="rbxassetid://2670643365",SkyboxRt="rbxassetid://2670644173",MoonAngularSize=1.5},Galaxy2={StarCount=500,SkyboxUp="rbxassetid://14164405298",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://14164398493",SkyboxBk="rbxassetid://14164368678",SkyboxFt="rbxassetid://14164389230",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://14164386126",SkyboxRt="rbxassetid://14164402782",MoonAngularSize=0},Aesthetic3={StarCount=500,SkyboxUp="rbxassetid://151165227",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://151165191",SkyboxBk="rbxassetid://151165214",SkyboxFt="rbxassetid://151165224",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://151165197",SkyboxRt="rbxassetid://151165206",MoonAngularSize=0},PurpleSpace={StarCount=3000,SkyboxUp="rbxassetid://15983964246",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://15983967420",SkyboxBk="rbxassetid://15983968922",SkyboxFt="rbxassetid://5260817288",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://15983966825",SkyboxRt="rbxassetid://15983966246",MoonAngularSize=0},Pink={StarCount=3000,SkyboxUp="rbxassetid://271077958",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://271042310",SkyboxBk="rbxassetid://271042516",SkyboxFt="rbxassetid://271042556",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://271077243",SkyboxRt="rbxassetid://271042467",MoonAngularSize=0},PurpleNight={StarCount=3000,SkyboxUp="rbxassetid://5084576400",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://5260817288",SkyboxBk="rbxassetid://5260808177",SkyboxDn="rbxassetid://5260653793",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://5260800833",SkyboxRt="rbxassetid://5260800833",MoonAngularSize=0},Flame={StarCount=3000,SkyboxUp="rbxassetid://6286790025",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://6286785801",SkyboxBk="rbxassetid://6286780109",SkyboxFt="rbxassetid://6286784186",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxDn="rbxassetid://6286782353",SkyboxRt="rbxassetid://6286788245",MoonAngularSize=0},Galaxy3={StarCount=3000,SkyboxUp="rbxassetid://14543371676",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://14543257810",SkyboxBk="rbxassetid://14543264135",SkyboxDn="rbxassetid://14543358958",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://14543275895",SkyboxRt="rbxassetid://14543280890",MoonAngularSize=0},Storm={SkyboxUp="rbxassetid://1618913654",MoonTextureId="rbxassetid://1075087760",SkyboxFt="rbxassetid://1618913244",SkyboxBk="rbxassetid://1618912481",SkyboxDn="rbxassetid://1618913943",SunTextureId="rbxassetid://1084351190",SunAngularSize=0,SkyboxLf="rbxassetid://1618912849",SkyboxRt="rbxassetid://1618911568",MoonAngularSize=0},Milkyway={StarCount=3000,SkyboxUp="rbxassetid://137817405681365",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://104400530594543",SkyboxBk="rbxassetid://129876530632297",SkyboxDn="rbxassetid://108406529909981",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://73372229972523",SkyboxRt="rbxassetid://87408857415924",MoonAngularSize=0},PurpleClouds={StarCount=3000,SkyboxUp="rbxassetid://570557727",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://570557775",SkyboxLf="rbxassetid://570557620",SkyboxBk="rbxassetid://570557514",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://570557559",SkyboxRt="rbxassetid://570557672",MoonAngularSize=0},BlueClouds={StarCount=3000,SkyboxUp="rbxassetid://591059642",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://591057861",SkyboxBk="rbxassetid://591058823",SkyboxFt="rbxassetid://591058104",SunTextureId="rbxassetid://6196665106",SunAngularSize=0,SkyboxDn="rbxassetid://591059876",SkyboxRt="rbxassetid://591057625",MoonAngularSize=0},BetterNight={StarCount=3000,SkyboxUp="rbxassetid://15470303050",SkyboxFt="rbxassetid://15470294431",SkyboxBk="rbxassetid://15470289121",SkyboxDn="rbxassetid://15470291746",SkyboxLf="rbxassetid://15470297162",SkyboxRt="rbxassetid://15470299887"},Cloudy={StarCount=3000,SkyboxUp="rbxassetid://4495867486",SkyboxFt="rbxassetid://4495865458",SkyboxBk="rbxassetid://4495864450",SkyboxDn="rbxassetid://4495864887",SkyboxLf="rbxassetid://4495866035",SkyboxRt="rbxassetid://4495866584"},NetherWorld={StarCount=3000,SkyboxUp="rbxassetid://14365019327",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://14365018399",SkyboxLf="rbxassetid://14365018705",SkyboxDn="rbxassetid://14365023350",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxBk="rbxassetid://14365019002",SkyboxRt="rbxassetid://14365018143",MoonAngularSize=0},NewYork={StarCount=3000,SkyboxUp="rbxassetid://11333967970",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://11333973069",SkyboxFt="rbxassetid://11333964303",SkyboxDn="rbxassetid://11333969768",SunTextureId="rbxassetid://6196665106",SunAngularSize=0,SkyboxLf="rbxassetid://11333971332",SkyboxRt="rbxassetid://11333982864",MoonAngularSize=0},Purple2={StarCount=3000,SkyboxUp="rbxassetid://8107849791",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://8107841671",SkyboxFt="rbxassetid://8107841671",SkyboxDn="rbxassetid://6444884785",SunTextureId="rbxassetid://6196665106",SunAngularSize=11,SkyboxLf="rbxassetid://8107841671",SkyboxRt="rbxassetid://8107841671",MoonAngularSize=0},FunnyStorm={StarCount=3000,SkyboxUp="rbxassetid://6280942402",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://6280935347",SkyboxLf="rbxassetid://6280938749",SkyboxBk="rbxassetid://6280934001",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://6280936575",SkyboxRt="rbxassetid://6280940989",MoonAngularSize=0},Galaxy={StarCount=3000,SkyboxUp="rbxassetid://159454288",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://159454293",SkyboxLf="rbxassetid://159454293",SkyboxDn="rbxassetid://159454296",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxBk="rbxassetid://159454299",SkyboxRt="rbxassetid://159454293",MoonAngularSize=0},BlueSpace={StarCount=3000,SkyboxUp="rbxassetid://16876552681",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://16876548320",SkyboxBk="rbxassetid://16876541778",SkyboxFt="rbxassetid://16876546384",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxDn="rbxassetid://16876543880",SkyboxRt="rbxassetid://16876550345",MoonAngularSize=0},Purple3={StarCount=3000,SkyboxUp="rbxassetid://433274285",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://433274131",SkyboxLf="rbxassetid://433274370",SkyboxDn="rbxassetid://433274194",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxBk="rbxassetid://433274085",SkyboxRt="rbxassetid://433274429",MoonAngularSize=0},Nebula2={StarCount=3000,SkyboxUp="rbxassetid://16932810138",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://16932800523",SkyboxLf="rbxassetid://16932803722",SkyboxDn="rbxassetid://16932797813",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxBk="rbxassetid://16932794531",SkyboxRt="rbxassetid://16932806825",MoonAngularSize=0},Nebula={StarCount=3000,SkyboxUp="rbxassetid://5260824661",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://5260800833",SkyboxDn="rbxassetid://5260653793",SkyboxBk="rbxassetid://5260808177",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxFt="rbxassetid://5260817288",SkyboxRt="rbxassetid://5260811073",MoonAngularSize=0},LunarNight={StarCount=0,SkyboxUp="rbxassetid://187712111",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://187713366",SkyboxFt="rbxassetid://187712836",SkyboxLf="rbxassetid://187713755",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://187712428",SkyboxRt="rbxassetid://187714525",MoonAngularSize=0},Purple={StarCount=3000,SkyboxUp="rbxassetid://8539981085",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://8539982183",SkyboxFt="rbxassetid://8539981721",SkyboxLf="rbxassetid://8539981424",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://8539981943",SkyboxRt="rbxassetid://8539980766",MoonAngularSize=0},Hell={StarCount=3000,SkyboxUp="rbxassetid://11730857150",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://11730840088",SkyboxFt="rbxassetid://11730849615",SkyboxLf="rbxassetid://11730852920",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://11730842997",SkyboxRt="rbxassetid://11730855491",MoonAngularSize=11},Nebula6={StarCount=3000,SkyboxUp="rbxassetid://16694204069",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://16694197080",SkyboxDn="rbxassetid://16694190947",SkyboxBk="rbxassetid://16694187412",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://16694194795",SkyboxRt="rbxassetid://16694200892",MoonAngularSize=11},DarkishPink={StarCount=3000,SkyboxUp="rbxassetid://570555929",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://570555840",SkyboxDn="rbxassetid://570555964",SkyboxBk="rbxassetid://570555736",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://570555800",SkyboxRt="rbxassetid://570555882",MoonAngularSize=11},RedNight={StarCount=3000,SkyboxUp="rbxassetid://401664936",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://401664839",SkyboxFt="rbxassetid://401664960",SkyboxLf="rbxassetid://401664881",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://401664862",SkyboxRt="rbxassetid://401664901",MoonAngularSize=0},Space={StarCount=3000,SkyboxUp="rbxassetid://166510114",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://166510057",SkyboxBk="rbxassetid://166509999",SkyboxFt="rbxassetid://166510116",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://166510092",SkyboxRt="rbxassetid://166510131",MoonAngularSize=0},OverPlanet={StarCount=3000,SkyboxUp="rbxassetid://165052345",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://165052365",SkyboxDn="rbxassetid://165052286",SkyboxBk="rbxassetid://165052268",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://165052328",SkyboxRt="rbxassetid://165052306",MoonAngularSize=11},Orange={StarCount=3000,SkyboxUp="rbxassetid://150939082",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://150939038",SkyboxBk="rbxassetid://150939022",SkyboxFt="rbxassetid://150939047",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://150939056",SkyboxRt="rbxassetid://150939063",MoonAngularSize=0},Pastel={StarCount=3000,SkyboxUp="rbxassetid://2128462236",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://2128462480",SkyboxBk="rbxassetid://2128458653",SkyboxFt="rbxassetid://2128458653",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://2128462027",SkyboxRt="rbxassetid://2128462027",MoonAngularSize=0},Beach={StarCount=0,SkyboxUp="rbxassetid://173380790",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://173380627",SkyboxBk="rbxassetid://173380597",SkyboxFt="rbxassetid://173380642",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxLf="rbxassetid://173380671",SkyboxRt="rbxassetid://173380774",MoonAngularSize=11},FakeClouds={StarCount=3000,SkyboxUp="rbxassetid://8496897504",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://8496896250",SkyboxBk="rbxassetid://8496892810",SkyboxFt="rbxassetid://8496892810",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://8496892810",SkyboxRt="rbxassetid://8496892810",MoonAngularSize=0},Aesthetic2={StarCount=3000,SkyboxUp="rbxassetid://600835177",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://600830446",SkyboxFt="rbxassetid://600832720",SkyboxLf="rbxassetid://600886090",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://600831635",SkyboxRt="rbxassetid://600833862",MoonAngularSize=0},Nebula4={StarCount=3000,SkyboxUp="rbxassetid://17103639457",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://17103622190",SkyboxBk="rbxassetid://17103618635",SkyboxFt="rbxassetid://17103624898",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://17103628153",SkyboxRt="rbxassetid://17103636666",MoonAngularSize=0},BluePlanet={StarCount=3000,SkyboxUp="rbxassetid://16889004122",SkyboxLf="rbxassetid://16888998994",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://16888991855",SkyboxBk="rbxassetid://16888989874",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://16888995219",SkyboxRt="rbxassetid://16889000916",MoonAngularSize=0},Nebula5={StarCount=3000,SkyboxUp="rbxassetid://17124369657",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://17124359797",SkyboxBk="rbxassetid://17124357467",SkyboxFt="rbxassetid://17124362093",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://17124365127",SkyboxRt="rbxassetid://17124367200",MoonAngularSize=0},LunarNight2={StarCount=3000,SkyboxUp="rbxassetid://14365026442",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://14365026242",SkyboxLf="rbxassetid://14365025904",SkyboxBk="rbxassetid://14365026085",SunTextureId="rbxassetid://8281961896",SunAngularSize=21,SkyboxFt="rbxassetid://14365025735",SkyboxRt="rbxassetid://14365025444",MoonAngularSize=0},Pinkie={StarCount=0,SkyboxUp="rbxassetid://11554996247",MoonTextureId="rbxassetid://6444320592",SkyboxDn="rbxassetid://11555013415",SkyboxBk="rbxassetid://11555017034",SkyboxFt="rbxassetid://11555010145",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://11555006545",SkyboxRt="rbxassetid://11555000712",MoonAngularSize=1.5},PurpleMountains={StarCount=3000,SkyboxUp="rbxassetid://17901365106",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://17901359687",SkyboxDn="rbxassetid://17901366771",SkyboxBk="rbxassetid://17901353811",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxFt="rbxassetid://17901356262",SkyboxRt="rbxassetid://17901362326",MoonAngularSize=0},DarkClouds={StarCount=0,SkyboxUp="rbxassetid://190477146",SkyboxDn="rbxassetid://190477222",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://190477185",SkyboxBk="rbxassetid://190477248",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxFt="rbxassetid://190477200",SkyboxRt="rbxassetid://190477166",MoonAngularSize=1.5},BetterNight2={StarCount=3000,SkyboxBk="rbxassetid://248431616",SkyboxUp="rbxassetid://248431605",SkyboxDn="rbxassetid://248431677",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://248431686",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxFt="rbxassetid://248431598",SkyboxRt="rbxassetid://248431611",MoonAngularSize=1.5},DarkMountains={StarCount=3000,SkyboxUp="rbxassetid://5098819127",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://5098814730",SkyboxFt="rbxassetid://5098815653",SkyboxDn="rbxassetid://5098815227",SunTextureId="rbxassetid://6196665106",SunAngularSize=0,SkyboxLf="rbxassetid://5098816155",SkyboxRt="rbxassetid://5098820352",MoonAngularSize=0},Nebula3={StarCount=3000,SkyboxUp="rbxassetid://17839226876",MoonTextureId="rbxassetid://6444320592",SkyboxBk="rbxassetid://17839210699",SkyboxFt="rbxassetid://17839218166",SkyboxLf="rbxassetid://17839220800",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxDn="rbxassetid://17839215896",SkyboxRt="rbxassetid://17839223605",MoonAngularSize=0},BetterSky={StarCount=3000,SkyboxUp="rbxassetid://591059642",MoonTextureId="rbxassetid://6444320592",SkyboxLf="rbxassetid://591057861",SkyboxBk="rbxassetid://591058823",SkyboxFt="rbxassetid://591058104",SunTextureId="rbxassetid://6196665106",SunAngularSize=0,SkyboxDn="rbxassetid://591059876",SkyboxRt="rbxassetid://591057625",MoonAngularSize=0},MagentaOrange={StarCount=3000,SkyboxUp="rbxassetid://566616187",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://566616141",SkyboxBk="rbxassetid://566616113",SkyboxDn="rbxassetid://566616232",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://566616044",SkyboxRt="rbxassetid://566616082",MoonAngularSize=0},Aesthetic={StarCount=3000,SkyboxUp="rbxassetid://1417494643",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://1417494253",SkyboxBk="rbxassetid://1417494030",SkyboxDn="rbxassetid://1417494146",SunTextureId="rbxassetid://8281961896",SunAngularSize=0,SkyboxLf="rbxassetid://1417494402",SkyboxRt="rbxassetid://1417494499",MoonAngularSize=0},Alien={StarCount=0,SkyboxUp="rbxassetid://159248176",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://159248187",SkyboxBk="rbxassetid://159248188",SkyboxDn="rbxassetid://159248183",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://159248173",SkyboxRt="rbxassetid://159248192",MoonAngularSize=0},Lunar={StarCount=3000,SkyboxUp="rbxassetid://179724054",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://179724018",SkyboxBk="rbxassetid://179723991",SkyboxDn="rbxassetid://179724005",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://179724029",SkyboxRt="rbxassetid://179724037",MoonAngularSize=0},Retro={StarCount=3000,SkyboxUp="rbxassetid://16642401907",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://16642398372",SkyboxBk="rbxassetid://16642396302",SkyboxDn="rbxassetid://16642397027",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://16642399309",SkyboxRt="rbxassetid://16642400745",MoonAngularSize=0},Realistic={StarCount=3000,SkyboxUp="rbxassetid://402560052",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://402559953",SkyboxBk="rbxassetid://402559900",SkyboxDn="rbxassetid://402559927",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://402559983",SkyboxRt="rbxassetid://402560019",MoonAngularSize=0},Midnight={StarCount=3000,SkyboxUp="rbxassetid://154185031",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://154185021",SkyboxBk="rbxassetid://154185004",SkyboxDn="rbxassetid://154184960",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://154184943",SkyboxRt="rbxassetid://154184972",MoonAngularSize=0},Antartica={StarCount=3000,SkyboxUp="rbxassetid://2118766003",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://2118765204",SkyboxBk="rbxassetid://2118763079",SkyboxDn="rbxassetid://2118766919",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://2118764070",SkyboxRt="rbxassetid://2118761853"},Moon={StarCount=3000,SkyboxUp="rbxassetid://17489393055",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://17489388310",SkyboxBk="rbxassetid://17489386489",SkyboxDn="rbxassetid://17489387417",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://17489389632",SkyboxRt="rbxassetid://17489391101"},NightMountains={StarCount=3000,MoonAngularSize=11,SkyboxUp="rbxassetid://264907379",MoonTextureId="rbxasset://sky/moon.jpg",SkyboxFt="rbxassetid://264909420",SkyboxBk="rbxassetid://264908339",SkyboxDn="rbxassetid://264907909",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://264909758",SkyboxRt="rbxassetid://264908886"},Art={StarCount=3000,MoonAngularSize=11,SkyboxUp="rbxassetid://9831769868",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://9831766232",SkyboxBk="rbxassetid://9831762777",SkyboxDn="rbxassetid://9831764283",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://9831768023",SkyboxRt="rbxassetid://9831768909"},Ame={StarCount=3000,MoonAngularSize=11,SkyboxUp="rbxassetid://160186148",MoonTextureId="rbxassetid://6444320592",SkyboxFt="rbxassetid://160186027",SkyboxBk="rbxassetid://160185927",SkyboxDn="rbxassetid://160185945",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://160186075",SkyboxRt="rbxassetid://160186126"},Dawn={StarCount=3000,MoonAngularSize=11,SkyboxUp="rbxassetid://250381047",SkyboxFt="rbxassetid://250380916",SkyboxBk="rbxassetid://250381017",SkyboxDn="rbxassetid://254156892",SunTextureId="rbxasset://sky/sun.jpg",SunAngularSize=21,SkyboxLf="rbxassetid://250380953",SkyboxRt="rbxassetid://250380985"}};end
 
 tbl17.gX = function()
@@ -71105,7 +71105,7 @@ end
 return gx.c
 end
 end
-do -- gY
+do 
 local function fn35()
 local v115 = tbl17.f()
 local v116 = tbl17.gX()
@@ -71329,7 +71329,7 @@ end
 return gy.c
 end
 end
-do -- gZ
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.a0()
@@ -71734,7 +71734,7 @@ end
 return gz.c
 end
 end
-do -- g_
+do 
 local function fn35()
 local Codec=tbl17.cK()
 local Reporter=tbl17.ad()
@@ -71790,7 +71790,7 @@ end
 return mg_.c
 end
 end
-do -- g0
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dr()
@@ -71901,7 +71901,7 @@ end
 return g0.c
 end
 end
-do -- g1
+do 
 local function fn35()
 return {}
 end
@@ -71917,7 +71917,7 @@ end
 return g1.c
 end
 end
-do -- g2
+do 
 local function fn35()
 tbl17.aG()
 local v115 = tbl17.bG()
@@ -72105,7 +72105,7 @@ end
 return g2.c
 end
 end
-do -- g4
+do 
 local function fn35()
 tbl17.g3()
 return { Groups = { "Items", "Arms" }, ConfigGroupMap = { Arms = "Arms", Items = "Item" } }
@@ -72123,7 +72123,7 @@ end
 return g4.c
 end
 end
-do -- g5
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -72218,7 +72218,7 @@ end
 return g5.c
 end
 end
-do -- g6
+do 
 local function fn35()
 local groups = tbl17.g4().Groups
 tbl17.cU()
@@ -72335,7 +72335,7 @@ end
 return g6.c
 end
 end
-do -- g7
+do 
 local function fn35()
 local v115 = tbl17.dC()
 local v116 = tbl17.bG()
@@ -72502,7 +72502,7 @@ end
 return g7.c
 end
 end
-do -- g8
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.a9()
@@ -72680,7 +72680,7 @@ end
 return g8.c
 end
 end
-do -- g9
+do 
 local function fn35()
 local v115 = tbl17.ay()
 local v116 = nil
@@ -73019,7 +73019,7 @@ end
 return g9.c
 end
 end
-do -- ha
+do 
 local function fn35()
 tbl17.aO()
 local v115 = tbl17.k()
@@ -73167,7 +73167,7 @@ end
 return ha.c
 end
 end
-do -- hb
+do 
 local function fn35()
 tbl17.cX()
 local v115 = tbl17.g7()
@@ -73206,7 +73206,7 @@ end
 return hb.c
 end
 end
-do -- hc
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.aO()
@@ -73313,7 +73313,7 @@ end
 return hc.c
 end
 end
-do -- hd
+do 
 local function fn35()
 local Store=tbl17.bG()
 local Binds=tbl17.c4()
@@ -73385,7 +73385,7 @@ end
 return mhd.c
 end
 end
-do -- he
+do 
 local function fn35()
 local tbl18 = {}
 local tbl19 = {}
@@ -73418,7 +73418,7 @@ end
 return he.c
 end
 end
-do -- hf
+do 
 local function fn35()
 local v115 = tbl17.he()
 local v116 = tbl17.e5()
@@ -73540,7 +73540,7 @@ end
 return hf.c
 end
 end
-do -- hg
+do 
 local function fn35()
 local v115 = tbl17.g()
 local v116 = tbl17.k()
@@ -73660,7 +73660,7 @@ end
 return hg.c
 end
 end
-do -- hh
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.hg()
@@ -73771,7 +73771,7 @@ end
 return hh.c
 end
 end
-do -- hi
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.gF()
@@ -73937,7 +73937,7 @@ end
 return hi.c
 end
 end
-do -- hj
+do 
 local function fn35()local l=Color3.fromRGB(214,230,255);return table.freeze({PartsPrecreate=480,PartsExpansion=32,DefaultPartCount=40,DefaultColor=l,DefaultThickness=4,DefaultPulseSpeed=40,DefaultHold=0.25,DefaultDissipate=0.55,FadeEdge=0.1,CleanupBuffer=0.05,DefaultMaxRadius=7,FlashBrightness=8,FlashRange=70,FlickerMin=2,FlickerMax=3,FlickerOnMin=0.02,FlickerOnMax=0.045,FlickerOffMin=0.02,FlickerOffMax=0.05,FlickerDim=0.15,FlickerMaxDuration=0.28500000000000003,ExplosionSize=0.45,SparkDistanceSpread=0.3,SparkSpeedSpread=0.5});end
 
 tbl17.hj = function()
@@ -73951,7 +73951,7 @@ end
 return hj.c
 end
 end
-do -- hk
+do 
 local function fn35()local l,I,W=CFrame.lookAt(Vector3.new(),Vector3.new(1,0,0)):Inverse(),0.1*math.tau,0.9*math.tau;return table.freeze({XInverse=l,OffsetAngle=6.123233995736766E-17,RollOffsetLow=I,RollOffsetHigh=W,FadeEdge=0.1});end
 
 tbl17.hk = function()
@@ -73965,7 +73965,7 @@ end
 return hk.c
 end
 end
-do -- hm
+do 
 local function fn35()
 return function(l,I,W,N,P)return I*(1-l)^3+W*3*l*(1-l)^2+N*3*(1-l)*l^2+P*l^3;end
 end
@@ -73981,7 +73981,7 @@ end
 return hm.c
 end
 end
-do -- hn
+do 
 local function fn35()
 return function(l,I,W,N,P,a,e)return math.clamp(N/(2*P)-math.abs((l-I*W+0.5*N)/P),a,e);end
 end
@@ -73997,7 +73997,7 @@ end
 return hn.c
 end
 end
-do -- ho
+do 
 local function fn35()
 return function(l)return math.exp(-5000*(l-0.5)^10);end
 end
@@ -74013,7 +74013,7 @@ end
 return ho.c
 end
 end
-do -- hp
+do 
 local function fn35()
 return function(l,I,W,N,P)return N+(P-N)*(math.noise(l,I,W)+0.5);end
 end
@@ -74030,7 +74030,7 @@ end
 return hp.c
 end
 end
-do -- hq
+do 
 local function fn35()
 local v115 = tbl17.hk()
 tbl17.hl()
@@ -74197,7 +74197,7 @@ end
 return hq.c
 end
 end
-do -- hr
+do 
 local function fn35()local l=Color3.fromRGB(210,228,255);return table.freeze({DefaultMinBranches=3,DefaultMaxBranches=4,DefaultColor=l,DefaultThickness=4,DefaultPulseSpeed=40,ThicknessFraction=0.55,BranchMaxRadius=5,TrunkFork={OriginMinPercent=0.1,OriginMaxPercent=0.6,Spread=0.8,LengthMinFraction=0.3,LengthMaxFraction=0.6,ScaleByRemaining=true},ChildFork={OriginMinPercent=0.25,OriginMaxPercent=0.8,Spread=0.85,LengthMinFraction=0.45,LengthMaxFraction=0.72,ScaleByRemaining=false},MaxGenerations=3,MaxTotalBranches=12,MaxChildren=2,ForkChanceByGeneration={0.7,0.45},ChildThicknessFalloff=0.62,ChildRadiusFalloff=0.7,PartsByGeneration={12,8,5}});end
 
 tbl17.hr = function()
@@ -74212,7 +74212,7 @@ end
 return hr.c
 end
 end
-do -- hs
+do 
 local function fn35()
 return function(arg)
 local v115 = arg:Cross(Vector3.yAxis)
@@ -74237,7 +74237,7 @@ end
 return hs.c
 end
 end
-do -- ht
+do 
 local function fn35()
 return function(arg, arg2)
 return arg + math.random() * (arg2 - arg)
@@ -74256,7 +74256,7 @@ end
 return ht.c
 end
 end
-do -- hu
+do 
 local function fn35()
 tbl17.a1()
 local v115 = tbl17.k()
@@ -74385,7 +74385,7 @@ end
 return hu.c
 end
 end
-do -- hv
+do 
 local function fn35()
 return function(arg, arg2, arg3)
 local unit = arg.Unit
@@ -74417,7 +74417,7 @@ end
 return hv.c
 end
 end
-do -- hw
+do 
 local function fn35()local l,I,W,N=NumberSequence.new({NumberSequenceKeypoint.new(0,10,0),NumberSequenceKeypoint.new(0.116564,0.210526,0.210526),NumberSequenceKeypoint.new(0.342025,9.526316,0.473684),NumberSequenceKeypoint.new(0.478528,0.842105,0.842105),NumberSequenceKeypoint.new(0.673313,9.789474,0),NumberSequenceKeypoint.new(0.792945,1.631579,1.631579),NumberSequenceKeypoint.new(1,10,0)}),NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(0.5,0.74375),NumberSequenceKeypoint.new(1,1)}),NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,0.3)}),Color3.fromRGB(77,77,255);return table.freeze({BrightspotTexture="rbxassetid://243098098",GlareTexture="rbxassetid://243660364",PlasmaTexture="rbxasset://textures/particles/sparkles_main.dds",BrightspotSize=l,GlareTransparency=I,PlasmaTransparency=W,GlareBaseSize=30,PlasmaBaseSize=18,PlasmaBaseSpeed=100,EmitterBurstTime=0.2,Duration=0.7,DefaultNumBolts=14,DefaultBoltColor=N,BoltPartCount=6,BoltInnerAngleMin=1.1344640137963142,BoltInnerAngleMax=1.3962634015954636,BoltOuterAngleMin=1.2217304763960306,BoltOuterAngleMax=1.9198621771937625,BoltDistanceMin=20,BoltDistanceMax=40,BoltDistanceScale=1.4,BoltMaxRadiusScale=4,BoltVelocityScale=0.1,BrightspotSaturation=0.5});end
 
 tbl17.hw = function()
@@ -74431,7 +74431,7 @@ end
 return hw.c
 end
 end
-do -- hx
+do 
 local function fn35()
 tbl17.a1()
 local v115 = tbl17.k()
@@ -74625,7 +74625,7 @@ end
 return hx.c
 end
 end
-do -- hy
+do 
 local function fn35()local l=Color3.fromRGB(238,246,255);return table.freeze({DefaultMaxSparks=18,DefaultMinSpeed=10,DefaultMaxSpeed=22,DefaultMinDistance=6,DefaultMaxDistance=22,DefaultMinParts=4,DefaultMaxParts=7,DefaultColor=l,DefaultThickness=2.2,DefaultMaxRadius=4,PulseLength=0.4});end
 
 tbl17.hy = function()
@@ -74639,7 +74639,7 @@ end
 return hy.c
 end
 end
-do -- hz
+do 
 local function fn35()
 tbl17.a1()
 local v115 = tbl17.k()
@@ -74735,7 +74735,7 @@ end
 return hz.c
 end
 end
-do -- hA
+do 
 local function fn35()
 local v115 = tbl17.dE()
 local v116 = cloneref(game:GetService("Workspace"))
@@ -74842,7 +74842,7 @@ end
 return ha.c
 end
 end
-do -- hC
+do 
 local function fn35()
 local v115 = tbl17.hj()
 local v116 = tbl17.hq()
@@ -75129,7 +75129,7 @@ end
 return hc.c
 end
 end
-do -- hD
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.k()
@@ -75233,7 +75233,7 @@ end
 return hd.c
 end
 end
-do -- hE
+do 
 local function fn35()
 local v115 = tbl17.gF()
 local v116 = tbl17.k()
@@ -75313,7 +75313,7 @@ end
 return he.c
 end
 end
-do -- hF
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.hE()
@@ -75440,7 +75440,7 @@ end
 return hf.c
 end
 end
-do -- hG
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.hg()
@@ -75586,7 +75586,7 @@ end
 return hg.c
 end
 end
-do -- hI
+do 
 local function fn35()
 local v115 = tbl17.e5()
 local v116 = tbl17.hH()
@@ -75925,7 +75925,7 @@ end
 return hi.c
 end
 end
-do -- hJ
+do 
 local function fn35() tbl17 .hF();return{{ClassName="BloomEffect",RootKey="Bloom",Properties={"Intensity","Size","Threshold"}},{ClassName="ColorCorrectionEffect",RootKey="ColorCorrection",Properties={"TintColor","Saturation","Brightness","Contrast"}},{ClassName="ColorGradingEffect",RootKey="ColorGrading",Properties={{Name="TonemapperPreset",Transform=function(l)return l=="Retro"and Enum.TonemapperPreset.Retro or Enum.TonemapperPreset.Default;end}}},{ClassName="DepthOfFieldEffect",RootKey="DepthOfField",Properties={"FarIntensity","FocusDistance","InFocusRadius","NearIntensity"}},{ClassName="SunRaysEffect",RootKey="SunRays",Properties={"Intensity","Spread"}}};end
 
 tbl17.hJ = function()
@@ -75939,7 +75939,7 @@ end
 return hj.c
 end
 end
-do -- hK
+do 
 local function fn35()
 local v115 = tbl17.hh()
 local v116 = tbl17.hi()
@@ -76000,7 +76000,7 @@ end
 return hk.c
 end
 end
-do -- hL
+do 
 local function fn35()
 tbl17.aO()
 tbl17.cw()
@@ -76050,7 +76050,7 @@ end
 return hl.c
 end
 end
-do -- hO
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddSection({Title="Anti Katana",Side="left"}):AddToggle({Label="Enabled",Config={"AntiKatana","Enabled"}});end;end
 
 tbl17.hO = function()
@@ -76064,7 +76064,7 @@ end
 return ho.c
 end
 end
-do -- hP
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .aT();return function(l)local W=l:AddSection({Title="Auto Weapon Ban",Side="right"});W:AddToggle({Label="Enabled",Config={"AutoBan","Enabled"}});W:AddMultiDropdown({Label="First Ban Choices",Options=I,Config={"AutoBan","FirstWeapons"}});W:AddMultiDropdown({Label="Second Ban Choices",Options=I,Config={"AutoBan","SecondWeapons"}});end;end
 
 tbl17.hP = function()
@@ -76078,7 +76078,7 @@ end
 return hp.c
 end
 end
-do -- hQ
+do 
 local function fn35()
 local tbl18 = {}
 
@@ -76100,7 +76100,7 @@ end
 return hq.c
 end
 end
-do -- hR
+do 
 local function fn35()local I,W= tbl17 .a6(), tbl17 .bG(); tbl17 .aE();local N,P,a,e= tbl17 .hQ(), tbl17 .aS().Constants, tbl17 .aS().ItemLibrary,{{Name="Primary",Class="Primary"},{Name="Secondary",Class="Secondary"},{Name="Melee",Class="Melee"},{Name="Utility",Class="Utility"}};local function l(c)local E={};for p,T in a.Items,nil,nil do if p=="MISSING_WEAPON"then continue;end;local a=E[T.Class];if a==nil then a=c and{"Unselected"}or{};E[T.Class]=a;end;table.insert(a,p);end;for a,a in E,nil,nil do table.sort(a);end;return E;end;local a={"1","2","3"};local function c()return I({"Default"},N);end;local function I(N,E)return{"AutoLoadout","Loadouts",N,E};end;return function(N)local E,p=N:AddSection({Title="Setup",Side="left"}),N:AddSection({Title="Slot Editor",Side="right"});local N,T=E:AddToggle({Label="Enabled",Config={"AutoLoadout","Enabled"}}),E:AddToggle({Label="Use Map-Specific Loadouts",Config={"AutoLoadout","PerMap"}});local t,x=E:AddGroup({Source=T}):AddDropdown({Label="Map",Options=c()}),E:AddToggle({Label="Use Fallback Loadouts",Config={"AutoLoadout","MultipleLoadouts"}});local c,S,J,B,X=E:AddGroup({Source=x}):AddDropdown({Label="Loadout Priority (1 highest)",Options=a}),l(false),l(true),P.DEFAULT_WEAPONS,{};for l,P in e,nil,nil do X[l]=p:AddDropdown({Label=P.Name,Options=S[P.Class]});end;local function l()local P=t.Value;return T.Value and type(P)=="string"and P or"Default";end;local function P()local a=c.Value;return x.Value and type(a)=="string"and a or"1";end;local a=false;local function E()if a then return;end;local p={};for H,k in X,nil,nil do p[H]=k.Value;end;W:Set(I(l(),P()),p);end;local function p(H,k)local D,Q=S[e[H].Class],k and k[H];if Q and(table.find(D,Q))then return Q;end;if l()=="Default"and P()=="1"then return B[H];end;return"Unselected";end;local function B()a=true;local H=W:Get(I(l(),P()),true);for I,k in X,nil,nil do local D=e[I].Class;k:SetOptions(l()=="Default"and P()=="1"and S[D]or J[D]);k:Set(p(I,H),true);end;a=false;end;N:OnChanged(function()if next((W:Get({"AutoLoadout","Loadouts"},true)))then return;end;E();end);T:OnChanged(B);t:OnChanged(B);x:OnChanged(B);c:OnChanged(B);for l,l in X,nil,nil do l:OnChanged(E);end;N:Connect(W:GetPropertyChangedSignal({"AutoLoadout","Loadouts"}),B);B();end;end
 
 tbl17.hR = function()
@@ -76115,7 +76115,7 @@ end
 return hr.c
 end
 end
-do -- hS
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Auto Pickup",Side="left"});I:AddToggle({Label="Enabled",Config={"AutoPickupDrops","Enabled"}});I:AddMultiDropdown({Label="Pickup Types",Options={"Ammo","Health"},Config={"AutoPickupDrops","Types"}});end;end
 
 tbl17.hS = function()
@@ -76129,7 +76129,7 @@ end
 return hs.c
 end
 end
-do -- hT
+do 
 local function fn35()
 local serverOsTime = tbl17.aS().ServerOsTime
 local duelLibrary = tbl17.aS().DuelLibrary
@@ -76169,7 +76169,7 @@ end
 return ht.c
 end
 end
-do -- hU
+do 
 local function fn35()local I= tbl17 .hT(); tbl17 .aE();return function(l)local W=l:AddSection({Title="Auto Queue",Side="left"});W:AddToggle({Label="Enabled",Config={"AutoQueue","Enabled"}});W:AddDropdown({Label="Queue",Options=I,Config={"AutoQueue","Queue"}});end;end
 
 tbl17.hU = function()
@@ -76183,7 +76183,7 @@ end
 return hu.c
 end
 end
-do -- hV
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddSection({Title="Auto Respawn",Side="right"}):AddToggle({Label="Enabled",Config={"AutoRespawn","Enabled"}});end;end
 
 tbl17.hV = function()
@@ -76197,7 +76197,7 @@ end
 return hv.c
 end
 end
-do -- hW
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .hQ();return function(l)local W=l:AddSection({Title="Auto Map Vote",Side="left"});W:AddToggle({Label="Enabled",Config={"AutoVote","Enabled"}});W:AddMultiDropdown({Label="Maps to Vote For",Options=I,Config={"AutoVote","Maps"},Search=true});end;end
 
 tbl17.hW = function()
@@ -76212,7 +76212,7 @@ end
 return hw.c
 end
 end
-do -- hX
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Hacker Detector",Side="left"});I:AddToggle({Label="Enabled",Config={"HackerDetector","Enabled"}});I:AddToggle({Label="Notify",Config={"HackerDetector","Notify"}});I:AddColor({Row=I:AddLabel({Label="Text Color"}).Row,Config={"HackerDetector","Color"},Animatable=true});end;end
 
 tbl17.hX = function()
@@ -76226,7 +76226,7 @@ end
 return hx.c
 end
 end
-do -- hY
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Moderator Detector",Side="right"});I:AddToggle({Label="Enabled",Config={"ModDetector","Enabled"}});I:AddMultiDropdown({Label="Moderator Responses",Options={"Notify","Kick","ToLobby"},Config={"ModDetector","Moderators"}});I:AddMultiDropdown({Label="Mod Friends",Options={"Notify","Kick","ToLobby"},Config={"ModDetector","ModFriends"}});I:AddColor({Row=I:AddLabel({Label="Text Color"}).Row,Config={"ModDetector","Color"},Animatable=true});end;end
 
 tbl17.hY = function()
@@ -76241,7 +76241,7 @@ end
 return hy.c
 end
 end
-do -- hZ
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Subspace Tripmines",Side="right"});I:AddToggle({Label="Auto Trigger",Config={"SubspaceTripmines","AutoTrigger"}});I:AddToggle({Label="Team Trigger",Config={"SubspaceTripmines","TeamTrigger"}});end;end
 
 tbl17.hZ = function()
@@ -76255,7 +76255,7 @@ end
 return hz.c
 end
 end
-do -- h_
+do 
 local function fn35() tbl17 .aE(); tbl17 .hN();local I,W,N,P,a,e,c,T,t= tbl17 .hO(), tbl17 .hP(), tbl17 .hR(), tbl17 .hS(), tbl17 .hU(), tbl17 .hV(), tbl17 .hW(), tbl17 .hZ(),{Automation="rbxassetid://70979486241131",Match="rbxassetid://99293705721130"};return function(l,x)l=x:AddTab({Label="Automation",Icon=t.Automation,Description="Match flow, loadouts, and in-match automation."});x=l:AddTab({Label="Match Flow",Icon=t.Match,Description="Automate queueing, voting, bans, and respawns."}):Grid({Columns=2});a(x);c(x);W(x);e(x);N((l:AddTab({Label="Auto Loadout",Icon=t.Automation,Description="Configure map-specific and fallback loadouts."}):Grid({Columns=2})));x=l:AddTab({Label="In-Match Automation",Icon=t.Match,Description="Automate pickups, counters, and tripmines."}):Grid({Columns=2});P(x);T(x);end;end
 
 tbl17.h_ = function()
@@ -76269,7 +76269,7 @@ end
 return h.c
 end
 end
--- The page builders share the original stores and binders. No parallel config tree.
+
 local absenseLayout = {}
 
 function absenseLayout.Movement(grid)
@@ -76492,8 +76492,8 @@ function absenseLayout.Visuals(context,menu)
         end
     end
     inspect:OnChanged(function()for _,group in ipairs(styleGroups)do group._applyGroup()end end)
-    -- Kicia UI has no access to the legacy Absense drawing engine; keep a small,
-    -- native preview indicator and preserve the selected Enemy/Team scope.
+    
+    
     local preview=grid:AddSection({Title="ESP preview",Side="right"})
     local sample=preview:AddLabel({Label="ENEMY  •  Player  •  70 HP  •  25 m",TextSize=14})
     local function refreshPreview()
@@ -76687,10 +76687,10 @@ function absenseLayout.Cosmetics(context,menu)
 end
 
 
-do -- h0
+do 
 local function fn35()
--- Hitbox choices follow the gun being edited, including when it differs
--- from the held weapon. Global editing retains the native class context.
+
+
 return function(profiles,rows)
     if not rows or not rows[1] then return end
     local types=tbl17.aH()
@@ -76720,7 +76720,7 @@ end
 return mh0.c
 end
 end
-do -- h1
+do 
 local function fn35() tbl17 .aE();return function(l,I)local function W(...)return{I,"Fov",...};end;l:AddColor({Row=l:AddToggle({Label="Show Targeting Circle",Config=W("Circle","Visible")}).Row,Gradient="editable",Alpha=true,Config=W("Circle","Stroke","Gradient"),Transparency=W("Circle","Stroke","Transparency")});l:AddSlider({Label="Radius (px)",Min=1,Max=600,Config=W("Radius")});l:AddSlider({Label="Thickness",Min=0,Max=25,Config=W("Circle","Stroke","Thickness")});end;end
 
 tbl17.h1 = function()
@@ -76734,7 +76734,7 @@ end
 return h1.c
 end
 end
-do -- h2
+do 
 local function fn35()
     tbl17.aF()
     tbl17.aE()
@@ -76771,7 +76771,7 @@ end
 return h2.c
 end
 end
-do -- h3
+do 
 local function fn35()
 return function(arg)
 local tbl18 = {}
@@ -76796,7 +76796,7 @@ end
 return h3.c
 end
 end
-do -- h4
+do 
 local function fn35()
     local copy,hitboxes,ordered,defaults=tbl17.dX(),tbl17.h2(),tbl17.h3(),tbl17.a7()
     return function(section,feature,conditions,hitboxSpec,selection)
@@ -76829,7 +76829,7 @@ end
 return h4.c
 end
 end
-do -- h5
+do 
 local function fn35() tbl17 .aF(); tbl17 .aE();local I,W= tbl17 .h1(), tbl17 .h4();return function(l,N,P)local a,e=l:AddSection({Title="Targeting",Side="left"}),l:AddSection({Title="Targeting FOV",Side="right"});l=W(a,N,P.TargetConditions,P.TargetHitboxes,P.RandomHitboxPercentages);I(e,N);return l;end;end
 
 tbl17.h5 = function()
@@ -76843,7 +76843,7 @@ end
 return h5.c
 end
 end
-do -- h6
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .a6();return function(l,W,N,P,a,e)local c,E=if e==nil then if W=="Enabled"then(P[#P]:gsub("(%l)(%u)","%1 %2"))else W else e,l:AddToggle({Label=W,Config=I(P,{"Enabled"})});local W=l:AddKeybind({Row=E.Row,Modes=N,InKeybindList=a,ListLabel=c,ConfigMap={Key=I(P,{"Keybind","Bind"}),Mode=I(P,{"Keybind","Kind"}),Active=I(P,{"Keybind","State"}),ShowInList=I(P,{"Keybind","ShowInList"}),Invisible=I(P,{"Keybind","Invisible"})}});W:SetFeatureEnabled(E.Value);E:Connect(E.ValueChanged,function(l)W:SetFeatureEnabled(l);end);return E,W;end;end
 
 tbl17.h6 = function()
@@ -76858,7 +76858,7 @@ end
 return h6.c
 end
 end
-do -- h7
+do 
 local function fn35()
 tbl17.aF()
 tbl17.aE()
@@ -76897,7 +76897,7 @@ end
 return mh7.c
 end
 end
-do -- h8
+do 
 local function fn35()local I= tbl17 .aB(); tbl17 .gv(); tbl17 .aE();return function(l,W)return function()l:Dialog({Title="Manage Sounds",Description="Add or remove custom sounds."},function(l)local N,P;l:AddPage({Title="Add a Sound",Description="Enter a name and sound source.",Glyph="+",ActionText="Add Sound",OnAction=function()local a,e=N,P;local c=W:AddCustom(a.Value,e.Value);if not c.Ok then I.get():Notify(c.Error.Detail);return false;end;a:Set("",true);e:Set("",true);return true;end},function(a)N=a:AddTextBox({Label="Name"});P=a:AddTextBox({Label="Sound Source",Placeholder="Id / File name / Url"});end);local N,P;P=l:AddPage({Title="Remove a Sound",Description="Select a sound to remove.",Glyph="\226\136\146",ActionText="Remove Sound",Variant="danger",ActionEnabled=false,Confirmation={Title="Remove selected sound?",Description=function()local l=N.Value;if l==nil then return"The selected sound will be permanently removed.";end;return string.format("\"%s\" will be permanently removed.",tostring(l));end,ActionText="Confirm"},OnOpen=function()local l=N;l:SetOptions(W:GetNames());P:SetActionEnabled(l.Value~=nil);end,OnAction=function()local l=N.Value;if l==nil then return false;end;local a=W:RemoveCustom(l);if not a.Ok then I.get():Notify(a.Error.Detail);return false;end;return true;end},function(l)local I=l:AddList({Label="Sound",Options=W:GetNames(),Height=150,Search=true,SelectFirst=false});N=I;I:Connect(I.ValueChanged,function(l)P:SetActionEnabled(l~=nil);end);I:Connect(W.Changed,function(l)I:SetOptions(l);end);end);end);end;end;end
 
 tbl17.h8 = function()
@@ -76912,7 +76912,7 @@ end
 return h8.c
 end
 end
-do -- h9
+do 
 local function fn35() tbl17 .aF(); tbl17 .aE();local I,W,N,P,a= tbl17 .dX(), tbl17 .h5(), tbl17 .h6(), tbl17 .h3(), tbl17 .a7();local function l(e,c)N(e,"Enable Silent Aim",{"Always","Toggle","Hold"},{"SilentAim"},true);e:AddSlider({Label="Activation Chance (%)",Min=0,Max=100,Config={"SilentAim","ActivationChance"}});local N=c.ExpandActivationSection;if N~=nil then N(e);end;N=c.ActivationConditions;local c,E=N.Options,N.Labels;e:AddMultiDropdown({Label="Activation Rules",Options=P(c),Default=I(a(c)),Config={"SilentAim","ActivationConditions"},Labels=E});e:AddSlider({Label="Reaction Delay (s)",Min=0,Max=2,Step=0.01,Config={"SilentAim","ReactionTime"}});end;return function(I,N)local P=I:AddSection({Title="Activation",Side="left"});if N.PinHint~=nil then P:AddLabel({Label=N.PinHint});end;l(P,N);return W(I,"SilentAim",N);end;end
 
 tbl17.h9 = function()
@@ -76926,7 +76926,7 @@ end
 return h9.c
 end
 end
-do -- ia
+do 
 local function fn35() tbl17 .aF(); tbl17 .aE();local I,W,N,P,a= tbl17 .dX(), tbl17 .h2(), tbl17 .h6(), tbl17 .h3(), tbl17 .a7();return function(l,e)local c,E=e.ActivationConditions,e.TargetConditions;local p,T,t,x,S=c.Options,c.Labels,E.Options,E.Labels,l:AddSection({Title="Triggerbot",Side="left"});if e.PinHint~=nil then S:AddLabel({Label=e.PinHint});end;N(S,"Enable Triggerbot",{"Always","Toggle","Hold"},{"Triggerbot"},true);S:AddToggle({Label="Use Silent Aim FOV",Config={"Triggerbot","UseSilentFOV"}});S:AddMultiDropdown({Label="Activation Rules",Options=P(p),Default=I(a(p)),Labels=T,Config={"Triggerbot","ActivationConditions"}});S:AddMultiDropdown({Label="Target Filters",Options=P(t),Default=I(a(t)),Labels=x,Config={"Triggerbot","TargetConditions"}});S:AddSlider({Label="Reaction Delay (s)",Min=0,Max=2,Step=0.01,Config={"Triggerbot","ReactionTime"}});S:AddSlider({Label="Release Delay (s)",Min=0,Max=2,Step=0.01,Config={"Triggerbot","ReleaseTime"}});return(W(S,"Triggerbot",e.TargetHitboxes));end;end
 
 tbl17.ia = function()
@@ -76941,7 +76941,7 @@ end
 return ia.c
 end
 end
-do -- ib
+do 
 local function fn35()local I= tbl17 .a8(); tbl17 .aE(); tbl17 .hN();return function(l,W,N)local P=W:AddSection({Title="Elimination Feedback",Side="right"});P:AddToggle({Label="Enable Elimination Feedback",Config={"PlayerElimination","Enabled"}});P:AddDivider({Label="Sound"});W=P:AddGroup({Source=P:AddToggle({Label="Play Elimination Sound",Config={"PlayerElimination","Sound","Enabled"}})});local a=W:AddDropdown({Label="Elimination Sound",Options=l.SfxSoundStorage:GetNames(),Config={"PlayerElimination","Sound","Name"}});a:Connect(l.SfxSoundStorage.Changed,function(e)a:SetOptions(e);end);W:AddSlider({Label="Elimination Volume",Min=0.1,Max=10,Step=0.1,Config={"PlayerElimination","Sound","Volume"}});W:AddSlider({Label="Elimination Pitch",Min=0.1,Max=3,Step=0.1,Config={"PlayerElimination","Sound","Pitch"}});W:AddButton({Label="Manage Custom Sounds",OnClick=N});P:AddDivider({Label="Visual Chams"});l=P:AddToggle({Label="Enable Elimination Chams",Config={"PlayerElimination","Chams","Enabled"}});P:AddColor({Row=l.Row,Alpha=true,Config={"PlayerElimination","Chams","Color"},Transparency={"PlayerElimination","Chams","Transparency"},Animatable=true});W=P:AddGroup({Source=l});W:AddSlider({Label="Elimination Chams Duration",Min=0.1,Max=3,Step=0.1,Config={"PlayerElimination","Chams","Duration"}});W:AddDropdown({Label="Elimination Chams Material",Options=I.Names,Config={"PlayerElimination","Chams","Material"}});P:AddDivider({Label="Flash"});l=P:AddToggle({Label="Enable Elimination Flash",Config={"PlayerElimination","KillFlash","Enabled"}});P:AddColor({Row=l.Row,Config={"PlayerElimination","KillFlash","Color"},Animatable=true});P:AddGroup({Source=l}):AddSlider({Label="Elimination Flash Duration",Min=0.1,Max=3,Step=0.1,Config={"PlayerElimination","KillFlash","Duration"}});P:AddDivider({Label="Notification"});P:AddGroup({Source=P:AddToggle({Label="Enable Elimination Notification",Config={"PlayerElimination","Notification","Enabled"}})}):AddTextBox({Label="Elimination Notification Text",Config={"PlayerElimination","Notification","Text"}});end;end
 
 tbl17.ib = function()
@@ -76956,7 +76956,7 @@ end
 return ib.c
 end
 end
-do -- ic
+do 
 local function fn35()local I= tbl17 .a8(); tbl17 .aE(); tbl17 .hN();return function(l,W,N)local P=W:AddSection({Title="Hit Feedback",Side="left"});P:AddToggle({Label="Enable Hit Feedback",Config={"PlayerHit","Enabled"}});P:AddDivider({Label="Sound"});local a,e=P:AddGroup({Source=P:AddToggle({Label="Play Hit Sound",Config={"PlayerHit","Sound","Enabled"}})}),l.SfxSoundStorage:GetNames();local c=a:AddDropdown({Label="Headshot Sound",Options=e,Config={"PlayerHit","Sound","HeadName"}});c:Connect(l.SfxSoundStorage.Changed,function(E)c:SetOptions(E);end);a:AddSlider({Label="Headshot Volume",Min=0.1,Max=10,Step=0.1,Config={"PlayerHit","Sound","HeadVolume"}});a:AddSlider({Label="Headshot Pitch",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","Sound","HeadPitch"}});local c=a:AddDropdown({Label="Body Hit Sound",Options=e,Config={"PlayerHit","Sound","BodyName"}});c:Connect(l.SfxSoundStorage.Changed,function(e)c:SetOptions(e);end);a:AddSlider({Label="Body Hit Volume",Min=0.1,Max=10,Step=0.1,Config={"PlayerHit","Sound","BodyVolume"}});a:AddSlider({Label="Body Hit Pitch",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","Sound","BodyPitch"}});a:AddToggle({Label="Mute Game Hit Sound",Config={"PlayerHit","Sound","DisableGameSound"}});a:AddButton({Label="Manage Custom Sounds",OnClick=N});P:AddDivider({Label="Visual Chams"});l=P:AddToggle({Label="Enable Hit Chams",Config={"PlayerHit","Chams","Enabled"}});P:AddColor({Row=l.Row,Alpha=true,Config={"PlayerHit","Chams","Color"},Transparency={"PlayerHit","Chams","Transparency"},Animatable=true});N=P:AddGroup({Source=l});N:AddSlider({Label="Hit Chams Duration",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","Chams","Duration"}});N:AddDropdown({Label="Hit Chams Material",Options=I.Names,Config={"PlayerHit","Chams","Material"}});P:AddDivider({Label="Flash"});W=P:AddToggle({Label="Enable Hit Flash",Config={"PlayerHit","HitFlash","Enabled"}});P:AddColor({Row=W.Row,Config={"PlayerHit","HitFlash","Color"},Animatable=true});P:AddGroup({Source=W}):AddSlider({Label="Hit Flash Duration",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","HitFlash","Duration"}});P:AddDivider({Label="Notification"});P:AddGroup({Source=P:AddToggle({Label="Enable Hit Notification",Config={"PlayerHit","Notification","Enabled"}})}):AddTextBox({Label="Hit Notification Text",Config={"PlayerHit","Notification","Text"}});end;end
 
 tbl17.ic = function()
@@ -76971,7 +76971,7 @@ end
 return ic.c
 end
 end
-do -- id
+do 
 local function fn35() return absenseLayout.Weapon end
 
 tbl17.id = function()
@@ -76986,7 +76986,7 @@ end
 return id.c
 end
 end
-do -- ie
+do 
 local function fn35()local I= tbl17 .gR(); tbl17 .aE();local W= tbl17 .h6();local function l(N)W(N,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);if not I.IsArcadeServer then N:AddToggle({Label="Utilize Health Lead",Config={"Ragebot","UtilizeHealthLead"}});end;end;return function(I)l(I:AddSection({Title="Activation",Side="left"}));local l,W=I:AddSection({Title="Weapon Strategy",Side="left"}),{"Primary","Secondary","Melee"};for I,I in W,nil,nil do l:AddToggle({Label=string.format("%s Enabled",tostring(I)),Config={"Ragebot","Weapons","Enabled",I}});end;end;end
 
 tbl17.ie = function()
@@ -77000,7 +77000,7 @@ end
 return ie.c
 end
 end
-do -- ih
+do 
 local function fn35() return absenseLayout.Attack end
 
 tbl17.ih = function()
@@ -77014,7 +77014,7 @@ end
 return mih.c
 end
 end
-do -- ii
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .h6();return function(l,W)local N=l:AddSection({Title="Flickbot",Side="right"});I(N,"Enable Flickbot",{"Hold","Toggle"},{"Flickbot"},true);N:AddGroup({Source=N:AddToggle({Label="Shoot",Config={"Flickbot","Shoot"}})}):AddSlider({Label="Shot Delay (ms)",Min=0,Max=250,Config={"Flickbot","ShotDelay"}});N:AddSlider({Label="Cooldown (ms)",Min=0,Max=2000,Config={"Flickbot","Cooldown"}});N:AddSlider({Label="Flick Duration (ms)",Min=30,Max=400,Config={"Flickbot","FlickDuration"}});N:AddSlider({Label="Curvature",Min=0,Max=50,Config={"Flickbot","Curvature"}});N:AddSlider({Label="Humanness",Min=0,Max=100,Config={"Flickbot","Humanness"}});N:AddButton({Label="Open Aimbot Targeting",OnClick=W});end;end
 
 tbl17.ii = function()
@@ -77028,7 +77028,7 @@ end
 return ii.c
 end
 end
-do -- ij
+do 
 local function fn35() return absenseLayout.Combat end
 
 tbl17.ij = function()
@@ -77042,7 +77042,7 @@ end
 return ij.c
 end
 end
-do -- ik
+do 
 local function fn35()
 return function(l,I)if I==""then return 0;end;local W,N=l:lower(),I:lower();l=W:find(N,1,true);if l then return-1000+l;end;local l,I,P,a,e,c=#W,#N,1,1,0,0;while P<=l and a<=I do if W:byte(P)==N:byte(a)then a,e,c=a+1,P,if e~=0 then c+(P-e-1)else c;end;P+=1;end;if a>I then return c;end;return nil;end
 end
@@ -77059,7 +77059,7 @@ end
 return ik.c
 end
 end
-do -- il
+do 
 local function fn35()
 tbl17.dW()
 local v115 = tbl17.d7()
@@ -77735,7 +77735,7 @@ end
 return il.c
 end
 end
-do -- im
+do 
 local function fn35() tbl17 .aL(); tbl17 .aE(); tbl17 .hN();local I,W= tbl17 .e1(), tbl17 .dY();return function(l,N,P)local a,e,c=N:AddSection({Title="Cosmetic Runtime",Side="left"}),N:AddSection({Title="Unlock All",Side="left"}),N:AddSection({Title="Community",Side="right"});local E,p,T=a:AddToggle({Label="Enable Cosmetic Changes",OnChanged=function(t)l.CosmeticsConfig:SetRuntimeEnabled(t);P();end}),a:AddLabel({Label="Cosmetic features are paused until cosmetic changes are enabled.",TextColor=Color3.fromRGB(255,190,90)}),a:AddToggle({Label="Use Custom Loadout",Tooltip="Applies the choices from the Skins, Wraps, Charms, and Finishers catalogs.",OnChanged=function(t)l.Cosmetics:SetSkinChangerEnabled(t);P();end});a:AddButton({Label="Reroll Random Cosmetics",OnClick=function()l.Cosmetics:RerollAll();end});local a,t,x=e:AddToggle({Label="Unlock All Cosmetics",OnChanged=function(S)l.Cosmetics:SetUnlockerEnabled(S);end}),e:AddMultiDropdown({Label="Cosmetic Types to Unlock",Options=W.All,Search=true,OnChanged=function(W)l.CosmeticsConfig:SetUnlockedTypes(W);end}),e:AddMultiDropdown({Label="Cosmetic Rarities to Unlock",Options=I,Search=true,Default={Legendary=true,Mythical=true,Unobtainable=true},OnChanged=function(I)l.CosmeticsConfig:SetUnlockedRarities(I);end});c:AddToggle({Label="Share Skins",Config={"UserServer","ShareSkins"}});c:AddToggle({Label="Show Active Cosmetics",Config={"UserServer","ShowActive"}});local function I(W)E:Set(W.RuntimeEnabled,true);T:Set(W.SkinChangerEnabled,true);a:Set(W.UnlockerEnabled,true);p:SetVisible(not W.RuntimeEnabled);t:Set(W.Types,true);x:Set(W.Rarities,true);P();end;E:OnChanged(function(W)p:SetVisible(not W);end);E:Connect(l.CosmeticsConfig.StateConfigLoaded,I);N=l.CosmeticsConfig:GetStateConfigState();I(N);l.CosmeticsConfig:SetUnlockedTypes(N.Types);l.CosmeticsConfig:SetUnlockedRarities(N.Rarities);end;end
 
 tbl17.im = function()
@@ -77749,7 +77749,7 @@ end
 return im.c
 end
 end
-do -- io
+do 
 local function fn35()local I= tbl17 .aE(); tbl17 .hN();local function l(W,N)if W.Ok then return false;end;I.Notifications.get():Notify({{Text=N.." failed: "},{Text=tostring(W.Error.Detail)}});return true;end;return function(W,N)local P,a,e,c=N:AddSection({Title="Library",Side="left"}),N:AddSection({Title="Transfer",Side="right"}),N:AddSection({Title="Automation",Side="right"}),W.CosmeticsConfig;local W,N,E,p=P:AddTextBox({Label="Cosmetic Preset Name"}),P:AddButton({Label="Create Cosmetic Preset"}),P:AddLabel({Label="No Cosmetic Presets yet. Enter a name to create one.",TextColor=Color3.fromRGB(255,190,90)}),P:AddList({Label="Cosmetic Preset Library",Height=140,Search=true,SelectFirst=false,OnChanged=function(T)c:SetPresetName(T);end});P:AddButton({Label="Load Selected Cosmetic Preset",Confirm=true,OnClick=function()l(c:LoadStateConfig(),"Loading cosmetic preset");end});P:AddButton({Label="Save to Selected Cosmetic Preset",Confirm=true,OnClick=function()l(c:SaveStateConfig(),"Saving cosmetic preset");end});a:AddButton({Label="Export to Clipboard",OnClick=function()local T=c:ExportStateToJson();if T.Ok then setclipboard(T.Value);I.Notifications.get():Notify("Copied your current cosmetics to the clipboard");else l(T,"Exporting cosmetics");end;end});local I=a:AddTextBox({Label="Import (paste cosmetics)",FocusLostOnly=true});a:AddButton({Label="Import Cosmetics",Confirm=true,OnClick=function()local a=I.Value;if a~=""then l(c:LoadStateFromJson(a),"Importing cosmetics");end;end});local function I()return c:GetAllStateConfigs();end;local function a(T,t)return e:AddDropdown({Label=T,Options=I(),GetOptions=I,Search=true,CloseOnSelect=true,OnChanged=function(T)t(T);end});end;local T,t,x,S=e:AddToggle({Label="Auto Load Cosmetic Preset",OnChanged=function(J)c:SetAutoLoadEnabled(J);end}),a("Cosmetic Preset to Auto Load",function(J)c:SetAutoLoadPresetName(J);end),e:AddToggle({Label="Auto Save Cosmetic Preset",OnChanged=function(e)c:SetAutoSaveEnabled(e);end}),a("Cosmetic Preset to Auto Save",function(a)c:SetAutoSavePresetName(a);end);local function a()local e,J=c:GetState(),I();p:SetOptions(J);p:Set(e.PresetName,true);E:SetVisible(#J==0);T:Set(e.AutoLoad,true);t:Set(e.AutoLoadPresetName,true);x:Set(e.AutoSave,true);S:Set(e.AutoSavePresetName,true);end;P:AddButton({Label="Delete Selected Cosmetic Preset",Confirm=true,OnClick=function()l(c:DeleteCurrentPreset(),"Deleting cosmetic preset");a();end});N:OnClick(function()local I=W.Value:gsub("%s+","");if#I==0 then return;end;l(c:CreateDefaultPreset(I),"Creating cosmetic preset");a();end);a();end;end
 
 tbl17.io = function()
@@ -77764,7 +77764,7 @@ end
 return io.c
 end
 end
-do -- ip
+do 
 local function fn35() return absenseLayout.Cosmetics end
 
 tbl17.ip = function()
@@ -77778,7 +77778,7 @@ end
 return ip.c
 end
 end
-do -- iq
+do 
 local function fn35()local I= tbl17 .dj(); tbl17 .aE();return function(l)local W=l:AddSection({Title="Animation Player",Side="left"});W:AddToggle({Label="Enable Animation Player",Config={"AnimationPlayer","Enabled"}});W:AddDropdown({Label="Animation",Options=I.Names,Config={"AnimationPlayer","Animation"}});W:AddTextBox({Label="Custom Animation ID",Config={"AnimationPlayer","CustomId"}});W:AddSlider({Label="Speed",Min=0,Max=5,Step=0.01,Config={"AnimationPlayer","Speed"}});W:AddSlider({Label="Start",Min=0,Max=100,Config={"AnimationPlayer","Start"}});W:AddSlider({Label="End",Min=0,Max=100,Config={"AnimationPlayer","End"}});end;end
 
 tbl17.iq = function()
@@ -77792,7 +77792,7 @@ end
 return iq.c
 end
 end
-do -- ir
+do 
 local function fn35()local I= tbl17 .a8(); tbl17 .aE();return function(l)local W=l:AddSection({Title="Character Appearance",Side="right"});l=W:AddToggle({Label="Enable Character Chams",Config={"Chams","Character","Enabled"}});W:AddColor({Row=l.Row,Alpha=true,Config={"Chams","Character","Color"},Transparency={"Chams","Character","Transparency"},Animatable=true});local N=W:AddGroup({Source=l});N:AddDropdown({Label="Character Chams Material",Options=I.List,Config={"Chams","Character","Material"}});N:AddToggle({Label="Strip Character Chams Textures",Config={"Chams","Character","StripTextures"}});end;end
 
 tbl17.ir = function()
@@ -77807,7 +77807,7 @@ end
 return ir.c
 end
 end
-do -- is
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .a2();local W= tbl17 .a7()(I);return function(l)local I=l:AddSection({Title="Device Spoof",Side="left"});I:AddToggle({Label="Enable Device Spoof",Config={"DeviceSpoof","Enabled"}});I:AddDropdown({Label="Presented Platform",Options=W,Config={"DeviceSpoof","SpoofType"}});end;end
 
 tbl17.is = function()
@@ -77821,7 +77821,7 @@ end
 return is.c
 end
 end
-do -- it
+do 
 local function fn35() return absenseLayout.Movement end
 
 tbl17.it = function()
@@ -77835,7 +77835,7 @@ end
 return it.c
 end
 end
-do -- iu
+do 
 local function fn35() tbl17 .hM(); tbl17 .aE();local function l(I,W,N,P,a)local e=I:AddKeybind({Label=N,Modes={"Toggle"},Default={Key="None",Mode="Toggle"},InKeybindList=true,ListLabel=P,ConfigMap={Key={"Movement","MovementRecorder",a,"Keybind","Bind"},Mode={"Movement","MovementRecorder",a,"Keybind","Kind"},Active={"Movement","MovementRecorder",a,"Keybind","State"},ShowInList={"Movement","MovementRecorder",a,"Keybind","ShowInList"},Invisible={"Movement","MovementRecorder",a,"Keybind","Invisible"}}});e:SetFeatureEnabled(W.Value==true);W:Connect(W.ValueChanged,function(I)e:SetFeatureEnabled(I==true);end);end;return function(I,W)local N,P,a,e,c,E=W:AddSection({Title="Recorder",Side="left"}),W:AddSection({Title="Markers",Side="left"}),W:AddSection({Title="Record / Replay",Side="left"}),W:AddSection({Title="Playback Alignment",Side="right"}),W:AddSection({Title="Save Recording",Side="right"}),W:AddSection({Title="Recording Library",Side="right"});W=N:AddToggle({Label="Enable Movement Recorder",Config={"Movement","MovementRecorder","Enabled"}});N:AddToggle({Label="Hide Recorder UI",Config={"Movement","MovementRecorder","HideUI"}});N:AddToggle({Label="Hide Recorder Notifications",Config={"Movement","MovementRecorder","HideNotifications"}});P:AddSlider({Label="Open Distance",Min=1,Max=25,Step=0.5,Config={"Movement","MovementRecorder","OpenDistance"}});P:AddSlider({Label="Render Distance",Min=10,Max=250,Config={"Movement","MovementRecorder","RenderDistance"}});l(a,W,"Record","Record","Record");l(a,W,"Replay","Replay","Replay");e:AddSlider({Label="Look Align Speed",Tooltip="How fast the camera turns to the recording's starting look angle",Min=45,Max=720,Step=5,Config={"Movement","MovementRecorder","LookAlignSpeed"}});e:AddSlider({Label="Look Smoothness",Tooltip="How smoothened camera look is",Min=0,Max=100,Config={"Movement","MovementRecorder","LookSmoothing"}});e:AddSlider({Label="Align Snap Distance",Tooltip="Once this close to the start, position is considered aligned",Min=0.1,Max=5,Step=0.1,Config={"Movement","MovementRecorder","AlignSnapDistance"}});local l=c:AddTextBox({Label="Recording Name",Placeholder="my recording"});c:AddButton({Label="Save or Overwrite Recording",Confirm=true,OnClick=function()I:SaveRecording(l.Value);end});local l,W=E:AddDropdown({Label="Map",Options=I:GetRecordingMaps(),Search=true}),E:AddDropdown({Label="Recording",Options={},Search=true});local N,P,a=E:AddButton({Label="Replay Selected Recording",OnClick=function()local e=W.Value;if type(e)=="string"then I:ReplayRecording(e);end;end}),E:AddLabel({Label="No saved recordings yet. Record a route, then save it to build your library.",TextColor=Color3.fromRGB(255,190,90)}),E:AddButton({Label="Delete Recording",Confirm=true,OnClick=function()local e=W.Value;if type(e)=="string"and e~=""then I:DeleteRecording(e);end;end});local function e()local c=W.Value;local E=type(c)=="string"and c~="";N:SetVisible(E);a:SetVisible(E);P:SetVisible(#I:GetRecordingMaps()==0);end;local function N()local P=l.Value;local a=type(P)=="string"and(I:GetRecordingNames(P))or{};W:SetOptions(a);if W.Value==nil and a[1]~=nil then W:Set(a[1],true);end;e();end;local function W()local P=I:GetRecordingMaps();l:SetOptions(P);if l.Value==nil and P[1]~=nil then l:Set(P[1],true);end;N();end;l:OnChanged(N);l:Connect(I.RecordingsChanged,W);W();end;end
 
 tbl17.iu = function()
@@ -77849,7 +77849,7 @@ end
 return iu.c
 end
 end
-do -- iv
+do 
 local function fn35() return absenseLayout.Identity end
 
 tbl17.iv = function()
@@ -77864,7 +77864,7 @@ end
 return iv.c
 end
 end
-do -- iw
+do 
 local function fn35() tbl17 .aE(); tbl17 .hN();local N,P,a= tbl17 .is(), tbl17 .it(),{Player="rbxassetid://114567720540659",Movement="rbxassetid://114280087699339",Identity="rbxassetid://109514257830136"};return function(e,c)local E=c:AddTab({Label="Player",Icon=a.Player,Description="Movement and identity."});P((E:AddTab({Label="Movement",Icon=a.Movement,Description="Ground and air movement."}):Grid({Columns=2})));e=E:AddTab({Label="Identity Spoofing",Icon=a.Identity,Description="Presented device and player identity."}):Grid({Columns=2});N(e); tbl17 .iv()(e);end;end
 
 tbl17.iw = function()
@@ -77879,7 +77879,7 @@ end
 return iw.c
 end
 end
-do -- ix
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Camera FOV",Side="left"});I:AddToggle({Label="Enable Camera FOV",Config={"CameraFov","Enabled"}});I:AddSlider({Label="Field of View",Min=30,Max=120,Config={"CameraFov","Value"}});end;end
 
 tbl17.ix = function()
@@ -77894,7 +77894,7 @@ end
 return ix.c
 end
 end
-do -- iy
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Gameplay Overlays",Side="right"});I:AddToggle({Label="Hide Flashbang Effect",Config={"Removables","NoFlashbang"}});I:AddToggle({Label="Hide Burn Effect",Config={"Removables","NoBurnEffect"}});I:AddToggle({Label="Hide ADS Vignette",Config={"Removables","NoAdsVignette"}});I:AddToggle({Label="Hide Scope Overlay",Config={"Removables","NoScopeOverlay"}});I:AddToggle({Label="Hide Scope Reticle",Config={"Removables","NoScopeReticle"}});I:AddToggle({Label="Hide Hitmarker",Config={"Removables","NoHitmarker"}});end;end
 
 tbl17.iy = function()
@@ -77909,7 +77909,7 @@ end
 return iy.c
 end
 end
-do -- iz
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddSection({Title="Stretched Resolution",Side="right"});I:AddToggle({Label="Enable Stretched Resolution",Config={"StretchedResolution","Enabled"}});I:AddSlider({Label="X Scale",Min=0.01,Max=1,Step=0.01,Config={"StretchedResolution","X"}});I:AddSlider({Label="Y Scale",Min=0.01,Max=1,Step=0.01,Config={"StretchedResolution","Y"}});end;end
 
 tbl17.iz = function()
@@ -77924,7 +77924,7 @@ end
 return iz.c
 end
 end
-do -- iA
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .h6();return function(l)local W=l:AddSection({Title="Third Person",Side="left"});I(W,"Enable Third Person",{"Toggle"},{"ThirdPerson"},true);W:AddToggle({Label="Ray Check",Config={"ThirdPerson","RayCheck"}});W:AddToggle({Label="Show Replica",Config={"ThirdPerson","ShowReplica"}});W:AddSlider({Label="X Offset",Min=-15,Max=15,Step=0.1,Config={"ThirdPerson","X"}});W:AddSlider({Label="Y Offset",Min=-5,Max=10,Step=0.1,Config={"ThirdPerson","Y"}});W:AddSlider({Label="Z Offset",Min=0,Max=15,Step=0.1,Config={"ThirdPerson","Z"}});end;end
 
 tbl17.iA = function()
@@ -77939,7 +77939,7 @@ end
 return ia.c
 end
 end
-do -- iB
+do 
 local function fn35() tbl17 .aE();local I,W,N,P= tbl17 .ix(), tbl17 .iy(), tbl17 .iz(), tbl17 .iA();return function(l)P(l);I(l);W(l);N(l);end;end
 
 tbl17.iB = function()
@@ -77953,7 +77953,7 @@ end
 return ib.c
 end
 end
-do -- iC
+do 
 local function fn35()local I= tbl17 .aB(); tbl17 .aE(); tbl17 .hN();return function(l,W,N,P)local a=l.ImageStorage;W:AddButton({Label="Manage Images",OnClick=function()N:Dialog({Title="Manage Images",Description="Add or remove custom images."},function(l)local N,e;l:AddPage({Title="Add an Image",Description="Enter a name and image source.",Glyph="+",ActionText="Add Image",OnAction=function()local c,E=N,e;local p=a:AddCustom(c.Value,E.Value);if not p.Ok then I.get():Notify(p.Error.Detail);return false;end;c:Set("",true);E:Set("",true);return true;end},function(c)N=c:AddTextBox({Label="Name"});e=c:AddTextBox({Label="Image Source",Placeholder="Id / File name / Url"});end);local N,e;e=l:AddPage({Title="Remove an Image",Description="Select an image to remove.",Glyph="\226\136\146",ActionText="Remove Image",Variant="danger",ActionEnabled=false,Confirmation={Title="Remove selected image?",Description=function()local l=N.Value;if l==nil then return"The selected image will be permanently removed.";end;return string.format("\"%s\" will be permanently removed.",tostring(l));end,ActionText="Confirm"},OnOpen=function()local l=N;l:SetOptions(a:GetNames());e:SetActionEnabled(l.Value~=nil);end,OnAction=function()local l=N.Value;if l==nil then return false;end;local c=a:RemoveCustom(l);if not c.Ok then I.get():Notify(c.Error.Detail);return false;end;return true;end},function(l)local I=l:AddList({Label="Image",Options=a:GetNames(),Height=150,Search=true,SelectFirst=false});N=I;I:Connect(I.ValueChanged,function(l)e:SetActionEnabled(l~=nil);end);I:Connect(a.Changed,function(l)I:SetOptions(l);end);end);end);end});local l=W:AddDropdown({Label="Image",Options=a:GetNames(),Config=P});l:Connect(a.Changed,function(I)l:SetOptions(I);end);end;end
 
 tbl17.iC = function()
@@ -77967,7 +77967,7 @@ end
 return ic.c
 end
 end
-do -- iD
+do 
 local function fn35() tbl17 .aE(); tbl17 .hN();local I= tbl17 .iC();return function(l,W,N)N:AddSlider({Label="Crosshair Image Size",Min=8,Max=256,Step=1,Config={"CustomCrosshair","Image","Size"}});N:AddSlider({Label="Crosshair Image Transparency",Min=0,Max=1,Step=0.01,Config={"CustomCrosshair","Image","Transparency"}});N:AddDivider({Label="Crosshair Image Selection"});I(l,N,W,{"CustomCrosshair","Image","Name"});end;end
 
 tbl17.iD = function()
@@ -77981,7 +77981,7 @@ end
 return id.c
 end
 end
-do -- iE
+do 
 local function fn35() tbl17 .aE();local l={{Label="Top Line",Key="Top"},{Label="Bottom Line",Key="Bottom"},{Label="Left Line",Key="Left"},{Label="Right Line",Key="Right"}};return function(I)for W,W in l,nil,nil do I:AddColor({Row=I:AddToggle({Label=W.Label,Config={"CustomCrosshair",W.Key,"Enabled"}}).Row,Gradient="editable",Config={"CustomCrosshair",W.Key,"Color"}});end;end;end
 
 tbl17.iE = function()
@@ -77995,7 +77995,7 @@ end
 return ie.c
 end
 end
-do -- iF
+do 
 local function fn35() tbl17 .aE(); tbl17 .hN();local I,W= tbl17 .iD(), tbl17 .iE();local function l(N)N:AddSlider({Label="Line Length",Min=1,Max=100,Step=1,Config={"CustomCrosshair","Length"}});N:AddSlider({Label="Line Thickness",Min=1,Max=20,Step=1,Config={"CustomCrosshair","Thickness"}});N:AddSlider({Label="Line Gap",Min=0,Max=100,Step=1,Config={"CustomCrosshair","Gap"}});local P=N:AddToggle({Label="Crosshair Outline",Config={"CustomCrosshair","Outline","Enabled"}});N:AddColor({Row=P.Row,Config={"CustomCrosshair","Outline","Color"},Animatable=true});N:AddGroup({Source=P}):AddSlider({Label="Crosshair Outline Thickness",Min=0,Max=10,Step=1,Config={"CustomCrosshair","Outline","Thickness"}});end;return function(N,P,a)local e=a:AddGroup({Source=a:AddToggle({Label="Enable Crosshair",Config={"CustomCrosshair","Enabled"}})});a=e:AddDropdown({Label="Crosshair Style",Options={"Lines","Image"},Config={"CustomCrosshair","Style"}});local c=e:AddGroup({Source=a,Option="Lines"});l(c);c:AddDivider({Label="Lines"});W(c);I(N,P,e:AddGroup({Source=a,Option="Image"}));return a;end;end
 
 tbl17.iF = function()
@@ -78010,7 +78010,7 @@ end
 return if_.c
 end
 end
-do -- iG
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .a6();local function l(W,...)return I(W,{...});end;return function(I,W,N,P)local a=I:AddGroup({Source=I:AddToggle({Label=P,Config=l(W,"Enabled")})});I=a:AddDropdown({Label=P.." Mode",Options=N,Config=l(W,"Kind")});a:AddSlider({Label=P.." Speed",Min=0.1,Max=5,Step=0.1,Config=l(W,"Speed")});if table.find(N,"Shimmer")then local e=a:AddGroup({Source=I,Option="Shimmer"});e:AddColor({Row=e:AddLabel({Label=P.." Fade Color"}).Row,Config=l(W,"Shimmer","Color"),Animatable=true});end;if table.find(N,"Perimeter")then local e=a:AddGroup({Source=I,Option="Perimeter"});e:AddColor({Row=e:AddLabel({Label=P.." Perimeter Gradient"}).Row,Gradient="editable",Config=l(W,"Perimeter","Color")});end;if table.find(N,"PingPong")then local N=a:AddGroup({Source=I,Option="PingPong"});N:AddSlider({Label=P.." Ping Pong Rotation",Min=0,Max=360,Step=1,Config=l(W,"PingPong","Rotation")});N:AddColor({Row=N:AddLabel({Label=P.." Background Color",NoSeparator=true}).Row,Config=l(W,"PingPong","BackgroundColor"),Animatable=true});N:AddColor({Row=N:AddLabel({Label=P.." Main Color"}).Row,Config=l(W,"PingPong","MainColor"),Animatable=true});end;end;end
 
 tbl17.iG = function()
@@ -78024,7 +78024,7 @@ end
 return ig.c
 end
 end
-do -- iH
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddGroup({Source=l:AddToggle({Label="Follow Target",Tooltip="Drags the crosshair toward the aimbot / silent aim target",Config={"CustomCrosshair","FollowTarget","Enabled"}})});I:AddDropdown({Label="Follow Target Mode",Options={"Crosshair","Crosshair + Text"},Config={"CustomCrosshair","FollowTarget","Mode"}});I:AddSlider({Label="Follow Speed",Default=20,Min=1,Max=50,Config={"CustomCrosshair","FollowTarget","Speed"}});I:AddSlider({Label="Follow Damper",Default=1,Min=0,Max=30,Config={"CustomCrosshair","FollowTarget","Damper"}});I:AddSlider({Label="Snap Distance",Default=5,Min=0,Max=10,Config={"CustomCrosshair","FollowTarget","SnapDistance"}});end;end
 
 tbl17.iH = function()
@@ -78039,7 +78039,7 @@ end
 return ih.c
 end
 end
-do -- iI
+do 
 local function fn35() tbl17 .aE();return function(l,I)l:AddGroup({Source=l:AddToggle({Label="Rotate Crosshair",Config={"CustomCrosshair","Rotation","Enabled"}})}):AddSlider({Label="Crosshair Rotation Speed",Min=0,Max=720,Step=1,Tooltip="Degrees per second",Config={"CustomCrosshair","Rotation","Speed"}});local W=l:AddGroup({Source=I,Option="Lines"});I=W:AddGroup({Source=W:AddToggle({Label="Crosshair Spread",Tooltip="Pulses the gap outward by the range below",Config={"CustomCrosshair","Spread","Enabled"}})});I:AddRangeSlider({Label="Crosshair Spread Range",Min=0,Max=100,Step=1,Default={Min=4,Max=16},Config={"CustomCrosshair","Spread","Range"}});I:AddSlider({Label="Spread Speed",Min=0,Max=20,Step=0.1,Config={"CustomCrosshair","Spread","Speed"}});end;end
 
 tbl17.iI = function()
@@ -78054,7 +78054,7 @@ end
 return ii.c
 end
 end
-do -- iJ
+do 
 local function fn35() tbl17 .aE();local I,W,N= tbl17 .iG(), tbl17 .iH(), tbl17 .iI();return function(l,P)l:AddSlider({Label="Rotation",Min=0,Max=360,Step=1,Tooltip="Static tilt of the whole crosshair",Config={"CustomCrosshair","Rotation","Angle"}});N(l,P);I(l:AddGroup({Source=P,Option="Lines"}),{"CustomCrosshair","Animation"},{"Shimmer","Perimeter","PingPong"},"Animate Crosshair");W(l);end;end
 
 tbl17.iJ = function()
@@ -78068,7 +78068,7 @@ end
 return ij.c
 end
 end
-do -- iK
+do 
 local function fn35()local I= tbl17 .az(); tbl17 .aE();local W= tbl17 .iG();local function l(N)N:AddTextBox({Label="Crosshair Text Content",FocusLostOnly=true,Config={"CustomCrosshair","Text","Content"}});N:AddDropdown({Label="Crosshair Text Font",Options=I.Order,Config={"CustomCrosshair","Text","Font"}});N:AddSlider({Label="Crosshair Text Size",Min=6,Max=48,Step=1,Config={"CustomCrosshair","Text","Size"}});N:AddSlider({Label="Crosshair Text Offset",Min=0,Max=100,Step=1,Tooltip="Pixels below the crosshair",Config={"CustomCrosshair","Text","Offset"}});N:AddColor({Row=N:AddLabel({Label="Crosshair Text Color"}).Row,Gradient="editable",Config={"CustomCrosshair","Text","Color"}});local I=N:AddToggle({Label="Crosshair Text Outline",Config={"CustomCrosshair","Text","Outline","Enabled"}});N:AddColor({Row=I.Row,Config={"CustomCrosshair","Text","Outline","Color"},Animatable=true});N:AddGroup({Source=I}):AddSlider({Label="Crosshair Text Outline Thickness",Min=0,Max=10,Step=1,Config={"CustomCrosshair","Text","Outline","Thickness"}});W(N,{"CustomCrosshair","Text","Animation"},{"Shimmer","PingPong"},"Animate Crosshair Text");end;return function(I)l(I:AddGroup({Source=I:AddToggle({Label="Enable Crosshair Text",Tooltip="A custom label beneath the crosshair",Config={"CustomCrosshair","Text","Enabled"}})}));end;end
 
 tbl17.iK = function()
@@ -78083,7 +78083,7 @@ end
 return ik.c
 end
 end
-do -- iL
+do 
 local function fn35()local I,W,N= tbl17 .iF(), tbl17 .iJ(), tbl17 .iK(); tbl17 .aE(); tbl17 .hN();return function(l,P,a)local e,c,E=a:AddSection({Title="Crosshair",Side="left"}),a:AddSection({Title="Text",Side="left"}),a:AddSection({Title="Motion & Effects",Side="right"});a=I(l,P,e);N(c);W(E,a);end;end
 
 tbl17.iL = function()
@@ -78097,7 +78097,7 @@ end
 return il.c
 end
 end
-do -- iR
+do 
 local function fn35() tbl17 .aE();local function l(I,W)I:AddDropdown({Label=W.." Mode",Options={"Circle","Origin"},Config={"SoundVisualizer",W,"Mode"}});I:AddColor({Row=I:AddToggle({Label=W.." Use Loudness Color",Config={"SoundVisualizer",W,"UseLoudnessColor"}}).Row,Config={"SoundVisualizer",W,"Color"},Animatable=true});end;return function(I)local W,N,P=I:AddSection({Title="Activation & Filtering",Side="left"}),I:AddMultiSection({Titles={"Footsteps","Other"},Side="right"});W:AddToggle({Label="Enable Sound ESP",Config={"SoundVisualizer","Enabled"}});W:AddDropdown({Label="Sound Source",Options={"All","Enemies","Team","Self"},Config={"SoundVisualizer","Source"}});W:AddMultiDropdown({Label="Sound Types",Options={"Footsteps","Other"},Config={"SoundVisualizer","Types"}});W:AddSlider({Label="Minimum Volume",Min=0,Max=1,Step=0.01,Config={"SoundVisualizer","MinVolume"}});l(N,"Footsteps");l(P,"Other");end;end
 
 tbl17.iR = function()
@@ -78112,7 +78112,7 @@ end
 return ir.c
 end
 end
-do -- iS
+do 
 local function fn35()local I= tbl17 .dy(); tbl17 .aE();return function(l,W)l:AddColor({Row=l:AddToggle({Label="Enable Bullet Tracers",Config={"BulletTracers","Enabled"}}).Row,Config={"BulletTracers","Color"},Animatable=true});l:AddDropdown({Label="Tracer Style",Options=I.Names,Config={"BulletTracers","Style"}});l:AddSlider({Label="Tracer Width",Min=0.02,Max=0.5,Step=0.01,Config={"BulletTracers","Width"}});l:AddSlider({Label="Texture Length",Min=0.5,Max=20,Step=0.1,Config={"BulletTracers","TextureLength"}});l:AddSlider({Label="Texture Speed",Min=0,Max=10,Step=0.1,Config={"BulletTracers","TextureSpeed"}});l:AddSlider({Label="Tracer Lifetime",Min=0.1,Max=5,Step=0.1,Config={"BulletTracers","Lifetime"}});l:AddSlider({Label="Fade Time",Min=0,Max=5,Step=0.1,Config={"BulletTracers","FadeTime"}});if W==nil then return;end;W:AddSlider({Label="Emission",Min=0,Max=1,Step=0.01,Config={"BulletTracers","Emission"}});W:AddSlider({Label="Glow",Min=1,Max=25,Config={"BulletTracers","Glow"}});l=W:AddGroup({Source=W:AddToggle({Label="Expand Tracers",Config={"BulletTracers","Expand"}})});l:AddSlider({Label="Expand Speed",Min=1,Max=60,Config={"BulletTracers","ExpandSpeed"}});l:AddSlider({Label="Expand Damper",Min=0.1,Max=1,Step=0.01,Config={"BulletTracers","ExpandDamper"}});end;end
 
 tbl17.iS = function()
@@ -78126,7 +78126,7 @@ end
 return is.c
 end
 end
-do -- iT
+do 
 local function fn35()local I= tbl17 .a8(); tbl17 .aE();local function l(W,N,P)local a=W:AddToggle({Label=P.." Chams",Config={"Chams",N,"Enabled"}});W:AddColor({Row=a.Row,Alpha=true,Config={"Chams",N,"Color"},Transparency={"Chams",N,"Transparency"},Animatable=true});local e=W:AddGroup({Source=a});e:AddDropdown({Label=P.." Chams Material",Options=I.List,Config={"Chams",N,"Material"}});e:AddToggle({Label="Strip "..P.." Textures",Config={"Chams",N,"StripTextures"}});end;return function(I,W)l(I,"Arms","Arms");l(W,"Item","Held Item");end;end
 
 tbl17.iT = function()
@@ -78141,7 +78141,7 @@ end
 return it.c
 end
 end
-do -- iU
+do 
 local function fn35() tbl17 .aE();local function l(I,W,N)I:AddDivider({Label="Highlight"});local P=I:AddToggle({Label=N.." Highlight",Config={"ViewModelHighlight",W,"Enabled"}});I:AddColor({Row=P.Row,Config={"ViewModelHighlight",W,"FillColor"},Animatable=true});I:AddToggle({Label=N.." Render Above",Config={"ViewModelHighlight",W,"AlwaysOnTop"}});local a=I:AddGroup({Source=P});a:AddSlider({Label=N.." Fill Transparency",Min=-10,Max=10,Step=0.01,Config={"ViewModelHighlight",W,"FillTransparency"}});a:AddColor({Label=N.." Outline",Config={"ViewModelHighlight",W,"OutlineColor"},Animatable=true});a:AddSlider({Label=N.." Outline Transparency",Min=-10,Max=10,Step=0.01,Config={"ViewModelHighlight",W,"OutlineTransparency"}});end;return function(I,W)l(I,"Arms","Arms");l(W,"Item","Held Item");end;end
 
 tbl17.iU = function()
@@ -78155,7 +78155,7 @@ end
 return iu.c
 end
 end
-do -- iV
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Hide Shoot Animation",Config={"ItemModifiers","NoShootAnimation"}});l:AddToggle({Label="Hide Sprint Animation",Config={"ItemModifiers","NoSprintAnimation"}});l:AddToggle({Label="Hide Equip Animation",Config={"ItemModifiers","NoEquipAnimation"}});l:AddToggle({Label="Hide Reload Animation",Config={"ItemModifiers","NoReloadAnimation"}});l:AddDivider({Label="Motion"});l:AddToggle({Label="Remove Weapon Motion",Config={"ItemModifiers","NoMotion"}});l:AddToggle({Label="Remove Camera Shake",Config={"ItemModifiers","NoCameraShake"}});l:AddToggle({Label="Remove Camera Sway",Config={"ItemModifiers","NoCameraSway"}});end;end
 
 tbl17.iV = function()
@@ -78170,7 +78170,7 @@ end
 return iv.c
 end
 end
-do -- iW
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Enable Viewmodel Position",Config={"ViewModelOffset","Enabled"}});l:AddSlider({Label="X",Min=-7.5,Max=7.5,Step=0.01,Config={"ViewModelOffset","X"}});l:AddSlider({Label="Y",Min=-7.5,Max=7.5,Step=0.01,Config={"ViewModelOffset","Y"}});l:AddSlider({Label="Z",Min=-7.5,Max=7.5,Step=0.01,Config={"ViewModelOffset","Z"}});l:AddSlider({Label="Pitch",Min=-180,Max=180,Config={"ViewModelOffset","Pitch"}});l:AddSlider({Label="Yaw",Min=-180,Max=180,Config={"ViewModelOffset","Yaw"}});l:AddSlider({Label="Roll",Min=-180,Max=180,Config={"ViewModelOffset","Roll"}});end;end
 
 tbl17.iW = function()
@@ -78184,7 +78184,7 @@ end
 return iw.c
 end
 end
-do -- iX
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Hide Muzzle Flash",Config={"Removables","NoMuzzleFlash"}});l:AddToggle({Label="Hide Game Tracers",Config={"Removables","NoGunTracers"}});end;end
 
 tbl17.iX = function()
@@ -78199,7 +78199,7 @@ end
 return ix.c
 end
 end
-do -- iY
+do 
 local function fn35() tbl17 .aE();local function l(I,W,N)I:AddDivider({Label="Wireframe"});local P=I:AddToggle({Label=N.." Wireframe",Config={"ViewModelWireframe",W,"Enabled"}});I:AddColor({Row=P.Row,Config={"ViewModelWireframe",W,"Color"},Animatable=true});I:AddGroup({Source=P}):AddSlider({Label=N.." Wireframe Width",Min=0.001,Max=0.02,Step=5.0E-4,Config={"ViewModelWireframe",W,"Width"}});end;return function(I,W)l(I,"Arms","Arms");l(W,"Item","Held Item");end;end
 
 tbl17.iY = function()
@@ -78214,7 +78214,7 @@ end
 return iy.c
 end
 end
-do -- iZ
+do 
 local function fn35() tbl17 .aE();local I,W,N,P,a,e,c= tbl17 .iS(), tbl17 .iT(), tbl17 .iU(), tbl17 .iV(), tbl17 .iW(), tbl17 .iX(), tbl17 .iY();return function(l)local E,p,T,t,x=l:AddSection({Title="Viewmodel Position",Side="left"}),l:AddSection({Title="Motion & Animation",Side="left"}),l:AddSection({Title="Bullet Tracers",Side="left"}),l:AddMultiSection({Titles={"Arms","Held Item"},Side="right"});local S,J=l:AddSection({Title="Advanced Tracers",Side="right"}),l:AddSection({Title="Suppressions",Side="right"});a(E);P(p);I(T,S);W(t,x);N(t,x);c(t,x);e(J);end;end
 
 tbl17.iZ = function()
@@ -78228,7 +78228,7 @@ end
 return iz.c
 end
 end
-do -- i_
+do 
 local function fn35() return absenseLayout.Visuals end
 
 tbl17.i_ = function()
@@ -78243,7 +78243,7 @@ end
 return i.c
 end
 end
-do -- i0
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddDivider({Label="Atmosphere"});local I=l:AddToggle({Label="Atmosphere",Config={"Atmosphere","Enabled"}});l:AddColor({Row=I.Row,Tooltip="Atmosphere color.",Config={"Atmosphere","Color"},Animatable=true});l:AddColor({Row=I.Row,Tooltip="Atmosphere decay color.",Config={"Atmosphere","Decay"},Animatable=true});local W=l:AddGroup({Source=I});W:AddSlider({Label="Density",Min=0,Max=1,Step=0.01,Config={"Atmosphere","Density"}});W:AddSlider({Label="Offset",Min=0,Max=1,Step=0.01,Config={"Atmosphere","Offset"}});W:AddSlider({Label="Glare",Min=0,Max=1,Step=0.01,Config={"Atmosphere","Glare"}});W:AddSlider({Label="Haze",Min=0,Max=1,Step=0.01,Config={"Atmosphere","Haze"}});end;end
 
 tbl17.i0 = function()
@@ -78257,7 +78257,7 @@ end
 return i0.c
 end
 end
-do -- i1
+do 
 local function fn35() tbl17 .aE();local I= tbl17 .i0();return function(l)local W={Master=l:AddSection({Title="Lighting Override",Side="left"}),TimeExposure=l:AddSection({Title="Time & Exposure",Side="left"}),ShadowsQuality=l:AddSection({Title="Shadows & Quality",Side="left"}),AmbientColors=l:AddSection({Title="Ambient Colors",Side="right"}),FogAtmosphere=l:AddSection({Title="Fog & Atmosphere",Side="right"})};W.Master:AddToggle({Label="Enable Lighting Override",Config={"Lighting","Enabled"}});l=W.TimeExposure:AddToggle({Label="Clock Time",Config={"Lighting","ClockTime","Enabled"}});W.TimeExposure:AddGroup({Source=l}):AddSlider({Label="Time",Min=0,Max=24,Step=0.01,Config={"Lighting","ClockTime","Value"}});l=W.TimeExposure:AddToggle({Label="Geographic Latitude",Config={"Lighting","GeographicLatitude","Enabled"}});W.TimeExposure:AddGroup({Source=l}):AddSlider({Label="Latitude",Min=-90,Max=90,Step=0.001,Config={"Lighting","GeographicLatitude","Value"}});l=W.TimeExposure:AddToggle({Label="Brightness",Config={"Lighting","Brightness","Enabled"}});W.TimeExposure:AddGroup({Source=l}):AddSlider({Label="Brightness",Min=0,Max=10,Step=0.01,Config={"Lighting","Brightness","Value"}});l=W.TimeExposure:AddToggle({Label="Exposure Compensation",Config={"Lighting","ExposureCompensation","Enabled"}});W.TimeExposure:AddGroup({Source=l}):AddSlider({Label="Exposure",Min=-5,Max=5,Step=0.01,Config={"Lighting","ExposureCompensation","Value"}});W.ShadowsQuality:AddToggle({Label="Disable Global Shadows",Config={"Lighting","DisableGlobalShadows"}});l=W.ShadowsQuality:AddToggle({Label="Shadow Softness",Config={"Lighting","ShadowSoftness","Enabled"}});W.ShadowsQuality:AddGroup({Source=l}):AddSlider({Label="Softness",Min=0,Max=1,Step=0.01,Config={"Lighting","ShadowSoftness","Value"}});l=W.ShadowsQuality:AddToggle({Label="Lighting Style",Config={"Lighting","LightingStyle","Enabled"}});W.ShadowsQuality:AddGroup({Source=l}):AddDropdown({Label="Style",Options={"Realistic","Soft"},Config={"Lighting","LightingStyle","Value"}});l=W.ShadowsQuality:AddToggle({Label="Shadow Color",Config={"Lighting","ShadowColor","Enabled"}});W.ShadowsQuality:AddColor({Row=l.Row,Config={"Lighting","ShadowColor","Value"},Animatable=true});W.ShadowsQuality:AddToggle({Label="Prioritize Lighting Quality",Config={"Lighting","PrioritizeLightingQuality"}});l=W.AmbientColors:AddToggle({Label="Ambient Colors",Config={"Lighting","Ambient","Enabled"}});W.AmbientColors:AddColor({Row=l.Row,Tooltip="Indoor ambient color.",Config={"Lighting","Ambient","Indoor"},Animatable=true});W.AmbientColors:AddColor({Row=l.Row,Tooltip="Outdoor ambient color.",Config={"Lighting","Ambient","Outdoor"},Animatable=true});l=W.AmbientColors:AddToggle({Label="Color Shift",Config={"Lighting","ColorShift","Enabled"}});W.AmbientColors:AddColor({Row=l.Row,Tooltip="Top color shift.",Config={"Lighting","ColorShift","Top"},Animatable=true});W.AmbientColors:AddColor({Row=l.Row,Tooltip="Bottom color shift.",Config={"Lighting","ColorShift","Bottom"},Animatable=true});l=W.AmbientColors:AddToggle({Label="Environment Diffuse Scale",Config={"Lighting","EnvironmentDiffuseScale","Enabled"}});W.AmbientColors:AddGroup({Source=l}):AddSlider({Label="Diffuse Scale",Min=0,Max=1,Step=0.01,Config={"Lighting","EnvironmentDiffuseScale","Value"}});l=W.AmbientColors:AddToggle({Label="Environment Specular Scale",Config={"Lighting","EnvironmentSpecularScale","Enabled"}});W.AmbientColors:AddGroup({Source=l}):AddSlider({Label="Specular Scale",Min=0,Max=1,Step=0.01,Config={"Lighting","EnvironmentSpecularScale","Value"}});l=W.FogAtmosphere:AddToggle({Label="Fog",Config={"Lighting","Fog","Enabled"}});W.FogAtmosphere:AddColor({Row=l.Row,Config={"Lighting","Fog","Color"},Animatable=true});local N=W.FogAtmosphere:AddGroup({Source=l});N:AddSlider({Label="Fog Start",Min=0,Max=10000,Config={"Lighting","Fog","Start"}});N:AddSlider({Label="Fog End",Min=0,Max=10000,Config={"Lighting","Fog","End"}});I(W.FogAtmosphere);end;end
 
 tbl17.i1 = function()
@@ -78272,7 +78272,7 @@ end
 return i1.c
 end
 end
-do -- i2
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddGroup({Source=l:AddToggle({Label="Bloom",Config={"Bloom","Enabled"}})});I:AddSlider({Label="Intensity",Min=0,Max=1,Step=0.01,Config={"Bloom","Intensity"}});I:AddSlider({Label="Size",Min=0,Max=56,Config={"Bloom","Size"}});I:AddSlider({Label="Threshold",Min=0,Max=5,Step=0.01,Config={"Bloom","Threshold"}});end;end
 
 tbl17.i2 = function()
@@ -78287,7 +78287,7 @@ end
 return i2.c
 end
 end
-do -- i3
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddToggle({Label="Color Correction",Config={"ColorCorrection","Enabled"}});l:AddColor({Row=I.Row,Config={"ColorCorrection","TintColor"},Animatable=true});local W=l:AddGroup({Source=I});W:AddSlider({Label="Saturation",Min=-1,Max=1,Step=0.01,Config={"ColorCorrection","Saturation"}});W:AddSlider({Label="Brightness",Min=-1,Max=1,Step=0.01,Config={"ColorCorrection","Brightness"}});W:AddSlider({Label="Contrast",Min=-1,Max=1,Step=0.01,Config={"ColorCorrection","Contrast"}});end;end
 
 tbl17.i3 = function()
@@ -78302,7 +78302,7 @@ end
 return i3.c
 end
 end
-do -- i4
+do 
 local function fn35() tbl17 .aE();return function(l)l:AddGroup({Source=l:AddToggle({Label="Color Grading",Config={"ColorGrading","Enabled"}})}):AddDropdown({Label="Preset",Options={"Default","Retro"},Config={"ColorGrading","TonemapperPreset"}});end;end
 
 tbl17.i4 = function()
@@ -78317,7 +78317,7 @@ end
 return i4.c
 end
 end
-do -- i5
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddGroup({Source=l:AddToggle({Label="Depth of Field",Config={"DepthOfField","Enabled"}})});I:AddSlider({Label="Far Intensity",Min=0,Max=1,Step=0.01,Config={"DepthOfField","FarIntensity"}});I:AddSlider({Label="Focus Distance",Min=0,Max=1000,Config={"DepthOfField","FocusDistance"}});I:AddSlider({Label="In Focus Radius",Min=0,Max=500,Config={"DepthOfField","InFocusRadius"}});I:AddSlider({Label="Near Intensity",Min=0,Max=1,Step=0.01,Config={"DepthOfField","NearIntensity"}});end;end
 
 tbl17.i5 = function()
@@ -78331,7 +78331,7 @@ end
 return i5.c
 end
 end
-do -- i6
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddGroup({Source=l:AddToggle({Label="Motion Blur",Config={"MotionBlur","Enabled"}})});I:AddSlider({Label="Intensity",Min=0,Max=56,Step=0.01,Config={"MotionBlur","Intensity"}});I:AddSlider({Label="Sensitivity",Min=0,Max=5,Step=0.01,Config={"MotionBlur","Sensitivity"}});end;end
 
 tbl17.i6 = function()
@@ -78346,7 +78346,7 @@ end
 return i6.c
 end
 end
-do -- i7
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddGroup({Source=l:AddToggle({Label="Sun Rays",Config={"SunRays","Enabled"}})});I:AddSlider({Label="Intensity",Min=0,Max=1,Step=0.01,Config={"SunRays","Intensity"}});I:AddSlider({Label="Spread",Min=0,Max=1,Step=0.01,Config={"SunRays","Spread"}});end;end
 
 tbl17.i7 = function()
@@ -78361,7 +78361,7 @@ end
 return i7.c
 end
 end
-do -- i8
+do 
 local function fn35() tbl17 .aE();local I,W,N,P,a,e= tbl17 .i2(), tbl17 .i3(), tbl17 .i4(), tbl17 .i5(), tbl17 .i6(), tbl17 .i7();return function(l)local c,E,p=l:AddSection({Title="Tone & Color",Side="left"}),l:AddSection({Title="Focus & Motion",Side="left"}),l:AddSection({Title="Light Effects",Side="right"});W(c);N(c);P(E);a(E);I(p);e(p);end;end
 
 tbl17.i8 = function()
@@ -78376,7 +78376,7 @@ end
 return i8.c
 end
 end
-do -- i9
+do 
 local function fn35()local I= tbl17 .he(); tbl17 .aE();return function(l)local W=l:AddGroup({Source=l:AddToggle({Label="Enable Ambient Sound",Config={"Ambience","Enabled"}})});W:AddDropdown({Label="Preset",Options=I.Names,Config={"Ambience","Sound"}});W:AddTextBox({Label="Custom Sound (ID or URL)",FocusLostOnly=true,Config={"Ambience","CustomSound"}});W:AddSlider({Label="Volume",Min=0,Max=10,Step=0.01,Config={"Ambience","Volume"}});end;end
 
 tbl17.i9 = function()
@@ -78390,7 +78390,7 @@ end
 return i9.c
 end
 end
-do -- ja
+do 
 local function fn35() tbl17 .aE();local function l(...)local I={"Weather","Lightning"};for W=1,select("#",...),1 do table.insert(I,(select(W,...)));end;return I;end;return function(I)I:AddColor({Row=I:AddToggle({Label="Enable Lightning",Tooltip="Strike lightning during rain and blizzards.",Config=l("Enabled")}).Row,Gradient="editable",Tooltip="Colour or gradient of the lightning bolts.",Config=l("Color")});I:AddDivider({Label="Bolt"});I:AddSlider({Label="Interval",Tooltip="Average seconds between strikes.",Min=0.2,Max=10,Step=0.1,Suffix="s",Config=l("Interval")});I:AddSlider({Label="Distance",Tooltip="Farthest a strike can land from the camera.",Min=10,Max=200,Config=l("Distance")});I:AddSlider({Label="Height",Tooltip="Length of each bolt from cloud to ground.",Min=50,Max=400,Config=l("Height")});I:AddSlider({Label="Thickness",Tooltip="Core thickness of the bolts.",Min=0.5,Max=12,Step=0.1,Config=l("Thickness")});I:AddSlider({Label="Jaggedness",Tooltip="How jagged and erratic the bolts look.",Min=0,Max=20,Step=0.1,Config=l("Jaggedness")});I:AddSlider({Label="Branches",Tooltip="Maximum forks that split off each bolt.",Min=0,Max=24,Step=1,Config=l("Branches")});I:AddSlider({Label="Flash",Tooltip="Brightness of the light flash at the impact.",Min=0,Max=20,Step=0.1,Config=l("Flash")});I:AddDivider({Label="Sparks"});local W=I:AddToggle({Label="Sparks",Tooltip="Sparks that crackle off the bolt as it strikes.",Config=l("Sparks","Enabled")});I:AddColor({Row=W.Row,Gradient="editable",Tooltip="Colour or gradient of the sparks.",Config=l("Sparks","Color")});local N=I:AddGroup({Source=W});N:AddSlider({Label="Count",Tooltip="How many sparks each strike throws off.",Min=0,Max=40,Step=1,Config=l("Sparks","Count")});N:AddSlider({Label="Thickness",Tooltip="Thickness of the sparks.",Min=0.2,Max=8,Step=0.1,Config=l("Sparks","Thickness")});N:AddSlider({Label="Distance",Tooltip="How far sparks fly from the bolt.",Min=2,Max=50,Step=0.5,Config=l("Sparks","Distance")});N:AddSlider({Label="Speed",Tooltip="How fast sparks shoot out and fade.",Min=2,Max=40,Step=0.5,Config=l("Sparks","Speed")});N:AddSlider({Label="Jaggedness",Tooltip="How jagged the sparks look.",Min=0,Max=12,Step=0.1,Config=l("Sparks","Jaggedness")});I:AddDivider({Label="Explosion"});N=I:AddToggle({Label="Explosion",Tooltip="Burst of arcs that erupts where the bolt lands.",Config=l("Explosion","Enabled")});I:AddColor({Row=N.Row,Gradient="editable",Tooltip="Colour or gradient of the explosion.",Config=l("Explosion","Color")});W=I:AddGroup({Source=N});W:AddSlider({Label="Size",Tooltip="Size of the impact burst.",Min=0,Max=1,Step=0.01,Config=l("Explosion","Size")});W:AddSlider({Label="Bolts",Tooltip="How many arcs radiate from the impact.",Min=0,Max=30,Step=1,Config=l("Explosion","Bolts")});I:AddDivider({Label="Sound"});N=I:AddGroup({Source=I:AddToggle({Label="Sound",Tooltip="Play a thunder crack with each strike, delayed and quietened by distance.",Config=l("Sound","Enabled")})});N:AddSlider({Label="Volume",Tooltip="Loudness of a strike landing right beside you.",Min=0,Max=3,Step=0.05,Config=l("Sound","Volume")});N:AddToggle({Label="Delay",Tooltip="Lag the crack by the strike's distance, like real thunder. Off plays it instantly.",Config=l("Sound","Delay")});N:AddTextBox({Label="Sound ID",Tooltip="Roblox sound id or local file path for the crack. Leave empty for the default thunder.",FocusLostOnly=true,Config=l("Sound","SoundId")});end;end
 
 tbl17.ja = function()
@@ -78405,7 +78405,7 @@ end
 return ja.c
 end
 end
-do -- jb
+do 
 local function fn35()local I= tbl17 .aB(); tbl17 .gY(); tbl17 .aE();local l={{Label="Up Face",Key="SkyboxUp"},{Label="Down Face",Key="SkyboxDn"},{Label="Front Face",Key="SkyboxFt"},{Label="Back Face",Key="SkyboxBk"},{Label="Left Face",Key="SkyboxLf"},{Label="Right Face",Key="SkyboxRt"}};return function(W,N,P)local function a()P:Dialog({Title="Manage Skyboxes",Description="Add or remove custom skyboxes."},function(P)local e;local c={};P:AddPage({Title="Add a Skybox",Description="Enter a name and six face textures.",Glyph="+",ActionText="Add Skybox",OnAction=function()local E,p=e,{};for T,t in c,nil,nil do p[T]=t.Value;end;local T=N:Add(E.Value,p);if not T.Ok then I.get():Notify(T.Error.Detail);return false;end;E:Set("",true);for E,E in c,nil,nil do E:Set("",true);end;return true;end},function(E)e=E:AddTextBox({Label="Name"});for e,e in l,nil,nil do c[e.Key]=E:AddTextBox({Label=e.Label,Placeholder="Id / Url"});end;end);local l,e;e=P:AddPage({Title="Remove a Skybox",Description="Select a skybox to remove.",Glyph="\226\136\146",ActionText="Remove Skybox",Variant="danger",ActionEnabled=false,Confirmation={Title="Remove selected skybox?",Description=function()local P=l.Value;if P==nil then return"The selected skybox will be permanently removed.";end;return string.format("\"%s\" will be permanently removed.",tostring(P));end,ActionText="Confirm"},OnOpen=function()local P=l;P:SetOptions(N:GetNames());e:SetActionEnabled(P.Value~=nil);end,OnAction=function()local P=l.Value;if P==nil then return false;end;local c=N:Remove(P);if not c.Ok then I.get():Notify(c.Error.Detail);return false;end;return true;end},function(I)local P=I:AddList({Label="Skybox",Options=N:GetNames(),Height=150,Search=true,SelectFirst=false});l=P;P:Connect(P.ValueChanged,function(l)e:SetActionEnabled(l~=nil);end);P:Connect(N.Changed,function(l)P:SetOptions(l);end);end);end);end;local l=W:AddGroup({Source=W:AddToggle({Label="Enable Skybox",Config={"Skybox","Enabled"}})}):AddDropdown({Label="Preset",Options=N:GetNames(),Config={"Skybox","Preset"}});W:AddButton({Label="Manage Skyboxes",OnClick=a});l:Connect(N.Changed,function(I)l:SetOptions(I);end);end;end
 
 tbl17.jb = function()
@@ -78420,7 +78420,7 @@ end
 return jb.c
 end
 end
-do -- jc
+do 
 local function fn35() tbl17 .aE();return function(l)local I=l:AddToggle({Label="Enable Weather",Config={"Weather","Enabled"}});l:AddColor({Row=I.Row,Config={"Weather","Color"},Animatable=true});local W=l:AddGroup({Source=I});W:AddDropdown({Label="Preset",Options={"Snow","Rain","Blizzard"},Config={"Weather","Preset"}});W:AddSlider({Label="Intensity",Min=0,Max=2,Step=0.01,Config={"Weather","Intensity"}});W:AddSlider({Label="Rate",Min=0,Max=3,Step=0.01,Config={"Weather","Rate"}});W:AddSlider({Label="Height",Min=10,Max=100,Config={"Weather","Height"}});W:AddSlider({Label="Speed",Min=0.5,Max=3,Step=0.01,Config={"Weather","Speed"}});W:AddSlider({Label="Glow",Min=0,Max=1,Step=0.01,Config={"Weather","Glow"}});W:AddSlider({Label="Size",Min=0.5,Max=2,Step=0.01,Config={"Weather","Size"}});W:AddSlider({Label="Spread",Min=0,Max=3,Step=0.01,Config={"Weather","Spread"}});W:AddSlider({Label="Wind Strength",Min=0,Max=20,Step=0.1,Config={"Weather","Wind","Strength"}});W:AddSlider({Label="Wind Angle",Min=0,Max=360,Config={"Weather","Wind","Angle"}});end;end
 
 tbl17.jc = function()
@@ -78435,7 +78435,7 @@ end
 return jc.c
 end
 end
-do -- jd
+do 
 local function fn35() tbl17 .aE(); tbl17 .hN();local I,W,N,P= tbl17 .i9(), tbl17 .ja(), tbl17 .jb(), tbl17 .jc();return function(l,a,e)local c,E,p,T=a:AddSection({Title="Skybox",Side="left"}),a:AddSection({Title="Ambient Sound",Side="left"}),a:AddSection({Title="Weather",Side="right"}),a:AddSection({Title="Lightning",Side="right"});N(c,l.Skyboxes,e);I(E);P(p);W(T);end;end
 
 tbl17.jd = function()
@@ -78450,7 +78450,7 @@ end
 return jd.c
 end
 end
-do -- je
+do 
 local function fn35() tbl17 .aE(); tbl17 .hN();local I,W,N,P= tbl17 .i1(), tbl17 .i8(), tbl17 .jd(),{World="rbxassetid://125685532120024",Lighting="rbxassetid://139232691165198",PostProcessing="rbxassetid://139684165362622",SkyWeather="rbxassetid://140109651313859"};return function(l,a)local e=a:AddTab({Label="World",Icon=P.World,Description="Lighting, post-processing, sky, and ambient sound."});I((e:AddTab({Label="Lighting",Icon=P.Lighting,Description="Override time, exposure, shadows, ambient light, fog, and atmosphere."}):Grid({Columns=2})));W((e:AddTab({Label="Post Processing",Icon=P.PostProcessing,Description="Tune tone, focus, motion, and light effects."}):Grid({Columns=2})));N(l,e:AddTab({Label="Sky & Weather",Icon=P.SkyWeather,Description="Choose a skybox, ambient sound, weather, and lightning."}):Grid({Columns=2}),a);end;end
 
 tbl17.je = function()
@@ -78465,10 +78465,10 @@ end
 return je.c
 end
 end
-do -- jf
+do 
 local function fn35()
 local I,W=tbl17.bG(),tbl17.aE()
--- Replace the visual menu only; retain the existing script services and state.
+
 W.Menu=KiciaUIFramework.Menu
 W.ForceMobileLayout=KiciaUIFramework.ForceMobileLayout
 tbl17.hN()
@@ -78490,7 +78490,7 @@ return function(l)
         end,
     })
     e:Add(t)
-    -- Backwards-compatible handles used by the script's other modules.
+    
     t.Config=l.ReactiveStoreAdapter
     t._kiciaFramework=KiciaUIFramework
     t._kiciaOwnerTrove=e
@@ -78528,7 +78528,7 @@ end
 return jf.c
 end
 end
-do -- jg
+do 
 local function fn35()
 return function()
 for _, v115 in getconnections(game:GetService("Players").LocalPlayer.Idled) do
@@ -78554,7 +78554,7 @@ end
 return jg.c
 end
 end
-do -- jh
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.b3()
@@ -78760,7 +78760,7 @@ end
 return jh.c
 end
 end
-do -- ji
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -78831,7 +78831,7 @@ end
 return ji.c
 end
 end
-do -- jj
+do 
 local function fn35()
 local v115 = tbl17.ji()
 tbl17.bK()
@@ -78963,7 +78963,7 @@ end
 return jj.c
 end
 end
-do -- jk
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.jh()
@@ -79031,7 +79031,7 @@ end
 return jk.c
 end
 end
-do -- jl
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -79102,10 +79102,10 @@ end
 return jl.c
 end
 end
-do -- jm
+do 
 local function fn35()
--- Current ELO is optional. Observe its lifecycle without a yielding startup
--- dependency, and keep rank spoofing working when leaderstats arrive later.
+
+
 local ValueGuard = tbl17.jl()
 local Trove = tbl17.k()
 local forScope = tbl17.bW()
@@ -79211,7 +79211,7 @@ end
 return jm.c
 end
 end
-do -- jn
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.d9()
@@ -79276,7 +79276,7 @@ end
 return jn.c
 end
 end
-do -- jo
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dR()
@@ -79336,7 +79336,7 @@ end
 return jo.c
 end
 end
-do -- jp
+do 
 local function fn35()
 tbl17.dR()
 tbl17.jh()
@@ -79456,7 +79456,7 @@ end
 return jp.c
 end
 end
-do -- jq
+do 
 local function fn35()
 local v115 = tbl17.a()
 local v116 = tbl17.b2()
@@ -79573,7 +79573,7 @@ end
 return jq.c
 end
 end
-do -- jr
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.jq()
@@ -79635,7 +79635,7 @@ end
 return jr.c
 end
 end
-do -- js
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dR()
@@ -79706,7 +79706,7 @@ end
 return js.c
 end
 end
-do -- jt
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dR()
@@ -79774,7 +79774,7 @@ end
 return jt.c
 end
 end
-do -- ju
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cX()
@@ -79865,7 +79865,7 @@ end
 return ju.c
 end
 end
-do -- jv
+do 
 local function fn35()
 local tbl18
 
@@ -79889,7 +79889,7 @@ end
 return jv.c
 end
 end
-do -- jw
+do 
 local function fn35()
 local v115 = tbl17.cn()
 local v116 = tbl17.co()
@@ -80122,7 +80122,7 @@ end
 return jw.c
 end
 end
-do -- jy
+do 
 local function fn35()
 tbl17.cF()
 tbl17.jx()
@@ -80167,7 +80167,7 @@ end
 return jy.c
 end
 end
-do -- jz
+do 
 local function fn35()
 tbl17.cE()
 tbl17.jx()
@@ -80220,7 +80220,7 @@ end
 return jz.c
 end
 end
-do -- jA
+do 
 local function fn35()
 local index2 = {}
 index2.__index = index2
@@ -80260,7 +80260,7 @@ end
 return ja.c
 end
 end
-do -- jB
+do 
 local function fn35()
 tbl17.cr()
 local v115 = tbl17.bG()
@@ -80346,7 +80346,7 @@ end
 return jb.c
 end
 end
-do -- jC
+do 
 local function fn35()
 local vector = Vector3.new(0, -1, 0)
 local vector2 = Vector3.new(0, 0, -1)
@@ -80374,7 +80374,7 @@ end
 return jc.c
 end
 end
-do -- jD
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cR()
@@ -80454,8 +80454,8 @@ local hitboxHead = arg._features:SelectGunPart(arg3, ragebot)
 local flag19 = v117(arg3.FighterState) ~= "Below"
 local standOff = positions.GetStandOff(arg3, arg5)
 if directPose == nil and ragebot.SilentAim and ragebot.SilentAim.Enabled then
--- Silent overrides use a world-space firing pose, including Root targeting.
--- Do not rewrite the target's root just to establish a replication anchor.
+
+
 directPose = CFrame.new(arg3.AliveState.RootPart.Position + Vector3.new(0, math.max(12, standOff), 0))
 end
 local v119 = standOff > 0 and Vector3.new(0, flag19 and standOff or -standOff, 0.05) or (flag19 and vector or vector2)
@@ -80517,7 +80517,7 @@ end
 return mjD.c
 end
 end
-do -- jE
+do 
 local function fn35()
 tbl17.cJ()
 local v115 = tbl17.bG()
@@ -80691,7 +80691,7 @@ end
 return mjE.c
 end
 end
-do -- jF
+do 
 local function fn35()
 local v115 = Random.new()
 
@@ -80715,7 +80715,7 @@ end
 return jf.c
 end
 end
-do -- jG
+do 
 local function fn35()
 return function(arg, arg2)
 local closestPointOnSurface = arg:GetClosestPointOnSurface(arg2)
@@ -80760,7 +80760,7 @@ end
 return jg.c
 end
 end
-do -- jH
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cF()
@@ -81031,7 +81031,7 @@ end
 return jh.c
 end
 end
-do -- jI
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.jF()
@@ -81072,7 +81072,7 @@ end
 return ji.c
 end
 end
-do -- jJ
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cF()
@@ -81152,7 +81152,7 @@ end
 return jj.c
 end
 end
-do -- jK
+do 
 local function fn35()
 local v115 = tbl17.bG()
 local v116 = tbl17.jF()
@@ -81191,7 +81191,7 @@ end
 return jk.c
 end
 end
-do -- jL
+do 
 local function fn35()
 local n = 1121
 local v115 = Random.new()
@@ -81307,7 +81307,7 @@ end
 return jl.c
 end
 end
-do -- jM
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.cU()
@@ -81405,7 +81405,7 @@ end
 return jm.c
 end
 end
-do -- jN
+do 
 local function fn35()
 tbl17.cU()
 tbl17.jx()
@@ -81430,7 +81430,7 @@ end
 return jn.c
 end
 end
--- Daggers-specific Rage transport, ballistic aiming, and native two-shot bursts.
+
 local absenseDaggersMode = (function()
     local Mode = {}
     Mode.__index = Mode
@@ -81476,13 +81476,13 @@ local absenseDaggersMode = (function()
         local radius=bounded(item.Info and item.Info.ProjectileRaycastRadius,0.25,0,2)
         local gap=math.max(bounded(clearance,0.5,0.35,3),radius+0.1,Mode.Precision(head.Position)*4)
         local launch=outward*(Mode.HeadExtent(head,outward)+gap)
-        -- Back the character out by the native muzzle offset. The camera and
-        -- server can still adjust the final launch direction after replication.
+        
+        
         return launch-rotation:VectorToWorldSpace(offset),launch,gap
     end
 
-    -- Solve in relative coordinates. A lead point is intentionally allowed to
-    -- lie outside the head's current volume; clamping it would remove the lead.
+    
+    
     function Mode.Solve(origin, head, velocity, speed, gravity, latency, maximum)
         if not vector(origin) or not vector(head) or not vector(velocity) or not vector(gravity)
             or not finite(speed) or speed<=0 then return nil,"Invalid trajectory" end
@@ -81499,8 +81499,8 @@ local absenseDaggersMode = (function()
         for i=1,64 do
             times[#times+1]=maximum*i/64
         end
-        -- A fast approaching target can cross both roots between two uniform
-        -- samples. Include its closest-approach time so that window is kept.
+        
+        
         local speedSquared=velocity.X^2+velocity.Y^2+velocity.Z^2
         if speedSquared>0 then
             local closest=-((dx+velocity.X*latency)*velocity.X
@@ -81561,10 +81561,10 @@ local absenseDaggersMode = (function()
         local engine=self.Engine
         local inner=engine._context and engine._context.Inner
         local controller=inner and inner.CharacterController
-        -- The server anchor and the transport root can belong to different
-        -- simulation frames. Subtracting them turns desync motion into an
-        -- incorrect eye height. Use the same stance offsets as the native
-        -- origin helper instead.
+        
+        
+        
+        
         if controller and type(controller.IsCrouching)=="function" then
             local ok,crouching=pcall(controller.IsCrouching,controller)
             if ok then return Vector3.new(0,crouching and 0.25 or 1.75,0) end
@@ -81637,8 +81637,8 @@ local absenseDaggersMode = (function()
         local predicted=target.Head.Position+velocity*(settle+latency)
         predicted=Vector3.new(predicted.X,math.max(predicted.Y,target.Head.Position.Y),predicted.Z)
         local eyeOffset=self:_eyeOffset()
-        -- Shallow approaches preserve the native launch alignment. Straight-down
-        -- throws magnified the Daggers spawn offset and missed in live checks.
+        
+        
         local points={Vector3.new(0,1,distance),Vector3.new(distance,1,0),
             Vector3.new(-distance,1,0),Vector3.new(0,1,-distance)}
         if near then
@@ -81652,8 +81652,8 @@ local absenseDaggersMode = (function()
             local eye=predicted+offset
             local pose=Mode.Look(eye-eyeOffset,predicted-eye)
             if pose then
-                -- Check the forecast placement now; re-solve from current target
-                -- data after the server position has had time to replicate.
+                
+                
                 local plan,reason=self:_plan(item,target,pose,velocity,cfg,latency+settle,own)
                 if plan then return pose end
                 failure=reason or failure
@@ -81709,10 +81709,10 @@ local absenseDaggersMode = (function()
                 job.PreviousCamera=rawget(fighter,"GetCameraData")
                 local thread=coroutine.running()
                 local function cameraData()
-                    -- Match successful native throws and keep stationary aim on
-                    -- the native surface. Moving targets use a server-relative
-                    -- lead; horizontal replication lag and flight time differ
-                    -- from the short vertical flight interval during a jump.
+                    
+                    
+                    
+                    
                     local eye=Mode.Look(plan.Eye,plan.Offset)
                     local surface=target.Head:GetClosestPointOnSurface(plan.Eye)
                     local movement=plan.Velocity
@@ -81768,8 +81768,8 @@ local absenseDaggersMode = (function()
                     job.Flight=flight
                 end
                 engine._features.WithShot(function()
-                    -- Avoid forwarding a stale __namecall method left by a
-                    -- geometry callback in the input hook (observed as "Dot").
+                    
+                    
                     engine._api.UseItemRemote.FireServer(engine._api.UseItemRemote,id,engine._sender:Enum(action),packet,nil)
                 end)
                 if action=="StartShooting" then
@@ -81883,7 +81883,7 @@ local absenseDaggersMode = (function()
     return Mode
 end)()
 
--- Native Gunblade actions and Knife's attack-before-contact sequence.
+
 local absenseNativeRage = (function()
     local Mode={}
     Mode.__index=Mode
@@ -82184,8 +82184,8 @@ local absenseNativeRage = (function()
 end)()
 
 
--- Aurora's recovered Rage decisions adapted to Absense's native sender and
--- frame transport. This module never changes remote formats or enemy joints.
+
+
 local absenseRageTactics = (function()
     local Tactics = {}
     Tactics.__index = Tactics
@@ -82320,7 +82320,7 @@ local absenseRageTactics = (function()
         for _, player in ipairs(self.Engine._services.Players:GetPlayers()) do
             if player.Character then ignored[#ignored + 1] = player.Character end
         end
-        -- Avoid nil holes in the RaycastParams instance array.
+        
         local filter = {}
         for _, instance in pairs(ignored) do if instance then filter[#filter + 1] = instance end end
         self.RayParams.FilterDescendantsInstances = filter
@@ -82397,8 +82397,8 @@ local absenseRageTactics = (function()
             if not health or not shot.Model.Parent then
                 self.Pending[item] = nil
             elseif health < shot.Health then
-                -- Health can also fall because of a teammate. Keep that count
-                -- separate from the local DamageNumberEffect confirmation.
+                
+                
                 self.Stats.ObservedDamage += shot.Health - health
                 self.Pending[item] = nil
             elseif item.Name == "Sniper" and ammo and type(shot.Ammo) == "number" and ammo < shot.Ammo then
@@ -82501,7 +82501,7 @@ local absenseRageTactics = (function()
     end
 
     function Tactics:_activePauseMap(environment)
-        -- The map for another duel may also be loaded in Workspace.
+        
         local roots = self.Collection:GetTagged("RaycastWhitelist" .. tostring(environment or ""))
         for _, root in ipairs(roots) do
             local node = root
@@ -82591,8 +82591,8 @@ local absenseRageTactics = (function()
     return Tactics
 end)()
 
--- Position scoring and relative tracking adapted from the supplied combat
--- reference. Uses Absense's visibility, transport and weapon packet paths.
+
+
 local absenseRagePlanner = (function()
     local Planner = {}
     Planner.__index = Planner
@@ -82730,8 +82730,8 @@ local absenseRagePlanner = (function()
         local below = self.Engine._tactics:ShieldBelow(target, cfg)
         local previous = self.Last[target.Model]
         if previous then table.insert(points, 1, target.Root.Position + previous) end
-        -- Add an outer ring for melee opponents. Its cost still includes spread
-        -- and exposure, so extra distance is chosen only when it helps.
+        
+        
         for _, blade in ipairs(self.Blades) do
             if blade.Model == target.Model then
                 local radius = math.clamp(blade.Radius + 1, 4, 24)
@@ -82850,10 +82850,10 @@ local absenseRagePlanner = (function()
     return Planner
 end)()
 
-do -- jO
+do 
 local function fn35()
--- Rebuilt Rage engine. Base: the park -> native packet -> frame restore
--- lifecycle in message(2).txt. No lifted shot planner or part-glue dependency.
+
+
 local NativeFire=tbl17.k9()
 local FrameTransport=tbl17.kA()
 local Features=tbl17.k5()
@@ -83016,7 +83016,7 @@ function Engine:_selectTarget(localNative,localEnv,cfg,origin)
     return best
 end
 
--- f4307: distinguish loaded, reloadable, and exhausted native guns.
+
 function Engine:_ammoState(item)
     if item.Info.Type=="Melee" then return "Ready" end
     local capacity=tonumber(item.Info.MaxAmmo)
@@ -83024,8 +83024,8 @@ function Engine:_ammoState(item)
     local ammo,reserve=read(item,"Ammo"),read(item,"AmmoReserve")
     if type(ammo)=="number" and ammo>0 then return "Ready" end
     if type(reserve)=="number" and reserve>0 then return "Reload" end
-    -- The current native gun controller treats a missing reserve as
-    -- unlimited, but a missing magazine must not become a usable gun.
+    
+    
     if type(ammo)=="number" and ammo>=0 and reserve==nil then return "Reload" end
     return "Exhausted"
 end
@@ -83035,8 +83035,8 @@ function Engine:_reloadBusy(item)
     if item.Info.ReloadType=="Segmented" then
         local threads=item._reload_threads or {}
         local thread=threads[#threads]
-        -- Earlier cancelled reload threads can remain suspended in history.
-        -- Only the current tail task is a firing blocker (as in f4312).
+        
+        
         if type(thread)=="thread" then
             local ok,status=pcall(coroutine.status,thread)
             if ok and status~="dead" then return true end
@@ -83106,7 +83106,7 @@ function Engine:_equip(native,slot)
     if now<self._nextEquip then return end
     self._nextEquip=now+0.25
     local context=self._context.Inner
-    -- Native equip can yield during viewmodel loading; it never owns a shot pose.
+    
     task.spawn(function()
         if self._destroyed or not self._enabled or self._context.Inner~=context or self._api.FighterController.LocalFighter~=native then return end
         local ok,err=pcall(function() native:EquipItem(slot) end)
@@ -83155,7 +83155,7 @@ function Engine:_position(target,part,ownRoot,cfg,melee)
         local orbit=self._features:OrbitPose(self:_asTarget(target),ownRoot,cfg)
         points={}
         if orbit then points[#points+1]=orbit.Position end
-        -- Closely follow the reference's above-close and behind-target choices.
+        
         local below=self._tactics:ShieldBelow(target,cfg)
         if below~=nil then
             table.insert(points,1,part.Position+Vector3.new(0,(below and -1 or 1)*math.max(6,scale/1048576)-eye,0))
@@ -83166,7 +83166,7 @@ function Engine:_position(target,part,ownRoot,cfg,melee)
         points[#points+1]=root.Position-root.CFrame.RightVector*gap+Vector3.new(0,0.5,0)
     end
     if not melee then
-        -- Aurora's radial fallback, bounded to a fixed number of candidates.
+        
         for index=0,7 do
             local angle=math.pi*2*index/8
             points[#points+1]=part.Position+Vector3.new(math.cos(angle)*9,-eye,math.sin(angle)*9)
@@ -83218,7 +83218,7 @@ function Engine:_cancelPhase()
 end
 
 function Engine:_replicationWindow(player)
-    -- Network ping is one-way; allow a round trip plus two 60 Hz frames.
+    
     local ping=0
     local ok,result=pcall(function() return player:GetNetworkPing() end)
     if ok then ping=value(result,0,0,1) end
@@ -83240,8 +83240,8 @@ function Engine:_tick(dt)
     local environment=env(native,lp)
     if not inner or not native or not state or not state.Alive or environment==nil then self:_stop("Waiting for match"); return end
     if not state.RootPart or not state.RootPart.Parent then self:_stop("Waiting for character"); return end
-    -- Let a new character finish receiving its native inventory before any
-    -- void movement; there is no usable firing state during loadout creation.
+    
+    
     if next(native.Items or {})==nil then self:_stop("Waiting for loadout"); return end
     self:_setVoidProtection(true)
     self._transport:Bind(inner.CharacterController,state.RootPart)
@@ -83293,8 +83293,8 @@ function Engine:_tick(dt)
         self._daggers:Tick(dt,cfg,native,lp,state,environment,home)
         return
     end
-    -- Finish the firing lease even if the last round emptied the magazine.
-    -- Reload/equip/void movement must not interrupt its replication window.
+    
+    
     if self._phase=="hold" then
         local shot=self._attack
         if not shot or not self._planner:Follow(shot,shot.Target,shot.Part) then
@@ -83311,8 +83311,8 @@ function Engine:_tick(dt)
         self:_idle(home,self._target,state.RootPart,cfg)
         return
     end
-    -- Keep the prepared target until its shot completes. Re-ranking every
-    -- 100 ms can otherwise restart a longer network settle indefinitely.
+    
+    
     local target=self._attack and self:_eligible(self._attack.Target.Player,native,environment)
     if not target then target=self:_selectTarget(native,environment,cfg,home.Position) end
     self._target=target
@@ -83524,7 +83524,7 @@ end
 return mjO.c
 end
 end
-do -- jP
+do 
 local function fn35()
 local v115 = tbl17.f()
 tbl17.a()
@@ -83581,7 +83581,7 @@ end
 return jp.c
 end
 end
-do -- jQ
+do 
 local function fn35()
 local tbl18 = {}
 local v115 = buffer.create(64)
@@ -83623,7 +83623,7 @@ end
 return jq.c
 end
 end
-do -- jR
+do 
 local function fn35()
 local v115 = tbl17.jQ()
 tbl17.hM()
@@ -83926,7 +83926,7 @@ end
 return jr.c
 end
 end
-do -- jS
+do 
 local function fn35()
 local v115 = tbl17.jP()
 local v116 = tbl17.jR()
@@ -84093,7 +84093,7 @@ end
 return js.c
 end
 end
-do -- jT
+do 
 local function fn35()
 local Reporter=tbl17.ad()
 local Result=tbl17.a()
@@ -84128,7 +84128,7 @@ end
 return mjT.c
 end
 end
-do -- jU
+do 
 local function fn35()
 local v115 = tbl17.cp()
 tbl17.cr()
@@ -84362,7 +84362,7 @@ end
 return ju.c
 end
 end
-do -- jV
+do 
 local function fn35()
 local v115 = tbl17.b3()
 local playerModule = tbl17.aS().PlayerModule
@@ -84407,7 +84407,7 @@ end
 return jv.c
 end
 end
-do -- jW
+do 
 local function fn35()
 local v115 = tbl17.co()
 local v116 = tbl17.cp()
@@ -84666,7 +84666,7 @@ end
 return jw.c
 end
 end
-do -- jX
+do 
 local function fn35()
 local v115 = tbl17.A()
 tbl17.hM()
@@ -84824,7 +84824,7 @@ end
 return jx.c
 end
 end
-do -- jY
+do 
 local function fn35()
 local v115 = tbl17.A()
 tbl17.hM()
@@ -84992,7 +84992,7 @@ end
 return jy.c
 end
 end
-do -- jZ
+do 
 local function fn35()
 local v115 = tbl17.bG()
 tbl17.dr()
@@ -85284,7 +85284,7 @@ end
 return jz.c
 end
 end
-do -- j_
+do 
 local function fn35()
 tbl17.cr()
 local v115 = tbl17.bG()
@@ -85824,7 +85824,7 @@ end
 return j.c
 end
 end
-do -- j0
+do 
 local function fn35()
 local v115 = tbl17.dO()
 local v116 = tbl17.bG()
@@ -85909,7 +85909,7 @@ end
 return j0.c
 end
 end
-do -- j1
+do 
 local function fn35()
 local v115 = tbl17.dh()
 task.wait()
@@ -86196,28 +86196,28 @@ end
 return j1.c
 end
 end
-do -- k0
+do 
 local function fn35()
--- absense-ui.lua : the Absense menu engine (tab/k0).
---
--- Monochrome surfaces and starfall, quiet borders, clear hierarchy, and
--- interruptible motion. Restructured from the placeholder build into a
--- factory: Engine.new(opts) -> menu, with imperative pages/cards (no static
--- blueprints) and a widget set wide enough to host the lifted feature tree.
---
--- opts = {
---   Tabs     = { {Name="Aim", Icon="crosshair", Subs={"Aimbot","Silent Aim"}}, ... },
---   Size     = Vector2, ToggleKey = Enum.KeyCode, StartOpen = bool,
---   Accent / Accent2 = Color3, AnimSpeed = number, ReduceMotion = bool,
---   Blur = number, Scale = number, SaveFile = "Absense/menu.json",
---   OnVisibility = function(visible) end,     -- compat: adapter:SetActive
--- }
---
--- Widget wrappers (built here and in absense-widgets.lua) all share:
---   .Kind .Row .Value .Dragging   signals .Changed .ValueChanged
---   :Set(v, silent) :Get() :OnChanged(fn) :Connect(sig, fn)
---   :Bind{Read=,Write=,Changed=} :SetVisible(v) :SetLabel(t) :Destroy()
--- so the lifted config binders (tbl17.P / tbl17.N) can drive them.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 local cloneref = cloneref or function(x) return x end
 local function svc(n) return cloneref(game:GetService(n)) end
@@ -86230,11 +86230,11 @@ local function clamp(x, a, b) return math.max(a, math.min(b, x)) end
 local F = { Reg = Enum.Font.Gotham, Med = Enum.Font.GothamMedium, Bold = Enum.Font.GothamBold, Mono = Enum.Font.RobotoMono }
 local EASE, DIR = Enum.EasingStyle, Enum.EasingDirection
 
--- Bright top-left rim fading to the opposite corner: the liquid-glass edge.
 
---------------------------------------------------------------------------------
--- Procedural icons: rotated rounded frames on a 24 unit grid
---------------------------------------------------------------------------------
+
+
+
+
 
 local ICONS = {}
 do
@@ -86272,7 +86272,7 @@ do
         { "l", 2.5, 9, 6, 3.5, 1.8 }, { "l", 2.5, 9, 21.5, 9, 1.8 }, { "l", 9.5, 3.5, 8, 9, 1.8 }, { "l", 14.5, 3.5, 16, 9, 1.8 },
         { "l", 8, 9, 12, 20.5, 1.8 }, { "l", 16, 9, 12, 20.5, 1.8 } }
     local gear = { { "c", 12, 12, 3.1 }, { "c", 12, 12, 7.2 } }
-    for k = 0, 7 do -- eight teeth around the ring
+    for k = 0, 7 do 
         local a = math.rad(k * 45)
         local ca, sa = math.cos(a), math.sin(a)
         gear[#gear + 1] = { "l", 12 + ca * 8.7, 12 + sa * 8.7, 12 + ca * 10.3, 12 + sa * 10.3, 2.6 }
@@ -86292,7 +86292,7 @@ end
 
 local Engine = {}
 
---------------------------------------------------------------------------------
+
 
 function Engine.new(opts)
     opts = opts or {}
@@ -86323,13 +86323,13 @@ function Engine.new(opts)
     }
 
     local S = { conns = {}, hooks = {}, destroyed = false, open = false, token = 0, capture = nil, onFirstOpen = {} }
-    local menu = {} -- the instance being built (closures below reference it)
+    local menu = {} 
     local searchEntries = {}
     local activeTweens = setmetatable({}, {__mode="k"})
 
-    --------------------------------------------------------------------------------
-    -- Settings persistence (engine-local: geometry, last page, extras)
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local function loadSettings()
         if not (isfile and readfile) then return {} end
@@ -86367,9 +86367,9 @@ function Engine.new(opts)
         end)
     end
 
-    --------------------------------------------------------------------------------
-    -- Instance helpers
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local function connect(sig, fn)
         local c = sig:Connect(fn)
@@ -86469,7 +86469,7 @@ function Engine.new(opts)
         return t
     end
 
-    -- Soft glow: nested translucent rounded frames, alpha falling off exponentially outward.
+    
     local function makeGlow(parent, role, radius, alpha, layers, cr, color)
         local g = { layers = {}, role = role }
         for i = 1, layers do
@@ -86562,9 +86562,9 @@ function Engine.new(opts)
         return ic
     end
 
-    --------------------------------------------------------------------------------
-    -- Window shell
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local function pickParent()
         local ok = pcall(function()
@@ -86577,8 +86577,8 @@ function Engine.new(opts)
             local ok2, h = pcall(gethui)
             if ok2 and h then return h end
         end
-        -- last resort: PlayerGui. LocalPlayer can be nil in the first
-        -- moments after a teleport -- poll for it instead of indexing nil
+        
+        
         local lp = Players.LocalPlayer
         local t0 = tick()
         while lp == nil and tick() - t0 < 30 do
@@ -86688,9 +86688,9 @@ function Engine.new(opts)
         return t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch
     end
 
-    --------------------------------------------------------------------------------
-    -- Header: logo, wordmark, drag, window buttons
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local header=new("Frame",{Name="Header",Size=UDim2.new(1,0,0,76),ZIndex=5},window)
     local logo=new("Frame",{Name="Brand",Position=UDim2.fromOffset(23,25),Size=UDim2.fromOffset(28,28)},header)
@@ -86755,13 +86755,13 @@ function Engine.new(opts)
         end)
     end
 
-    --------------------------------------------------------------------------------
-    -- Signal-lite + widget base
-    --------------------------------------------------------------------------------
+    
+    
+    
 
-    -- one global drag router: per-widget UIS.InputChanged listeners scaled
-    -- into the hundreds (every slider / keybind / color square) and each one
-    -- fired on every mouse move
+    
+    
+    
     S.drags = {}
     connect(UIS.InputChanged, function(i)
         if isMove(i) then
@@ -86816,7 +86816,7 @@ function Engine.new(opts)
         return sig
     end
 
-    -- Base facet surface shared by every widget wrapper.
+    
     local function mkWidget(card, row, kind)
         local w = {
             Kind = kind, Row = row, Card = card, Value = nil, Dragging = false,
@@ -86839,7 +86839,7 @@ function Engine.new(opts)
             end
             return nil
         end
-        -- Generic two-way binder (mirror of the lifted N.bind contract).
+        
         function w:Bind(b)
             local updating = false
             local function refresh()
@@ -86873,9 +86873,9 @@ function Engine.new(opts)
         return w
     end
 
-    --------------------------------------------------------------------------------
-    -- Sidebar, views, sub-tabs
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local tabs=CONFIG.Tabs
     local SIDE_X,SIDE_Y,SIDE_W=12,121,168
@@ -86963,12 +86963,12 @@ function Engine.new(opts)
         views[i]=view;return view
     end
 
-    --------------------------------------------------------------------------------
-    -- Rows and cards
-    --------------------------------------------------------------------------------
+    
+    
+    
 
-    -- Row: one entry line inside a card. Label on the left, a right-aligned
-    -- flex zone (Right) that co-hosted controls append into.
+    
+    
     local HELP={
         ["Aim point"]="Center aims at the middle of the selected hitbox. Closest point chooses the point nearest your crosshair.",
         ["Weapon profile"]="These changes are saved for the selected weapon. The profile follows your equipped weapon.",
@@ -87030,7 +87030,7 @@ function Engine.new(opts)
         card.rows[#card.rows + 1] = row
         return row
     end
-    -- Controls call ReserveRight(w) so the label never runs under them.
+    
     function Row:ReserveRight(w)
         self._rightW = (self._rightW or 0) + (w or 0) + 8
         self:_fitLabel()
@@ -87039,7 +87039,7 @@ function Engine.new(opts)
         if not self.Label then return end
         if self.Stacked then self.Label.Size=UDim2.new(1,-32-(self._rightW or 0),0,22);return end
         local avail = self.Card.w - (self.Indent or 0) * 16 - 12 - (self._rightW or 0) - 14
-        -- width only: callers may pin the height (slider labels are 30 tall)
+        
         local ys, yo = self.Label.Size.Y.Scale, self.Label.Size.Y.Offset
         self.Label.Size = UDim2.new(0, math.max(48, math.floor(avail)), ys, yo)
     end
@@ -87078,8 +87078,8 @@ function Engine.new(opts)
         self.Frame:Destroy()
         self.Card:Reflow()
     end
-    -- Row-level hover wash used by controls that own the whole line.
-    -- symmetric 6px inset so it reads as a pill, not a full-bleed stripe
+    
+    
     function Row:HitArea()
         local hit = new("TextButton", { Name = "Hit", Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -12, 1, 0), BackgroundColor3 = T.White, BackgroundTransparency = 1, ZIndex = 1 }, self.Frame)
         corner(hit, px(9))
@@ -87108,9 +87108,9 @@ function Engine.new(opts)
         local s = stroke(f, T.Border, 1, 0.25)
         return f, s
     end
-    -- Per-weapon override pin: small chip at the LEFT end of the Right zone
-    -- (packs with the bean / swatch, never over the label). Visible only
-    -- while the pin service offers a weapon context.
+    
+    
+    
     function Row:AddPin(path, pins)
         local host = self.Right
         if host == nil then return nil end
@@ -87252,9 +87252,9 @@ function Engine.new(opts)
         self.scroll.CanvasSize=UDim2.fromOffset(0,math.max(self.colY[1],self.colY[2])+4)
     end
 
-    --------------------------------------------------------------------------------
-    -- Core widgets (the heavy ones live in absense-widgets.lua, driven via _kit)
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local function fmtDecimals(step)
         if step == nil or step >= 1 then return 0 end
@@ -87262,8 +87262,8 @@ function Engine.new(opts)
         return 2
     end
 
-    -- Toggle: 46x24 reference bean. OFF = hairline outline only (no boxy
-    -- track); ON = gradient fill + white knob sliding 3 -> 25.
+    
+    
     function Card:Toggle(o)
         o = o or {}
         local row = o.Row or newRow(self, 42)
@@ -87280,12 +87280,12 @@ function Engine.new(opts)
         local TW, TH, KN = 40, 22, 16
         local sw
         if row.Right then
-            -- the bean lives in the Right flex zone, sorted last (LayoutOrder
-            -- 100) so co-hosted controls -- color swatch, keybind chips --
-            -- pack to its LEFT instead of drawing on top of it
+            
+            
+            
             sw = new("Frame", { Name = "Switch", Size = UDim2.fromOffset(TW, TH), LayoutOrder = 100 }, row.Right)
         elseif owns then
-            -- Bare row without a flex zone: dock to the right margin
+            
             sw = new("Frame", {
                 Name = "Switch", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
                 Size = UDim2.fromOffset(TW, TH),
@@ -87334,7 +87334,7 @@ function Engine.new(opts)
         return w
     end
 
-    -- Slider: label + mono value chip + gradient track.
+    
     function Card:Slider(o)
         o = o or {}
         local lo, hi = o.Min or 0, o.Max or 100
@@ -87342,7 +87342,7 @@ function Engine.new(opts)
         local dec = fmtDecimals(step)
         local val = clamp(o.Default ~= nil and o.Default or lo, lo, hi)
         local row = o.Row or newRow(self, 64)
-        -- reserve the value chip (and any later pin) so the label auto-fits
+        
         row:ReserveRight(o.Suffix and 62 or 48)
         local label = row:EnsureLabel(o.Label)
         label.Size = UDim2.new(0, label.Size.X.Offset, 0, 30)
@@ -87414,7 +87414,7 @@ function Engine.new(opts)
         return w
     end
 
-    -- RangeSlider: one track, two knobs, "lo-hi" chip.
+    
     function Card:RangeSlider(o)
         o = o or {}
         local lo, hi = o.Min or 0, o.Max or 100
@@ -87502,7 +87502,7 @@ function Engine.new(opts)
         return w
     end
 
-    -- TextBox: glass field, commits on focus lost.
+    
     function Card:TextBox(o)
         o = o or {}
         local row = o.Row or newRow(self, 42)
@@ -87531,7 +87531,7 @@ function Engine.new(opts)
         return w
     end
 
-    -- Button: primary / secondary / danger variants, optional Confirm arm.
+    
     function Card:Button(o)
         o = o or {}
         local primary = o.Variant == "primary" or (o.Variant == nil)
@@ -87606,7 +87606,7 @@ function Engine.new(opts)
         return w
     end
 
-    -- Label: plain dim text line; Row can host co-joined controls.
+    
     function Card:Label(o)
         o=o or {}
         local row=o.Row or newRow(self,34)
@@ -87627,7 +87627,7 @@ function Engine.new(opts)
         return widget
     end
 
-    -- Divider: hairline with optional centered caption.
+    
     function Card:Divider(o)
         o = o or {}
         local row = newRow(self, 18)
@@ -87643,7 +87643,7 @@ function Engine.new(opts)
         return w
     end
 
-    -- Host frame for bespoke content (fills a row).
+    
     function Card:Host(o)
         o = o or {}
         local row = newRow(self, o.Height or 100, { Bare = true })
@@ -87652,9 +87652,9 @@ function Engine.new(opts)
         return w
     end
 
-    --------------------------------------------------------------------------------
-    -- Popup panels (dropdowns, color pickers, ...)
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local function toOverlay(inst)
         local s = uiScale.Scale
@@ -87688,8 +87688,8 @@ function Engine.new(opts)
         end)
     end
 
-    -- Anchored popup: owns the Popups slot so outside clicks / Esc close it.
-    -- build(p) runs BEFORE the size tween so it can settle the final height.
+    
+    
     function menu:Popup(anchor, w, h, build)
         local x, y, aw, ah = toOverlay(anchor)
         local px_, py = x, y + ah + 5
@@ -87706,9 +87706,9 @@ function Engine.new(opts)
         return p
     end
 
-    --------------------------------------------------------------------------------
-    -- Modal dialog frame (Menu:Dialog backing)
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local modal = nil
     function menu:CloseModal(instant)
@@ -87724,7 +87724,7 @@ function Engine.new(opts)
         later(0.2, function() m.root:Destroy() end)
     end
 
-    -- Returns a modal controller: rail pages + body page + action button.
+    
     function menu:Modal(o)
         o = o or {}
         menu:CloseModal(true)
@@ -87758,7 +87758,7 @@ function Engine.new(opts)
         local rail = new("Frame", { Name = "Rail", Position = UDim2.fromOffset(10, 62), Size = UDim2.fromOffset(120, MH - 62 - 56) }, panel)
         local body = new("Frame", { Name = "Body", Position = UDim2.fromOffset(134, 60), Size = UDim2.new(1, -146, 1, -114), BackgroundTransparency = 1 }, panel)
 
-        -- action button (footer right)
+        
         local actionHost = new("Frame", { Name = "ActionHost", Position = UDim2.fromOffset(MW - 150, MH - 42), Size = UDim2.fromOffset(132, 30) }, panel)
         local actionBtn = new("TextButton", {
             Name = "Action", Size = UDim2.fromScale(1, 1), Text = "", Font = F.Bold, TextSize = 12,
@@ -87791,7 +87791,7 @@ function Engine.new(opts)
         function ctl:SetActionEnabled(b) action.Enabled = b == true paintAction() end
         function ctl:SetActionHandler(fn) action.Handler = fn end
         function ctl:SetConfirmStyle(on)
-            -- danger-tinted confirm presentation
+            
             action.Variant = on and "danger" or action.Variant
             paintAction()
         end
@@ -87901,16 +87901,16 @@ function Engine.new(opts)
         return ctl
     end
 
-    --------------------------------------------------------------------------------
-    -- Watermark: removed entirely (kept as no-op API for the lifted callers)
-    --------------------------------------------------------------------------------
+    
+    
+    
     function menu:SetWatermarkUsername() end
     function menu:SetWatermarkEnabled() end
     function menu:IsWatermarkEnabled() return false end
 
-    --------------------------------------------------------------------------------
-    -- Keybinds HUD (right edge, draggable)
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local kb = { enabled = false, entries = {}, pos = saved.kb }
     local kbRoot = new("Frame", {
@@ -87996,9 +87996,9 @@ function Engine.new(opts)
         end)
     end
 
-    --------------------------------------------------------------------------------
-    -- Page plumbing: selection, sub switching, first-open hooks
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local function ensurePage(i, j)
         local view = views[i] or buildView(i)
@@ -88057,7 +88057,7 @@ function Engine.new(opts)
         page.group.GroupTransparency = 1
         page.group.Visible = true
         tween(page.group, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, anim and 0.2 or 0, EASE.Quint)
-        -- once visible, fill cards can measure the host and settle their height
+        
         task.defer(function()
             if S.destroyed then return end
             for _, c in ipairs(page.cards) do c:Reflow() end
@@ -88129,7 +88129,7 @@ function Engine.new(opts)
         table.insert(S.onFirstOpen[key], fn)
     end
 
-    -- A single keyboard-accessible search surface for navigation and settings.
+    
     function menu:Search(query)
         query=string.lower(tostring(query or ""))
         local out={}
@@ -88232,9 +88232,9 @@ function Engine.new(opts)
         return box
     end
 
-    --------------------------------------------------------------------------------
-    -- Input routing: key capture, Esc, toggle key
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     connect(UIS.InputBegan, function(i, processed)
         if S.destroyed then return end
@@ -88273,9 +88273,9 @@ function Engine.new(opts)
     end
     function menu:ShouldBlockKeybindCapture() return S.capture ~= nil end
 
-    --------------------------------------------------------------------------------
-    -- Show / hide, theme API, lifecycle
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     local blur
     local function setBlur(on)
@@ -88381,7 +88381,7 @@ function Engine.new(opts)
     menu.Starfall = skyfield
     menu.Config = CONFIG
 
-    -- kit: everything the heavy widgets (absense-widgets.lua) need
+    
     menu._kit = {
         T = T, F = F, EASE = EASE, DIR = DIR, rgb = rgb, clamp = clamp,
         new = new, corner = corner, px = px, FULL = FULL, stroke = stroke,
@@ -88398,9 +88398,9 @@ function Engine.new(opts)
     menu._ensurePage = ensurePage
     menu._pages = pages
 
-    --------------------------------------------------------------------------------
-    -- Init
-    --------------------------------------------------------------------------------
+    
+    
+    
 
     applyTheme()
     rimStroke.Transparency = 1
@@ -88428,18 +88428,18 @@ end
 return mk0.c
 end
 end
-do -- k2
+do 
 local function fn35()
--- absense-widgets.lua : heavy widget builders for the Absense engine (tab/k2).
---
--- Each builder is W.Kind(menu, card, o) -> widget wrapper, using menu._kit for
--- the engine's instance helpers. Value shapes match the lifted Absense API:
---   Dropdown      string | nil                MultiDropdown: { [option]=true }
---   List          string | nil
---   OrderedList   string[] (order of Items)
---   ColorPicker   { Rgb = Color3, Alpha = 0..1, Stops = nil | { {Time, Value} } }
---   Keybind       { Key = EnumItem|nil, Mode = string }
---   SkinChanger   string | nil (selected item Name)
+
+
+
+
+
+
+
+
+
+
 
 local function factory()
     local W = {}
@@ -88449,9 +88449,9 @@ local function factory()
         return (labels and labels[v]) or v
     end
 
-    ---------------------------------------------------------------------------
-    -- Dropdown (single + multi), optional search, refresh-on-open options
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function W.Dropdown(menu, card, o)
         local kit = menu._kit
@@ -88508,7 +88508,7 @@ local function factory()
                 local listFrame
                 local function rebuild(filter)
                     if listFrame then listFrame:Destroy() end
-                    -- matches first so the scroller canvas is exact
+                    
                     local matches = {}
                     for _, opt in ipairs(options) do
                         if filter == nil or filter == "" or string.find(string.lower(tostring(textOf(labels,opt))), string.lower(filter), 1, true) then
@@ -88516,8 +88516,8 @@ local function factory()
                         end
                     end
                     local cnt = #matches
-                    -- scrollable list: every option reachable, popup caps at
-                    -- MAX_ROWS visible
+                    
+                    
                     listFrame = kit.new("ScrollingFrame", {
                         Name = "List", Position = UDim2.fromOffset(4, y), Size = UDim2.new(1, -8, 0, math.min(cnt, MAX_ROWS) * 30),
                         BackgroundTransparency = 1, ScrollBarThickness = 3, ScrollBarImageTransparency = 0.45,
@@ -88671,9 +88671,9 @@ local function factory()
         return w
     end
 
-    ---------------------------------------------------------------------------
-    -- List: embedded selectable list with optional search
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function W.List(menu, card, o)
         local kit = menu._kit
@@ -88771,9 +88771,9 @@ local function factory()
         return w
     end
 
-    ---------------------------------------------------------------------------
-    -- OrderedList: reorderable rows (up/down)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function W.OrderedList(menu, card, o)
         local kit = menu._kit
@@ -88799,8 +88799,8 @@ local function factory()
             end
         end
         syncOrder()
-        -- label strip on top (a v-centered label across the whole list drew
-        -- straight through the middle list item)
+        
+        
         local hasLabel = o.Label ~= nil and o.Label ~= ""
         local row = kit.newRow(card, #order * 26 + (hasLabel and 30 or 6) + 12, { Bare = true })
         local w = kit.mkWidget(card, row, "OrderedList")
@@ -88846,7 +88846,7 @@ local function factory()
         function w:Set(v, silent)
             if type(v) == "table" then
                 order = table.clone(v)
-                -- include any missing items at the end
+                
                 local seen = {}
                 for _, n in ipairs(order) do seen[n] = true end
                 for _, it in ipairs(items) do
@@ -88861,10 +88861,10 @@ local function factory()
         return w
     end
 
-    ---------------------------------------------------------------------------
-    -- ColorPicker: presets, SV square, hue + alpha bars, gradient stops,
-    -- animation facets (mode / speed / breathing range)
-    ---------------------------------------------------------------------------
+    
+    
+    
+    
 
     local PRESETS = {
         Color3.fromRGB(183, 164, 255), Color3.fromRGB(143, 151, 255), Color3.fromRGB(122, 92, 255), Color3.fromRGB(255, 61, 219),
@@ -88880,7 +88880,7 @@ local function factory()
         return ColorSequence.new(kps)
     end
 
-    -- mini slider used inside popups (0..1); returns controller with :Set(v)
+    
     local function miniSlider(kit, parent, x, y, w, v0, onChange, label)
         local holder = kit.new("Frame", { Name = "Mini", Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, 14), BackgroundTransparency = 1 }, parent)
         if label then
@@ -89014,7 +89014,7 @@ local function factory()
             sync(silent)
         end
 
-        -- animation facets
+        
         function w:EnableAnimation(allowBreathing)
             anim.Allowed = true
             anim.AllowBreathing = allowBreathing == true
@@ -89041,7 +89041,7 @@ local function factory()
             local parts = {}
             local function build(p)
                 local y = 10
-                -- presets
+                
                 for i, c in ipairs(PRESETS) do
                     local b = kit.new("TextButton", {
                         Name = "Preset" .. i, Position = UDim2.fromOffset(12 + ((i - 1) % 4) * 50, y + math.floor((i - 1) / 4) * 28),
@@ -89062,7 +89062,7 @@ local function factory()
                     end)
                 end
                 y += 62
-                -- SV square
+                
                 local sv = kit.new("Frame", { Name = "SV", Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(188, 110), BackgroundTransparency = 1, ClipsDescendants = true }, p)
                 local hueLayer = kit.new("Frame", { Name = "H", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromHSV(hue, 1, 1), BackgroundTransparency = 0 }, sv)
                 local whiteLayer = kit.new("Frame", { Name = "W", Size = UDim2.fromScale(1, 1), BackgroundColor3 = kit.T.White, BackgroundTransparency = 0 }, sv)
@@ -89102,7 +89102,7 @@ local function factory()
                     end
                 end)
                 y += 118
-                -- hue bar
+                
                 local hb = kit.new("Frame", { Name = "Hue", Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(188, 12), BackgroundColor3 = kit.T.White, BackgroundTransparency = 0 }, p)
                 kit.corner(hb, kit.FULL)
                 local hgrad = Instance.new("UIGradient")
@@ -89132,7 +89132,7 @@ local function factory()
                     end
                 end)
                 y += 20
-                -- alpha bar
+                
                 if o.Alpha then
                     local ab = kit.new("Frame", { Name = "Alpha", Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(188, 10), BackgroundColor3 = kit.T.Track, BackgroundTransparency = 0 }, p)
                     kit.corner(ab, kit.FULL)
@@ -89158,7 +89158,7 @@ local function factory()
                     end)
                     y += 18
                 end
-                -- gradient stops editor
+                
                 if editableGradient then
                     if not onlyGradient then
                         local chips = kit.new("Frame", { Name = "ModeChips", Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(188, 18), BackgroundTransparency = 1 }, p)
@@ -89182,7 +89182,7 @@ local function factory()
                         paintChips()
                         y += 24
                     end
-                    -- preview + stop chips
+                    
                     local prev = kit.new("Frame", { Name = "Stops", Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(188, 18), BackgroundColor3 = kit.T.White, BackgroundTransparency = 0 }, p)
                     kit.corner(prev, kit.px(9))
                     local pgrad = Instance.new("UIGradient")
@@ -89220,7 +89220,7 @@ local function factory()
                         end
                     end)
                     y += 48
-                    -- selected stop: position slider + remove
+                    
                     local lbl = kit.new("TextLabel", { Name = "StopLbl", Text = "STOP " .. activeStop, Font = kit.F.Bold, TextSize = 9, Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(60, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = kit.T.TextMuted }, p)
                     miniSlider(kit, p, 76, y + 1, 90, stops and stops[activeStop] and stops[activeStop].Time or 0, function(t)
                         if stops and stops[activeStop] then
@@ -89244,7 +89244,7 @@ local function factory()
                     repaintStops()
                     y += 18
                 end
-                -- animation section
+                
                 if anim.Allowed then
                     y += 8
                     kit.new("TextLabel", { Name = "AnimLbl", Text = "ANIMATION", Font = kit.F.Bold, TextSize = 9, Position = UDim2.fromOffset(14, y), Size = UDim2.fromOffset(188, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = kit.T.TextMuted }, p)
@@ -89311,9 +89311,9 @@ local function factory()
         return w
     end
 
-    ---------------------------------------------------------------------------
-    -- Keybind: key capture + mode chip + HUD entry + facet API
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function W.Keybind(menu, card, o)
         local kit = menu._kit
@@ -89359,8 +89359,8 @@ local function factory()
         w.Invisible = false
         w.Capturing = false
 
-        -- right-click anywhere on the keybind opens the mode menu
-        -- (Hold / Toggle / Always ...); left-click on the chip still cycles
+        
+        
         local function openModeMenu(anchor)
             local IH = 26
             kit.menu:Popup(anchor, 104, #modes * IH + 8, function(p)
@@ -89499,11 +89499,11 @@ local function factory()
         return w
     end
 
-    ---------------------------------------------------------------------------
-    -- SkinChanger: searchable tile grid with Render callbacks (viewport etc.)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
-    -- The collection owns a small viewport-sized pool. Off-screen items remain data.
+    
     function W.SkinChanger(menu, card, o)
         local kit=menu._kit
         o=o or {}
@@ -89687,21 +89687,21 @@ end
 return mk2.c
 end
 end
-do -- k1
+do 
 local function fn35()
--- absense-compat.lua : Absense menu API on the Absense engine (tab/k1).
---
--- Reimplements the consumer surface of the old menu-root/section-container
--- stack (Menu.new / AddTab / Grid / AddSection / Add{Toggle,Slider,...}) on
--- top of the new engine, binding widgets to the lifted config store through
--- tbl17.P (values) and tbl17.N (colors). The old tab tree is remapped onto
--- the six Absense tabs:
---   Aim       <- Closet      (Aimbot, Silent Aim, Triggerbot, Safety)
---   Rage      <- Ragebot     (Ragebot, Weapon Handling)
---   Visuals   <- Visuals+World (Player ESP, Lighting, Post Processing, Sky & Weather)
---   Misc      <- Player+Automation (Movement, Identity Spoofing, Match Flow, Auto Loadout, In-Match Automation)
---   Cosmetic  <- Cosmetics   (Presets, Overview, Skins, Wraps, Charms, Finishers)
---   Config    <- settings    (General, Profiles, Theme)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 local function factory()
     local Engine = tbl17.k0()
@@ -89728,7 +89728,7 @@ local function factory()
         for i, t in ipairs(TAB_MAP) do
             if t.From[label] then return i end
         end
-        return 4 -- Misc catches anything unexpected
+        return 4 
     end
 
     local function resolveSub(i, label)
@@ -89736,8 +89736,8 @@ local function factory()
         local low = string.lower(tostring(label))
         for j, s in ipairs(subs) do
             local ls = string.lower(s)
-            -- the pill captions are shortened; lifted page labels still map
-            -- ("Identity Spoofing" -> "Identity", "In-Match Automation" -> "Automation")
+            
+            
             if low == ls or string.sub(low, 1, #ls) == ls or string.sub(low, -#ls) == ls then
                 return j
             end
@@ -89745,7 +89745,7 @@ local function factory()
         return 1
     end
 
-    -- mini trove: Connect/Extend/Clean (what P.bind and the settings tab need)
+    
     local function newTrove()
         local t = { _conns = {}, _ext = {} }
         function t:Connect(sig, fn)
@@ -89787,9 +89787,9 @@ local function factory()
     local TARGET_BRANCHES={Fov=true,TargetConditions=true,TargetHitboxes=true,HitboxSelection=true,HitboxPoint=true}
     local TARGET_PAGES={Aimbot="Aimbot",SilentAim="Silent Aim",Triggerbot="Triggerbot"}
 
-    -- Profile normalization fills missing atomic keys from the defaults.
-    -- Store explicit false entries so deselecting an Air/Ground hitbox or
-    -- target filter remains deselected after saving and reloading.
+    
+    
+    
     local function profileValue(store,path,value)
         if type(value)~="table" then return value end
         local ok,base=pcall(function() return store:GetBase(path) end)
@@ -89861,9 +89861,9 @@ local function factory()
         return view
     end
 
-    ---------------------------------------------------------------------------
-    -- Section (Container): the old Add* surface over one engine card
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     local function newSection(menu, card, indent, i, j, cfgOverride)
         local s = setmetatable({
@@ -89885,10 +89885,10 @@ local function factory()
         local cfg,perWeaponTarget=self:_configFor(o.Config)
         if perWeaponTarget then widget._targetingView=cfg end
         if o.Config ~= nil and cfg ~= nil and type(o.Config) == "table" then
-            -- per-weapon override pin (offered while a weapon is held); only
-            -- on rows this widget owns, never on co-hosted chips, and never
-            -- inside a per-weapon mirror (the whole row is already the
-            -- weapon's -- a chip there would pin the HELD weapon instead)
+            
+            
+            
+            
             if not perWeaponTarget and self._noPins ~= true and o.Row == nil and widget.Row ~= nil and widget.Row.AddPin ~= nil then
                 local pins = self._menu.Config.Pins
                 if pins ~= nil then
@@ -89930,8 +89930,8 @@ local function factory()
             end
             if widget.Kind == "Slider" or widget.Kind == "RangeSlider" then
                 opts = opts or {}
-                -- Commit weapon edits before the selector can rebuild the row.
-                -- Disk saves are batched separately by the menu.
+                
+                
                 opts.Debounce = self._pwMirror ~= true and not perWeaponTarget
             end
             pcall(binderP.bind, self._trove, cfg, widget, o.Config, opts)
@@ -89948,7 +89948,7 @@ local function factory()
 
     function Section:AddToggle(o)
         o = o or {}
-        -- "Enable X" / "X Enabled" everywhere reads as clutter: rows just say "X"
+        
         if type(o.Label) == "string" then
             o.Label = string.gsub(o.Label, "^Enable%s+", "")
             o.Label = string.gsub(o.Label, "%s+Enabled$", "")
@@ -90143,15 +90143,15 @@ local function factory()
         end
         group._applyGroup = apply
         if src ~= nil and src.ValueChanged ~= nil then
-            -- through the owning trove so mirror-rebuilt groups unhook cleanly
+            
             self._trove:Connect(src.ValueChanged, apply)
         end
         return group
     end
 
-    -- group rows register themselves for visibility when created; rows are
-    -- also tagged with their label + card so the per-weapon editor can hide
-    -- the global rows it replaces (see attachPerWeapon)
+    
+    
+    
     local origSectionRowFor = Section._RowFor
     function Section:_RowFor(o, h, rowOpts)
         local row = origSectionRowFor(self, o, h, rowOpts)
@@ -90162,9 +90162,9 @@ local function factory()
                 local rl = self._card._pwRows
                 if rl == nil then rl = {}; self._card._pwRows = rl end
                 rl[#rl + 1] = row
-                -- a per-weapon editor on this card gates new rows the moment
-                -- they appear (a restored pick can build the mirror before
-                -- the page builder's own rows exist)
+                
+                
+                
                 if self._card._pwApply ~= nil then
                     pcall(self._card._pwApply, row)
                 end
@@ -90182,8 +90182,8 @@ local function factory()
     function Section:SetTitle(t)
         self._card:SetTitle(t)
     end
-    -- lifted builders sometimes nest AddSection on a section (h5 on the
-    -- triggerbot card): route it back through the owning grid
+    
+    
     function Section:AddSection(o)
         if self._grid ~= nil then return self._grid:AddSection(o) end
         return nil
@@ -90198,28 +90198,28 @@ local function factory()
         self._card.frame:Destroy()
     end
 
-    ---------------------------------------------------------------------------
-    -- Grid + Tab objects
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     local Grid = {}
     Grid.__index = Grid
 
-    -- the lifted targeting builders split into two cards (Targeting /
-    -- Targeting FOV); they render as ONE merged card per page. Target Lock
-    -- is NOT a targeting setting -- it is the aimbot's own lock feature and
-    -- keeps its own card beside the activation card
+    
+    
+    
+    
     local MERGE_TITLES = {}
 
     local function newGrid(menu, i, j, columns, label)
         return setmetatable({ _menu = menu, _i = i, _j = j, _columns = columns or 2, _label = label }, Grid)
     end
 
-    -- the per-weapon editor: a "Weapon" dropdown at the top of the feature's
-    -- own card. Picking a weapon REPLACES the card's global rows with the
-    -- same rows bound to that weapon's override branch -- exactly one of
-    -- every control is visible at a time, and edits write the weapon's
-    -- profile, never the globals
+    
+    
+    
+    
+    
     local ACT_RULES = {
         Options = { "NotReloading", "ScopedIn" },
         Labels = { NotReloading = "Not Reloading", ScopedIn = "Scoped In" },
@@ -90264,7 +90264,7 @@ local function factory()
         },
     }
 
-    -- which card of each page hosts the per-weapon editor
+    
     local PER_WEAPON_CARDS = { ["Aimbot"] = "Activation", ["Silent Aim"] = "Activation", ["Triggerbot"] = "Triggerbot" }
 
     local function attachPerWeapon(menu, section, pageLabel, card)
@@ -90272,16 +90272,16 @@ local function factory()
         local store = menu.Config
         if spec == nil or store == nil or store.Pins == nil then return end
 
-        -- the global rows the mirror replaces (matched by row label); rows
-        -- the mirror has no counterpart for (e.g. hitbox lists) stay put
+        
+        
         local hideLabels = {}
         for _, r in ipairs(spec) do
             if type(r.Label) == "string" then hideLabels[r.Label] = true end
         end
 
-        -- roster: every weapon actually held (contexts) + persisted picks;
-        -- the full game item list is filled in deferred -- an uncached game
-        -- module must never block the menu boot
+        
+        
+        
         local seen, names = {}, {}
         local function addName(n)
             if type(n) == "string" and n ~= "" and n ~= "None" and not seen[n] then
@@ -90299,30 +90299,30 @@ local function factory()
             if ok then addName(c) end
         end
 
-        -- a store view over one weapon's override branch: reads prefer the
-        -- override, writes land in it, and change notifications come from
-        -- the OVERRIDE path -- the base path also fires whenever the game
-        -- applies/clears live pins (weapon equip changes), which used to
-        -- snap the mirrored controls back to the global values and eat the
-        -- user's edit
+        
+        
+        
+        
+        
+        
         local function makeView()
             local root=({Aimbot="Aimbot",["Silent Aim"]="SilentAim",Triggerbot="Triggerbot"})[pageLabel]
             return menu:_targetingView(root)
         end
 
-        -- swap the card between its global rows and the weapon mirror. Rows
-        -- are gated (not just hidden once): groups re-apply their own
-        -- visibility whenever their source toggle flips, and that must not
-        -- resurrect a row the weapon editor replaced
+        
+        
+        
+        
         local baseShown = true
         local function gateRow(r)
             if r._pwGated then return end
             r._pwGated = true
             r._pwIntent = r.Visible ~= false
             r._pwOrig = r.SetVisible
-            -- external callers (groups, widgets) state what they WANT; the
-            -- gate decides what actually shows. Re-applying the gate must
-            -- never overwrite the row's own requested visibility.
+            
+            
+            
             r.SetVisible = function(_, v)
                 r._pwIntent = v == true
                 if r._pwOrig ~= nil then pcall(r._pwOrig, r, r._pwIntent and baseShown) end
@@ -90436,8 +90436,8 @@ local function factory()
             pcall(function() card:Reflow();if profileCard then profileCard:Reflow() end end)
         end
 
-        -- Prefer the currently equipped weapon. Outside a match, restore the
-        -- last selection or start with Assault Rifle, including old None picks.
+        
+        
         local pick = "Assault Rifle"
         if menu._stateData ~= nil and type(menu._stateData.PerWeaponPick) == "table" then
             local p = menu._stateData.PerWeaponPick[pageLabel]
@@ -90483,12 +90483,12 @@ local function factory()
         menu._perWeapon = menu._perWeapon or {}
         menu._perWeapon[pageLabel] = dd
 
-        -- restore the saved pick once the card's global rows exist (they are
-        -- built right after this section is returned to the page builder)
+        
+        
         local restore = function() buildMirror(dd.Value) end
         if task ~= nil and task.defer ~= nil then task.defer(restore) else restore() end
 
-        -- full roster joins the dropdown once the game module is loadable
+        
         task.spawn(function()
             local ok, IL = pcall(function()
                 return require(game:GetService("ReplicatedStorage"):WaitForChild("Modules", 5):WaitForChild("ItemLibrary", 5))
@@ -90504,8 +90504,8 @@ local function factory()
             end
         end)
 
-        -- Follow equip changes even for weapons already in the roster. Pin
-        -- edits also fire Changed, so only a new context changes the selection.
+        
+        
         if store.Pins.Changed ~= nil and store.Pins.GetContext ~= nil then
             menu._trove:Connect(store.Pins.Changed, function()
                 local ok, c = pcall(store.Pins.GetContext)
@@ -90545,9 +90545,9 @@ local function factory()
         end
         local title = o.Title=="Targeting FOV" and "Field of view" or (MERGE_TITLES[o.Title] or o.Title)
         if MERGE_TITLES[o.Title] ~= nil then
-            -- merged card: reuse the section created by the first builder;
-            -- the merged Targeting card always sits in the RIGHT column so
-            -- the activation card and targeting sit side by side
+            
+            
+            
             local key = self._i .. ":" .. self._j .. ":" .. string.lower(title)
             local cached = self._menu._mergedSections[key]
             if cached ~= nil then return cached end
@@ -90566,7 +90566,7 @@ local function factory()
         local s = newSection(self._menu, card, 0, self._i, self._j)
         s._grid = self
         if self._label=="Aimbot" and o.Title=="Activation" then merged[prefix.."aim-control"]=s end
-        -- the per-weapon editor rides on the feature's own activation card
+        
         if self._i == 1 and PER_WEAPON_CARDS[self._label] == o.Title then
             pcall(attachPerWeapon, self._menu, s, self._label, card)
         end
@@ -90598,7 +90598,7 @@ local function factory()
         return setmetatable({ _menu = self._menu, _i = i, _j = j, _label = label, _grid = nil }, Page)
     end
     function Tab:Grid(o)
-        -- top-level tabs only nest in this tree; route to the first sub page
+        
         local page = setmetatable({ _menu = self._menu, _i = self._i, _j = 1, _label = self._label }, Page)
         return page:Grid(o)
     end
@@ -90622,9 +90622,9 @@ local function factory()
         self._menu._engine:_onFirstOpen(self._i, self._j, fn)
     end
 
-    ---------------------------------------------------------------------------
-    -- Menu
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     local function copyWeaponValue(value)
         if type(value) ~= "table" then return value end
@@ -90633,8 +90633,8 @@ local function factory()
         return out
     end
 
-    -- Keep weapon edits across reruns independently of named-config Auto Save.
-    -- The shared serializer also handles enum, color and vector settings.
+    
+    
     function Menu:_initWeaponSettings()
         if self.Config == nil or self.Directory == nil then return end
         local ok, manager = pcall(function()
@@ -90674,7 +90674,7 @@ local function factory()
         self._trove:Connect(self.Config:Changed({ "PerProfile", "Overrides" }, true), function()
             self:_queueWeaponSave()
         end)
-        -- Migrate overrides from the currently loaded config on first boot.
+        
         self:_queueWeaponSave()
     end
 
@@ -90794,14 +90794,14 @@ local function factory()
             end,
         })
         self._onUnload = o.OnUnload
-        -- external handle (injector / re-run) so the menu can be shown or
-        -- torn down from a separate script instance
+        
+        
         getgenv().AbsenseMenu = self
 
-        -- (notifications are initialized by bootstrap.lua with the raw store;
-        --  the settings tab still binds the notification config paths below)
+        
+        
 
-        -- apply stored accent
+        
         if self.Config ~= nil then
             local ok, acc = pcall(function() return self.Config:Get(wlib.appendPath(self._themePath, "Accent")) end)
             if self._engine.Config.RestoredAppearance and ok and typeof(acc)=="Color3" then
@@ -90814,7 +90814,7 @@ local function factory()
         return self
     end
 
-    -- card on a mapped (tab, sub) page
+    
     function Menu:_pageCard(i, j, cardOpts)
         local page = self._engine._ensurePage(i, j)
         return page:AddCard({
@@ -90826,9 +90826,9 @@ local function factory()
         })
     end
 
-    ---------------------------------------------------------------------------
-    -- Menu methods (old surface)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function Menu:AddTab(spec)
         spec = spec or {}
@@ -90836,7 +90836,7 @@ local function factory()
         local i = resolveTop(label)
         local tab = setmetatable({ _menu = self, _i = i, _label = label }, Tab)
         self._tabsByLabel[label] = tab
-        -- the engine sidebar item captions follow the mapped tab
+        
         return tab
     end
 
@@ -90894,7 +90894,7 @@ local function factory()
     function Menu:GetStateData() return self._stateData end
     function Menu:GetOverlayLayer() return self._engine.Gui end
 
-    -- Auto Load reads the latest verified cache at the next join.
+    
     function Menu:_armTeleportRerun()
         local ok,problem=K.AutoLoad:SetEnabled(true)
         if not ok then warn("[Absense] Auto Load: "..tostring(problem)) end
@@ -90934,9 +90934,9 @@ local function factory()
         self._engine:Destroy()
     end
 
-    ---------------------------------------------------------------------------
-    -- Keybind ConfigMap binding (per-facet, persistent subscriptions)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function Menu:_bindKeybindMap(w, o, ownerTrove)
         local config = self.Config
@@ -90996,7 +90996,7 @@ local function factory()
             end)
         end
 
-        -- store -> widget; persistent so keybinds track while the menu is hidden
+        
         local function sub(path, fn)
             if path == nil then return end
             local ok, sig = pcall(function() return config:Changed(path, true) end)
@@ -91021,9 +91021,9 @@ local function factory()
         sub(cm.Invisible, function(v) w:SetInvisible(v == true, true) end)
     end
 
-    ---------------------------------------------------------------------------
-    -- Color animation wiring (lifted ColorAnimation contract)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function Menu:_wireColorAnimation(w, o)
         local ca = self._colorAnimation
@@ -91058,9 +91058,9 @@ local function factory()
         sync()
     end
 
-    ---------------------------------------------------------------------------
-    -- Dialog (modal-hub replacement)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function Menu:Dialog(spec, buildFn)
         spec = spec or {}
@@ -91079,9 +91079,9 @@ local function factory()
         return dialog
     end
 
-    ---------------------------------------------------------------------------
-    -- Settings tab (Config: General / Profiles / Theme)
-    ---------------------------------------------------------------------------
+    
+    
+    
 
     function Menu:_buildSettingsPages()
         local function notify(txt)
@@ -91097,7 +91097,7 @@ local function factory()
             return true
         end
 
-        ------------------------------------------------------------------ General
+        
         do
             local card = self:_pageCard(9, 1, { title = "Menu", col = 1 })
             local s = newSection(self, card, 0, 9, 1)
@@ -91167,7 +91167,7 @@ local function factory()
             s4:AddButton({ Label = "Unload Absense", Variant = "danger", Confirm = true, OnClick = function() self:Unload() end })
         end
 
-        ------------------------------------------------------------------ Profiles
+        
         do
             local persistence = self._persistence
             if persistence == nil then return end
@@ -91281,7 +91281,7 @@ local function factory()
             autoLoadName:OnChanged(pushState)
             pullState()
 
-            -- autosave debounce (lifted settings-tab behavior)
+            
             local dirty = false
             local bindTrove = self._trove:Extend()
             self._trove:Connect(persistence.Reloaded, function()
@@ -91304,7 +91304,7 @@ local function factory()
             end)
         end
 
-        ------------------------------------------------------------------ Theme
+        
         do
             local engine = self._engine
             local econfig = engine.Config
@@ -91352,9 +91352,9 @@ end
 return mk1.c
 end
 end
-do -- k3
+do 
 local function fn35()
--- Keep legacy configs usable while the UI changes modes and timing units.
+
 local function normalize(data)
     local function aim(branch, global)
         if type(branch) ~= "table" then return end
@@ -91375,7 +91375,7 @@ local function normalize(data)
     end
     local function timings(branch)
         if type(branch) ~= "table" then return end
-        -- Stored values remain seconds; the menu displays milliseconds.
+        
         for _, key in ipairs({ "ReactionTime", "SwitchDelay" }) do
             if type(branch[key]) == "number" then branch[key] = math.clamp(branch[key], 0, 1) end
         end
@@ -91446,10 +91446,10 @@ end
 return mk3.c
 end
 end
-do -- k4
+do 
 local function fn35()
 local rings = tbl17.jL()
-local spatialLimit = 4194304 -- same limit used by the spatial firing gate
+local spatialLimit = 4194304 
 local destroyHeight = workspace.FallenPartsDestroyHeight
 if type(destroyHeight) ~= "number" or destroyHeight ~= destroyHeight or math.abs(destroyHeight) == math.huge then destroyHeight = -500 end
 
@@ -91461,8 +91461,8 @@ local function canAttack(target)
         local alive = target and target.AliveState
         if alive == nil or alive.RootPart == nil or alive.HitboxHead == nil then return false end
         if alive.Alive == false then return false end
-        -- Head positions are temporarily rewritten by the glue driver. Use
-        -- the root to check the enemy's actual replicated position.
+        
+        
         local p = alive.RootPart.Position
         if p == nil or not finite(p.X) or not finite(p.Y) or not finite(p.Z) then return false end
         local head = alive.HitboxHead.Position
@@ -91491,8 +91491,8 @@ return {
         local alive = target.AliveState
         local p = alive.RootPart.Position
         local scale = math.max(math.abs(p.X), math.abs(p.Y), math.abs(p.Z))
-        -- Small offsets disappear at large float coordinates. Keep several
-        -- representable steps plus enough room for both character volumes.
+        
+        
         return math.max(12, radius(ownRoot) + radius(alive.RootPart) + radius(alive.HitboxHead) + 4,
             scale / 1048576)
     end,
@@ -91510,7 +91510,7 @@ end
 return mk4.c
 end
 end
-do -- k5
+do 
 local function fn35()
 local positions = tbl17.k4()
 local Runtime = {}
@@ -91719,7 +91719,7 @@ end
 return mk5.c
 end
 end
-do -- k6
+do 
 local function fn35()
 return function(rage)
     local controls = { Silent = {}, Anti = {}, Void = {}, Parts = {} }
@@ -91775,7 +91775,7 @@ end
 return mk6.c
 end
 end
-do -- k7
+do 
 local function fn35()
 return {
     Engine = { Mode="Standard", Positioning="Adaptive", FollowTarget=true, ConfirmHits=true, Timing="Minimum", SettleMS=33, HoldMS=17, BurstRequests=2, EyeHeight=3, MuzzleUp=0.4, Prediction=false },
@@ -91814,10 +91814,10 @@ end
 return mk7.c
 end
 end
-do -- k8
+do 
 local function fn35()
--- ShootAt expects a hit descriptor, not a BasePart. Keep the point in the
--- hitbox's local space so its size survives large world coordinates.
+
+
 local function finite(n) return type(n) == "number" and n == n and math.abs(n) < math.huge end
 local function valid(p) return p and finite(p.X) and finite(p.Y) and finite(p.Z) end
 local function look(from, to)
@@ -91859,10 +91859,10 @@ end
 return mk8.c
 end
 end
-do -- k9
+do 
 local function fn35()
--- Native packet format and hitbox-local rebaking adapted from message(2).txt.
--- The engine, rather than this sender, owns the positioning window.
+
+
 local Fire = {}
 Fire.__index = Fire
 
@@ -91916,9 +91916,9 @@ function Fire:Bake(part, predicted, scatter)
     return p,part.CFrame:PointToWorldSpace(p)
 end
 
--- f4306: ask the native item for its reload action and arguments, then send
--- those arguments with the native byte-key layout. The fallback preserves
--- the current game's gun controller format when that method is unavailable.
+
+
+
 function Fire:Reload(item,canSend)
     local id=read(item,"ObjectID")
     if id==nil then return false,"missing weapon ObjectID" end
@@ -91938,8 +91938,8 @@ function Fire:Reload(item,canSend)
     return true
 end
 
--- Use the current native melee-controller packet IDs. Looking up animation
--- assets here can yield while the root is parked and stall a live attack.
+
+
 function Fire:MeleeAnimation(item)
     local heavy=item.Name=="Knife"
     local prefix=heavy and "HeavyAttack" or "Attack"
@@ -91989,8 +91989,8 @@ function Fire:Send(item, part, origin, velocity, settings, melee)
         local muzzlePosition=origin+eye.LookVector*0.3+Vector3.new(0,tonumber(settings.MuzzleUp) or 0.4,0)
         local muzzle=Fire.look(muzzlePosition,worldPoint)
         local inner={ ["\0"]=encode(eye),["\1"]=encode(muzzle),["\2"]=part,["\3"]=encode(CFrame.new(objectPoint)) }
-        -- Fan-fire flag follows the current native gun controller, rather
-        -- than the older outer flag in the recovered reference.
+        
+        
         if not melee and item.Name=="Revolver" then inner["\4"]=true end
         local envelope={ ["\1"]=inner }
         local action="StartShooting"
@@ -92020,11 +92020,11 @@ end
 return mk9.c
 end
 end
-do -- kA
+do 
 local function fn35()
--- Exclusive root control while Rage runs: park through firing, then restore
--- before camera rendering / simulation. No target part is moved or attached.
--- Rage owns position only; linear and angular velocity remain live game state.
+
+
+
 local Transport={}
 Transport.__index=Transport
 function Transport.new(runService, id)
@@ -92046,8 +92046,8 @@ function Transport.new(runService, id)
                 self:Park(pose,true)
             else self:CancelOneFrame() end
         end
-        -- A firing lease must survive actual simulation/replication steps.
-        -- Camera restoration alone must not send us home between its frames.
+        
+        
         if self._simulationPose then
             if self:Park(self._simulationPose,true) then self._simulationSteps+=1 end
         else self:Restore() end
@@ -92140,7 +92140,7 @@ end
 return mkA.c
 end
 end
-do -- kB
+do 
 local function fn35()
 local PullDown={}
 PullDown.__index=PullDown
@@ -92188,7 +92188,7 @@ function PullDown:_update(dt)
     if config.Enabled~=true then self:_reset("Disabled");return end
     local fighter=self._api.FighterController.LocalFighter
     local item=fighter and fighter.EquippedItem
-    -- Use the original item name, not the selected skin's viewmodel name.
+    
     if not item or item.Name~="Wildcat" then
         self._item=nil;self:_reset("Not Wildcat");return
     end
@@ -92259,9 +92259,9 @@ end
 return mkB.c
 end
 end
-do -- kC
+do 
 local function fn35()
--- Named API and scoped remote hooks for current Rivals builds. No constant edits.
+
 local Compat={}
 function Compat.Owner(object,name)
     local seen={}
@@ -92284,8 +92284,8 @@ function Compat.Wrap(object,name,build)
     end
     return record
 end
--- A nested geometry/namecall in an input callback can overwrite the current
--- method. Restore the intended remote method immediately before forwarding.
+
+
 local function preserveRemoteMethod(bus, restore)
     if not bus or bus.PreservesRemoteMethod or type(restore)~="function" then return bus end
     local route=bus.Route
@@ -92444,13 +92444,13 @@ tbl17.hM = function() return nil end
 tbl17.jx = function() return nil end
 
 
---==========================================================================
---  Absense bootstrap (b8) and main (j1), as in the dump. Left out of b8:
---  the analytics client, the Luarmor auto-execute writer and the
---  anti-cheat bypass (b7). The online user service (eZ) is offline.
---==========================================================================
--- Source caching belongs to the packaged entry point. A raw executing Luau
--- chunk cannot reliably recover its own source text from the executor.
+
+
+
+
+
+
+
 local absenseAutoLoad = (function()
     local Cache = {}
     Cache.__index = Cache
@@ -92458,8 +92458,8 @@ local absenseAutoLoad = (function()
     local META_PATH = "absense/rerun.json"
     local ENABLED_PATH = "absense/autoload.enabled"
 
-    -- Stable across releases: the manifest selects the current cache at the
-    -- next join, rather than pinning the build that queued this dispatcher.
+    
+    
     local DISPATCHER = [==[
 local env = type(getgenv)=="function" and getgenv() or _G
 if env.__AbsenseAutoLoadBusy then return end
@@ -92589,8 +92589,8 @@ K.onUnload(function() GlobalTrove:Destroy() end)
 
 local function initialize()
 
--- one-time storage migration: the workspace folder used to be called
--- "absense"; copy anything saved there into "absense" (best effort)
+
+
 pcall(function()
     local isfolder_, listfiles_, readfile_, writefile_, makefolder_ = isfolder, listfiles, readfile, writefile, makefolder
     if type(isfolder_) ~= "function" or type(listfiles_) ~= "function" then return end
@@ -92625,7 +92625,7 @@ for _, sub in ipairs({ "cosmetics/states", "crosshair_textures", "esp_images", "
 end
 
 
---  The error reporter needs a sink; ours prints to the F9 console.
+
 tbl17.b().use({ Report = function(_, e)
     local detail = type(e) == "table" and (e.Detail or e.Operation) or e
     local feature=type(e)=="table"and(e.Feature or e.Component or e.Source or "compatibility")or"compatibility"
@@ -92657,8 +92657,8 @@ local boot = (function()
     end
 
     local Theme = tbl17.A()
-    --  [redesign] the Absense palette always ships; palettes saved by the
-    --  old Absense look are ignored (live theme edits still work in Settings).
+    
+    
 
     local registry = GlobalTrove:Add(tbl17.bK().new())
     local identities = GlobalTrove:Add(tbl17.bL().new(registry))
@@ -92702,8 +92702,8 @@ function K.GetStatus()
     }
 end
 
--- Re-run after teleport: when enabled in the config, queue the cached
--- build for the next server join (the settings toggle re-arms on change).
+
+
 pcall(function()
     local m = getgenv().AbsenseMenu
     if m == nil or m._armTeleportRerun == nil then return end
@@ -92725,7 +92725,7 @@ end
 local env = type(getgenv)=="function" and getgenv() or _G
 local chunk,problem=loadstring(source,"@absense/rerun.lua")
 if not chunk then error("[Absense] Packaged source could not compile: "..tostring(problem),0) end
-local launch={Build="Rivals-2026-10-30-velocity-r22",Source=source}
+local launch={Build="Rivals-2026-11-03-kicia-ui-r23",Source=source}
 env.__AbsenseLaunch=launch
 local ok,reason=xpcall(chunk,debug.traceback)
 if env.__AbsenseLaunch==launch then env.__AbsenseLaunch=nil end
