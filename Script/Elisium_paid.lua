@@ -1592,6 +1592,7 @@ if v73 == v4[fn2("\196\205X", 28147927180902)] then
 	while true do
 	end
 else
+	local function __ELISIUM_CONTINUATION_200_LOCAL_FIX(...)
 	local fn28, n23, v75, n24, n25, v76, tbl16, n26, n27, n28
 
 	do
@@ -42809,5 +42810,7 @@ if not Loaded then warn("Elisium auto load: the loader could not finish."); end;
 				end
 			end
 		end
+	end
+	return __ELISIUM_CONTINUATION_200_LOCAL_FIX(...)
 	end
 end
