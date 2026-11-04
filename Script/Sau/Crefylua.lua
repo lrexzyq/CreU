@@ -18996,6 +18996,7 @@ local CREFY_LANGUAGE_TRANSLATIONS = {
     ["Character Appearance"] = "Tùy chỉnh nhân vật",
     ["Device Spoof"] = "Giả lập loại thiết bị",
     ["Ground"] = "Trên mặt đất",
+    ["Auto Slide"] = "Tự động trượt",
     ["Air"] = "Trên không trung",
     ["Recorder"] = "Công cụ ghi lại chuyển động",
     ["Markers"] = "Mốc đánh dấu",
@@ -22445,7 +22446,7 @@ return bh.c
 end
 end
 do
-local function fn35() tbl17 .a3();return{Movement={WalkSpeed={Enabled=false,Speed=2,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},JumpPower={Enabled=false,Speed=2,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=false,Invisible=false}},Flight={Enabled=false,Speed=100,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},Sliding={Enabled=false,Speed=10,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},Noclip={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},AutoStrafe={Enabled=false,Speed=50,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},LongJump={Enabled=false,Keybind={State=false,Kind="Tap",Bind=nil,ShowInList=true,Invisible=false},Mode="Under Feet",Force=60,UpwardVelocity=20,Behind=8},MovementRecorder={Enabled=false,HideUI=false,HideNotifications=false,OpenDistance=3,RenderDistance=50,LookAlignSpeed=180,AlignSnapDistance=0.2,LookSmoothing=35,Record={Keybind={State=false,Kind="Toggle",Bind=nil,ShowInList=true,Invisible=false}},Replay={Keybind={State=false,Kind="Toggle",Bind=nil,ShowInList=true,Invisible=false}}}},Removables={NoFlashbang=false,NoBurnEffect=false,NoAdsVignette=false,NoScopeOverlay=false,NoScopeReticle=false,NoGunTracers=false,NoMuzzleFlash=false,NoHitmarker=false},ThirdPerson={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},ShowReplica=false,RayCheck=false,X=3,Y=2,Z=6},CameraFov={Enabled=false,Value=70},StretchedResolution={Enabled=false,X=13,Y=10},CustomCrosshair={Enabled=false,Style="Lines",Image={Name="",Size=32,Transparency=0},Length=12,Thickness=2,Gap=6,Outline={Enabled=false,Color=Color3.fromRGB(0,0,0),Thickness=1},Animation={Enabled=false,Kind="Shimmer",Speed=1,Shimmer={Color=Color3.fromRGB(40,40,40)},Perimeter={Color=ColorSequence.new(Color3.fromRGB(255,0,0),Color3.fromRGB(0,0,255))},PingPong={BackgroundColor=Color3.fromRGB(0,0,0),MainColor=Color3.fromRGB(255,255,255),Rotation=0}},Rotation={Enabled=false,Angle=0,Speed=90},Spread={Enabled=false,Range={Min=4,Max=16},Speed=3},Top={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Bottom={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Left={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Right={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Text={Enabled=false,Content="",Font="Inconsolata",Size=14,Offset=24,Color=ColorSequence.new(Color3.fromRGB(255,255,255)),Outline={Enabled=false,Color=Color3.fromRGB(0,0,0),Thickness=1},Animation={Enabled=false,Kind="Shimmer",Speed=1,Shimmer={Color=Color3.fromRGB(40,40,40)},Perimeter={Color=ColorSequence.new(Color3.fromRGB(255,0,0),Color3.fromRGB(0,0,255))},PingPong={BackgroundColor=Color3.fromRGB(0,0,0),MainColor=Color3.fromRGB(255,255,255),Rotation=0}}},FollowTarget={Enabled=false,Mode="Crosshair",Speed=20,Damper=1,SnapDistance=5}},AnimationPlayer={Enabled=false,Animation="Cat Girl Bounce",CustomId="",Speed=1,Start=0,End=100},DeviceSpoof={Enabled=false,SpoofType="VR"},PlayerSpoofer={LocalPlayer={Name={Enabled=false,Value="Nosniy"},DisplayName={Enabled=false,Value="Nosniy"},Avatar={Enabled=false,Value="20349956"},Ping={Enabled=false,Value="Low"},Keys={Enabled=false,Value=999},EventCurrency={Enabled=false,Value=9999},Winstreak={Enabled=false,Value=999},Level={Enabled=false,Value=999},CasualWins={Enabled=false,Value=99999},RankedWins={Enabled=false,Value=9999},CasualWinPercent={Enabled=false,Value=100},RankedWinPercent={Enabled=false,Value=100},RankedElo={Enabled=false,Value=3600},LeaderboardRank={Enabled=false,Value=1},FavoriteMap={Enabled=false,Value="Arena"},NametagStatus={Enabled=false,Value="Prime"},Influencer={Enabled=false,Value=true},RobloxEmployee={Enabled=false,Value=true},NosniyTeam={Enabled=false}},OtherPlayers={Name={Enabled=false,Value=""},DisplayName={Enabled=false,Value=""},Avatar={Enabled=false,Value=""},Winstreak={Enabled=false,Value=0},Level={Enabled=false,Value=0},CasualWins={Enabled=false,Value=0},RankedWins={Enabled=false,Value=0},CasualWinPercent={Enabled=false,Value=0},RankedWinPercent={Enabled=false,Value=0},RankedElo={Enabled=false,Value=0},LeaderboardRank={Enabled=false,Value=200},FavoriteMap={Enabled=false,Value=""},NametagStatus={Enabled=false,Value="Prime"},Influencer={Enabled=false},RobloxEmployee={Enabled=false},NosniyTeam={Enabled=false}}}};end
+local function fn35() tbl17 .a3();return{Movement={WalkSpeed={Enabled=false,Speed=2,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},JumpPower={Enabled=false,Speed=2,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=false,Invisible=false}},Flight={Enabled=false,Speed=100,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},Sliding={Enabled=false,Speed=10,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},AutoSlide={Enabled=false},Noclip={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},AutoStrafe={Enabled=false,Speed=50,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},LongJump={Enabled=false,Keybind={State=false,Kind="Tap",Bind=nil,ShowInList=true,Invisible=false},Mode="Under Feet",Force=60,UpwardVelocity=20,Behind=8},MovementRecorder={Enabled=false,HideUI=false,HideNotifications=false,OpenDistance=3,RenderDistance=50,LookAlignSpeed=180,AlignSnapDistance=0.2,LookSmoothing=35,Record={Keybind={State=false,Kind="Toggle",Bind=nil,ShowInList=true,Invisible=false}},Replay={Keybind={State=false,Kind="Toggle",Bind=nil,ShowInList=true,Invisible=false}}}},Removables={NoFlashbang=false,NoBurnEffect=false,NoAdsVignette=false,NoScopeOverlay=false,NoScopeReticle=false,NoGunTracers=false,NoMuzzleFlash=false,NoHitmarker=false},ThirdPerson={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},ShowReplica=false,RayCheck=false,X=3,Y=2,Z=6},CameraFov={Enabled=false,Value=70},StretchedResolution={Enabled=false,X=13,Y=10},CustomCrosshair={Enabled=false,Style="Lines",Image={Name="",Size=32,Transparency=0},Length=12,Thickness=2,Gap=6,Outline={Enabled=false,Color=Color3.fromRGB(0,0,0),Thickness=1},Animation={Enabled=false,Kind="Shimmer",Speed=1,Shimmer={Color=Color3.fromRGB(40,40,40)},Perimeter={Color=ColorSequence.new(Color3.fromRGB(255,0,0),Color3.fromRGB(0,0,255))},PingPong={BackgroundColor=Color3.fromRGB(0,0,0),MainColor=Color3.fromRGB(255,255,255),Rotation=0}},Rotation={Enabled=false,Angle=0,Speed=90},Spread={Enabled=false,Range={Min=4,Max=16},Speed=3},Top={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Bottom={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Left={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Right={Enabled=true,Color=ColorSequence.new(Color3.fromRGB(255,255,255))},Text={Enabled=false,Content="",Font="Inconsolata",Size=14,Offset=24,Color=ColorSequence.new(Color3.fromRGB(255,255,255)),Outline={Enabled=false,Color=Color3.fromRGB(0,0,0),Thickness=1},Animation={Enabled=false,Kind="Shimmer",Speed=1,Shimmer={Color=Color3.fromRGB(40,40,40)},Perimeter={Color=ColorSequence.new(Color3.fromRGB(255,0,0),Color3.fromRGB(0,0,255))},PingPong={BackgroundColor=Color3.fromRGB(0,0,0),MainColor=Color3.fromRGB(255,255,255),Rotation=0}}},FollowTarget={Enabled=false,Mode="Crosshair",Speed=20,Damper=1,SnapDistance=5}},AnimationPlayer={Enabled=false,Animation="Cat Girl Bounce",CustomId="",Speed=1,Start=0,End=100},DeviceSpoof={Enabled=false,SpoofType="VR"},PlayerSpoofer={LocalPlayer={Name={Enabled=false,Value="Nosniy"},DisplayName={Enabled=false,Value="Nosniy"},Avatar={Enabled=false,Value="20349956"},Ping={Enabled=false,Value="Low"},Keys={Enabled=false,Value=999},EventCurrency={Enabled=false,Value=9999},Winstreak={Enabled=false,Value=999},Level={Enabled=false,Value=999},CasualWins={Enabled=false,Value=99999},RankedWins={Enabled=false,Value=9999},CasualWinPercent={Enabled=false,Value=100},RankedWinPercent={Enabled=false,Value=100},RankedElo={Enabled=false,Value=3600},LeaderboardRank={Enabled=false,Value=1},FavoriteMap={Enabled=false,Value="Arena"},NametagStatus={Enabled=false,Value="Prime"},Influencer={Enabled=false,Value=true},RobloxEmployee={Enabled=false,Value=true},NosniyTeam={Enabled=false}},OtherPlayers={Name={Enabled=false,Value=""},DisplayName={Enabled=false,Value=""},Avatar={Enabled=false,Value=""},Winstreak={Enabled=false,Value=0},Level={Enabled=false,Value=0},CasualWins={Enabled=false,Value=0},RankedWins={Enabled=false,Value=0},CasualWinPercent={Enabled=false,Value=0},RankedWinPercent={Enabled=false,Value=0},RankedElo={Enabled=false,Value=0},LeaderboardRank={Enabled=false,Value=200},FavoriteMap={Enabled=false,Value=""},NametagStatus={Enabled=false,Value="Prime"},Influencer={Enabled=false},RobloxEmployee={Enabled=false},NosniyTeam={Enabled=false}}}};end
 
 tbl17.bi = function()
 local bi = tbl17.cache.bi
@@ -22474,7 +22475,7 @@ return bj.c
 end
 end
 do
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoInspectAnimation=false,NoAttackAnimation=false,NoAimAnimation=false,NoChargeAnimation=false,NoThrowAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -24169,6 +24170,34 @@ tbl17.by(),
 [14] = v119,
 [15] = v120,
 [16] = v121,
+[17] = function(config)
+    if type(config) ~= "table" then return config end
+    local modifiers = config.ItemModifiers
+    if type(modifiers) ~= "table" then
+        modifiers = {}
+        config.ItemModifiers = modifiers
+    end
+    local keys = { "NoInspectAnimation", "NoAttackAnimation", "NoAimAnimation", "NoChargeAnimation", "NoThrowAnimation" }
+    for _, key in ipairs(keys) do
+        if type(modifiers[key]) ~= "boolean" then modifiers[key] = false end
+    end
+    return config
+end,
+[18] = function(config)
+    if type(config) ~= "table" then return config end
+    local movement = config.Movement
+    if type(movement) ~= "table" then
+        movement = {}
+        config.Movement = movement
+    end
+    local autoSlide = movement.AutoSlide
+    if type(autoSlide) ~= "table" then
+        autoSlide = {}
+        movement.AutoSlide = autoSlide
+    end
+    if type(autoSlide.Enabled) ~= "boolean" then autoSlide.Enabled = false end
+    return config
+end,
 }
 end
 
@@ -24193,7 +24222,7 @@ local v118 = tbl17.bc()
 
 return (v117:Add(v115.new({
 DefaultConfig = tbl17.bm(),
-CurrentVersion = 17,
+CurrentVersion = 19,
 LegacyVersion = 1,
 SavePath = "kiciahook/rivals_v3/configs/",
 Migrations = tbl17.bF(),
@@ -29331,6 +29360,295 @@ arg._jointsRestore = { JointsUpdateMethod = update, InstalledJointsUpdate = inst
 return v115.VoidOk
 end
 
+local ANTI_AIM_MAX_CODE_POINT = 0x10ffff
+local ANTI_AIM_DECODE_GUARD_KEY = "__CrefyAntiAimDecodeGuard_v1"
+local antiAimDecoderGuardInstalled = false
+local antiAimDecoderGuardNextRetryAt = 0
+local function antiAimHasExtendedPitchPayload(value, depth, budget)
+    if budget.count <= 0 then return false end
+    budget.count -= 1
+    if type(value) == "string" then
+        local okLength, length = pcall(utf8.len, value)
+        if not okLength or length ~= 2 then return false end
+        local firstCodePoint, secondCodePoint
+        local okCodes = pcall(function()
+            for _, codePoint in utf8.codes(value) do
+                if firstCodePoint == nil then
+                    firstCodePoint = codePoint
+                else
+                    secondCodePoint = codePoint
+                    break
+                end
+            end
+        end)
+        return okCodes and type(firstCodePoint) == "number" and firstCodePoint > 255
+            and type(secondCodePoint) == "number" and secondCodePoint >= 0 and secondCodePoint <= 255
+    end
+    if type(value) ~= "table" or depth >= 4 then return false end
+    for _, child in pairs(value) do
+        if antiAimHasExtendedPitchPayload(child, depth + 1, budget) then return true end
+        if budget.count <= 0 then break end
+    end
+    return false
+end
+
+local function antiAimEnsureDecoderGuard()
+    local now = os.clock()
+    local okUtility, utility = pcall(function()
+        local replicatedStorage = game:GetService("ReplicatedStorage")
+        local modules = replicatedStorage:FindFirstChild("Modules")
+        local utilityModule = modules ~= nil and modules:FindFirstChild("Utility") or nil
+        if utilityModule == nil or not utilityModule:IsA("ModuleScript") then return nil end
+        return require(utilityModule)
+    end)
+    if not okUtility or type(utility) ~= "table" then
+        antiAimDecoderGuardInstalled = false
+        return false
+    end
+
+    local target = utility.DecodeCameraRotationBulk
+    if type(target) ~= "function" then
+        antiAimDecoderGuardInstalled = false
+        return false
+    end
+
+    local priorGuard = rawget(_G, ANTI_AIM_DECODE_GUARD_KEY)
+    if type(priorGuard) == "table"
+        and rawget(priorGuard, "installed") == true
+        and rawget(priorGuard, "utility") == utility
+        and rawget(priorGuard, "target") == target
+        and type(rawget(priorGuard, "original")) == "function"
+        and type(rawget(priorGuard, "wrapper")) == "function" then
+        antiAimDecoderGuardInstalled = true
+        return true
+    end
+
+    antiAimDecoderGuardInstalled = false
+    if now < antiAimDecoderGuardNextRetryAt then return false end
+    antiAimDecoderGuardNextRetryAt = now + 2
+    if type(hookfunction) ~= "function" then return false end
+
+    local original = nil
+    local nextDecodeWarningAt = 0
+    local wrapper = function(...)
+        if type(original) ~= "function" then return {} end
+        local packed = table.pack(...)
+        local isExtendedPayload = false
+        local budget = { count = 4096 }
+        for i = 1, packed.n do
+            if antiAimHasExtendedPitchPayload(packed[i], 0, budget) then
+                isExtendedPayload = true
+                break
+            end
+            if budget.count <= 0 then break end
+        end
+        if not isExtendedPayload then
+            return original(table.unpack(packed, 1, packed.n))
+        end
+        local results = table.pack(pcall(original, table.unpack(packed, 1, packed.n)))
+        if results[1] then
+            return table.unpack(results, 2, results.n)
+        end
+        local warningNow = os.clock()
+        if warningNow >= nextDecodeWarningAt then
+            nextDecodeWarningAt = warningNow + 5
+            warn("[AntiAim] Extended-pitch decode failed: " .. tostring(results[2]))
+        end
+        return {}
+    end
+    if type(newcclosure) == "function" then
+        local closureOk, closure = pcall(newcclosure, wrapper)
+        if closureOk and type(closure) == "function" then wrapper = closure end
+    end
+
+    local hookOk, previous = pcall(hookfunction, target, wrapper)
+    if not hookOk or type(previous) ~= "function" then return false end
+    original = previous
+    antiAimDecoderGuardInstalled = true
+    pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, {
+        installed = true,
+        utility = utility,
+        target = target,
+        original = previous,
+        wrapper = wrapper,
+    })
+    return true
+end
+
+local function antiAimCodePoint(value)
+    local point = math.floor(tonumber(value) or 0)
+    if point >= 0xd800 and point < 0xe000 then point = 0xe000 end
+    return utf8.char(math.clamp(point, 0, ANTI_AIM_MAX_CODE_POINT))
+end
+
+local ANTI_AIM_RAGEBOT_CONTROL_KEY = "__CrefyRagebotControlState"
+local ANTI_AIM_RAGEBOT_TARGET_KEY = "__CrefyRagebotTargetState"
+local ANTI_AIM_RAGEBOT_CONTROL_TTL = 0.75
+local ANTI_AIM_RAGEBOT_TARGET_TTL = 0.5
+
+local function antiAimReadSharedState(key)
+    local candidates = {}
+    if type(getgenv) == "function" then
+        local okEnv, env = pcall(getgenv)
+        if okEnv and type(env) == "table" then
+            candidates[#candidates + 1] = env
+        end
+    end
+    if type(_G) == "table" then
+        candidates[#candidates + 1] = _G
+    end
+
+    local best, bestUpdatedAt, fallback = nil, -math.huge, nil
+    local now = os.clock()
+    for _, env in ipairs(candidates) do
+        local okRead, value = pcall(rawget, env, key)
+        if okRead and type(value) == "table" then
+            if fallback == nil then fallback = value end
+            local updatedAt = tonumber(rawget(value, "updatedAt"))
+            if type(updatedAt) == "number" and updatedAt == updatedAt
+                and updatedAt ~= math.huge and updatedAt ~= -math.huge
+                and updatedAt <= now and updatedAt >= bestUpdatedAt then
+                best = value
+                bestUpdatedAt = updatedAt
+            end
+        end
+    end
+    return best or fallback
+end
+
+local function antiAimRagebotIsActive()
+    local now = os.clock()
+    local control = antiAimReadSharedState(ANTI_AIM_RAGEBOT_CONTROL_KEY)
+    if type(control) == "table" then
+        local enabled = rawget(control, "enabled")
+        local updatedAt = tonumber(rawget(control, "updatedAt"))
+        if type(enabled) == "boolean" and type(updatedAt) == "number"
+            and updatedAt == updatedAt and updatedAt ~= math.huge and updatedAt ~= -math.huge then
+            local age = now - updatedAt
+            if age >= 0 and age <= ANTI_AIM_RAGEBOT_CONTROL_TTL then
+                return enabled
+            end
+        end
+    end
+
+    local target = antiAimReadSharedState(ANTI_AIM_RAGEBOT_TARGET_KEY)
+    if type(target) == "table" and rawget(target, "active") == true then
+        local updatedAt = tonumber(rawget(target, "updatedAt")) or 0
+        local age = now - updatedAt
+        return age >= 0 and age <= ANTI_AIM_RAGEBOT_TARGET_TTL
+    end
+    return false
+end
+
+local function antiAimShouldSuppress()
+    local configOk, config = pcall(function()
+        return type(tbl17) == "table" and type(tbl17.bG) == "function" and tbl17.bG() or nil
+    end)
+    local data = configOk and type(config) == "table" and config.Data or nil
+    local modifiers = type(data) == "table" and data.ItemModifiers or nil
+    local ragebotActive = antiAimRagebotIsActive()
+    local backstabMode = type(modifiers) == "table" and rawget(modifiers, "AlwaysBackstabMode") or nil
+    local alwaysBackstabActive = type(modifiers) == "table"
+        and rawget(modifiers, "AlwaysBackstab") == true
+        and (backstabMode == "Knife" or backstabMode == "Riot")
+
+    -- Anti-Aim must yield to either combat system; inventory state is irrelevant.
+    return ragebotActive or alwaysBackstabActive
+end
+
+local function antiAimReadSettings()
+    local ok, settings = pcall(function()
+        local config = tbl17.bG()
+        local data = config ~= nil and config.Data or nil
+        local modifiers = type(data) == "table" and data.ItemModifiers or nil
+        return type(modifiers) == "table" and modifiers.AntiAim or nil
+    end)
+    if not ok or type(settings) ~= "table" or rawget(settings, "Enabled") ~= true then
+        return nil
+    end
+    local suppressOk, suppressed = pcall(antiAimShouldSuppress)
+    if not suppressOk or suppressed == true then return nil end
+    return settings
+end
+
+local function antiAimEncodeOverride(rotation)
+    if typeof(rotation) ~= "Vector2" then return nil, nil end
+    local settings = antiAimReadSettings()
+    if settings == nil then return nil, nil end
+
+    local pitch = math.deg(rotation.X)
+    local yaw = math.deg(rotation.Y)
+    if type(pitch) ~= "number" or type(yaw) ~= "number"
+        or pitch ~= pitch or yaw ~= yaw
+        or pitch == math.huge or pitch == -math.huge
+        or yaw == math.huge or yaw == -math.huge then
+        return nil, nil
+    end
+
+    local pitchMode = rawget(settings, "Pitch") or rawget(settings, "pitch") or "disabled"
+    local yawMode = rawget(settings, "Yaw") or rawget(settings, "yaw") or "disabled"
+    local customPitch = tonumber(rawget(settings, "CustomPitch") or rawget(settings, "customPitch")) or 0
+    local customYaw = tonumber(rawget(settings, "CustomYaw") or rawget(settings, "customYaw")) or 0
+    if customPitch ~= customPitch or customPitch == math.huge or customPitch == -math.huge then customPitch = 0 end
+    if customYaw ~= customYaw or customYaw == math.huge or customYaw == -math.huge then customYaw = 0 end
+    customPitch = math.clamp(customPitch, -180, 180)
+    customYaw = math.clamp(customYaw, -180, 180)
+
+    local extendedPitchCodePoint = nil
+    if pitchMode == "extended custom" then
+        if antiAimDecoderGuardInstalled then
+            -- Reserve 0..255 for ordinary camera rotations. Extended payloads
+            -- must always use a first code point outside that byte range.
+            extendedPitchCodePoint = antiAimCodePoint(256
+                + (customPitch + 180) / 360 * (ANTI_AIM_MAX_CODE_POINT - 256))
+        end
+    elseif pitchMode == "extended random" then
+        if antiAimDecoderGuardInstalled then
+            extendedPitchCodePoint = antiAimCodePoint(math.random(256, ANTI_AIM_MAX_CODE_POINT))
+        end
+    elseif pitchMode == "offset" then
+        pitch += customPitch
+    elseif pitchMode == "random" then
+        pitch = math.random(0, 360)
+    elseif pitchMode == "look up" then
+        pitch = 179
+    elseif pitchMode == "look down" then
+        pitch = 180
+    elseif pitchMode == "custom" then
+        pitch = customPitch
+    end
+
+    if yawMode == "offset" then
+        yaw += customYaw
+    elseif yawMode == "backwards" then
+        yaw += 180
+    elseif yawMode == "random" then
+        yaw = math.random(0, 360)
+    elseif yawMode == "custom" then
+        yaw = customYaw
+    end
+
+    if pitchMode == "disabled" and yawMode == "disabled" then
+        return nil, nil
+    end
+    if extendedPitchCodePoint ~= nil then
+        local yawByte = math.clamp(math.floor((yaw % 360) / 360 * 256 + 0.5), 0, 255)
+        return nil, extendedPitchCodePoint .. utf8.char(yawByte)
+    end
+    return Vector2.new(math.rad(pitch), math.rad(yaw)), nil
+end
+
+local function antiAimEncodeCameraRotation(rotation)
+    local ok, transformed, encoded = pcall(antiAimEncodeOverride, rotation)
+    if ok then
+        if type(encoded) == "string" then return encoded end
+        if typeof(transformed) == "Vector2" then
+            return v117.encodeCameraRotation(transformed)
+        end
+    end
+    return v117.encodeCameraRotation(rotation)
+end
+
 index2._LoadReplicationHook = function(arg)
 local auditNow = os.clock()
 local nextAuditAt = tonumber(arg._nextReplicationHookAuditAt) or 0
@@ -29433,11 +29751,14 @@ if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
 return v115.err("ViewAngleDriver", "setupvalue", "debug.setupvalue is unavailable")
 end
 local patchedUtility = setmetatable({ EncodeCameraRotation = function(arg2, arg3)
-if next(arg._payloadBySlot) ~= nil or arg._fullySuppressed then
+-- Camera slots first provide the base rotation through CameraRotationRaw.
+-- Anti-Aim may then transform that final base angle when its inventory gate
+-- allows it; explicit full suppression remains authoritative.
+if arg._fullySuppressed then
 v103(fighterController, "_replication_stopped", false)
 return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
 end
-return v117.encodeCameraRotation(arg3)
+return antiAimEncodeCameraRotation(arg3)
 end }, { __index = v122 })
 local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
 if not okSetup then
@@ -29730,6 +30051,7 @@ do
 local function fn35()
 tbl17.cr()
 local mechanicsController = tbl17.aS().MechanicsController
+local RunService = game:GetService("RunService")
 local v115 = tbl17.cs()
 local v116 = tbl17.cG()
 local v117 = tbl17.k()
@@ -29767,6 +30089,73 @@ local state = arg._context.State
 if state.Alive then
 fn36(state)
 end
+
+arg._antiAimHookAttached = false
+arg._antiAimNextHookCheckAt = 0
+arg._nextAntiAimWarningAt = 0
+arg._nextAutoSlideWarningAt = 0
+arg._trove:Connect(RunService.Heartbeat, function()
+    local now = os.clock()
+
+    local autoSlideOk, autoSlideError = pcall(function()
+        local config = tbl17.bG()
+        local data = config ~= nil and config.Data or nil
+        local movement = type(data) == "table" and data.Movement or nil
+        local autoSlide = type(movement) == "table" and movement.AutoSlide or nil
+        if type(autoSlide) == "table" and rawget(autoSlide, "Enabled") == true
+            and mechanicsController.IsSprinting then
+            mechanicsController:Slide()
+        end
+    end)
+    if not autoSlideOk and now >= (arg._nextAutoSlideWarningAt or 0) then
+        arg._nextAutoSlideWarningAt = now + 5
+        warn("[AutoSlide] " .. tostring(autoSlideError))
+    end
+
+    if now < (tonumber(arg._antiAimNextHookCheckAt) or 0) then return end
+    arg._antiAimNextHookCheckAt = now + 0.25
+
+    local settings = nil
+    local settingsOk = pcall(function()
+        local config = tbl17.bG()
+        local data = config ~= nil and config.Data or nil
+        local modifiers = type(data) == "table" and data.ItemModifiers or nil
+        settings = type(modifiers) == "table" and modifiers.AntiAim or nil
+    end)
+    if not settingsOk or type(settings) ~= "table" or settings.Enabled ~= true then return end
+    local suppressOk, suppressed = pcall(antiAimShouldSuppress)
+    if not suppressOk then
+        if now >= (arg._nextAntiAimWarningAt or 0) then
+            arg._nextAntiAimWarningAt = now + 5
+            warn("[AntiAim] Feature suppression check failed; leaving camera rotation unmodified: " .. tostring(suppressed))
+        end
+        return
+    end
+    if suppressed == true then return end
+
+    local pitchMode = rawget(settings, "Pitch") or rawget(settings, "pitch") or "disabled"
+    if pitchMode == "extended custom" or pitchMode == "extended random" then
+        if not antiAimEnsureDecoderGuard() and now >= (arg._nextAntiAimWarningAt or 0) then
+            arg._nextAntiAimWarningAt = now + 5
+            warn("[AntiAim] Extended pitch is unavailable because the decoder guard could not be installed")
+        end
+    end
+    local characterState = arg._context ~= nil and arg._context.State or nil
+    if characterState == nil or characterState.Alive ~= true then return end
+
+    local driver = arg._viewAngleDriver
+    local loadHook = driver ~= nil and driver._LoadReplicationHook or nil
+    if type(loadHook) ~= "function" then return end
+    local loadOk, loadResult = pcall(loadHook, driver)
+    if not loadOk or (type(loadResult) == "table" and rawget(loadResult, "Ok") == false) then
+        if now >= (arg._nextAntiAimWarningAt or 0) then
+            arg._nextAntiAimWarningAt = now + 5
+            warn("[AntiAim] Could not attach to the current CharacterController: " .. tostring(loadResult))
+        end
+        return
+    end
+    arg._antiAimHookAttached = true
+end)
 end
 
 index2.SetServerCFrame = function(arg, arg2)
@@ -33228,6 +33617,10 @@ lastAngleAt = 0,
 aimPart = nil,
 viewAngleApplied = false,
 characterController = nil,
+cleanupRetryPending = false,
+cleanupRetryToken = 0,
+cleanupRetryController = nil,
+nextClearRetryAt = 0,
 triggerDistance = 25,
 hookInstalled = false,
 hookTarget = nil,
@@ -33247,14 +33640,56 @@ local nextRemoteResolveAt = 0
 local nextRemoteWarningAt = 0
 
 local RIOT_FIRE_HOOK_KEY = "__CrefyAlwaysBackstabRiotFireServerHook"
-local function riotFireHookRagebotEnabled()
-    local control = riotStateGet("__CrefyRagebotControlState")
-    if type(control) == "table" then
-        local enabled = rawget(control, "enabled")
-        if enabled == true then return true end
-        if enabled == false then return false end
+local RIOT_RAGEBOT_CONTROL_KEY = "__CrefyRagebotControlState"
+local RIOT_RAGEBOT_CONTROL_MAX_AGE = 0.75
+local function riotReadRagebotSharedState(key)
+    local candidates = {}
+    if type(getgenv) == "function" then
+        local okEnv, env = pcall(getgenv)
+        if okEnv and type(env) == "table" then
+            candidates[#candidates + 1] = env
+        end
     end
-    local target = riotStateGet("__CrefyRagebotTargetState")
+    if type(_G) == "table" then
+        candidates[#candidates + 1] = _G
+    end
+
+    local best, bestUpdatedAt, fallback = nil, -math.huge, nil
+    local now = os.clock()
+    for _, env in ipairs(candidates) do
+        local okRead, value = pcall(rawget, env, key)
+        if okRead and type(value) == "table" then
+            if fallback == nil then fallback = value end
+            local updatedAt = tonumber(rawget(value, "updatedAt"))
+            if type(updatedAt) == "number" and updatedAt == updatedAt
+                and updatedAt ~= math.huge and updatedAt ~= -math.huge
+                and updatedAt <= now and updatedAt >= bestUpdatedAt then
+                best = value
+                bestUpdatedAt = updatedAt
+            end
+        end
+    end
+    return best or fallback
+end
+
+local function riotFreshRagebotControlEnabled()
+    local control = riotReadRagebotSharedState(RIOT_RAGEBOT_CONTROL_KEY)
+    if type(control) ~= "table" then return nil end
+    local enabled = rawget(control, "enabled")
+    local updatedAt = tonumber(rawget(control, "updatedAt"))
+    if type(enabled) ~= "boolean" or type(updatedAt) ~= "number"
+        or updatedAt ~= updatedAt or updatedAt == math.huge or updatedAt == -math.huge then
+        return nil
+    end
+    local age = os.clock() - updatedAt
+    if age < 0 or age > RIOT_RAGEBOT_CONTROL_MAX_AGE then return nil end
+    return enabled
+end
+
+local function riotFireHookRagebotEnabled()
+    local enabled = riotFreshRagebotControlEnabled()
+    if enabled ~= nil then return enabled end
+    local target = riotReadRagebotSharedState("__CrefyRagebotTargetState")
     if type(target) == "table" and rawget(target, "active") == true then
         local updatedAt = tonumber(rawget(target, "updatedAt")) or 0
         local age = os.clock() - updatedAt
@@ -33439,14 +33874,10 @@ local nextHookScanAt = 0
 local nextHookWarningAt = 0
 
 local function ragebotOwnsCameraRotation()
-    local controlState = riotStateGet("__CrefyRagebotControlState")
-    if type(controlState) == "table" then
-        local enabled = rawget(controlState, "enabled")
-        if enabled == true then return true end
-        if enabled == false then return false end
-    end
+    local enabled = riotFreshRagebotControlEnabled()
+    if enabled ~= nil then return enabled end
 
-    local targetState = riotStateGet("__CrefyRagebotTargetState")
+    local targetState = riotReadRagebotSharedState("__CrefyRagebotTargetState")
     if type(targetState) == "table" and rawget(targetState, "active") == true then
         local updatedAt = tonumber(rawget(targetState, "updatedAt")) or 0
         local age = os.clock() - updatedAt
@@ -33708,54 +34139,50 @@ local function findNearest(triggerDistance, preferredCharacter)
     local myEnvironment = nil
     pcall(function() myEnvironment = lp:GetAttribute("EnvironmentID") end)
 
-    local function considerCandidate(player, fighter, useFrameworkEnemyList)
+    local function considerCandidate(player, fighter)
         local okCandidate, character, distance = pcall(function()
-            if player == nil or player == lp or player.Parent ~= Players then return nil, nil end
-            if fighter ~= nil and fighter.IsEnemy == false then return nil, nil end
+            if player == nil or player == lp or player.Parent ~= Players or fighter == nil then
+                return nil, nil
+            end
+            if fighter.IsEnemy ~= true then return nil, nil end
 
             local character = player.Character
             if character == nil or not character:IsA("Model") or character.Parent == nil then return nil, nil end
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             if humanoid == nil or humanoid.Health <= 0 then return nil, nil end
+            if myEnvironment == nil or fighter.EnvironmentId ~= myEnvironment then return nil, nil end
 
-            local root = nil
-            if fighter ~= nil then
-                local fighterCharacter = fighter.Character
-                local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
-                if fighterState ~= nil then
-                    if fighterState.Alive ~= true then return nil, nil end
-                    local stateRoot = fighterState.RootPart
-                    if stateRoot ~= nil and stateRoot:IsA("BasePart")
-                        and stateRoot:IsDescendantOf(character) then
-                        root = stateRoot
-                    end
-                    local stateModel = fighterState.Model
-                    if stateModel ~= nil and stateModel ~= character then return nil, nil end
-                end
-                if myEnvironment ~= nil and fighter.EnvironmentId ~= nil
-                    and fighter.EnvironmentId ~= myEnvironment then
-                    return nil, nil
-                end
+            local okInvincible, isInvincible = pcall(function() return fighter:IsInvincible() end)
+            if not okInvincible or isInvincible then return nil, nil end
+
+            local fighterCharacter = fighter.Character
+            local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
+            if fighterState == nil or fighterState.Alive ~= true then return nil, nil end
+            local stateRoot, hitboxHead = fighterState.RootPart, fighterState.HitboxHead
+            if stateRoot == nil or hitboxHead == nil
+                or not stateRoot:IsA("BasePart") or not hitboxHead:IsA("BasePart")
+                or not stateRoot:IsDescendantOf(workspace) or not hitboxHead:IsDescendantOf(workspace)
+                or not stateRoot:IsDescendantOf(character) or not hitboxHead:IsDescendantOf(character) then
+                return nil, nil
             end
-            if root == nil then root = character:FindFirstChild("HumanoidRootPart") end
-            if root == nil or not root:IsA("BasePart") or root.Parent == nil
-                or not root:IsDescendantOf(workspace) then
+            local stateModel = fighterState.Model
+            if stateModel ~= nil and stateModel ~= character then return nil, nil end
+
+            local observer = fighter.ItemObserver
+            if observer == nil then return nil, nil end
+            local okEquipped, equippedItem = pcall(function() return observer:GetEquippedItem() end)
+            if not okEquipped or equippedItem == nil or equippedItem.Name ~= "Riot Shield" then
                 return nil, nil
             end
 
-            if not useFrameworkEnemyList then
-                local candidateEnvironment, candidateTeam, myTeam = nil, nil, nil
-                candidateEnvironment = player:GetAttribute("EnvironmentID")
-                candidateTeam = player:GetAttribute("TeamID")
-                myTeam = lp:GetAttribute("TeamID")
-                if myEnvironment == nil or myTeam == nil
-                    or candidateEnvironment == nil or candidateTeam == nil
-                    or candidateEnvironment ~= myEnvironment or candidateTeam == myTeam then
-                    return nil, nil
-                end
-            end
+            local okMelee, equippedMelee = pcall(function() return observer:EquippedItemAsMelee() end)
+            if not okMelee or equippedMelee == nil then return nil, nil end
+            local okMeleeName, meleeName = pcall(function() return equippedMelee.Name end)
+            if not okMeleeName or meleeName ~= "Riot Shield" then return nil, nil end
+            local okDeflecting, isDeflecting = pcall(function() return equippedMelee:IsDeflecting() end)
+            if not okDeflecting or isDeflecting then return nil, nil end
 
-            local distance = (root.Position - myPosition).Magnitude
+            local distance = (stateRoot.Position - myPosition).Magnitude
             if distance ~= distance or distance == math.huge or distance == -math.huge
                 or distance < 0 or distance > triggerDistance then
                 return nil, nil
@@ -33771,26 +34198,18 @@ local function findNearest(triggerDistance, preferredCharacter)
 
     local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
     local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
-    local usedFrameworkEnemyList = false
+    -- Riot rotation is only allowed to select from the authoritative enemy map.
+    -- A raw Players fallback cannot prove the target's equipped item or deflect state.
     if type(enemies) == "table" then
         for player, fighter in pairs(enemies) do
             if player ~= nil and fighter ~= nil then
-                usedFrameworkEnemyList = true
-                considerCandidate(player, fighter, true)
-            end
-        end
-    end
-
-    if not usedFrameworkEnemyList or bestCharacter == nil then
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= lp and (bestCharacter == nil or player.Character ~= bestCharacter) then
-                considerCandidate(player, nil, false)
+                considerCandidate(player, fighter)
             end
         end
     end
 
     -- Small hysteresis prevents ties/one-frame distance jitter from swapping targets,
-    -- while still allowing a clearly closer enemy to take over.
+    -- while still allowing a clearly closer, shield-valid enemy to take over.
     if preferredCharacter ~= nil and preferredDistance < math.huge and bestCharacter ~= nil then
         local hysteresis = math.max(1.0, bestDistance * 0.08)
         if preferredDistance <= bestDistance + hysteresis then
@@ -33800,7 +34219,6 @@ local function findNearest(triggerDistance, preferredCharacter)
     return bestCharacter
 end
 
-local RIOT_RAGEBOT_CONTROL_KEY = "__CrefyRagebotControlState"
 local function riotCharacterWithinTriggerDistance(character, triggerDistance)
     if character == nil or lp == nil then return false end
     local maxDistance = sanitizeTriggerDistance(triggerDistance or getConfiguredTriggerDistance())
@@ -33821,7 +34239,7 @@ local function riotCharacterWithinTriggerDistance(character, triggerDistance)
     return ok and within == true
 end
 
-local function riotCharacterHasInventoryItem(character, wantedName)
+local function riotCharacterHasEquippedItem(character, wantedName)
     if character == nil or type(wantedName) ~= "string" or wantedName == "" then return false end
     local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
     local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
@@ -33842,18 +34260,26 @@ local function riotCharacterHasInventoryItem(character, wantedName)
             pcall(function() stateModel = characterState.Model end)
             if stateModel ~= nil and stateModel ~= character then return false end
 
+            if fighter.IsEnemy ~= true then return false end
+            local okInvincible, isInvincible = pcall(function() return fighter:IsInvincible() end)
+            if not okInvincible or isInvincible then return false end
             local observer = fighter.ItemObserver
             if observer == nil then return false end
-            local okEquipped, equipped = pcall(function()
-                local melee = type(observer.EquippedItemAsMelee) == "function"
-                    and observer:EquippedItemAsMelee() or nil
-                if melee ~= nil then return melee end
-                if type(observer.GetEquippedItem) == "function" then
-                    return observer:GetEquippedItem()
-                end
-                return nil
+            local okMelee, equippedMelee = pcall(function()
+                return observer:EquippedItemAsMelee()
             end)
-            return okEquipped and equipped ~= nil and equipped.Name == wantedName
+            if not okMelee or equippedMelee == nil then return false end
+            local okMeleeName, meleeName = pcall(function() return equippedMelee.Name end)
+            if not okMeleeName or meleeName ~= wantedName then return false end
+            local okDeflecting, isDeflecting = pcall(function()
+                return equippedMelee:IsDeflecting()
+            end)
+            if not okDeflecting or isDeflecting then return false end
+            local okHasItem, hasItem = pcall(function()
+                local equipped = observer:GetEquippedItem()
+                return equipped ~= nil and equipped.Name == wantedName
+            end)
+            return okHasItem and hasItem == true
         end
     end
     return false
@@ -33861,15 +34287,15 @@ end
 
 local function findRiotTarget(triggerDistance)
 
-    local controlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
-    local targetState = riotStateGet("__CrefyRagebotTargetState")
-    if type(controlState) == "table" and rawget(controlState, "enabled") == true
+    local controlEnabled = riotFreshRagebotControlEnabled()
+    local targetState = riotReadRagebotSharedState("__CrefyRagebotTargetState")
+    if controlEnabled == true
         and type(targetState) == "table" and rawget(targetState, "active") == true then
         local updatedAt = tonumber(rawget(targetState, "updatedAt")) or 0
         local age = os.clock() - updatedAt
         local character = rawget(targetState, "character")
         if age >= 0 and age <= 0.5 and character ~= nil
-            and riotCharacterHasInventoryItem(character, "Riot Shield") then
+            and riotCharacterHasEquippedItem(character, "Riot Shield") then
             local root = nil
             local valid = pcall(function()
                 root = getRiotCharacterRoot(character)
@@ -33883,35 +34309,20 @@ local function findRiotTarget(triggerDistance)
             if valid and root ~= nil then return character end
         end
     end
+    if controlEnabled == true then
+        return nil
+    end
     return findNearest(triggerDistance, riotState.targetCharacter)
 end
 
 local function riotRagebotHasPriority()
-    local controlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
-    local targetState = riotStateGet("__CrefyRagebotTargetState")
-    local enabled = type(controlState) == "table" and rawget(controlState, "enabled")
-    if enabled == true then
-        local data = type(v115) == "table" and v115.Data or nil
-        local modifiers = type(data) == "table" and data.ItemModifiers or nil
-        if type(modifiers) == "table"
-            and rawget(modifiers, "AlwaysBackstab") == true
-            and rawget(modifiers, "AlwaysBackstabMode") == "Riot"
-            and type(targetState) == "table" and rawget(targetState, "active") == true then
-            local updatedAt = tonumber(rawget(targetState, "updatedAt")) or 0
-            local character = rawget(targetState, "character")
-            local age = os.clock() - updatedAt
-            if age >= 0 and age <= 0.5
-                and riotCharacterWithinTriggerDistance(character, getConfiguredTriggerDistance())
-                and riotCharacterHasInventoryItem(character, "Riot Shield") then
+    local enabled = riotFreshRagebotControlEnabled()
+    -- A live Ragebot owns camera rotation while active. The standalone Riot
+    -- controller must never publish a second view-angle slot over Ragebot.
+    if enabled == true then return true end
+    if enabled == false then return false end
 
-                return false
-            end
-        end
-        return true
-    elseif enabled == false then
-        return false
-    end
-
+    local targetState = riotReadRagebotSharedState("__CrefyRagebotTargetState")
     if type(targetState) == "table" and rawget(targetState, "active") == true then
         local updatedAt = tonumber(rawget(targetState, "updatedAt")) or 0
         local age = os.clock() - updatedAt
@@ -33949,14 +34360,16 @@ local function riotWriteViewAngle(controller, payload)
     return writeViewAngleSlot(controller, RIOT_VIEW_ANGLE_SLOT, payload, "Riot")
 end
 
-local function riotClearActiveTarget()
+local function riotClearActiveTarget(skipSlotClear)
     local controller = riotState.characterController
     if controller == nil and type(riotState.innerContext) == "table" then
         controller = riotState.innerContext.CharacterController
     end
     local cleared = true
     if riotState.viewAngleApplied == true then
-        if controller ~= nil then
+        if skipSlotClear == true then
+            cleared = false
+        elseif controller ~= nil then
             local clearOk, clearError = riotWriteViewAngle(controller, nil)
             if clearOk then
                 riotState.viewAngleApplied = false
@@ -33996,8 +34409,14 @@ local function isLiveBasePart(part, expectedModel)
 end
 
 local function riotHeartbeatStep()
-    if not riotState.enabled or riotRagebotHasPriority() then
-        riotClearActiveTarget()
+    if not riotState.enabled then return end
+    if riotRagebotHasPriority() then
+        local stop = riotState.stop
+        if type(stop) == "function" then
+            stop()
+        else
+            riotClearActiveTarget()
+        end
         return
     end
 
@@ -34047,8 +34466,23 @@ local function riotHeartbeatStep()
         return
     end
 
-    local pitch, yaw = targetRoot.CFrame:ToOrientation()
-    if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge
+    local originPosition = getRiotOriginPosition()
+    local originOk, serverOrigin = pcall(function()
+        return controller:GetServerHeadOrigin()
+    end)
+    if originOk and typeof(serverOrigin) == "CFrame" then
+        originPosition = serverOrigin.Position
+    end
+    if typeof(originPosition) ~= "Vector3" then
+        riotClearActiveTarget()
+        return
+    end
+    local direction = targetRoot.Position - originPosition
+    local horizontalMagnitude = math.sqrt(direction.X * direction.X + direction.Z * direction.Z)
+    local pitch = math.atan2(direction.Y, horizontalMagnitude)
+    local yaw = math.atan2(-direction.X, -direction.Z)
+    if direction.Magnitude < 1e-4
+        or pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge
         or yaw == math.huge or yaw == -math.huge then
         riotClearActiveTarget()
         return
@@ -34108,12 +34542,79 @@ local function riotHeartbeatStep()
     riotState.sendCount = (tonumber(riotState.sendCount) or 0) + 1
 end
 
+local function riotCancelSlotCleanupRetry()
+    riotState.cleanupRetryToken = (tonumber(riotState.cleanupRetryToken) or 0) + 1
+    riotState.cleanupRetryPending = false
+    riotState.cleanupRetryController = nil
+end
+
+local function riotScheduleSlotCleanupRetry(controller)
+    if controller == nil or riotState.viewAngleApplied ~= true then return false end
+    if riotState.cleanupRetryPending == true and riotState.cleanupRetryController == controller then
+        return true
+    end
+    if os.clock() < (tonumber(riotState.nextClearRetryAt) or 0) then return false end
+
+    riotState.cleanupRetryToken = (tonumber(riotState.cleanupRetryToken) or 0) + 1
+    local retryToken = riotState.cleanupRetryToken
+    riotState.cleanupRetryPending = true
+    riotState.cleanupRetryController = controller
+    local attempt = 0
+
+    local function scheduleNextAttempt()
+        task.delay(0.12, function()
+            if retryToken ~= riotState.cleanupRetryToken then return end
+            if riotState.enabled or riotState.characterController ~= controller
+                or riotState.viewAngleApplied ~= true then
+                riotState.cleanupRetryPending = false
+                riotState.cleanupRetryController = nil
+                return
+            end
+
+            attempt = attempt + 1
+            local retryCallOk, retryOk, retryError = pcall(riotWriteViewAngle, controller, nil)
+            if retryCallOk and retryOk then
+                riotState.viewAngleApplied = false
+                if riotState.characterController == controller then
+                    riotState.characterController = nil
+                end
+                riotState.cleanupRetryPending = false
+                riotState.cleanupRetryController = nil
+                riotState.nextClearRetryAt = 0
+            elseif attempt < 3 then
+                scheduleNextAttempt()
+            else
+                riotState.cleanupRetryPending = false
+                riotState.cleanupRetryController = nil
+                riotState.nextClearRetryAt = os.clock() + 1
+                local now = os.clock()
+                if now >= (riotState.nextClearWarningAt or 0) then
+                    riotState.nextClearWarningAt = now + 5
+                    warn("[AlwaysBackstab.Riot] Camera slot cleanup remained pending after retries: "
+                        .. tostring(retryCallOk and retryError or retryOk))
+                end
+            end
+        end)
+    end
+
+    scheduleNextAttempt()
+    return true
+end
+
 local function riotStop()
     local controllerForCleanup = riotState.characterController
-    local slotCleared = riotClearActiveTarget()
+    if controllerForCleanup == nil and type(riotState.innerContext) == "table" then
+        controllerForCleanup = riotState.innerContext.CharacterController
+        if controllerForCleanup ~= nil and riotState.viewAngleApplied == true then
+            riotState.characterController = controllerForCleanup
+        end
+    end
+    local now = os.clock()
+    local skipSlotClear = riotState.cleanupRetryPending == true
+        or now < (tonumber(riotState.nextClearRetryAt) or 0)
+    local slotCleared = riotClearActiveTarget(skipSlotClear)
     riotState.enabled = false
     riotState.generation = (tonumber(riotState.generation) or 0) + 1
-    local stopGeneration = riotState.generation
     if riotState.heartbeat then
         pcall(function() riotState.heartbeat:Disconnect() end)
         riotState.heartbeat = nil
@@ -34124,32 +34625,12 @@ local function riotStop()
     riotState.targetCharacter = nil
     riotState.innerContext = nil
     if slotCleared then
+        riotCancelSlotCleanupRetry()
         riotState.characterController = nil
         riotState.viewAngleApplied = false
+        riotState.nextClearRetryAt = 0
     elseif controllerForCleanup ~= nil then
-        local function retrySlotClear(attempt)
-            task.delay(0.12, function()
-                if riotState.enabled or riotState.generation ~= stopGeneration
-                    or riotState.characterController ~= controllerForCleanup
-                    or riotState.viewAngleApplied ~= true then
-                    return
-                end
-                local retryOk = riotWriteViewAngle(controllerForCleanup, nil)
-                if retryOk then
-                    riotState.viewAngleApplied = false
-                    riotState.characterController = nil
-                elseif attempt < 3 then
-                    retrySlotClear(attempt + 1)
-                else
-                    local now = os.clock()
-                    if now >= (riotState.nextClearWarningAt or 0) then
-                        riotState.nextClearWarningAt = now + 5
-                        warn("[AlwaysBackstab.Riot] Camera slot cleanup remained pending after retries")
-                    end
-                end
-            end)
-        end
-        retrySlotClear(1)
+        riotScheduleSlotCleanupRetry(controllerForCleanup)
     end
     riotState.fighters = nil
     riotState.lastEncoded = nil
@@ -34179,8 +34660,16 @@ riotState.stop = riotStop
 
 local function riotStart(distance, characterController, fighters, innerContext)
     local previousController = riotState.characterController
+    if riotState.cleanupRetryPending == true
+        and riotState.cleanupRetryController == previousController
+        and previousController ~= nil and previousController ~= characterController then
+        return false
+    end
     if riotState.viewAngleApplied == true and previousController ~= nil
         and previousController ~= characterController then
+        if os.clock() < (tonumber(riotState.nextClearRetryAt) or 0) then
+            return false
+        end
         local oldSlotCleared, clearError = riotWriteViewAngle(previousController, nil)
         if not oldSlotCleared then
             -- Stop the old heartbeat before exposing the new context. Repeated writes
@@ -34197,9 +34686,14 @@ local function riotStart(distance, characterController, fighters, innerContext)
                 riotState.nextClearWarningAt = now + 5
                 warn("[AlwaysBackstab.Riot] Could not clear previous controller slot before context swap: " .. tostring(clearError))
             end
+            riotScheduleSlotCleanupRetry(previousController)
             return false
         end
         riotState.viewAngleApplied = false
+        riotCancelSlotCleanupRetry()
+    end
+    if riotState.cleanupRetryPending == true and riotState.cleanupRetryController == characterController then
+        riotCancelSlotCleanupRetry()
     end
     riotState.triggerDistance = sanitizeTriggerDistance(distance)
     riotState.fighters = fighters
@@ -34231,19 +34725,6 @@ local function riotStart(distance, characterController, fighters, innerContext)
     return true
 end
 
-local ANTI_AIM_HEARTBEAT_KEY = "__CrefyAntiAimHeartbeatState"
-local previousAntiAimHeartbeat = rawget(_G, ANTI_AIM_HEARTBEAT_KEY)
-if type(previousAntiAimHeartbeat) == "table" then
-    if type(previousAntiAimHeartbeat.stop) == "function" then
-        pcall(previousAntiAimHeartbeat.stop)
-    elseif previousAntiAimHeartbeat.connection ~= nil then
-        pcall(function() previousAntiAimHeartbeat.connection:Disconnect() end)
-    end
-elseif previousAntiAimHeartbeat ~= nil then
-    pcall(function() previousAntiAimHeartbeat:Disconnect() end)
-end
-pcall(rawset, _G, ANTI_AIM_HEARTBEAT_KEY, nil)
-
 local previousRagebotControlState = riotStateGet(RIOT_RAGEBOT_CONTROL_KEY)
 if type(previousRagebotControlState) ~= "table" then
     riotStateSet(RIOT_RAGEBOT_CONTROL_KEY, { enabled = false, updatedAt = os.clock() })
@@ -34262,9 +34743,13 @@ end
 index2._Initialize = function(arg, arg2)
 arg._trove:Add(arg2:ObserveContext("always_backstab", function(innerContext)
 arg._innerContext = innerContext
+riotState.innerContext = innerContext
 end))
 
 arg._trove:Connect(arg2.ContextRemoved, function()
+if riotState.innerContext == arg._innerContext then
+    riotState.innerContext = nil
+end
 riotStop()
 arg:_ClearAnglePayload(arg._lastCharacterController)
 arg._innerContext = nil
@@ -34336,13 +34821,16 @@ index2._UpdateRiot = function(arg, innerContext, triggerDistance)
 riotState.fighters = arg._fighters
 riotState.innerContext = innerContext
 if riotRagebotHasPriority() then
-if arg._anglePayloadApplied or arg._anglePayloadPending then
-    if not arg:_ClearAnglePayload(innerContext ~= nil and innerContext.CharacterController or nil) then
-        return
-    end
-end
-if riotState.enabled or riotState.heartbeat ~= nil or hookInstalled then
+-- Stop the standalone Riot controller first. A failed slot clear remains owned
+-- and is retried after its bounded backoff instead of being silently forgotten.
+local cleanupRetryDue = riotState.viewAngleApplied == true
+    and riotState.cleanupRetryPending ~= true
+    and os.clock() >= (tonumber(riotState.nextClearRetryAt) or 0)
+if riotState.enabled or riotState.heartbeat ~= nil or hookInstalled or cleanupRetryDue then
 riotStop()
+end
+if arg._anglePayloadApplied or arg._anglePayloadPending then
+    arg:_ClearAnglePayload(innerContext ~= nil and innerContext.CharacterController or nil)
 end
 return
 end
@@ -53424,7 +53912,11 @@ local index2 = {}
 index2.__index = index2
 
 index2.new = function()
-return setmetatable({ _disabledSprint = false, _disabledShoot = false, _disabledEquip = false, _disabledReload = false }, index2)
+return setmetatable({
+    _disabledSprint = false, _disabledShoot = false, _disabledEquip = false, _disabledReload = false,
+    _disabledInspect = false, _disabledAttack = false, _disabledAim = false,
+    _disabledCharge = false, _disabledThrow = false,
+}, index2)
 end
 
 index2.SetSprintDisabled = function(arg, disabledSprint)
@@ -53447,6 +53939,49 @@ arg._disabledReload = disabledReload
 return arg:_Load()
 end
 
+index2.SetInspectDisabled = function(arg, disabledInspect)
+arg._disabledInspect = disabledInspect
+return arg:_Load()
+end
+
+index2.SetAttackDisabled = function(arg, disabledAttack)
+arg._disabledAttack = disabledAttack
+return arg:_Load()
+end
+
+index2.SetAimDisabled = function(arg, disabledAim)
+arg._disabledAim = disabledAim
+return arg:_Load()
+end
+
+index2.SetChargeDisabled = function(arg, disabledCharge)
+arg._disabledCharge = disabledCharge
+return arg:_Load()
+end
+
+index2.SetThrowDisabled = function(arg, disabledThrow)
+arg._disabledThrow = disabledThrow
+return arg:_Load()
+end
+
+local function animationNameHasToken(animationName, aliases)
+if type(animationName) ~= "string" or animationName == "" then return false end
+for token in string.gmatch(animationName, "[%w]+") do
+    if aliases[token] then return true end
+end
+return false
+end
+
+local ANIMATION_NAME_ALIASES = {
+    shoot = { shoot = true, shooting = true, fire = true, firing = true, quickshot = true },
+    reload = { reload = true, reloading = true },
+    inspect = { inspect = true, inspecting = true },
+    attack = { attack = true, attacking = true, melee = true, stab = true, slash = true },
+    aim = { aim = true, aiming = true, ads = true },
+    charge = { charge = true, charging = true },
+    throw = { throw = true, throwing = true },
+}
+
 index2._ShouldSuppress = function(arg, arg2, arg3)
 if arg._disabledSprint and arg3 == v102(arg2, "_sprint_animation") then
 return true
@@ -53456,11 +53991,32 @@ if arg._disabledEquip and arg3 == v102(arg2, "_equip_animation") then
 return v86[34]
 end
 
-if arg._disabledShoot and (string.find(arg3, "Shoot", 1, true) ~= nil or arg3 == "QuickShot") then
+local animationName = type(arg3) == "string" and string.lower(arg3) or ""
+if arg._disabledShoot and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.shoot) then
 return true
 end
 
-if arg._disabledReload and string.find(arg3, "Reload", 1, v86[34]) ~= nil then
+if arg._disabledReload and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.reload) then
+return true
+end
+
+if arg._disabledInspect and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.inspect) then
+return true
+end
+
+if arg._disabledAttack and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.attack) then
+return true
+end
+
+if arg._disabledAim and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.aim) then
+return true
+end
+
+if arg._disabledCharge and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.charge) then
+return true
+end
+
+if arg._disabledThrow and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.throw) then
 return true
 end
 return false
@@ -54599,11 +55155,41 @@ local function fn39()
 arg3:ReportResult(arg._animationDisabler:SetReloadDisabled(v118.Data.ItemModifiers.NoReloadAnimation))
 end
 
+local function fn40()
+arg3:ReportResult(arg._animationDisabler:SetInspectDisabled(v118.Data.ItemModifiers.NoInspectAnimation))
+end
+
+local function fn41()
+arg3:ReportResult(arg._animationDisabler:SetAttackDisabled(v118.Data.ItemModifiers.NoAttackAnimation))
+end
+
+local function fn42()
+arg3:ReportResult(arg._animationDisabler:SetAimDisabled(v118.Data.ItemModifiers.NoAimAnimation))
+end
+
+local function fn43()
+arg3:ReportResult(arg._animationDisabler:SetChargeDisabled(v118.Data.ItemModifiers.NoChargeAnimation))
+end
+
+local function fn44()
+arg3:ReportResult(arg._animationDisabler:SetThrowDisabled(v118.Data.ItemModifiers.NoThrowAnimation))
+end
+
 arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoReloadAnimation" }), fn39)
+arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoInspectAnimation" }), fn40)
+arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoAttackAnimation" }), fn41)
+arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoAimAnimation" }), fn42)
+arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoChargeAnimation" }), fn43)
+arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoThrowAnimation" }), fn44)
 fn36()
 fn37()
 fn38()
 fn39()
+fn40()
+fn41()
+fn42()
+fn43()
+fn44()
 end
 
 index2._SetupNoSpread = function(arg, arg2)
@@ -64926,7 +65512,7 @@ return ic.c
 end
 end
 do
-local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});local backstabMode=P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Always Backstab Mode",Options={"Knife","Riot"},Config={"ItemModifiers","AlwaysBackstabMode"}});P:AddGroup({Source=backstabMode,Option="Riot"}):AddSlider({Label="Trigger Distance (studs)",Min=25,Max=1000000000000,Step=1,Config={"ItemModifiers","AlwaysBackstabTriggerDist"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
+local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});local antiAimSection=I:AddSection({Title="Anti-Aim",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);local antiAimToggle=antiAimSection:AddToggle({Label="Enable Anti-Aim",Config={"ItemModifiers","AntiAim","Enabled"}});local antiAimControls=antiAimSection:AddGroup({Source=antiAimToggle});antiAimControls:AddDropdown({Label="Pitch",Options={"disabled","offset","random","look up","look down","custom","extended custom","extended random"},Config={"ItemModifiers","AntiAim","Pitch"}});antiAimControls:AddSlider({Label="Custom Pitch",Min=-180,Max=180,Step=1,Config={"ItemModifiers","AntiAim","CustomPitch"}});antiAimControls:AddDropdown({Label="Yaw",Options={"disabled","offset","backwards","random","custom"},Config={"ItemModifiers","AntiAim","Yaw"}});antiAimControls:AddSlider({Label="Custom Yaw",Min=-180,Max=180,Step=1,Config={"ItemModifiers","AntiAim","CustomYaw"}});l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});local backstabMode=P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Always Backstab Mode",Options={"Knife","Riot"},Config={"ItemModifiers","AlwaysBackstabMode"}});P:AddGroup({Source=backstabMode,Option="Riot"}):AddSlider({Label="Trigger Distance (studs)",Min=25,Max=1000000000000,Step=1,Config={"ItemModifiers","AlwaysBackstabTriggerDist"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
 
 tbl17.id = function()
 local id = tbl17.cache.id
@@ -67203,7 +67789,7 @@ end
 
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W,N,P,a,e)W:AddGroup({Source=I(W,N,{"Always","Toggle","Hold"},{"Movement",P},a)}):AddSlider({Label=e.Label,Min=e.Min,Max=e.Max,Step=e.Step,Config={"Movement",P,"Speed"}});end;return function(W)local N,P=W:AddSection({Title="Ground",Side="left"}),W:AddSection({Title="Air",Side="right"});l(N,"Walk Speed","WalkSpeed",true,{Label="Multiplier",Min=1,Max=10,Step=0.01});l(N,"Sliding","Sliding",true,{Label="Multiplier",Min=1,Max=10,Step=0.01});I(N,"Noclip",{"Always","Toggle","Hold"},{"Movement","Noclip"},true);l(N,"Auto Strafe","AutoStrafe",true,{Label="Speed",Min=1,Max=200});l(P,"Jump Power","JumpPower",false,{Label="Multiplier",Min=0.1,Max=10,Step=0.01});l(P,"Flight","Flight",true,{Label="Speed",Min=25,Max=500});P:AddToggle({Label="Infinite Double Jumps",Config={"ItemModifiers","InfiniteDoubleJumps"}});N=P:AddGroup({Source=I(P,"Long Jump",{"Tap"},{"Movement","LongJump"},true)});N:AddDropdown({Label="Mode",Options={"Under Feet","Camera Look"},Config={"Movement","LongJump","Mode"}});N:AddSlider({Label="Force",Min=0,Max=300,Config={"Movement","LongJump","Force"}});N:AddSlider({Label="Upward Velocity",Min=0,Max=200,Config={"Movement","LongJump","UpwardVelocity"}});N:AddSlider({Label="Behind Offset",Min=0,Max=8,Step=0.1,Config={"Movement","LongJump","Behind"}});end;end
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W,N,P,a,e)W:AddGroup({Source=I(W,N,{"Always","Toggle","Hold"},{"Movement",P},a)}):AddSlider({Label=e.Label,Min=e.Min,Max=e.Max,Step=e.Step,Config={"Movement",P,"Speed"}});end;return function(W)local N,P=W:AddSection({Title="Ground",Side="left"}),W:AddSection({Title="Air",Side="right"});l(N,"Walk Speed","WalkSpeed",true,{Label="Multiplier",Min=1,Max=10,Step=0.01});l(N,"Sliding","Sliding",true,{Label="Multiplier",Min=1,Max=10,Step=0.01});I(N,"Noclip",{"Always","Toggle","Hold"},{"Movement","Noclip"},true);N:AddToggle({Label="Auto Slide",Config={"Movement","AutoSlide","Enabled"}});l(N,"Auto Strafe","AutoStrafe",true,{Label="Speed",Min=1,Max=200});l(P,"Jump Power","JumpPower",false,{Label="Multiplier",Min=0.1,Max=10,Step=0.01});l(P,"Flight","Flight",true,{Label="Speed",Min=25,Max=500});P:AddToggle({Label="Infinite Double Jumps",Config={"ItemModifiers","InfiniteDoubleJumps"}});N=P:AddGroup({Source=I(P,"Long Jump",{"Tap"},{"Movement","LongJump"},true)});N:AddDropdown({Label="Mode",Options={"Under Feet","Camera Look"},Config={"Movement","LongJump","Mode"}});N:AddSlider({Label="Force",Min=0,Max=300,Config={"Movement","LongJump","Force"}});N:AddSlider({Label="Upward Velocity",Min=0,Max=200,Config={"Movement","LongJump","UpwardVelocity"}});N:AddSlider({Label="Behind Offset",Min=0,Max=8,Step=0.1,Config={"Movement","LongJump","Behind"}});end;end
 
 tbl17.it = function()
 local it = tbl17.cache.it
@@ -67537,7 +68123,7 @@ return iu.c
 end
 end
 do
-local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Hide Shoot Animation",Config={"ItemModifiers","NoShootAnimation"}});l:AddToggle({Label="Hide Sprint Animation",Config={"ItemModifiers","NoSprintAnimation"}});l:AddToggle({Label="Hide Equip Animation",Config={"ItemModifiers","NoEquipAnimation"}});l:AddToggle({Label="Hide Reload Animation",Config={"ItemModifiers","NoReloadAnimation"}});l:AddDivider({Label="Motion"});l:AddToggle({Label="Remove Weapon Motion",Config={"ItemModifiers","NoMotion"}});l:AddToggle({Label="Remove Camera Shake",Config={"ItemModifiers","NoCameraShake"}});l:AddToggle({Label="Remove Camera Sway",Config={"ItemModifiers","NoCameraSway"}});end;end
+local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Hide Shoot Animation",Config={"ItemModifiers","NoShootAnimation"}});l:AddToggle({Label="Hide Sprint Animation",Config={"ItemModifiers","NoSprintAnimation"}});l:AddToggle({Label="Hide Equip Animation",Config={"ItemModifiers","NoEquipAnimation"}});l:AddToggle({Label="Hide Reload Animation",Config={"ItemModifiers","NoReloadAnimation"}});l:AddToggle({Label="Hide Inspect Animation",Config={"ItemModifiers","NoInspectAnimation"}});l:AddToggle({Label="Hide Attack Animation",Config={"ItemModifiers","NoAttackAnimation"}});l:AddToggle({Label="Hide Aim Animation",Config={"ItemModifiers","NoAimAnimation"}});l:AddToggle({Label="Hide Charge Animation",Config={"ItemModifiers","NoChargeAnimation"}});l:AddToggle({Label="Hide Throw Animation",Config={"ItemModifiers","NoThrowAnimation"}});l:AddDivider({Label="Motion"});l:AddToggle({Label="Remove Weapon Motion",Config={"ItemModifiers","NoMotion"}});l:AddToggle({Label="Remove Camera Shake",Config={"ItemModifiers","NoCameraShake"}});l:AddToggle({Label="Remove Camera Sway",Config={"ItemModifiers","NoCameraSway"}});end;end
 
 tbl17.iV = function()
 local iv = tbl17.cache.iV
@@ -70832,19 +71418,7 @@ _knifePrimeUntil = 0,
 _knifePrimePitch = nil,
 _knifePrimeYaw = nil,
 _nextKnifeWindowAttackAt = 0,
-_genericMeleeNextAttackAt = 0,
-_genericMeleeTarget = nil,
-_genericMeleeItem = nil,
 }, index2)
-end
-
-local function fn39(item)
-local info = type(item) == "table" and type(item._info) == "table" and item._info or {}
-local interval = tonumber(rawget(info, "AttackCooldown"))
-if type(interval) ~= "number" or interval ~= interval or interval == math.huge or interval == -math.huge or interval <= 0 then
-return 0.12
-end
-return math.clamp(interval, 0.08, 3)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, gluedOurPart, arg5)
@@ -70852,7 +71426,15 @@ local aliveState = arg3 ~= nil and arg3.AliveState or nil
 local hitboxHead = aliveState ~= nil and aliveState.HitboxHead or nil
 local rootPart = aliveState ~= nil and aliveState.RootPart or nil
 local okTargetParts, targetPartsValid = pcall(function()
-return arg3 ~= nil and aliveState ~= nil and arg3.AliveState == aliveState and aliveState.Alive == true
+local fighterAlive = false
+pcall(function()
+    local fighter = arg3 ~= nil and arg3.FighterState or nil
+    local character = fighter ~= nil and fighter.Character or nil
+    local characterState = character ~= nil and character.State or nil
+    fighterAlive = characterState ~= nil and characterState.Alive == true
+end)
+local aliveFlag = aliveState ~= nil and aliveState.Alive == true
+return arg3 ~= nil and aliveState ~= nil and (aliveFlag or fighterAlive)
 and hitboxHead ~= nil and rootPart ~= nil
 and hitboxHead:IsA("BasePart") and rootPart:IsA("BasePart")
 and hitboxHead:IsDescendantOf(workspace) and rootPart:IsDescendantOf(workspace)
@@ -70912,7 +71494,14 @@ local v126 = fn38(v124, n33, v122, v123)
 local v127 = fn38(v125, n33, v122, v123)
 local function buildFreshKnifeAttackPayload()
     local okPayload, attackOrigin, attackDirection = pcall(function()
-        if aliveState.Alive ~= true or aliveState.RootPart ~= rootPart
+        local fighterAlive = false
+        pcall(function()
+            local fighter = arg3 ~= nil and arg3.FighterState or nil
+            local character = fighter ~= nil and fighter.Character or nil
+            local characterState = character ~= nil and character.State or nil
+            fighterAlive = characterState ~= nil and characterState.Alive == true
+        end)
+        if (aliveState.Alive ~= true and not fighterAlive) or aliveState.RootPart ~= rootPart
             or aliveState.HitboxHead ~= hitboxHead
             or not rootPart:IsA("BasePart") or not rootPart:IsDescendantOf(workspace)
             or not hitboxHead:IsA("BasePart") or not hitboxHead:IsDescendantOf(workspace) then
@@ -71028,7 +71617,7 @@ local attackNow = os.clock()
 if arg._hitboxWindowTarget ~= hitboxHead or attackNow >= arg._hitboxWindowUntil or attackNow < arg._nextKnifeWindowAttackAt then
 return
 end
-arg._nextKnifeWindowAttackAt = attackNow + 0.12
+arg._nextKnifeWindowAttackAt = attackNow + 0.08
 local attackOrigin, attackDirection = buildFreshKnifeAttackPayload()
 if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
@@ -71048,8 +71637,15 @@ elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitbox
 
         arg._nextKnifeWindowAttackAt = 0
     else
-
-        arg:_AbortBackstabAttempt(hitboxHead)
+        -- The old cycle always completed its retreat window even when health
+        -- replication had not arrived yet. Clear only the window; preserve the
+        -- target cooldown so the player retreats before returning to backstab.
+        arg._hitboxWindowUntil = -1
+        arg._hitboxWindowTarget = nil
+        arg._hitboxWindowAliveState = nil
+        arg._hitboxWindowInitialHealth = nil
+        arg._hitboxWindowConfirmed = false
+        arg._nextKnifeWindowAttackAt = 0
     end
 end
 
@@ -71063,15 +71659,11 @@ if meleeShootFrames ~= meleeShootFrames or meleeShootFrames == math.huge or mele
 end
 meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
 if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
-    if isKnife then
-
-        return n, fn37(v121, v122), nil
-    end
     return fn36(), nil, nil
 end
 
 if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
-    return n, isKnife and fn37(v121, v122) or nil, nil
+    return fn36(), nil, nil
 end
 
 if isKnife then
@@ -71107,21 +71699,15 @@ arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 arg._knifePrimePitch = nil
 arg._knifePrimeYaw = nil
-local genericInterval = fn39(arg4)
-if arg._genericMeleeItem == arg4 and now2 < arg._genericMeleeNextAttackAt then
-return n, nil, nil
-end
 return n, nil, function()
-local attackNow = os.clock()
-if arg._genericMeleeItem == arg4 and attackNow < arg._genericMeleeNextAttackAt then
-return
-end
-arg._genericMeleeItem = arg4
-arg._genericMeleeTarget = hitboxHead
-arg._genericMeleeNextAttackAt = attackNow + genericInterval
 local okAttack, attackResult = pcall(arg4.AttackEncoded, arg4, v126, v127, hitboxHead, tbl22)
 if not okAttack or attackResult == false then
-arg._genericMeleeNextAttackAt = os.clock() + 0.12
+    arg:_AbortBackstabAttempt(hitboxHead)
+    local warningNow = os.clock()
+    if warningNow >= (arg._nextGenericAttackWarningAt or 0) then
+        arg._nextGenericAttackWarningAt = warningNow + 5
+        warn("[AlwaysBackstab.Knife] Generic melee attack call failed: " .. tostring(okAttack and "explicit false result" or attackResult))
+    end
 end
 end
 end
@@ -71129,7 +71715,7 @@ end
 index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
 local now2 = os.clock()
 
-arg._hitboxWindowUntil = now2 + 0.08
+arg._hitboxWindowUntil = now2 + 0.625
 arg._hitboxWindowTarget = targetHitbox
 arg._hitboxWindowAliveState = targetAliveState
 local baselineHealth = tonumber(healthBeforeAttack)
@@ -71140,9 +71726,7 @@ end
 arg._hitboxWindowInitialHealth = baselineHealth
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = now2 + 0.08
-
-local randomCooldown = 0.625 + math.random() * (1.65 - 0.625)
-arg._attackCooldown = now2 + randomCooldown
+arg._attackCooldown = now2 + 1.25
 arg._attackCooldownTarget = targetHitbox
 end
 
@@ -71190,9 +71774,6 @@ arg._hitboxWindowAliveState = nil
 arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
-arg._genericMeleeNextAttackAt = 0
-arg._genericMeleeTarget = nil
-arg._genericMeleeItem = nil
 arg._attackCooldown = -1
 arg._attackCooldownTarget = nil
 arg._lastKnifeTarget = nil
@@ -72924,11 +73505,16 @@ if not flag2 then
 return
 end
 arg._innerContext = innerContext
+ragebotStateSet("__CrefyAntiAimRagebotContext", innerContext)
 ragebotSafeClearReloadTransport(arg)
 end))
 
 arg._trove:Connect(arg._playerContext.ContextRemoved, function()
 arg:_Reset()
+local sharedContext = ragebotStateGet("__CrefyAntiAimRagebotContext")
+if sharedContext == arg._innerContext then
+    ragebotStateSet("__CrefyAntiAimRagebotContext", nil)
+end
 arg._innerContext = nil
 end)
 
@@ -74239,15 +74825,23 @@ local targetWorldPosition = nil
 if target ~= nil and target.AliveState ~= nil then
 local candidateFighter = target.FighterState
 local candidatePlayer = candidateFighter ~= nil and candidateFighter.Player or nil
-local candidateRoot = target.AliveState.RootPart
-local candidateHitbox = target.AliveState.HitboxHead
-local okParts, validatedModel, validatedPosition = pcall(function()
-if target.AliveState.Alive ~= true or candidateRoot == nil or candidateHitbox == nil
-    or candidateFighter == nil or candidatePlayer == nil or candidatePlayer.Parent ~= Players
+local candidateAliveState = target.AliveState
+local candidateRoot = candidateAliveState ~= nil and candidateAliveState.RootPart or nil
+local candidateHitbox = candidateAliveState ~= nil and candidateAliveState.HitboxHead or nil
+local okParts, validatedModel, validatedPosition, refreshedAliveState = pcall(function()
+if candidateFighter == nil or candidatePlayer == nil or candidatePlayer.Parent ~= Players
     or candidateFighter.IsEnemy ~= true or fighterState.EnvironmentId == nil
-    or candidateFighter.EnvironmentId ~= fighterState.EnvironmentId then return nil, nil end
+    or candidateFighter.EnvironmentId ~= fighterState.EnvironmentId then return nil, nil, nil, nil end
 local currentTargetCharacter = candidatePlayer.Character
-if currentTargetCharacter == nil then return nil, nil end
+if currentTargetCharacter == nil then return nil, nil, nil, nil end
+local liveCharacterState = candidateFighter.Character ~= nil and candidateFighter.Character.State or nil
+if liveCharacterState ~= nil and liveCharacterState.Alive == true then
+    candidateAliveState = liveCharacterState
+    candidateRoot = liveCharacterState.RootPart
+    candidateHitbox = liveCharacterState.HitboxHead
+end
+if candidateAliveState == nil or candidateAliveState.Alive ~= true
+    or candidateRoot == nil or candidateHitbox == nil then return nil, nil, nil, nil end
 if not candidateRoot:IsA("BasePart") or not candidateHitbox:IsA("BasePart") then return nil, nil end
 local model = candidateRoot:FindFirstAncestorOfClass("Model")
 if model == nil or model ~= currentTargetCharacter
@@ -74257,11 +74851,13 @@ local position = candidateRoot.Position
 if typeof(position) ~= "Vector3" or position.X ~= position.X or position.Y ~= position.Y or position.Z ~= position.Z
 or position.X == math.huge or position.X == -math.huge or position.Y == math.huge or position.Y == -math.huge
 or position.Z == math.huge or position.Z == -math.huge then return nil, nil end
-return model, position
+return model, position, candidateAliveState
 end)
 targetPartsValid = okParts and validatedModel ~= nil and typeof(validatedPosition) == "Vector3"
 if targetPartsValid then
 candidateModel = validatedModel
+candidateAliveState = refreshedAliveState or candidateAliveState
+target.AliveState = candidateAliveState
 targetWorldPosition = validatedPosition
 end
 end
@@ -74451,21 +75047,6 @@ local function ragebotInventoryHasItem(innerContext, wantedName)
     return ok and hasItem == true
 end
 
-local function ragebotTargetInventoryHasItem(target, wantedName)
-    if type(target) ~= "table" or type(wantedName) ~= "string" or wantedName == "" then return false end
-    local fighter = target.FighterState
-    local observer = fighter ~= nil and fighter.ItemObserver or nil
-    if observer == nil then return false end
-    local ok, hasItem = pcall(function()
-        for _, inventoryItem in observer:GetItems() do
-            if inventoryItem ~= nil and inventoryItem.Name == wantedName then return true end
-        end
-        local equipped = observer:GetEquippedItem()
-        return equipped ~= nil and equipped.Name == wantedName
-    end)
-    return ok and hasItem == true
-end
-
 local function ragebotShouldUseRiotKnifeRotation(item, innerContext, target)
     if item == nil or item.Name ~= "Knife" then return false end
     local data = type(v115) == "table" and v115.Data or nil
@@ -74476,100 +75057,21 @@ local function ragebotShouldUseRiotKnifeRotation(item, innerContext, target)
 
         return true
     end
-    if mode == "Riot" then
-
-        return true
-    end
+    -- Riot mode belongs to the standalone AlwaysBackstab.Riot controller.
+    -- When Ragebot is active, that controller yields completely; Ragebot must
+    -- not silently recreate Riot mode through its own Knife camera branch.
     return false
 end
 
 local function ragebotUsesExternalRiotCamera(item, target, owner)
-    if item == nil or item.Name ~= "Knife" or type(target) ~= "table" then return false end
-    local data = type(v115) == "table" and v115.Data or nil
-    local modifiers = type(data) == "table" and data.ItemModifiers or nil
-    if type(modifiers) ~= "table"
-        or rawget(modifiers, "AlwaysBackstab") ~= true
-        or rawget(modifiers, "AlwaysBackstabMode") ~= "Riot"
-        or not ragebotTargetInventoryHasItem(target, "Riot Shield") then
-        if type(owner) == "table" then
-            owner._externalRiotCameraWaitTarget = nil
-            owner._externalRiotCameraWaitStartedAt = nil
-        end
-        return false
+    -- A Knife action is always owned by the Ragebot planner. The standalone
+    -- AlwaysBackstab.Riot controller yields through riotRagebotHasPriority().
+    -- Never let this planner switch to a second camera sender.
+    if type(owner) == "table" then
+        owner._externalRiotCameraWaitTarget = nil
+        owner._externalRiotCameraWaitStartedAt = nil
     end
-    local aliveState = target.AliveState
-    local fighter = target.FighterState
-    local player = fighter ~= nil and fighter.Player or nil
-    local targetModel = player ~= nil and player.Character or (aliveState ~= nil and aliveState.Model or nil)
-    local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
-    local localRoot = nil
-    local okRoots = pcall(function()
-        local character = Players.LocalPlayer and Players.LocalPlayer.Character or nil
-        localRoot = character ~= nil and character:FindFirstChild("HumanoidRootPart") or nil
-        if targetModel == nil or targetRoot == nil or localRoot == nil
-            or not targetModel:IsDescendantOf(workspace)
-            or not targetRoot:IsA("BasePart") or not localRoot:IsA("BasePart") then
-            error("missing Riot target root")
-        end
-    end)
-    if not okRoots then
-        if type(owner) == "table" then
-            owner._externalRiotCameraWaitTarget = nil
-            owner._externalRiotCameraWaitStartedAt = nil
-        end
-        return false
-    end
-    local triggerDistance = tonumber(modifiers.AlwaysBackstabTriggerDist) or 25
-    if triggerDistance ~= triggerDistance or triggerDistance == math.huge or triggerDistance == -math.huge then triggerDistance = 25 end
-    triggerDistance = math.clamp(triggerDistance, 25, 1000000000000)
-    local okDistance, distance = pcall(function() return (targetRoot.Position - localRoot.Position).Magnitude end)
-    if not okDistance or type(distance) ~= "number" or distance ~= distance
-        or distance == math.huge or distance < 0 or distance > triggerDistance then
-        if type(owner) == "table" then
-            owner._externalRiotCameraWaitTarget = nil
-            owner._externalRiotCameraWaitStartedAt = nil
-        end
-        return false
-    end
-
-    local targetKey = aliveState ~= nil and aliveState.HitboxHead or targetModel
-    local now = os.clock()
-    local shared = ragebotStateGet("__SilentCamTargetRotationExactReplication_v1")
-
-    if type(shared) ~= "table" or rawget(shared, "enabled") ~= true then
-        if type(owner) == "table" then
-            owner._externalRiotCameraWaitTarget = nil
-            owner._externalRiotCameraWaitStartedAt = nil
-        end
-        return false
-    end
-    local sharedActive = rawget(shared, "active") == true
-        and rawget(shared, "targetCharacter") == targetModel
-    local sendCount = tonumber(rawget(shared, "sendCount"))
-    local lastFireAt = type(shared) == "table" and tonumber(rawget(shared, "lastFireAt")) or nil
-    local freshSend = sharedActive and sendCount ~= nil and sendCount > 0
-        and lastFireAt ~= nil and lastFireAt > 0 and lastFireAt <= now
-        and now - lastFireAt <= 0.20
-    if freshSend then
-        if type(owner) == "table" then
-            owner._externalRiotCameraWaitTarget = nil
-            owner._externalRiotCameraWaitStartedAt = nil
-        end
-        return true
-    end
-
-    if type(owner) ~= "table" then return true end
-    if owner._externalRiotCameraWaitTarget ~= targetKey then
-        owner._externalRiotCameraWaitTarget = targetKey
-        owner._externalRiotCameraWaitStartedAt = now
-        return true
-    end
-    local startedAt = tonumber(owner._externalRiotCameraWaitStartedAt)
-    if startedAt == nil or startedAt ~= startedAt or startedAt > now then
-        owner._externalRiotCameraWaitStartedAt = now
-        return true
-    end
-    return now - startedAt < 0.40
+    return false
 end
 
 local function ragebotPrimeExternalRiotCamera(owner, target)
@@ -74626,29 +75128,53 @@ local function ragebotPrimeExternalRiotCamera(owner, target)
     return true
 end
 
-local function ragebotBuildRiotKnifeViewAngles(target)
+local function ragebotRiotFiniteNumber(value)
+    return type(value) == "number" and value == value
+        and value ~= math.huge and value ~= -math.huge
+end
+
+local function ragebotBuildRiotKnifeViewAngles(target, owner)
     local aliveState = target ~= nil and target.AliveState or nil
     local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
-    if hitbox == nil then return nil end
+    local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
+    if hitbox == nil or targetRoot == nil then return nil end
 
-    local anglePart = aliveState ~= nil and aliveState.RootPart or nil
-    local okPart, candidatePart = pcall(function()
-        if anglePart == nil or not anglePart:IsA("BasePart")
-            or not anglePart:IsDescendantOf(workspace) then
-            return nil
+    local okPart, validPart = pcall(function()
+        return targetRoot:IsA("BasePart") and targetRoot:IsDescendantOf(workspace)
+            and hitbox:IsA("BasePart") and hitbox:IsDescendantOf(workspace)
+    end)
+    if not okPart or not validPart then return nil end
+
+    local originPosition = nil
+    local controller = type(owner) == "table" and owner._innerContext ~= nil
+        and owner._innerContext.CharacterController or nil
+    if controller ~= nil then
+        local originOk, serverOrigin = pcall(function()
+            return controller:GetServerHeadOrigin()
+        end)
+        if originOk and typeof(serverOrigin) == "CFrame" then
+            originPosition = serverOrigin.Position
         end
-        return anglePart
-    end)
-    if not okPart or candidatePart == nil then return nil end
-    anglePart = candidatePart
+    end
+    if typeof(originPosition) ~= "Vector3" then
+        local localCharacter = Players.LocalPlayer and Players.LocalPlayer.Character or nil
+        local localRoot = localCharacter ~= nil and localCharacter:FindFirstChild("HumanoidRootPart") or nil
+        local okLocal, localPosition = pcall(function()
+            if localRoot == nil or not localRoot:IsA("BasePart") then return nil end
+            return localRoot.Position
+        end)
+        if okLocal and typeof(localPosition) == "Vector3" then
+            originPosition = localPosition
+        end
+    end
+    if typeof(originPosition) ~= "Vector3" then return nil end
 
-    local okAngles, pitch, yaw = pcall(function()
-        return anglePart.CFrame:ToOrientation()
-    end)
-    if not okAngles or type(pitch) ~= "number" or type(yaw) ~= "number"
-        or pitch ~= pitch or yaw ~= yaw
-        or pitch == math.huge or pitch == -math.huge
-        or yaw == math.huge or yaw == -math.huge then
+    local direction = targetRoot.Position - originPosition
+    local horizontalMagnitude = math.sqrt(direction.X * direction.X + direction.Z * direction.Z)
+    if direction.Magnitude < 1e-4 then return nil end
+    local pitch = math.atan2(direction.Y, horizontalMagnitude)
+    local yaw = math.atan2(-direction.X, -direction.Z)
+    if not ragebotRiotFiniteNumber(pitch) or not ragebotRiotFiniteNumber(yaw) then
         return nil
     end
 
@@ -74656,7 +75182,7 @@ local function ragebotBuildRiotKnifeViewAngles(target)
         Kind = "Normalized",
         Pitch = math.deg(pitch),
         Yaw = math.deg(yaw),
-    }, anglePart, pitch, yaw
+    }, targetRoot, pitch, yaw
 end
 
 local function ragebotResetRiotCameraPrime(owner)
@@ -74683,11 +75209,6 @@ local function ragebotRiotBridgeFallbackReady(owner, targetKey, now)
     end
 
     return now - startedAt >= 0.35
-end
-
-local function ragebotRiotFiniteNumber(value)
-    return type(value) == "number" and value == value
-        and value ~= math.huge and value ~= -math.huge
 end
 
 local function ragebotEncodeRiotCameraByte(angle)
@@ -74935,7 +75456,7 @@ if arg._knifeExternalRiotCamera == true then
         v133 = nil
     end
 elseif ragebotShouldUseRiotKnifeRotation(item, arg._innerContext, arg4) then
-    local riotViewAngles, riotAnglePart, riotPitch, riotYaw = ragebotBuildRiotKnifeViewAngles(arg4)
+    local riotViewAngles, riotAnglePart, riotPitch, riotYaw = ragebotBuildRiotKnifeViewAngles(arg4, arg)
     if riotViewAngles ~= nil and riotAnglePart ~= nil then
         v132 = riotViewAngles
         local targetKey = arg4.AliveState ~= nil and arg4.AliveState.HitboxHead or nil
@@ -75991,6 +76512,64 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
         characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
     end
     return
+end
+
+if shouldSkipDefense and typeof(cFrame) == "CFrame" and arg3 ~= nil
+    and arg._knifeExternalRiotCamera ~= true then
+    local shieldState = "None"
+    pcall(function() shieldState = v129(arg4.ItemBehaviors) or "None" end)
+    local targetRoot = arg3.AliveState ~= nil and arg3.AliveState.RootPart or nil
+    local shouldFaceTarget = shieldState == "Equipped"
+    local faceDirection = nil
+    if not shouldFaceTarget and targetRoot ~= nil then
+        pcall(function()
+            local localContext = arg._innerContext
+            local localFighter = localContext ~= nil and localContext.FighterState or nil
+            local localCharacter = localFighter ~= nil and localFighter.Character or nil
+            local localState = localCharacter ~= nil and localCharacter.State or nil
+            local localRoot = localState ~= nil and localState.RootPart or nil
+            if localRoot == nil or not localRoot:IsA("BasePart") then return end
+            local delta = targetRoot.Position - localRoot.Position
+            local horizontal = Vector3.new(delta.X, 0, delta.Z)
+            if horizontal.Magnitude < 0.05 then return end
+            local direction = horizontal.Unit
+            local look = localRoot.CFrame.LookVector
+            local lookHorizontal = Vector3.new(look.X, 0, look.Z)
+            if lookHorizontal.Magnitude > 0.05 and lookHorizontal.Unit:Dot(direction) < -0.05 then
+                shouldFaceTarget = true
+                faceDirection = direction
+            end
+        end)
+    end
+    if shouldFaceTarget and targetRoot ~= nil then
+        local facingCFrame
+        local facingOk = pcall(function()
+            if shieldState == "Equipped" then
+                facingCFrame = v116.getDefensiveCFrame(cFrame, shieldState, arg3.FighterState, targetRoot)
+            else
+                local direction = faceDirection or (targetRoot.Position - cFrame.Position)
+                local horizontal = Vector3.new(direction.X, 0, direction.Z)
+                if horizontal.Magnitude > 0.05 then
+                    facingCFrame = CFrame.lookAt(cFrame.Position, cFrame.Position + horizontal.Unit)
+                end
+            end
+        end)
+        if facingOk and typeof(facingCFrame) == "CFrame" then
+            local finalFacingCFrame = arg:_ApplyUndergroundOffset(facingCFrame, characterController)
+            characterController:SetServerCFrame(finalFacingCFrame)
+            if shieldState == "Equipped" then
+                local shieldAngles = v116.getDefensiveViewAngles(shieldState, arg3.FighterState)
+                arg._lastDefensiveViewAngles = shieldAngles
+                characterController:SendViewAngles(v86[9], shieldAngles)
+            else
+                characterController:SendViewAngles(20, defensiveViewAngles)
+                if arg._knifeActionExpected == true and defensiveViewAngles ~= nil then
+                    ragebotFlushKnifeViewAngles(arg, characterController, defensiveViewAngles, arg3)
+                end
+            end
+            return
+        end
+    end
 end
 
 if cFrame == nil or arg3 == nil or shouldSkipDefense then
