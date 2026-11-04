@@ -30058,6 +30058,9 @@ arg._restoreTask = nil
 arg:_RevertHooks()
 end
 
+index2.ShouldSuppressAntiAim = antiAimShouldSuppress
+index2.EnsureAntiAimDecoderGuard = antiAimEnsureDecoderGuard
+
 return index2
 end
 
@@ -30148,7 +30151,11 @@ arg._trove:Connect(RunService.Heartbeat, function()
         settings = type(modifiers) == "table" and modifiers.AntiAim or nil
     end)
     if not settingsOk or type(settings) ~= "table" or settings.Enabled ~= true then return end
-    local suppressOk, suppressed = pcall(antiAimShouldSuppress)
+    local suppressFunction = type(v118) == "table" and rawget(v118, "ShouldSuppressAntiAim") or nil
+    local suppressOk, suppressed = false, "Anti-Aim suppression function is unavailable"
+    if type(suppressFunction) == "function" then
+        suppressOk, suppressed = pcall(suppressFunction)
+    end
     if not suppressOk then
         if now >= (arg._nextAntiAimWarningAt or 0) then
             arg._nextAntiAimWarningAt = now + 5
@@ -30165,7 +30172,12 @@ arg._trove:Connect(RunService.Heartbeat, function()
 
     local pitchMode = rawget(settings, "Pitch") or rawget(settings, "pitch") or "disabled"
     if pitchMode == "extended custom" or pitchMode == "extended random" then
-        if not antiAimEnsureDecoderGuard() and now >= (arg._nextAntiAimWarningAt or 0) then
+        local ensureDecoderGuard = type(v118) == "table" and rawget(v118, "EnsureAntiAimDecoderGuard") or nil
+        local guardCallOk, guardInstalled = false, false
+        if type(ensureDecoderGuard) == "function" then
+            guardCallOk, guardInstalled = pcall(ensureDecoderGuard)
+        end
+        if (not guardCallOk or guardInstalled ~= true) and now >= (arg._nextAntiAimWarningAt or 0) then
             arg._nextAntiAimWarningAt = now + 5
             warn("[AntiAim] Extended pitch is unavailable because the decoder guard could not be installed")
         end
@@ -59351,7 +59363,7 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
         ["Matrix Rain"] = true,
         ["Celestial Sigil"] = true,
     }
-    if not allowedStyles[style] then style = "Arcane Orbit" end
+    if not allowedStyles[style] then style = "Classic Float" end
 
     local TweenService = game:GetService("TweenService")
     local Debris = game:GetService("Debris")
@@ -59361,18 +59373,18 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
     local tweens = {}
 
     local function trackObject(object)
-        table.insert(objects, object)
-        pcall(function() Debris:AddItem(object, duration + 0.18) end)
+        objects[#objects + 1] = object
+        pcall(function() Debris:AddItem(object, duration + 0.3) end)
         return object
     end
 
-    local function makeText(text, x, y, size, color, rotation, zIndex, chosenFont)
+    local function makeText(text, x, y, size, color, rotation, zIndex, chosenFont, parent)
         local label = Instance.new("TextLabel")
         label.Name = "CrefyDamageEffect"
         label.BackgroundTransparency = 1
         label.BorderSizePixel = 0
         label.AnchorPoint = Vector2.new(0.5, 0.5)
-        label.Size = UDim2.fromOffset(math.max(140, size * 10.5), size * 2.2)
+        label.Size = UDim2.fromOffset(math.max(100, size * 10.5), size * 2.4)
         label.Position = UDim2.fromOffset(x, y)
         label.Font = chosenFont or font
         label.TextSize = size
@@ -59383,170 +59395,273 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
         label.TextStrokeColor3 = Color3.new(0, 0, 0)
         label.Rotation = rotation or 0
         label.ZIndex = zIndex or 10
-        label.Parent = gui
+        label.Parent = parent or gui
         trackObject(label)
         return label
     end
 
-    local function addStroke(label, color, thickness, transparency)
+    local function makeFrame(x, y, width, height, color, rotation, transparency, zIndex, parent, relativePosition)
+        local frame = Instance.new("Frame")
+        frame.Name = "CrefyDamageShape"
+        frame.AnchorPoint = Vector2.new(0.5, 0.5)
+        frame.Size = UDim2.fromOffset(width, height)
+        frame.Position = relativePosition or UDim2.fromOffset(x, y)
+        frame.BackgroundColor3 = color or color1
+        frame.BackgroundTransparency = transparency == nil and 0 or transparency
+        frame.BorderSizePixel = 0
+        frame.Rotation = rotation or 0
+        frame.ZIndex = zIndex or 8
+        frame.Parent = parent or gui
+        trackObject(frame)
+        return frame
+    end
+
+    local function addCorner(frame, radius)
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(radius or 1, 0)
+        corner.Parent = frame
+        trackObject(corner)
+        return corner
+    end
+
+    local function addStroke(object, color, thickness, transparency)
         local stroke = Instance.new("UIStroke")
-        stroke.Color = color or Color3.new(0, 0, 0)
+        stroke.Color = color or color1
         stroke.Thickness = thickness or 1.5
-        stroke.Transparency = transparency or 0.15
+        stroke.Transparency = transparency or 0.12
         stroke.LineJoinMode = Enum.LineJoinMode.Round
-        stroke.Parent = label
+        stroke.Parent = object
         trackObject(stroke)
         return stroke
     end
 
-    local function play(object, tweenDuration, goals, easingStyle, delayTime)
+    local function play(object, tweenDuration, goals, easingStyle, delayTime, repeatCount, reverses)
         local okTween, tween = pcall(function()
             local info = TweenInfo.new(
-                math.max(0.05, tweenDuration),
+                math.max(0.04, tweenDuration),
                 easingStyle or Enum.EasingStyle.Quint,
                 Enum.EasingDirection.Out,
-                0,
-                false,
+                repeatCount or 0,
+                reverses == true,
                 delayTime or 0
             )
             return TweenService:Create(object, info, goals)
         end)
         if okTween and tween ~= nil then
-            table.insert(tweens, tween)
+            tweens[#tweens + 1] = tween
             pcall(function() tween:Play() end)
+            return tween
         end
-        return okTween
+        return nil
     end
 
-    local function decorate(text, dx, dy, size, color, rotation, endDx, endDy, endRotation)
-        local glyph = makeText(text, startX + dx, startY + dy, size, color, rotation, 11, Enum.Font.GothamBlack)
-        glyph.TextStrokeTransparency = 0.25
-        play(glyph, duration, {
-            Position = UDim2.fromOffset(startX + (endDx or dx * 1.8), startY - rise * 0.55 + (endDy or dy * 1.8)),
-            Rotation = endRotation or ((rotation or 0) + 150),
+    local function attachColor(main)
+        if colorType == "Gradient" then
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new(color1, color2)
+            gradient.Rotation = 90
+            gradient.Parent = main
+            trackObject(gradient)
+        elseif colorType == "Rainbow" then
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 90)),
+                ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 190, 65)),
+                ColorSequenceKeypoint.new(0.40, Color3.fromRGB(120, 255, 130)),
+                ColorSequenceKeypoint.new(0.60, Color3.fromRGB(70, 220, 255)),
+                ColorSequenceKeypoint.new(0.80, Color3.fromRGB(160, 110, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 210)),
+            })
+            gradient.Parent = main
+            trackObject(gradient)
+            play(gradient, duration, { Rotation = 360 }, Enum.EasingStyle.Linear)
+        end
+    end
+
+    local function makeMain(startScale)
+        local main = makeText(amountText, startX, startY, textSize + (isHeadshot == true and 2 or 0), color1, 0, 14)
+        local stroke = addStroke(main, color2, style == "Neon Rift" and 2.5 or 1.25, 0.08)
+        local scale = Instance.new("UIScale")
+        scale.Scale = startScale or 1
+        scale.Parent = main
+        trackObject(scale)
+        attachColor(main)
+        return main, stroke, scale
+    end
+
+    local function fadeMain(main, endX, endY, endRotation, easing, delayTime)
+        play(main, duration, {
+            Position = UDim2.fromOffset(endX, endY),
             TextTransparency = 1,
             TextStrokeTransparency = 1,
-        }, Enum.EasingStyle.Quint)
-        return glyph
+            Rotation = endRotation or 0,
+        }, easing or Enum.EasingStyle.Quint, delayTime or 0)
     end
 
-    local mainText = amountText
-    if style == "Critical Burst" then
-        mainText = "✦ " .. amountText .. " ✦"
+    if style == "Classic Float" then
+        local main, stroke, scale = makeMain(0.92)
+        play(scale, 0.18, { Scale = 1.08 }, Enum.EasingStyle.Back)
+        play(scale, duration * 0.7, { Scale = 0.94 }, Enum.EasingStyle.Quad, 0.18)
+        fadeMain(main, startX, startY - rise, 0)
+        play(stroke, duration, { Transparency = 1 }, Enum.EasingStyle.Quad)
+
+    elseif style == "Critical Burst" then
+        local main, stroke, scale = makeMain(0.22)
+        play(scale, 0.2, { Scale = 1.28 }, Enum.EasingStyle.Back)
+        play(scale, duration * 0.72, { Scale = 0.9 }, Enum.EasingStyle.Quint, 0.2)
+        fadeMain(main, startX, startY - rise * 0.32, 0, Enum.EasingStyle.Quart)
+        play(stroke, duration * 0.65, { Transparency = 1, Thickness = 0.4 }, Enum.EasingStyle.Quad)
+        for index = 0, 7 do
+            local angle = math.tau * index / 8
+            local fromX = startX + math.cos(angle) * 9
+            local fromY = startY + math.sin(angle) * 9
+            local toX = startX + math.cos(angle) * 58
+            local toY = startY + math.sin(angle) * 58
+            local ray = makeFrame(fromX, fromY, 3, 24, index % 2 == 0 and color2 or color1, math.deg(angle) + 90, 0, 9)
+            play(ray, duration * 0.48, {
+                Position = UDim2.fromOffset(toX, toY),
+                Rotation = math.deg(angle) + 90,
+                BackgroundTransparency = 1,
+            }, Enum.EasingStyle.Quart, index * 0.008)
+        end
+
     elseif style == "Neon Rift" then
-        mainText = "⟦ " .. amountText .. " ⟧"
+        local ghostLeft = makeText(amountText, startX - 5, startY + 1, textSize, color2, -3, 11)
+        local ghostRight = makeText(amountText, startX + 5, startY - 1, textSize, color1, 3, 12)
+        ghostLeft.TextTransparency = 0.18
+        ghostRight.TextTransparency = 0.22
+        play(ghostLeft, duration * 0.82, { Position = UDim2.fromOffset(startX - 26, startY - rise * 0.55), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = -9 }, Enum.EasingStyle.Quart)
+        play(ghostRight, duration * 0.78, { Position = UDim2.fromOffset(startX + 26, startY - rise * 0.45), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = 9 }, Enum.EasingStyle.Quart)
+        local main, stroke = makeMain(1)
+        fadeMain(main, startX, startY - rise * 0.72, 0)
+        play(stroke, duration, { Transparency = 1, Thickness = 3.5 }, Enum.EasingStyle.Quad)
+        local slash = makeFrame(startX, startY + textSize * 0.65, textSize * 5.4, 2, color2, -8, 0, 10)
+        play(slash, duration * 0.62, { Position = UDim2.fromOffset(startX + 34, startY - rise * 0.38), Rotation = 8, BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
+
     elseif style == "Glitch Echo" then
-        mainText = "// " .. amountText .. " //"
+        local main, stroke = makeMain(1)
+        local echoA = makeText(amountText, startX - 2, startY + 4, textSize, color2, -1, 11)
+        local echoB = makeText(amountText, startX + 2, startY - 4, textSize, color1, 1, 12)
+        echoA.TextTransparency = 0.35
+        echoB.TextTransparency = 0.42
+        play(echoA, duration * 0.52, { Position = UDim2.fromOffset(startX - 9, startY - rise * 0.35), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = -4 }, Enum.EasingStyle.Linear, 0.025)
+        play(echoB, duration * 0.48, { Position = UDim2.fromOffset(startX + 11, startY - rise * 0.28), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = 4 }, Enum.EasingStyle.Linear, 0.055)
+        local scanA = makeFrame(startX - 30, startY - 7, 62, 2, color2, 0, 0.08, 13)
+        local scanB = makeFrame(startX + 26, startY + 8, 48, 2, color1, 0, 0.15, 13)
+        play(scanA, duration * 0.26, { Position = UDim2.fromOffset(startX + 34, startY - 7), BackgroundTransparency = 1 }, Enum.EasingStyle.Linear)
+        play(scanB, duration * 0.24, { Position = UDim2.fromOffset(startX - 35, startY + 8), BackgroundTransparency = 1 }, Enum.EasingStyle.Linear, 0.04)
+        play(main, 0.055, { Position = UDim2.fromOffset(startX + 7, startY - 2), Rotation = 2 }, Enum.EasingStyle.Linear, 0, 1, true)
+        fadeMain(main, startX + 2, startY - rise * 0.58, 0, Enum.EasingStyle.Linear, 0.12)
+        play(stroke, duration * 0.6, { Transparency = 1 }, Enum.EasingStyle.Linear)
+
     elseif style == "Arcane Orbit" then
-        mainText = "⟡ " .. amountText .. " ⟡"
+        local ring = makeFrame(startX, startY, 70, 70, color1, 0, 1, 8)
+        addCorner(ring, 1)
+        local ringStroke = addStroke(ring, color2, 2.1, 0.08)
+        local orbitDotA = makeFrame(0, 0, 7, 7, color2, 0, 0, 12, ring, UDim2.new(0.5, -3.5, 0, -3.5))
+        local orbitDotB = makeFrame(0, 0, 5, 5, color1, 0, 0, 12, ring, UDim2.new(1, -2.5, 0.5, -2.5))
+        local orbitDotC = makeFrame(0, 0, 4, 4, color2, 0, 0, 12, ring, UDim2.new(0, -2, 0.5, -2))
+        addCorner(orbitDotA, 1)
+        addCorner(orbitDotB, 1)
+        addCorner(orbitDotC, 1)
+        local main = makeText(amountText, startX, startY, textSize, color1, 0, 14)
+        local mainStroke = addStroke(main, color2, 1.2, 0.12)
+        attachColor(main)
+        play(ring, duration, { Position = UDim2.fromOffset(startX, startY - rise * 0.5), Size = UDim2.fromOffset(106, 106), Rotation = 360 }, Enum.EasingStyle.Quint)
+        play(ringStroke, duration, { Transparency = 1, Thickness = 0.6 }, Enum.EasingStyle.Quad)
+        play(orbitDotA, duration * 0.8, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
+        play(orbitDotB, duration * 0.72, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, 0.05)
+        play(orbitDotC, duration * 0.72, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, 0.1)
+        fadeMain(main, startX, startY - rise * 0.5, 0)
+        play(mainStroke, duration, { Transparency = 1 }, Enum.EasingStyle.Quad)
+
     elseif style == "Void Shatter" then
-        mainText = "◆ " .. amountText .. " ◆"
+        local main, stroke, scale = makeMain(1.12)
+        play(scale, duration * 0.48, { Scale = 0.72 }, Enum.EasingStyle.Quint)
+        fadeMain(main, startX, startY - rise * 0.24, 0, Enum.EasingStyle.Quart)
+        play(stroke, duration * 0.48, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
+        for index = 0, 9 do
+            local angle = math.tau * index / 10 + 0.12
+            local startRadius = 7 + (index % 3) * 3
+            local endRadius = 34 + (index % 4) * 12
+            local shard = makeFrame(
+                startX + math.cos(angle) * startRadius,
+                startY + math.sin(angle) * startRadius,
+                5 + (index % 3), 5 + (index % 3),
+                index % 2 == 0 and color2 or color1,
+                45 + index * 13, 0, 10
+            )
+            play(shard, duration * (0.55 + (index % 3) * 0.08), {
+                Position = UDim2.fromOffset(startX + math.cos(angle) * endRadius, startY + math.sin(angle) * endRadius + rise * 0.18),
+                Rotation = 180 + index * 27,
+                BackgroundTransparency = 1,
+            }, Enum.EasingStyle.Quad, (index % 4) * 0.018)
+        end
+
     elseif style == "Matrix Rain" then
-        mainText = "[ " .. amountText .. " ]"
+        local matrixFont = Enum.Font.Code
+        local main = makeText(amountText, startX, startY, textSize, color2, 0, 14, matrixFont)
+        local mainStroke = addStroke(main, color1, 1.1, 0.2)
+        attachColor(main)
+        for index = 1, 5 do
+            local columnX = startX + (index - 3) * 22
+            local column = makeText(index % 2 == 0 and "1\n0\n1\n0" or "0\n1\n0\n1", columnX, startY - 28 - (index % 2) * 12, textSize * 0.48, color1, 0, 8, matrixFont)
+            column.TextTransparency = 0.18 + (index % 3) * 0.08
+            column.Size = UDim2.fromOffset(22, textSize * 3.4)
+            play(column, duration * (0.62 + (index % 3) * 0.08), {
+                Position = UDim2.fromOffset(columnX + (index % 2 == 0 and 5 or -4), startY + 68 + index * 5),
+                TextTransparency = 1,
+                TextStrokeTransparency = 1,
+            }, Enum.EasingStyle.Linear, index * 0.035)
+        end
+        fadeMain(main, startX, startY - rise * 0.42, 0, Enum.EasingStyle.Linear)
+        play(mainStroke, duration * 0.75, { Transparency = 1 }, Enum.EasingStyle.Linear)
+
     elseif style == "Celestial Sigil" then
-        mainText = "☼ " .. amountText .. " ☽"
+        local outerRing = makeFrame(startX, startY, 54, 54, color1, 0, 1, 7)
+        addCorner(outerRing, 1)
+        local outerStroke = addStroke(outerRing, color2, 1.5, 0.05)
+        local innerRing = makeFrame(startX, startY, 32, 32, color2, 45, 1, 8)
+        addCorner(innerRing, 1)
+        local innerStroke = addStroke(innerRing, color1, 1.2, 0.1)
+        local main = makeText(amountText, startX, startY, textSize, color1, 0, 14)
+        attachColor(main)
+        for index = 0, 11 do
+            local angle = math.tau * index / 12
+            local radius = 34 + (index % 2) * 6
+            local ray = makeFrame(
+                startX + math.cos(angle) * radius,
+                startY + math.sin(angle) * radius,
+                2.5, 12 + (index % 3) * 3,
+                index % 2 == 0 and color2 or color1,
+                math.deg(angle), 0, 9
+            )
+            play(ray, duration * 0.86, {
+                Position = UDim2.fromOffset(startX + math.cos(angle) * (radius + 25), startY + math.sin(angle) * (radius + 25) - rise * 0.22),
+                Rotation = math.deg(angle) + 35,
+                BackgroundTransparency = 1,
+            }, Enum.EasingStyle.Quart, (index % 4) * 0.012)
+        end
+        play(outerRing, duration, { Position = UDim2.fromOffset(startX, startY - rise * 0.35), Size = UDim2.fromOffset(100, 100), Rotation = 180 }, Enum.EasingStyle.Quint)
+        play(innerRing, duration * 0.88, { Position = UDim2.fromOffset(startX, startY - rise * 0.35), Size = UDim2.fromOffset(18, 18), Rotation = -135 }, Enum.EasingStyle.Quart)
+        play(outerStroke, duration, { Transparency = 1, Thickness = 0.5 }, Enum.EasingStyle.Quad)
+        play(innerStroke, duration * 0.82, { Transparency = 1 }, Enum.EasingStyle.Quad)
+        fadeMain(main, startX, startY - rise * 0.35, 0)
     end
 
-    if style == "Neon Rift" or style == "Glitch Echo" then
-        local ghostA = makeText(mainText, startX - 4, startY + 1, textSize, color2, -4, 9)
-        ghostA.TextTransparency = 0.22
-        play(ghostA, duration * 0.72, {
-            Position = UDim2.fromOffset(startX - (style == "Glitch Echo" and 21 or 10), startY - rise * 0.8),
-            Rotation = style == "Glitch Echo" and -12 or -7,
-            TextTransparency = 1,
-            TextStrokeTransparency = 1,
-        }, Enum.EasingStyle.Quart)
-        local ghostB = makeText(mainText, startX + 4, startY - 1, textSize, color1, 4, 9)
-        ghostB.TextTransparency = 0.28
-        play(ghostB, duration * 0.78, {
-            Position = UDim2.fromOffset(startX + (style == "Glitch Echo" and 21 or 10), startY - rise * 0.65),
-            Rotation = style == "Glitch Echo" and 12 or 7,
-            TextTransparency = 1,
-            TextStrokeTransparency = 1,
-        }, Enum.EasingStyle.Quart)
-    end
-
-    local main = makeText(mainText, startX, startY, textSize + ((style == "Critical Burst" or isHeadshot == true) and 4 or 0), color1, 0, 12)
-    main.TextStrokeTransparency = 1
-    local mainStroke = addStroke(main, color2, style == "Neon Rift" and 2.5 or 1.6, 0.08)
-    local scale = Instance.new("UIScale")
-    scale.Scale = 0.35
-    scale.Parent = main
-    trackObject(scale)
-
-    if colorType == "Gradient" then
-        local gradient = Instance.new("UIGradient")
-        gradient.Color = ColorSequence.new(color1, color2)
-        gradient.Rotation = 90
-        gradient.Parent = main
-        trackObject(gradient)
-    elseif colorType == "Rainbow" then
-        local gradient = Instance.new("UIGradient")
-        gradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 90)),
-            ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 190, 65)),
-            ColorSequenceKeypoint.new(0.40, Color3.fromRGB(120, 255, 130)),
-            ColorSequenceKeypoint.new(0.60, Color3.fromRGB(70, 220, 255)),
-            ColorSequenceKeypoint.new(0.80, Color3.fromRGB(160, 110, 255)),
-            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 210)),
-        })
-        gradient.Parent = main
-        trackObject(gradient)
-        play(gradient, duration, { Rotation = 360 }, Enum.EasingStyle.Linear)
-    end
-
-    play(scale, 0.22, { Scale = style == "Critical Burst" and 1.32 or 1.08 }, Enum.EasingStyle.Back)
-    play(main, duration, {
-        Position = UDim2.fromOffset(startX + math.random(-12, 12), startY - rise),
-        TextTransparency = 1,
-        TextStrokeTransparency = 1,
-        Rotation = style == "Glitch Echo" and math.random(-7, 7) or math.random(-3, 3),
-    }, Enum.EasingStyle.Quint)
-    play(mainStroke, duration * 0.72, { Transparency = 1 }, Enum.EasingStyle.Quad, duration * 0.28)
-    play(scale, duration * 0.75, { Scale = 0.82 }, Enum.EasingStyle.Quad, 0.22)
-
-    if style == "Critical Burst" then
-        decorate("✦", -48, -8, textSize, color2, -25, -82, -35, -130)
-        decorate("✦", 48, -8, textSize, color2, 25, 82, -35, 130)
-        decorate("·", -30, 20, textSize, color1, 0, -60, 30, -80)
-        decorate("·", 30, 20, textSize, color1, 0, 60, 30, 80)
-    elseif style == "Arcane Orbit" then
-        decorate("◈", -43, -15, textSize * 0.78, color2, -30, -68, -48, -210)
-        decorate("⌬", 43, -15, textSize * 0.78, color1, 30, 68, -48, 210)
-        decorate("✧", -30, 22, textSize * 0.72, color2, 0, -58, 54, -160)
-        decorate("✧", 30, 22, textSize * 0.72, color1, 0, 58, 54, 160)
-    elseif style == "Void Shatter" then
-        decorate("◆", -38, -12, textSize * 0.82, color2, -20, -92, -52, -170)
-        decorate("◇", 38, -12, textSize * 0.82, color1, 20, 92, -52, 170)
-        decorate("▪", -24, 20, textSize * 0.65, color2, 0, -72, 62, -220)
-        decorate("▪", 24, 20, textSize * 0.65, color1, 0, 72, 62, 220)
-        decorate("·", 0, -28, textSize * 0.6, color2, 0, 0, -90, 180)
-    elseif style == "Matrix Rain" then
-        decorate("0", -54, -18, textSize * 0.65, color2, 0, -70, -68, 0)
-        decorate("1", -32, -29, textSize * 0.65, color1, 0, -45, -90, 0)
-        decorate("1", 36, -26, textSize * 0.65, color2, 0, 50, -86, 0)
-        decorate("0", 55, -12, textSize * 0.65, color1, 0, 78, -60, 0)
-    elseif style == "Celestial Sigil" then
-        decorate("☄", -50, -12, textSize * 0.8, color2, -35, -90, -70, -170)
-        decorate("✶", 50, -12, textSize * 0.8, color1, 35, 90, -70, 170)
-        decorate("·", -28, 25, textSize * 0.75, color2, 0, -58, 62, -120)
-        decorate("·", 28, 25, textSize * 0.75, color1, 0, 58, 62, 120)
-    end
-
-    while #arg._damageNumbers >= 24 do
+    while #arg._damageNumbers >= 20 do
         local oldest = table.remove(arg._damageNumbers, 1)
         if oldest ~= nil then
-            for _, object in next, oldest.Objects or {} do
-                pcall(function() object:Destroy() end)
-            end
             for _, tween in next, oldest.Tweens or {} do
                 pcall(function() tween:Cancel() end)
             end
+            for _, object in next, oldest.Objects or {} do
+                pcall(function() object:Destroy() end)
+            end
         end
     end
 
-    local record = { Objects = objects, Tweens = tweens }
-    table.insert(arg._damageNumbers, record)
+    table.insert(arg._damageNumbers, { Objects = objects, Tweens = tweens })
     return true
 end
 
@@ -59791,7 +59906,92 @@ end
 do
 local function fn35()
 tbl17.c_()
-return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
+local function finiteVector3(value)
+    return typeof(value) == "Vector3"
+        and value.X == value.X and value.Y == value.Y and value.Z == value.Z
+        and value.X ~= math.huge and value.X ~= -math.huge
+        and value.Y ~= math.huge and value.Y ~= -math.huge
+        and value.Z ~= math.huge and value.Z ~= -math.huge
+end
+return function(raycaster, origin, targetPart)
+    if raycaster == nil or not finiteVector3(origin) or targetPart == nil then
+        return false, nil
+    end
+    local parent, position, size, frame
+    local partOk = pcall(function()
+        if not targetPart:IsA("BasePart") or targetPart.Parent == nil
+            or not targetPart:IsDescendantOf(workspace) then
+            error("target hitbox is no longer live")
+        end
+        parent = targetPart.Parent
+        position = targetPart.Position
+        size = targetPart.Size
+        frame = targetPart.CFrame
+    end)
+    if not partOk or not finiteVector3(position) or not finiteVector3(size)
+        or typeof(frame) ~= "CFrame" then
+        return false, nil
+    end
+
+    local checkOk, directlyVisible, hitResult = pcall(function()
+        return raycaster:Check(origin, targetPart, parent)
+    end)
+    if not checkOk then return false, nil end
+    if directlyVisible then return true, origin end
+
+    local delta = position - origin
+    local distance = delta.Magnitude
+    if distance ~= distance or distance == math.huge or distance == -math.huge then
+        return false, nil
+    end
+
+    local direction
+    if distance > 1e-4 then
+        direction = delta / distance
+    else
+        local look = frame.LookVector
+        direction = finiteVector3(look) and look.Magnitude > 1e-4 and look.Unit or Vector3.zAxis
+    end
+    if not finiteVector3(direction) then return false, nil end
+
+    local radius = math.min(9.9, distance - size.Magnitude / 2)
+    local triedForward = false
+    local hitDistance = nil
+    if hitResult ~= nil then
+        pcall(function() hitDistance = hitResult.Distance end)
+    end
+    if type(hitDistance) == "number" and hitDistance == hitDistance
+        and radius > 0 and hitDistance < radius then
+        local candidate = origin + direction * radius
+        local candidateOk, visible = pcall(function()
+            return raycaster:Check(candidate, targetPart, parent)
+        end)
+        if candidateOk and visible then return false, candidate end
+        triedForward = true
+    end
+
+    local referenceAxis = Vector3.yAxis
+    if math.abs(direction:Dot(referenceAxis)) > 0.99 then
+        referenceAxis = Vector3.xAxis
+    end
+    local right = direction:Cross(referenceAxis)
+    if right.Magnitude <= 1e-4 then return false, nil end
+    right = right.Unit
+    local tangent = right:Cross(direction)
+    if tangent.Magnitude <= 1e-4 then return false, nil end
+    tangent = tangent.Unit
+
+    local sampleCount = triedForward and 6 or 7
+    for index = 0, sampleCount - 1 do
+        local angle = math.tau * index / sampleCount
+        local candidate = origin + (right * math.cos(angle) + tangent * math.sin(angle)) * 9.9
+        local candidateOk, visible = pcall(function()
+            return raycaster:Check(candidate, targetPart, parent)
+        end)
+        if candidateOk and visible then return false, candidate end
+    end
+    return false, nil
+end
 end
 
 tbl17.gU = function()
@@ -59849,18 +60049,16 @@ local obj = setmetatable({}, { __mode = "k" })
 local function fn36(arg6, arg7, arg8)
 if manipulate.Enabled then
 local mode = manipulate.Mode
-
 if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
-local v135, v136 = v132(arg3, arg6, arg7)
-
-if not v135 then
-obj[arg7] = v136
+local directlyVisible, alternateOrigin = v132(arg3, arg6, arg7)
+if directlyVisible then
+obj[arg7] = nil
+else
+obj[arg7] = alternateOrigin
 end
-
-return v136 ~= nil
+return alternateOrigin ~= nil
 end
 end
-
 obj[arg7] = nil
 return not targetConditions.Visible or arg3:Check(arg6, arg7, arg7.Parent)
 end
@@ -59980,6 +60178,10 @@ arg._textIndicatorList:Show("Manipulated", "Manipulated", v120.Manipulate)
 end
 
 index2._Reset = function(arg)
+local previousHitbox = arg._currentHitbox
+if previousHitbox ~= nil then
+    arg._visibleOriginByHitbox[previousHitbox] = nil
+end
 arg._currentTarget = nil
 arg._currentHitbox = nil
 arg._targetScreenPosition = nil
@@ -60005,63 +60207,162 @@ arg._targetScreenPosition = nil
 end
 
 if not arg._targetAcquisition:Acquire(arg2, v134, arg4.ReactionTime, arg4.SwitchDelay) then
-return
+    if arg._currentTarget ~= v134 or arg._currentHitbox ~= v135 then
+        local previousHitbox = arg._currentHitbox
+        if previousHitbox ~= nil then arg._visibleOriginByHitbox[previousHitbox] = nil end
+        arg._currentTarget = nil
+        arg._currentHitbox = nil
+    end
+    return
 end
 arg._currentTarget = v134
 arg._currentHitbox = v135
 end
 
 index2._HandleInput = function(arg, arg2)
-if arg2.Type ~= "StartShooting" then
-return
-end
+if type(arg2) ~= "table" or arg2.Type ~= "StartShooting" then return end
+local currentTarget = arg._currentTarget
 local currentHitbox = arg._currentHitbox
-if currentHitbox == nil then
-return
-end
-local inner = arg._playerContext.Inner
-if inner == nil then
-return
+if currentTarget == nil or currentHitbox == nil then return end
+
+local targetHitboxValid = false
+local validationOk = pcall(function()
+    if not currentHitbox:IsA("BasePart") or currentHitbox.Parent == nil
+        or not currentHitbox:IsDescendantOf(workspace) then
+        return
+    end
+    local character = currentTarget.Character
+    local state = character ~= nil and character.State or nil
+    if state == nil or state.Alive ~= true then return end
+    local partsByName = state.TargetPartsByName
+    if type(partsByName) ~= "table" then return end
+    for _, candidate in pairs(partsByName) do
+        if candidate == currentHitbox then
+            targetHitboxValid = true
+            return
+        end
+    end
+end)
+if not validationOk or not targetHitboxValid then
+    arg:_Reset()
+    return
 end
 
-if not (data.SilentAim.ActivationChance / 100 >= math.random()) then
-return
-end
-local v134 = inner.FighterState:FindItemByObjectId(arg2.ObjectId)
-if v134 == nil then
-return
+local inner = arg._playerContext ~= nil and arg._playerContext.Inner or nil
+if inner == nil or inner.FighterState == nil then return end
+
+local activationChance = tonumber(data.SilentAim.ActivationChance) or 0
+if not (activationChance / 100 >= math.random()) then return end
+if arg2.ObjectId == nil then return end
+local itemOk, item = pcall(function()
+    return inner.FighterState:FindItemByObjectId(arg2.ObjectId)
+end)
+if not itemOk or item == nil or v102(v102(item, "Info"), "Type") ~= "Gun" then return end
+
+local pointOk, targetPoint = pcall(function()
+    local _, computedPoint = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
+    return computedPoint
+end)
+if not pointOk or typeof(targetPoint) ~= "Vector3"
+    or targetPoint.X ~= targetPoint.X or targetPoint.Y ~= targetPoint.Y or targetPoint.Z ~= targetPoint.Z
+    or math.abs(targetPoint.X) == math.huge or math.abs(targetPoint.Y) == math.huge
+    or math.abs(targetPoint.Z) == math.huge then
+    return
 end
 
-if v102(v102(v134, "Info"), "Type") ~= "Gun" then
-return
+local shotArgs = arg2.Args
+if type(shotArgs) ~= "table" then return end
+local packedShot = shotArgs["\1"]
+if type(packedShot) ~= "table" then return end
+local decodeOk, originalCFrame, secondaryCFrame = pcall(function()
+    return v116.decode(packedShot["\0"]), v116.decode(packedShot["\1"])
+end)
+if not decodeOk or typeof(originalCFrame) ~= "CFrame" or typeof(secondaryCFrame) ~= "CFrame" then
+    return
 end
-local _v135, v136 = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
-local v137 = arg2.Args["\1"]
-if type(v137) ~= "table" then
-return
-end
-local v138 = v116.decode(v137["\0"])
-local v139 = v116.decode(v137["\1"])
-if v138 == nil or v139 == nil then
-return
-end
-local position = v138.Position
-local v140 = v131(position, currentHitbox, v136)
-if v140 == nil then
-return
-end
-local v141 = arg._visibleOriginByHitbox[currentHitbox]
 
-if v141 ~= nil then
-v137["\0"] = v116.encode(CFrame.lookAt(v141, v136))
-v137["\1"] = v116.encode(CFrame.lookAt(v141, v136))
+local originalOrigin = originalCFrame.Position
+local effectiveOrigin = originalOrigin
+local useManipulate = manipulate.Enabled == true
+    and (manipulate.Mode == "OnAllTargets" or manipulate.Mode == "OnBestTarget")
+if useManipulate then
+    local manipulateCallOk, directlyVisible, alternateOrigin = pcall(v132, arg3, originalOrigin, currentHitbox)
+    if not manipulateCallOk then
+        arg._visibleOriginByHitbox[currentHitbox] = nil
+        return
+    end
+    if directlyVisible then
+        arg._visibleOriginByHitbox[currentHitbox] = nil
+    else
+        if typeof(alternateOrigin) ~= "Vector3"
+            or alternateOrigin.X ~= alternateOrigin.X or alternateOrigin.Y ~= alternateOrigin.Y or alternateOrigin.Z ~= alternateOrigin.Z
+            or math.abs(alternateOrigin.X) == math.huge or math.abs(alternateOrigin.Y) == math.huge
+            or math.abs(alternateOrigin.Z) == math.huge then
+            arg._visibleOriginByHitbox[currentHitbox] = nil
+            return
+        end
+        effectiveOrigin = alternateOrigin
+        arg._visibleOriginByHitbox[currentHitbox] = alternateOrigin
+    end
 else
-v137["\0"] = v116.encode(CFrame.lookAt(position, v136))
-v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, v136))
+    arg._visibleOriginByHitbox[currentHitbox] = nil
 end
 
-v137["\2"] = currentHitbox
-v137["\3"] = v116.encode(CFrame.new(v140))
+local surfaceOk, localHitPoint = pcall(v131, effectiveOrigin, currentHitbox, targetPoint)
+if not surfaceOk then return end
+if typeof(localHitPoint) ~= "Vector3" then
+    local fallbackOk, fallbackPoint = pcall(function()
+        local currentFrame = currentHitbox.CFrame
+        local localPoint = currentFrame:PointToObjectSpace(targetPoint)
+        if localPoint == Vector3.zero then
+            local surfacePoint = currentHitbox:GetClosestPointOnSurface(effectiveOrigin)
+            localPoint = currentFrame:PointToObjectSpace(surfacePoint)
+        end
+        return localPoint
+    end)
+    if fallbackOk and typeof(fallbackPoint) == "Vector3"
+        and fallbackPoint ~= Vector3.zero
+        and fallbackPoint.X == fallbackPoint.X and fallbackPoint.Y == fallbackPoint.Y and fallbackPoint.Z == fallbackPoint.Z
+        and math.abs(fallbackPoint.X) ~= math.huge
+        and math.abs(fallbackPoint.Y) ~= math.huge
+        and math.abs(fallbackPoint.Z) ~= math.huge then
+        localHitPoint = fallbackPoint
+    end
+end
+if typeof(localHitPoint) ~= "Vector3"
+    or localHitPoint.X ~= localHitPoint.X or localHitPoint.Y ~= localHitPoint.Y or localHitPoint.Z ~= localHitPoint.Z
+    or math.abs(localHitPoint.X) == math.huge or math.abs(localHitPoint.Y) == math.huge
+    or math.abs(localHitPoint.Z) == math.huge then
+    return
+end
+
+local stillOwned = false
+local finalCheckOk = pcall(function()
+    if currentHitbox.Parent == nil or not currentHitbox:IsDescendantOf(workspace) then return end
+    local currentCharacter = currentTarget.Character
+    local state = currentCharacter ~= nil and currentCharacter.State or nil
+    if state == nil or state.Alive ~= true then return end
+    local partsByName = state.TargetPartsByName
+    if type(partsByName) ~= "table" then return end
+    for _, candidate in pairs(partsByName) do
+        if candidate == currentHitbox then stillOwned = true; return end
+    end
+end)
+if not finalCheckOk or not stillOwned then
+    arg:_Reset()
+    return
+end
+
+if effectiveOrigin ~= originalOrigin then
+    local shotCFrame = CFrame.lookAt(effectiveOrigin, targetPoint)
+    packedShot["\0"] = v116.encode(shotCFrame)
+    packedShot["\1"] = v116.encode(shotCFrame)
+else
+    packedShot["\0"] = v116.encode(CFrame.lookAt(originalOrigin, targetPoint))
+    packedShot["\1"] = v116.encode(CFrame.lookAt(secondaryCFrame.Position, targetPoint))
+end
+packedShot["\2"] = currentHitbox
+packedShot["\3"] = v116.encode(CFrame.new(localHitPoint))
 end
 
 index2.Destroy = function(arg)
@@ -65820,7 +66121,33 @@ return ic.c
 end
 end
 do
-local function fn35() tbl17 .aE();local function l(I,W,N,P,a,e)I:AddGroup({Source=I:AddToggle({Label=W,Config={"ItemModifiers",P,"Enabled"}})}):AddSlider({Label=N,Min=a,Max=e,Config={"ItemModifiers",P,"Percentage"}});end;return function(I)local W,N,P,a=I:AddSection({Title="Aim & Fire",Side="left"}),I:AddSection({Title="Cooldowns",Side="left"}),I:AddSection({Title="Melee",Side="right"}),I:AddSection({Title="Grenades",Side="right"});local antiAimSection=I:AddSection({Title="Anti-Aim",Side="right"});l(W,"Reduce Recoil","Recoil Reduction (%)","Recoil",0,100);W:AddToggle({Label="Remove Spread",Config={"ItemModifiers","NoSpread"}});W:AddToggle({Label="Automatic Fire",Config={"ItemModifiers","AutomaticWeapon"}});l(W,"Aim Speed Override","Aim Speed (%)","AimSpeed",50,500);local antiAimToggle=antiAimSection:AddToggle({Label="Enable Anti-Aim",Config={"ItemModifiers","AntiAim","Enabled"}});local antiAimControls=antiAimSection:AddGroup({Source=antiAimToggle});antiAimControls:AddDropdown({Label="Pitch",Options={"disabled","offset","random","look up","look down","custom","extended custom","extended random"},Config={"ItemModifiers","AntiAim","Pitch"}});antiAimControls:AddSlider({Label="Custom Pitch",Min=-180,Max=180,Step=1,Config={"ItemModifiers","AntiAim","CustomPitch"}});antiAimControls:AddDropdown({Label="Yaw",Options={"disabled","offset","backwards","random","custom"},Config={"ItemModifiers","AntiAim","Yaw"}});antiAimControls:AddSlider({Label="Custom Yaw",Min=-180,Max=180,Step=1,Config={"ItemModifiers","AntiAim","CustomYaw"}});l(N,"Fire Cooldown Override","Percentage","FireCooldown",0,100);l(N,"Aim Cooldown Override","Percentage","AimCooldown",1,100);l(N,"Melee Cooldown Override","Percentage","MeleeCooldown",0,100);l(N,"Dash Cooldown Override","Percentage","DashCooldown",0,100);local alwaysBackstabToggle=P:AddToggle({Label="Always Backstab",Config={"ItemModifiers","AlwaysBackstab"}});local backstabMode=P:AddGroup({Source=alwaysBackstabToggle}):AddDropdown({Label="Always Backstab Mode",Options={"Knife","Riot"},Config={"ItemModifiers","AlwaysBackstabMode"}});P:AddGroup({Source=backstabMode,Option="Riot"}):AddSlider({Label="Trigger Distance (studs)",Min=25,Max=1000000000000,Step=1,Config={"ItemModifiers","AlwaysBackstabTriggerDist"}});P:AddGroup({Source=P:AddToggle({Label="Extend Melee Range",Config={"ItemModifiers","ExtendMeleeRange","Enabled"}})}):AddSlider({Label="Range",Min=5,Max=20,Config={"ItemModifiers","ExtendMeleeRange","Range"}});N=a:AddGroup({Source=a:AddToggle({Label="Fuse Override",Config={"ItemModifiers","GrenadeFuse","Enabled"}})});N:AddDropdown({Label="Explode On",Options={"Impact","Throw"},Config={"ItemModifiers","GrenadeFuse","ExplodeOn"}});N:AddToggle({Label="Remove Fuse",Config={"ItemModifiers","GrenadeFuse","RemoveFuse"}});end;end
+local function fn35()
+    tbl17.aE()
+    local function addModifier(group, label, sliderLabel, key, minimum, maximum)
+        group:AddGroup({ Source = group:AddToggle({ Label = label, Config = { "ItemModifiers", key, "Enabled" } }) })
+            :AddSlider({ Label = sliderLabel, Min = minimum, Max = maximum, Config = { "ItemModifiers", key, "Percentage" } })
+    end
+    return function(page)
+        local aimFire = page:AddSection({ Title = "Aim & Fire", Side = "left" })
+        local cooldowns = page:AddSection({ Title = "Cooldowns", Side = "left" })
+        local melee = page:AddSection({ Title = "Melee", Side = "right" })
+        local grenades = page:AddSection({ Title = "Grenades", Side = "right" })
+        addModifier(aimFire, "Reduce Recoil", "Recoil Reduction (%)", "Recoil", 0, 100)
+        aimFire:AddToggle({ Label = "Remove Spread", Config = { "ItemModifiers", "NoSpread" } })
+        aimFire:AddToggle({ Label = "Automatic Fire", Config = { "ItemModifiers", "AutomaticWeapon" } })
+        addModifier(aimFire, "Aim Speed Override", "Aim Speed (%)", "AimSpeed", 50, 500)
+        addModifier(cooldowns, "Fire Cooldown Override", "Percentage", "FireCooldown", 0, 100)
+        addModifier(cooldowns, "Aim Cooldown Override", "Percentage", "AimCooldown", 1, 100)
+        addModifier(cooldowns, "Melee Cooldown Override", "Percentage", "MeleeCooldown", 0, 100)
+        addModifier(cooldowns, "Dash Cooldown Override", "Percentage", "DashCooldown", 0, 100)
+        local backstabToggle = melee:AddToggle({ Label = "Always Backstab", Config = { "ItemModifiers", "AlwaysBackstab" } })
+        local backstabMode = melee:AddGroup({ Source = backstabToggle }):AddDropdown({ Label = "Always Backstab Mode", Options = { "Knife", "Riot" }, Config = { "ItemModifiers", "AlwaysBackstabMode" } })
+        melee:AddGroup({ Source = backstabMode, Option = "Riot" }):AddSlider({ Label = "Trigger Distance (studs)", Min = 25, Max = 1000000000000, Step = 1, Config = { "ItemModifiers", "AlwaysBackstabTriggerDist" } })
+        melee:AddGroup({ Source = melee:AddToggle({ Label = "Extend Melee Range", Config = { "ItemModifiers", "ExtendMeleeRange", "Enabled" } }) }):AddSlider({ Label = "Range", Min = 5, Max = 20, Config = { "ItemModifiers", "ExtendMeleeRange", "Range" } })
+        grenades:AddGroup({ Source = grenades:AddToggle({ Label = "Fuse Override", Config = { "ItemModifiers", "GrenadeFuse", "Enabled" } }) }):AddDropdown({ Label = "Explode On", Options = { "Impact", "Throw" }, Config = { "ItemModifiers", "GrenadeFuse", "ExplodeOn" } })
+        grenades:AddToggle({ Label = "Remove Fuse", Config = { "ItemModifiers", "GrenadeFuse", "RemoveFuse" } })
+    end
+end
 
 tbl17.id = function()
 local id = tbl17.cache.id
@@ -66686,9 +67013,26 @@ return iq.c
 end
 end
 do
-local function fn35()local I= tbl17 .a8(); tbl17 .aE();return function(l)local characterGrid=l;local W=characterGrid:AddSection({Title="Character Appearance",Side="right"});local chamsToggle=W:AddToggle({Label="Enable Character Chams",Config={"Chams","Character","Enabled"}});W:AddColor({Row=chamsToggle.Row,Alpha=true,Config={"Chams","Character","Color"},Transparency={"Chams","Character","Transparency"},Animatable=true});local N=W:AddGroup({Source=chamsToggle});N:AddDropdown({Label="Character Chams Material",Options=I.List,Config={"Chams","Character","Material"}});N:AddToggle({Label="Strip Character Chams Textures",Config={"Chams","Character","StripTextures"}})
+local function fn35()
+    local materials = tbl17.a8()
+    tbl17.aE()
+    return function(characterGrid)
+        local appearance = characterGrid:AddSection({ Title = "Character Appearance", Side = "right" })
+        local chamsToggle = appearance:AddToggle({ Label = "Enable Character Chams", Config = { "Chams", "Character", "Enabled" } })
+        appearance:AddColor({ Row = chamsToggle.Row, Alpha = true, Config = { "Chams", "Character", "Color" }, Transparency = { "Chams", "Character", "Transparency" }, Animatable = true })
+        local chamsGroup = appearance:AddGroup({ Source = chamsToggle })
+        chamsGroup:AddDropdown({ Label = "Character Chams Material", Options = materials.List, Config = { "Chams", "Character", "Material" } })
+        chamsGroup:AddToggle({ Label = "Strip Character Chams Textures", Config = { "Chams", "Character", "StripTextures" } })
 
-end;end
+        local antiAim = characterGrid:AddSection({ Title = "Anti-Aim", Side = "left" })
+        local antiAimToggle = antiAim:AddToggle({ Label = "Enable Anti-Aim", Config = { "ItemModifiers", "AntiAim", "Enabled" } })
+        local controls = antiAim:AddGroup({ Source = antiAimToggle })
+        controls:AddDropdown({ Label = "Pitch", Options = { "disabled", "offset", "random", "look up", "look down", "custom", "extended custom", "extended random" }, Config = { "ItemModifiers", "AntiAim", "Pitch" } })
+        controls:AddSlider({ Label = "Custom Pitch", Min = -180, Max = 180, Step = 1, Config = { "ItemModifiers", "AntiAim", "CustomPitch" } })
+        controls:AddDropdown({ Label = "Yaw", Options = { "disabled", "offset", "backwards", "random", "custom" }, Config = { "ItemModifiers", "AntiAim", "Yaw" } })
+        controls:AddSlider({ Label = "Custom Yaw", Min = -180, Max = 180, Step = 1, Config = { "ItemModifiers", "AntiAim", "CustomYaw" } })
+    end
+end
 
 tbl17.ir = function()
 local ir = tbl17.cache.ir
@@ -66759,7 +67103,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
-local UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET = -3.8
+local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -67695,6 +68039,13 @@ local nextPendingWarningAt = startedAt + 5
 while undergroundRequested and undergroundConn == nil do
     local ok, result = pcall(startUnderground)
     if ok and result == true then
+        if undergroundRagebotRequested then
+            local controller = rawget(_G, "__CrefyUndergroundController")
+            local integrate = type(controller) == "table" and controller.SetRagebotIntegration or nil
+            if type(integrate) == "function" then
+                pcall(integrate, true)
+            end
+        end
         break
     end
     local now = os.clock()
@@ -67758,11 +68109,17 @@ end
 undergroundController.Start = function()
 undergroundRequested = true
 local ok, result = pcall(startUnderground)
-if ok and result == true then
-return true
+if not ok or result ~= true then
+    scheduleUndergroundStart()
+    return false
 end
-scheduleUndergroundStart()
-return false
+if undergroundRagebotRequested and type(undergroundController.SetRagebotIntegration) == "function" then
+    local integrationOk, integrationResult = pcall(undergroundController.SetRagebotIntegration, true)
+    if not integrationOk or integrationResult == false then
+        return true
+    end
+end
+return true
 end
 undergroundController.Stop = function(skipPositionRestore)
 undergroundRequested = false
@@ -68029,14 +68386,28 @@ if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() the
 undergroundLastClientCFrame = clientCFrame
 end
 
-local offset = weaponKind == "Melee"
-    and Vector3.new(0, UNDERGROUND_RAGEBOT_MELEE_Y_OFFSET, 0)
-    or Vector3.zero
+local offset = Vector3.new(0, UNDERGROUND_RAGEBOT_Y_OFFSET, 0)
 local adjusted = cframe + offset
 undergroundLastServerCFrame = adjusted
 return adjusted
 end
 _G.__CrefyUndergroundController = undergroundController
+local savedUndergroundEnabled = false
+pcall(function()
+    local undergroundConfig = type(v115) == "table" and v115.Data and v115.Data.Underground or nil
+    savedUndergroundEnabled = type(undergroundConfig) == "table" and undergroundConfig.Enabled == true
+end)
+if savedUndergroundEnabled then
+    local function startSavedUnderground()
+        if rawget(_G, "__CrefyUndergroundController") ~= undergroundController then return end
+        undergroundController.Start()
+    end
+    if type(task) == "table" and type(task.defer) == "function" then
+        pcall(task.defer, startSavedUnderground)
+    else
+        pcall(startSavedUnderground)
+    end
+end
 local undergroundCleanup = function()
  
 undergroundController.Stop(true)
@@ -76521,7 +76892,6 @@ if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "func
 end
 
 local voidSpamBaseCFrame = cframe
-local voidSpamPositionOffset = Vector3.zero
 local weaponKind = "Other"
 local innerContext = arg._innerContext
 local itemBehaviors = innerContext ~= nil and innerContext.ItemBehaviors or nil
@@ -76542,23 +76912,6 @@ elseif itemBehaviors ~= nil then
         end)
         if okGun and gun ~= nil then weaponKind = "Gun" end
     end
-end
-
-local RAGEBOT_VOID_SPAM_Y_OFFSET = 0
-local RAGEBOT_UNDERGROUND_Y_OFFSET = -3.8
-if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
-    if undergroundIntegrated then
-        voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_UNDERGROUND_Y_OFFSET, 0)
-        if weaponKind == "Melee" then
-            voidSpamPositionOffset = Vector3.zero
-        else
-            voidSpamPositionOffset = Vector3.new(0, RAGEBOT_UNDERGROUND_Y_OFFSET, 0)
-        end
-    else
-        voidSpamBaseCFrame = cframe
-        voidSpamPositionOffset = Vector3.new(0, RAGEBOT_VOID_SPAM_Y_OFFSET, 0)
-    end
-    cframe = cframe + voidSpamPositionOffset
 end
 
 local function applyVoidSpamSideRoll(value, baseValue)
