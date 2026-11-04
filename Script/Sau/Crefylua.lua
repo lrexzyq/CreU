@@ -29567,7 +29567,7 @@ local function antiAimShouldSuppress()
         return antiAimRagebotIsActive()
     end)
     if not ragebotOk or ragebotValue == nil then
-        -- Fail closed if the shared state cannot be read; never let Anti-Aim fight Ragebot.
+                                                                                            
         return true
     end
     ragebotActive = ragebotValue == true
@@ -29577,7 +29577,7 @@ local function antiAimShouldSuppress()
         and modifiers.AlwaysBackstab == true
         and (backstabMode == "Knife" or backstabMode == "Riot")
 
-    -- Anti-Aim must yield to either combat system; inventory state is irrelevant.
+                                                                                  
     return ragebotActive or alwaysBackstabActive
 end
 
@@ -29622,8 +29622,8 @@ local function antiAimEncodeOverride(rotation)
     local extendedPitchCodePoint = nil
     if pitchMode == "extended custom" then
         if antiAimDecoderGuardInstalled then
-            -- Reserve 0..255 for ordinary camera rotations. Extended payloads
-            -- must always use a first code point outside that byte range.
+                                                                              
+                                                                          
             extendedPitchCodePoint = antiAimCodePoint(256
                 + (customPitch + 180) / 360 * (ANTI_AIM_MAX_CODE_POINT - 256))
         end
@@ -29776,9 +29776,9 @@ if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
 return v115.err("ViewAngleDriver", "setupvalue", "debug.setupvalue is unavailable")
 end
 local patchedUtility = setmetatable({ EncodeCameraRotation = function(arg2, arg3)
--- Camera slots first provide the base rotation through CameraRotationRaw.
--- Anti-Aim may then transform that final base angle when its inventory gate
--- allows it; explicit full suppression remains authoritative.
+                                                                          
+                                                                            
+                                                              
 if arg._fullySuppressed then
 v103(fighterController, "_replication_stopped", false)
 return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
@@ -34159,6 +34159,38 @@ local function getRiotCharacterRoot(character)
     return nil
 end
 
+local function riotObserverHasRiotShield(observer)
+    if observer == nil then return false end
+
+                                                                               
+                                                                     
+    local okMelee, equippedMelee = pcall(function()
+        return observer:EquippedItemAsMelee()
+    end)
+    if okMelee and equippedMelee ~= nil then
+        local okName, meleeName = pcall(function() return equippedMelee.Name end)
+        if okName and meleeName == "Riot Shield" then
+            local okDeflecting, isDeflecting = pcall(function()
+                return equippedMelee:IsDeflecting()
+            end)
+            return okDeflecting and isDeflecting ~= true
+        end
+    end
+
+                                                                             
+                                                                     
+    local found = false
+    local okItems = pcall(function()
+        for _, item in observer:GetItems() do
+            if item ~= nil and item.Name == "Riot Shield" then
+                found = true
+                break
+            end
+        end
+    end)
+    return okItems and found
+end
+
 local function findNearest(triggerDistance, preferredCharacter)
     triggerDistance = sanitizeTriggerDistance(triggerDistance)
     local myPosition = getRiotOriginPosition()
@@ -34167,7 +34199,18 @@ local function findNearest(triggerDistance, preferredCharacter)
     local bestCharacter, bestDistance = nil, math.huge
     local preferredDistance = math.huge
     local myEnvironment = nil
-    pcall(function() myEnvironment = lp:GetAttribute("EnvironmentID") end)
+    pcall(function()
+        local inner = riotState.innerContext
+        local localFighter = inner ~= nil and inner.FighterState or nil
+        myEnvironment = localFighter ~= nil and localFighter.EnvironmentId or nil
+        if myEnvironment == nil and type(riotState.fighters) == "table" then
+            local localState = riotState.fighters.LocalState
+            myEnvironment = localState ~= nil and localState.EnvironmentId or nil
+        end
+        if myEnvironment == nil then
+            myEnvironment = lp:GetAttribute("EnvironmentID")
+        end
+    end)
 
     local function considerCandidate(player, fighter)
         local okCandidate, character, distance = pcall(function()
@@ -34199,18 +34242,9 @@ local function findNearest(triggerDistance, preferredCharacter)
             if stateModel ~= nil and stateModel ~= character then return nil, nil end
 
             local observer = fighter.ItemObserver
-            if observer == nil then return nil, nil end
-            local okEquipped, equippedItem = pcall(function() return observer:GetEquippedItem() end)
-            if not okEquipped or equippedItem == nil or equippedItem.Name ~= "Riot Shield" then
+            if observer == nil or not riotObserverHasRiotShield(observer) then
                 return nil, nil
             end
-
-            local okMelee, equippedMelee = pcall(function() return observer:EquippedItemAsMelee() end)
-            if not okMelee or equippedMelee == nil then return nil, nil end
-            local okMeleeName, meleeName = pcall(function() return equippedMelee.Name end)
-            if not okMeleeName or meleeName ~= "Riot Shield" then return nil, nil end
-            local okDeflecting, isDeflecting = pcall(function() return equippedMelee:IsDeflecting() end)
-            if not okDeflecting or isDeflecting then return nil, nil end
 
             local distance = (stateRoot.Position - myPosition).Magnitude
             if distance ~= distance or distance == math.huge or distance == -math.huge
@@ -34228,8 +34262,8 @@ local function findNearest(triggerDistance, preferredCharacter)
 
     local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
     local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
-    -- Riot rotation is only allowed to select from the authoritative enemy map.
-    -- A raw Players fallback cannot prove the target's equipped item or deflect state.
+                                                                                
+                                                                                       
     if type(enemies) == "table" then
         for player, fighter in pairs(enemies) do
             if player ~= nil and fighter ~= nil then
@@ -34238,8 +34272,8 @@ local function findNearest(triggerDistance, preferredCharacter)
         end
     end
 
-    -- Small hysteresis prevents ties/one-frame distance jitter from swapping targets,
-    -- while still allowing a clearly closer, shield-valid enemy to take over.
+                                                                                      
+                                                                              
     if preferredCharacter ~= nil and preferredDistance < math.huge and bestCharacter ~= nil then
         local hysteresis = math.max(1.0, bestDistance * 0.08)
         if preferredDistance <= bestDistance + hysteresis then
@@ -34295,21 +34329,15 @@ local function riotCharacterHasEquippedItem(character, wantedName)
             if not okInvincible or isInvincible then return false end
             local observer = fighter.ItemObserver
             if observer == nil then return false end
+            if wantedName == "Riot Shield" then
+                return riotObserverHasRiotShield(observer)
+            end
             local okMelee, equippedMelee = pcall(function()
                 return observer:EquippedItemAsMelee()
             end)
             if not okMelee or equippedMelee == nil then return false end
             local okMeleeName, meleeName = pcall(function() return equippedMelee.Name end)
-            if not okMeleeName or meleeName ~= wantedName then return false end
-            local okDeflecting, isDeflecting = pcall(function()
-                return equippedMelee:IsDeflecting()
-            end)
-            if not okDeflecting or isDeflecting then return false end
-            local okHasItem, hasItem = pcall(function()
-                local equipped = observer:GetEquippedItem()
-                return equipped ~= nil and equipped.Name == wantedName
-            end)
-            return okHasItem and hasItem == true
+            return okMeleeName and meleeName == wantedName
         end
     end
     return false
@@ -34347,8 +34375,8 @@ end
 
 local function riotRagebotHasPriority()
     local enabled = riotFreshRagebotControlEnabled()
-    -- A live Ragebot owns camera rotation while active. The standalone Riot
-    -- controller must never publish a second view-angle slot over Ragebot.
+                                                                            
+                                                                           
     if enabled == true then return true end
     if enabled == false then return false end
 
@@ -34378,8 +34406,8 @@ local function writeViewAngleSlot(controller, slot, payload, ownerName)
         return controller:FlushViewAngles()
     end)
     if not flushCallOk then return false, "FlushViewAngles raised: " .. tostring(flushResult) end
-    -- A clear with no remaining winner schedules a delayed restore and returns false.
-    -- For an active payload, success must be explicitly confirmed by the driver.
+                                                                                      
+                                                                                 
     if payload ~= nil and flushResult ~= true then
         return false, "FlushViewAngles did not confirm " .. ownerName .. " slot " .. tostring(slot)
     end
@@ -34547,11 +34575,11 @@ local function riotHeartbeatStep()
     local payload = {
         Kind = "Normalized",
         Pitch = riotState.filteredPitch,
-        -- Keep yaw unwrapped internally so crossing +/-180 follows the short arc.
+                                                                                  
         Yaw = riotState.filteredYaw,
     }
-    -- SendViewAngles may assign the slot before FlushViewAngles fails. Treat it as
-    -- owned until a successful clear proves otherwise.
+                                                                                   
+                                                       
     riotState.characterController = controller
     riotState.viewAngleApplied = true
     local sendOk, sendError = riotWriteViewAngle(controller, payload)
@@ -34702,8 +34730,8 @@ local function riotStart(distance, characterController, fighters, innerContext)
         end
         local oldSlotCleared, clearError = riotWriteViewAngle(previousController, nil)
         if not oldSlotCleared then
-            -- Stop the old heartbeat before exposing the new context. Repeated writes
-            -- through a stale controller can keep the wrong camera slot alive.
+                                                                                      
+                                                                               
             riotState.enabled = false
             if riotState.heartbeat ~= nil then
                 pcall(function() riotState.heartbeat:Disconnect() end)
@@ -34851,8 +34879,8 @@ index2._UpdateRiot = function(arg, innerContext, triggerDistance)
 riotState.fighters = arg._fighters
 riotState.innerContext = innerContext
 if riotRagebotHasPriority() then
--- Stop the standalone Riot controller first. A failed slot clear remains owned
--- and is retried after its bounded backoff instead of being silently forgotten.
+                                                                               
+                                                                                
 local cleanupRetryDue = riotState.viewAngleApplied == true
     and riotState.cleanupRetryPending ~= true
     and os.clock() >= (tonumber(riotState.nextClearRetryAt) or 0)
@@ -34881,8 +34909,8 @@ if characterController ~= nil then
 arg._lastCharacterController = characterController
 end
 
--- A context replacement must clear slot 10 on the controller that actually owns it.
--- Never silently move the ownership flag to a new controller while the old slot remains.
+                                                                                    
+                                                                                         
 if arg._anglePayloadController ~= nil and characterController ~= nil
     and arg._anglePayloadController ~= characterController
     and (arg._anglePayloadApplied == true or arg._anglePayloadPending == true) then
@@ -56514,8 +56542,8 @@ if not previousReferenceKnown then
     return false, "original PhysicsRepRootRef could not be read; refusing an un-restorable mutation"
 end
 
--- Acquire is called every Ragebot plan tick. If this source already points at
--- the requested target, do not rewrite the hidden property every frame.
+                                                                              
+                                                                        
 if previousReference == arg2 then
     if restoreIdentity then pcall(identitySetter, oldIdentity) end
     return true, nil, previousReference, previousReferenceKnown
@@ -56647,7 +56675,7 @@ local function fn37(arg, arg2)
         return false, "target Parent could not be read"
     end
     if targetParent == nil then
-        -- The character part was removed; there is no live instance left to restore.
+                                                                                     
         return true
     end
 
@@ -56720,8 +56748,8 @@ local function fn37(arg, arg2)
         part1Alive = part1Ok and part1Parent ~= nil and isBasePart == true
     end
 
-    -- Keep the part anchored while restoring CFrame and the original weld.
-    -- Releasing Anchored first allows physics to move it before verification.
+                                                                           
+                                                                              
     if not writeExact(arg, "Anchored", true) then
         addError("could not temporarily anchor target for restoration")
     end
@@ -56756,13 +56784,13 @@ local function fn37(arg, arg2)
         elseif not currentPart1Ok then
             addError("Weld Part1 could not be read during restoration")
         elseif currentPart1 ~= originalPart1 then
-            -- Another owner changed the weld while PartGlue was active. Preserve
-            -- that newer relationship instead of keeping the entire restore blocked.
+                                                                                 
+                                                                                     
         end
     end
 
-    -- Re-sample the moving parent after reattaching the weld. Its CFrame may
-    -- have advanced while the restore transaction was running.
+                                                                             
+                                                               
     if part1Alive and typeof(originalPart1ToTarget) == "CFrame" then
         local offsetOk, computedCFrame = pcall(function()
             return originalPart1.CFrame * originalPart1ToTarget
@@ -56773,7 +56801,7 @@ local function fn37(arg, arg2)
     end
     local verifyCFrameOk, verifyCFrame = readProperty(arg, "CFrame")
     if not verifyCFrameOk or not cframeNear(verifyCFrame, expectedCFrame) then
-        -- One final correction while still anchored; never verify after physics is released.
+                                                                                             
         if not writeCFrame(arg, expectedCFrame) then
             addError("target CFrame mismatch after Weld restoration")
         end
@@ -56787,9 +56815,9 @@ local function fn37(arg, arg2)
         addError("final Anchored verification failed")
     end
 
-    -- An originally-unanchored character part can move immediately after it is
-    -- released to physics. Its post-release CFrame is therefore not a valid
-    -- rollback check; the pose was verified before restoring Anchored=false.
+                                                                               
+                                                                            
+                                                                             
     if originalAnchored then
         local finalCFrameOk, finalCFrame = readProperty(arg, "CFrame")
         if not finalCFrameOk or not cframeNear(finalCFrame, expectedCFrame) then
@@ -59763,94 +59791,7 @@ end
 do
 local function fn35()
 tbl17.c_()
-local function finiteVector3(value)
-    return typeof(value) == "Vector3"
-        and value.X == value.X and value.Y == value.Y and value.Z == value.Z
-        and value.X ~= math.huge and value.X ~= -math.huge
-        and value.Y ~= math.huge and value.Y ~= -math.huge
-        and value.Z ~= math.huge and value.Z ~= -math.huge
-end
-return function(raycaster, origin, targetPart)
-    if raycaster == nil or not finiteVector3(origin) or targetPart == nil then
-        return false, nil
-    end
-    local parent, position, size, frame
-    local partOk = pcall(function()
-        if not targetPart:IsA("BasePart") or targetPart.Parent == nil
-            or not targetPart:IsDescendantOf(workspace) then
-            error("target hitbox is no longer live")
-        end
-        parent = targetPart.Parent
-        position = targetPart.Position
-        size = targetPart.Size
-        frame = targetPart.CFrame
-    end)
-    if not partOk or not finiteVector3(position) or not finiteVector3(size)
-        or typeof(frame) ~= "CFrame" then
-        return false, nil
-    end
-
-    local checkOk, directlyVisible, hitResult = pcall(function()
-        return raycaster:Check(origin, targetPart, parent)
-    end)
-    if not checkOk then return false, nil end
-    if directlyVisible then return true, origin end
-
-    local delta = position - origin
-    local distance = delta.Magnitude
-    if distance ~= distance or distance == math.huge or distance == -math.huge then
-        return false, nil
-    end
-
-    -- When the shot origin is at the hitbox centre, P / |P| is undefined.
-    -- Use the target's facing direction as a deterministic basis instead.
-    local direction
-    if distance > 1e-4 then
-        direction = delta / distance
-    else
-        local look = frame.LookVector
-        direction = finiteVector3(look) and look.Magnitude > 1e-4 and look.Unit or Vector3.zAxis
-    end
-    if not finiteVector3(direction) then return false, nil end
-
-    local radius = math.min(9.9, distance - size.Magnitude / 2)
-    local triedForward = false
-    local hitDistance = nil
-    if hitResult ~= nil then
-        pcall(function() hitDistance = hitResult.Distance end)
-    end
-    if type(hitDistance) == "number" and hitDistance == hitDistance
-        and radius > 0 and hitDistance < radius then
-        local candidate = origin + direction * radius
-        local candidateOk, visible = pcall(function()
-            return raycaster:Check(candidate, targetPart, parent)
-        end)
-        if candidateOk and visible then return false, candidate end
-        triedForward = true
-    end
-
-    local referenceAxis = Vector3.yAxis
-    if math.abs(direction:Dot(referenceAxis)) > 0.99 then
-        referenceAxis = Vector3.xAxis
-    end
-    local right = direction:Cross(referenceAxis)
-    if right.Magnitude <= 1e-4 then return false, nil end
-    right = right.Unit
-    local tangent = right:Cross(direction)
-    if tangent.Magnitude <= 1e-4 then return false, nil end
-    tangent = tangent.Unit
-
-    local sampleCount = triedForward and 6 or 7
-    for index = 0, sampleCount - 1 do
-        local angle = math.tau * index / sampleCount
-        local candidate = origin + (right * math.cos(angle) + tangent * math.sin(angle)) * 9.9
-        local candidateOk, visible = pcall(function()
-            return raycaster:Check(candidate, targetPart, parent)
-        end)
-        if candidateOk and visible then return false, candidate end
-    end
-    return false, nil
-end
+return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
 end
 
 tbl17.gU = function()
@@ -59901,7 +59842,6 @@ local silentAim = v126.new("silent_aim")
 local silentAim2 = data.SilentAim
 local fov = silentAim2.Fov
 local targetConditions = silentAim2.TargetConditions
-
 local v134 = silentAim2.TargetHitboxes[v127.DefaultProfile.Class]
 local manipulate = silentAim2.Manipulate
 local obj = setmetatable({}, { __mode = "k" })
@@ -59912,10 +59852,8 @@ local mode = manipulate.Mode
 
 if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
 local v135, v136 = v132(arg3, arg6, arg7)
--- Direct visibility must clear any alternate origin cached on an earlier frame.
-if v135 then
-obj[arg7] = nil
-else
+
+if not v135 then
 obj[arg7] = v136
 end
 
@@ -60042,10 +59980,6 @@ arg._textIndicatorList:Show("Manipulated", "Manipulated", v120.Manipulate)
 end
 
 index2._Reset = function(arg)
-local previousHitbox = arg._currentHitbox
-if previousHitbox ~= nil then
-    arg._visibleOriginByHitbox[previousHitbox] = nil
-end
 arg._currentTarget = nil
 arg._currentHitbox = nil
 arg._targetScreenPosition = nil
@@ -60071,13 +60005,7 @@ arg._targetScreenPosition = nil
 end
 
 if not arg._targetAcquisition:Acquire(arg2, v134, arg4.ReactionTime, arg4.SwitchDelay) then
-    if arg._currentTarget ~= v134 or arg._currentHitbox ~= v135 then
-        local previousHitbox = arg._currentHitbox
-        if previousHitbox ~= nil then arg._visibleOriginByHitbox[previousHitbox] = nil end
-        arg._currentTarget = nil
-        arg._currentHitbox = nil
-    end
-    return
+return
 end
 arg._currentTarget = v134
 arg._currentHitbox = v135
@@ -60087,35 +60015,10 @@ index2._HandleInput = function(arg, arg2)
 if arg2.Type ~= "StartShooting" then
 return
 end
-local currentTarget = arg._currentTarget
 local currentHitbox = arg._currentHitbox
-if currentTarget == nil or currentHitbox == nil then
+if currentHitbox == nil then
 return
 end
-
-local targetHitboxValid = false
-local validationOk = pcall(function()
-    if not currentHitbox:IsA("BasePart") or currentHitbox.Parent == nil
-        or not currentHitbox:IsDescendantOf(workspace) then
-        return
-    end
-    local character = currentTarget.Character
-    local state = character ~= nil and character.State or nil
-    if state == nil or state.Alive ~= true then return end
-    local partsByName = state.TargetPartsByName
-    if type(partsByName) ~= "table" then return end
-    for _, candidate in pairs(partsByName) do
-        if candidate == currentHitbox then
-            targetHitboxValid = true
-            return
-        end
-    end
-end)
-if not validationOk or not targetHitboxValid then
-    arg:_Reset()
-    return
-end
-
 local inner = arg._playerContext.Inner
 if inner == nil then
 return
@@ -60132,87 +60035,29 @@ end
 if v102(v102(v134, "Info"), "Type") ~= "Gun" then
 return
 end
-local pointOk, targetPoint = pcall(function()
-    local _, computedPoint = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
-    return computedPoint
-end)
-if not pointOk then return end
-local shotArgs = arg2.Args
-if type(shotArgs) ~= "table" then
-return
-end
-local v137 = shotArgs["\1"]
+local _v135, v136 = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
+local v137 = arg2.Args["\1"]
 if type(v137) ~= "table" then
 return
 end
-local decodeOk, v138, v139 = pcall(function()
-    return v116.decode(v137["\0"]), v116.decode(v137["\1"])
-end)
-if not decodeOk or typeof(v138) ~= "CFrame" or typeof(v139) ~= "CFrame"
-    or typeof(targetPoint) ~= "Vector3"
-    or targetPoint.X ~= targetPoint.X or targetPoint.Y ~= targetPoint.Y or targetPoint.Z ~= targetPoint.Z
-    or targetPoint.X == math.huge or targetPoint.X == -math.huge
-    or targetPoint.Y == math.huge or targetPoint.Y == -math.huge
-    or targetPoint.Z == math.huge or targetPoint.Z == -math.huge then
+local v138 = v116.decode(v137["\0"])
+local v139 = v116.decode(v137["\1"])
+if v138 == nil or v139 == nil then
 return
 end
-local originalOrigin = v138.Position
-local effectiveOrigin = originalOrigin
-local useManipulate = manipulate.Enabled == true
-    and (manipulate.Mode == "OnAllTargets" or manipulate.Mode == "OnBestTarget")
-if useManipulate then
-    local manipulateCallOk, directlyVisible, alternateOrigin = pcall(v132, arg3, originalOrigin, currentHitbox)
-    if not manipulateCallOk then
-        arg._visibleOriginByHitbox[currentHitbox] = nil
-        return
-    end
-    if directlyVisible then
-        arg._visibleOriginByHitbox[currentHitbox] = nil
-    else
-        if typeof(alternateOrigin) ~= "Vector3"
-            or alternateOrigin.X ~= alternateOrigin.X or alternateOrigin.Y ~= alternateOrigin.Y or alternateOrigin.Z ~= alternateOrigin.Z
-            or alternateOrigin.X == math.huge or alternateOrigin.X == -math.huge
-            or alternateOrigin.Y == math.huge or alternateOrigin.Y == -math.huge
-            or alternateOrigin.Z == math.huge or alternateOrigin.Z == -math.huge then
-            arg._visibleOriginByHitbox[currentHitbox] = nil
-            return
-        end
-        effectiveOrigin = alternateOrigin
-        arg._visibleOriginByHitbox[currentHitbox] = alternateOrigin
-    end
-else
-    arg._visibleOriginByHitbox[currentHitbox] = nil
-end
-
-local surfaceOk, v140 = pcall(v131, effectiveOrigin, currentHitbox, targetPoint)
-if not surfaceOk or v140 == nil then
+local position = v138.Position
+local v140 = v131(position, currentHitbox, v136)
+if v140 == nil then
 return
 end
+local v141 = arg._visibleOriginByHitbox[currentHitbox]
 
--- Recheck target ownership immediately before mutating the outgoing shot payload.
-local stillOwned = false
-local finalCheckOk = pcall(function()
-    local currentCharacter = currentTarget.Character
-    local state = currentCharacter ~= nil and currentCharacter.State or nil
-    if state == nil or state.Alive ~= true then return end
-    local partsByName = state.TargetPartsByName
-    if type(partsByName) ~= "table" then return end
-    for _, candidate in pairs(partsByName) do
-        if candidate == currentHitbox then stillOwned = true; return end
-    end
-end)
-if not finalCheckOk or not stillOwned then
-    arg:_Reset()
-    return
-end
-
-if effectiveOrigin ~= originalOrigin then
-    local shotCFrame = CFrame.lookAt(effectiveOrigin, targetPoint)
-    v137["\0"] = v116.encode(shotCFrame)
-    v137["\1"] = v116.encode(shotCFrame)
+if v141 ~= nil then
+v137["\0"] = v116.encode(CFrame.lookAt(v141, v136))
+v137["\1"] = v116.encode(CFrame.lookAt(v141, v136))
 else
-    v137["\0"] = v116.encode(CFrame.lookAt(originalOrigin, targetPoint))
-    v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, targetPoint))
+v137["\0"] = v116.encode(CFrame.lookAt(position, v136))
+v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, v136))
 end
 
 v137["\2"] = currentHitbox
@@ -70774,8 +70619,8 @@ local function isExplicitlyProtected(fighter)
     return not okDeflecting or isDeflecting == true
 end
 
--- Keep a valid target locked, but release transiently invalid state quickly so
--- a stale FighterState cannot stall reacquisition for multiple seconds.
+                                                                               
+                                                                        
 local LOCKED_TARGET_UNAVAILABLE_TIMEOUT = 0.75
 local LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT = 0.5
 local LOCKED_TARGET_UNATTACKABLE_TIMEOUT = 0.5
@@ -71171,6 +71016,7 @@ local function ragebotVoidSpamState()
         state = {
             activeUntil = 0, nextAttackAt = 0, lastShotAt = 0, phase = "attack",
             cycleModelVersion = 2, cycleInitialized = false, phaseStartedAt = 0,
+            reloadHold = false, reloadTransportPending = false,
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil, pendingShotRequestCount = nil, pendingShotDeadline = 0,
         }
@@ -71213,6 +71059,8 @@ local function ragebotVoidSpamState()
         state.fakePositionTargetReady = false
     end
     if type(state.cycleInitialized) ~= "boolean" then state.cycleInitialized = false end
+    if type(state.reloadHold) ~= "boolean" then state.reloadHold = false end
+    if type(state.reloadTransportPending) ~= "boolean" then state.reloadTransportPending = false end
     if not isFiniteClock(state.activeUntil) or state.activeUntil <= 0 then
         state.cycleInitialized = false
     end
@@ -71241,6 +71089,8 @@ local function ragebotVoidSpamReset(state)
     state.nextAttackAt = 0
     state.lastShotAt = 0
     state.phase = "attack"
+    state.reloadHold = false
+    state.reloadTransportPending = false
     state.cycleModelVersion = 2
     state.cycleInitialized = false
     state.phaseStartedAt = 0
@@ -71280,6 +71130,54 @@ end
 
 local ragebotFiniteNumber
 
+local function ragebotVoidSpamSetReloadHold(state, now, attack, hide, reloading)
+    if type(state) ~= "table" then state = ragebotVoidSpamState() end
+    if not ragebotFiniteNumber(now) then now = os.clock() end
+    if not ragebotFiniteNumber(attack) then attack = 0.1 end
+    if not ragebotFiniteNumber(hide) then hide = 0.25 end
+    hide = math.clamp(hide, 0.01, 1)
+
+    if reloading == true or state.reloadTransportPending == true then
+        local enteringHold = state.reloadHold ~= true
+        state.reloadHold = true
+        state.cycleModelVersion = 2
+        state.cycleInitialized = true
+        state.phase = "hide"
+        if enteringHold or not ragebotFiniteNumber(state.activeUntil) then
+            state.phaseStartedAt = now
+            state.activeUntil = now + hide
+            state.fakePositionTargetX = nil
+            state.fakePositionTargetZ = nil
+            state.fakePositionTargetReady = false
+        end
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        ragebotVoidSpamClearPendingAck(state)
+        return "hide"
+    end
+
+    if state.reloadHold == true then
+                                                                            
+                                                                              
+        state.reloadHold = false
+        state.cycleModelVersion = 2
+        state.cycleInitialized = true
+        state.phase = "hide"
+        state.phaseStartedAt = now
+        state.activeUntil = now + hide
+        state.nextAttackAt = 0
+        state.fakePositionActive = true
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        ragebotVoidSpamClearPendingAck(state)
+        return "hide"
+    end
+
+    return state.phase == "hide" and "hide" or "attack"
+end
+
 local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if type(state) ~= "table" then state = ragebotVoidSpamState() end
     if not ragebotFiniteNumber(now) then now = os.clock() end
@@ -71287,6 +71185,21 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
     attack = math.clamp(attack, 0.01, 1)
     hide = math.clamp(hide, 0.01, 1)
+
+    if state.reloadHold == true then
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        if not ragebotFiniteNumber(state.activeUntil) or state.activeUntil <= 0 then
+            state.phaseStartedAt = now
+            state.activeUntil = now + hide
+        end
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
 
     if state.cycleModelVersion ~= 2 then
         state.cycleModelVersion = 2
@@ -71521,14 +71434,15 @@ end
 local shieldAimState = v117(arg3.FighterState)
 local flag19 = shieldAimState ~= "Below"
 local ragebot = v115.Data.Ragebot
-local voidSpamEnabledReloadGate = ragebotVoidSpamConfig()
+local voidSpamEnabledReloadGate, reloadGateAttack, reloadGateHide = ragebotVoidSpamConfig()
 if voidSpamEnabledReloadGate then
     local okReloading, isReloading = pcall(function()
         return arg4:IsReloading()
     end)
-
-    if not okReloading or type(isReloading) ~= "boolean" or isReloading then
-        ragebotVoidSpamReset(ragebotVoidSpamState())
+    local reloadHold = not okReloading or type(isReloading) ~= "boolean" or isReloading == true
+    local reloadState = ragebotVoidSpamState()
+    ragebotVoidSpamSetReloadHold(reloadState, os.clock(), reloadGateAttack, reloadGateHide, reloadHold)
+    if reloadHold then
         arg:ClearTeleport()
         arg._shootLock:Reset()
         return arg5 and arg5.CFrame or nil, nil
@@ -71539,17 +71453,17 @@ if arg._gluedPart ~= nil and arg._gluedPart ~= arg5 then
 arg:ClearTeleport()
 end
 
--- Keep sampling FakePosition for RepRoot detection, but never tear down and
--- reacquire PartGlue on a timer. Rebinding every 0.20s made the target hitbox
--- oscillate between restored and glued poses.
+                                                                            
+                                                                              
+                                              
 ragebotObserveFakePosition(targetRoot, os.clock())
 local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
 if typeof(v120) ~= "CFrame" then
 ragebotVoidSpamReleasePendingForUnavailableTarget()
 arg:ClearTeleport()
 arg._shootLock:Reset()
--- A failed PartGlue transaction means the target hitbox cannot be trusted.
--- Do not apply the old local pose as a substitute combat/teleport plan.
+                                                                           
+                                                                        
 return nil, nil
 end
 arg._gluedPart = arg5
@@ -71647,14 +71561,15 @@ if voidSpamEnabledNow then
     local okReloading, isReloading = pcall(function()
         return arg4:IsReloading()
     end)
-    if not okReloading or type(isReloading) ~= "boolean" or isReloading then
-        ragebotVoidSpamReset(ragebotVoidSpamState())
+    local reloadHold = not okReloading or type(isReloading) ~= "boolean" or isReloading == true
+    local state = ragebotVoidSpamState()
+    local callbackNow = os.clock()
+    ragebotVoidSpamSetReloadHold(state, callbackNow, callbackAttack, callbackHide, reloadHold)
+    if reloadHold then
         arg:ClearTeleport()
         arg._shootLock:Reset()
         return false
     end
-    local state = ragebotVoidSpamState()
-    local callbackNow = os.clock()
     ragebotVoidSpamAdvancePhase(state, callbackNow, callbackAttack, callbackHide)
     local activeUntil = tonumber(state.activeUntil) or 0
     if not ragebotFiniteNumber(activeUntil) then activeUntil = 0 end
@@ -71762,11 +71677,12 @@ end
 end
 
 local voidSpamApi = {
-    ApiVersion = 4,
+    ApiVersion = 5,
     State = ragebotVoidSpamState,
     Config = ragebotVoidSpamConfig,
     PollShotAck = ragebotVoidSpamPollShotAck,
     ResolveUnconfirmedShot = ragebotVoidSpamResolveUnconfirmedShot,
+    SetReloadHold = ragebotVoidSpamSetReloadHold,
     AdvancePhase = ragebotVoidSpamAdvancePhase,
     FiniteNumber = ragebotFiniteNumber,
 }
@@ -71908,8 +71824,8 @@ arg:ResetState()
 return gluedOurPart ~= nil and gluedOurPart.CFrame or nil, nil, nil, false, nil
 end
 
--- Keep the detector's history current. Do not Free/re-Acquire the glued target
--- periodically: that creates a visible/server-side pose discontinuity.
+                                                                               
+                                                                       
 ragebotObserveFakePosition(rootPart, os.clock())
 
 local flag19 = v117(arg3.FighterState) ~= "Below"
@@ -71936,8 +71852,8 @@ if not orientationOk or not fakePositionFiniteNumber(v121)
 end
 local v120 = arg._partGlue:Acquire(gluedOurPart, hitboxHead)
 if typeof(v120) ~= "CFrame" then
--- No valid PartGlue means the target pose is not trustworthy. Release any
--- stale melee/knife plan and never emit a movement pose without an attack.
+                                                                          
+                                                                           
 arg:ResetState()
 return nil, nil, nil, false, nil
 end
@@ -72100,9 +72016,9 @@ elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitbox
 
         arg._nextKnifeWindowAttackAt = 0
     else
-        -- The old cycle always completed its retreat window even when health
-        -- replication had not arrived yet. Clear only the window; preserve the
-        -- target cooldown so the player retreats before returning to backstab.
+                                                                             
+                                                                               
+                                                                               
         arg._hitboxWindowUntil = -1
         arg._hitboxWindowTarget = nil
         arg._hitboxWindowAliveState = nil
@@ -73308,7 +73224,7 @@ local v117 = tbl17.jD()
 
 local function ragebotGetVoidSpamApiFunction(name)
     local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
-    if type(api) ~= "table" or api.ApiVersion ~= 4 then return nil end
+    if type(api) ~= "table" or api.ApiVersion ~= 5 then return nil end
     local fn = rawget(api, name)
     return type(fn) == "function" and fn or nil
 end
@@ -73327,10 +73243,44 @@ local function ragebotVoidSpamState()
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil,
             pendingShotRequestCount = nil, pendingShotDeadline = 0,
+            reloadHold = false, reloadTransportPending = false,
         }
         pcall(rawset, _G, key, state)
     end
     return state
+end
+
+local function ragebotVoidSpamSetReloadHold(state, now, attack, hide, reloading)
+    local fn = ragebotGetVoidSpamApiFunction("SetReloadHold")
+    if fn ~= nil then
+        local okCall, phase = pcall(fn, state, now, attack, hide, reloading)
+        if okCall then return phase end
+    end
+    if type(state) ~= "table" then return "attack" end
+    if reloading == true or state.reloadTransportPending == true then
+        state.reloadHold = true
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        state.phaseStartedAt = now
+        state.activeUntil = now + (tonumber(hide) or 0.25)
+        state.fakePositionActive = true
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
+    if state.reloadHold == true then
+        state.reloadHold = false
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.phaseStartedAt = now
+        state.activeUntil = now + (tonumber(hide) or 0.25)
+        state.fakePositionActive = true
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
+    return state.phase
 end
 
 local function ragebotVoidSpamConfig()
@@ -73411,6 +73361,18 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
     attack = math.clamp(attack, 0.01, 1)
     hide = math.clamp(hide, 0.01, 1)
+    if state.reloadHold == true then
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        if not ragebotFiniteNumber(state.activeUntil) or state.activeUntil <= 0 then
+            state.phaseStartedAt = now
+            state.activeUntil = now + hide
+        end
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        return "hide"
+    end
     local phaseEnd = tonumber(state.activeUntil)
     if state.cycleModelVersion ~= 2 then
         state.cycleModelVersion = 2
@@ -74709,6 +74671,37 @@ if pendingVoidSpamState.awaitingShotAck == true then
 end
 
 if phaseEnabledForUpdate then
+    local updateReloadGun = arg._reloadGun
+    local updateReloadHold = updateReloadGun ~= nil
+    pendingVoidSpamState.reloadTransportPending = updateReloadHold
+    local updateContext = arg._innerContext
+    local updateBehaviors = updateContext ~= nil and updateContext.ItemBehaviors or nil
+    if updateReloadGun == nil and updateBehaviors ~= nil then
+        local okGun, equippedGun = pcall(function()
+            return updateBehaviors:EquippedItemAsGun()
+        end)
+        if not okGun then
+            updateReloadHold = true
+        elseif equippedGun ~= nil then
+            updateReloadGun = equippedGun
+        else
+            local okMelee, equippedMelee = pcall(function()
+                return updateBehaviors:EquippedItemAsMelee()
+            end)
+            if not okMelee or equippedMelee == nil then updateReloadHold = true end
+        end
+    end
+    if updateReloadGun ~= nil then
+        local okReloading, isReloading = pcall(function()
+            return updateReloadGun:IsReloading()
+        end)
+        updateReloadHold = updateReloadHold or not okReloading
+            or type(isReloading) ~= "boolean" or isReloading == true
+    end
+    pendingVoidSpamState.reloadTransportPending = arg._reloadGun ~= nil
+    ragebotVoidSpamSetReloadHold(
+        pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, phaseHideForUpdate, updateReloadHold
+    )
     ragebotVoidSpamAdvancePhase(
         pendingVoidSpamState, phaseNowForUpdate, phaseAttackForUpdate, phaseHideForUpdate
     )
@@ -74765,6 +74758,18 @@ if okAction and actionResult ~= nil then
     end
 end
 local v130 = okAction and actionResult or nil
+if phaseEnabledForUpdate and type(v130) == "table" and v130.Type == "Reload" then
+                                                                              
+                                                                            
+    local reloadItem = v130.Item
+    if reloadItem ~= nil then
+        arg._reloadGun = reloadItem
+        pendingVoidSpamState.reloadTransportPending = true
+    end
+    ragebotVoidSpamSetReloadHold(
+        pendingVoidSpamState, os.clock(), phaseAttackForUpdate, phaseHideForUpdate, true
+    )
+end
 if not okAction then
 local warningNow = os.clock()
 if warningNow >= (arg._nextGetActionWarningAt or 0) then
@@ -74776,7 +74781,7 @@ elseif actionResult == nil then
 local warningNow = os.clock()
 if warningNow >= (arg._nextNoActionWarningAt or 0) then
 arg._nextNoActionWarningAt = warningNow + 5
-warn("[Ragebot] No weapon action selected; if a valid target exists, movement will hold this update and retry")
+warn("[Ragebot] No weapon action selected; continuing evasion movement and retrying weapon selection")
 end
 end
 
@@ -75359,8 +75364,8 @@ end
 pcall(arg._Reset, arg)
 return
 end
--- Do not replace a freshly-built combat plan with a saved RepRoot snapshot.
--- A verified snapshot is only valid for the explicit HoldPosition path below.
+                                                                            
+                                                                              
 local okApply, applyError = pcall(arg._ApplyPlan, arg, v131, target, innerContext)
 if not okApply then
 local warningNow = os.clock()
@@ -75514,22 +75519,14 @@ local function ragebotShouldUseRiotKnifeRotation(item, innerContext, target)
     if item == nil or item.Name ~= "Knife" then return false end
     local data = type(v115) == "table" and v115.Data or nil
     local modifiers = type(data) == "table" and data.ItemModifiers or nil
-    if type(modifiers) ~= "table" or rawget(modifiers, "AlwaysBackstab") ~= true then return false end
-    local mode = rawget(modifiers, "AlwaysBackstabMode")
-    if mode == "Knife" then
-
-        return true
-    end
-    -- Riot mode belongs to the standalone AlwaysBackstab.Riot controller.
-    -- When Ragebot is active, that controller yields completely; Ragebot must
-    -- not silently recreate Riot mode through its own Knife camera branch.
-    return false
+    if type(modifiers) ~= "table" or modifiers.AlwaysBackstab ~= true then return false end
+    return modifiers.AlwaysBackstabMode == "Knife"
 end
 
 local function ragebotUsesExternalRiotCamera(item, target, owner)
-    -- A Knife action is always owned by the Ragebot planner. The standalone
-    -- AlwaysBackstab.Riot controller yields through riotRagebotHasPriority().
-    -- Never let this planner switch to a second camera sender.
+                                                                            
+                                                                              
+                                                               
     if type(owner) == "table" then
         owner._externalRiotCameraWaitTarget = nil
         owner._externalRiotCameraWaitStartedAt = nil
@@ -75823,9 +75820,9 @@ if stationaryCounterResponse and typeof(arg6) == "CFrame" then
     return { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
 end
 
-if arg4 ~= nil and typeof(arg6) == "CFrame" then
-    return { CFrame = arg6, HoldPosition = true }
-end
+                                                                    
+                                                                           
+                                                               
 return arg:_EvadePlan(arg6, arg7)
 end
 
@@ -75919,12 +75916,12 @@ if arg._knifeExternalRiotCamera == true then
         v133 = nil
     end
 elseif ragebotShouldUseRiotKnifeRotation(item, arg._innerContext, arg4) then
-    local riotViewAngles, riotAnglePart, riotPitch, riotYaw = ragebotBuildRiotKnifeViewAngles(arg4, arg)
+    local riotViewAngles, riotAnglePart = ragebotBuildRiotKnifeViewAngles(arg4, arg)
     if riotViewAngles ~= nil and riotAnglePart ~= nil then
+                                                                       
+                                                                             
+                                                          
         v132 = riotViewAngles
-        local targetKey = arg4.AliveState ~= nil and arg4.AliveState.HitboxHead or nil
-        local cameraPrimed = ragebotPrimeRiotCamera(arg, targetKey, riotPitch, riotYaw)
-        if type(v133) == "function" and not cameraPrimed then v133 = nil end
     else
         v132 = nil
         v133 = nil
@@ -76435,7 +76432,10 @@ local ragebotData = type(v115) == "table" and v115.Data and v115.Data.Ragebot or
 local voidSpamConfig = type(ragebotData) == "table" and ragebotData.VoidSpam or nil
 local voidSpamConfigured = type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true
 local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
-local voidSpamReloading = false
+local voidSpamReloading = arg._reloadGun ~= nil
+if type(voidSpamState) == "table" then
+    voidSpamState.reloadTransportPending = voidSpamReloading
+end
 if voidSpamConfigured and arg._enabled == true then
     local context = arg._innerContext
     local behaviors = context ~= nil and context.ItemBehaviors or nil
@@ -76454,36 +76454,44 @@ if voidSpamConfigured and arg._enabled == true then
     if reloadCandidate == nil and arg._reloadGun ~= nil then
         reloadCandidate = arg._reloadGun
     end
-    if reloadCandidate == nil then
-
+    if reloadCandidate == nil and behaviors ~= nil then
+        local okMelee, equippedMelee = pcall(function()
+            return behaviors:EquippedItemAsMelee()
+        end)
+        if not okMelee or equippedMelee == nil then voidSpamReloading = true end
+    elseif reloadCandidate == nil and behaviors == nil then
         voidSpamReloading = true
-    else
+    end
+    if reloadCandidate ~= nil then
         local okReloading, isReloading = pcall(function()
             return reloadCandidate:IsReloading()
         end)
         if not okReloading or type(isReloading) ~= "boolean" then
             voidSpamReloading = true
         else
-            voidSpamReloading = isReloading
+            voidSpamReloading = voidSpamReloading or isReloading
         end
     end
 end
 local voidSpamSuppressedByReload = voidSpamConfigured and arg._enabled == true and voidSpamReloading
-local voidSpamEnabledForRoll = voidSpamConfigured
-    and type(voidSpamState) == "table"
-    and not voidSpamSuppressedByReload
-if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload)
+local voidSpamEnabledForRoll = voidSpamConfigured and type(voidSpamState) == "table"
+if voidSpamConfigured and arg._enabled == true and type(voidSpamState) == "table" then
+    local _, reloadAttack, reloadHide = ragebotVoidSpamConfig()
+    ragebotVoidSpamSetReloadHold(voidSpamState, os.clock(), reloadAttack, reloadHide, voidSpamSuppressedByReload)
+end
+if (not voidSpamConfigured or arg._enabled ~= true)
     and type(voidSpamState) == "table"
     and voidSpamState.voidSpamTransformApplied == true then
     ragebotRequestVoidSpamTransformRestore()
 end
 
-if (not voidSpamConfigured or arg._enabled ~= true or voidSpamSuppressedByReload)
+if (not voidSpamConfigured or arg._enabled ~= true)
     and type(voidSpamState) == "table" then
     voidSpamState.activeUntil = 0
     voidSpamState.nextAttackAt = 0
     voidSpamState.lastShotAt = 0
     voidSpamState.phase = "attack"
+    voidSpamState.reloadHold = false
     voidSpamState.cycleModelVersion = 2
     voidSpamState.cycleInitialized = false
     voidSpamState.phaseStartedAt = 0
@@ -76589,7 +76597,7 @@ local function applyVoidSpamSideRoll(value, baseValue)
     return value
 end
 
-if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppressedByReload then
+if voidSpamConfigured and type(voidSpamState) == "table" then
     local activeUntil = tonumber(voidSpamState.activeUntil) or 0
     local now = os.clock()
     local activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
@@ -76609,7 +76617,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
     activeUntil = tonumber(voidSpamState.activeUntil) or 0
     activeUntilValid = activeUntil == activeUntil and activeUntil ~= math.huge and activeUntil ~= -math.huge
     local fakePositionActive = voidSpamState.phase == "hide"
-        and activeUntilValid and now < activeUntil
+        and (voidSpamState.reloadHold == true or (activeUntilValid and now < activeUntil))
     if fakePositionActive then
 
         local hidePosition = cframe.Position
@@ -76775,6 +76783,8 @@ elseif type(voidSpamState) == "table" then
     voidSpamState.nextAttackAt = 0
     voidSpamState.lastShotAt = 0
     voidSpamState.phase = "attack"
+    voidSpamState.reloadHold = false
+    voidSpamState.reloadTransportPending = false
     voidSpamState.cycleModelVersion = 2
     voidSpamState.cycleInitialized = false
     voidSpamState.phaseStartedAt = 0
@@ -77036,8 +77046,8 @@ if shouldSkipDefense and typeof(cFrame) == "CFrame" and arg3 ~= nil
 end
 
 if cFrame == nil or arg3 == nil or shouldSkipDefense then
--- Match the original no-plan behavior: clear the server pose override instead
--- of replaying an old RepRoot snapshot from a previous target/frame.
+                                                                              
+                                                                     
 local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
 characterController:SetServerCFrame(typeof(safeFallbackCFrame) == "CFrame" and safeFallbackCFrame or nil)
 if arg._knifeExternalRiotCamera ~= true then
