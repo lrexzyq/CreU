@@ -2143,6 +2143,7 @@ _currentVersion = arg.CurrentVersion,
 _legacyVersion = arg.LegacyVersion or 1,
 _savePath = v119,
 _migrations = arg.Migrations or {},
+_skipMigrations = arg.SkipMigrations == true,
 _serialize = serialize,
 _deserialize = deserialize,
 }
@@ -2244,7 +2245,12 @@ data = v120
 version = legacyVersion
 end
 
-local v121 = arg:_ApplyMigrations(version, data)
+local v121
+if arg._skipMigrations then
+v121 = v115.ok(data)
+else
+v121 = arg:_ApplyMigrations(version, data)
+end
 if not v121.Ok then
 return v115.err("ConfigManager", v86[169], v121.Error.Detail)
 end
@@ -18840,6 +18846,14 @@ local CREFY_LANGUAGE_TRANSLATIONS = {
     ["Use Display Names"] = "Hiện tên hiển thị",
     ["Manage Custom Sounds"] = "Quản lý âm thanh tùy chỉnh",
     ["Enable Hit Feedback"] = "Bật hiệu ứng khi trúng đòn",
+    ["Damage Numbers"] = "Hiển thị sát thương",
+    ["Enable Damage Numbers"] = "Hiện số sát thương",
+    ["Remove Game Damage Numbers"] = "Ẩn số sát thương mặc định của game",
+    ["Damage Number Color Type"] = "Kiểu màu số sát thương",
+    ["Damage Number Font"] = "Phông chữ sát thương",
+    ["Damage Number Size"] = "Cỡ chữ sát thương",
+    ["Damage Number Rise"] = "Độ bay lên",
+    ["Damage Number Duration"] = "Thời lượng hiển thị sát thương",
     ["Enable Elimination Feedback"] = "Bật hiệu ứng khi hạ gục",
     ["Play Hit Sound"] = "Phát âm thanh khi trúng đòn",
     ["Play Elimination Sound"] = "Phát âm thanh khi hạ gục",
@@ -22475,7 +22489,7 @@ return bj.c
 end
 end
 do
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoInspectAnimation=false,NoAttackAnimation=false,NoAimAnimation=false,NoChargeAnimation=false,NoThrowAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoInspectAnimation=false,NoAttackAnimation=false,NoAimAnimation=false,NoChargeAnimation=false,NoThrowAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -24144,76 +24158,6 @@ end
 end
 do
 local function fn35()
-tbl17.f()
-local v115 = tbl17.bn()
-local v116 = tbl17.bo()
-local v117 = tbl17.bp()
-local v118 = tbl17.br()
-local v119 = tbl17.bs()
-local v120 = tbl17.bt()
-local v121 = tbl17.bu()
-
-return {
-tbl17.bw(),
-tbl17.bx(),
-tbl17.by(),
-[v86[26]] = tbl17.bz(),
-[v86[175]] = tbl17.bA(),
-[v86[54]] = tbl17.bB(),
-[7] = tbl17.bC(),
-[8] = tbl17.bD(),
-[9] = tbl17.bE(),
-[10] = v115,
-[11] = v116,
-[v86[12]] = v117,
-[13] = v118,
-[14] = v119,
-[15] = v120,
-[16] = v121,
-[17] = function(config)
-    if type(config) ~= "table" then return config end
-    local modifiers = config.ItemModifiers
-    if type(modifiers) ~= "table" then
-        modifiers = {}
-        config.ItemModifiers = modifiers
-    end
-    local keys = { "NoInspectAnimation", "NoAttackAnimation", "NoAimAnimation", "NoChargeAnimation", "NoThrowAnimation" }
-    for _, key in ipairs(keys) do
-        if type(modifiers[key]) ~= "boolean" then modifiers[key] = false end
-    end
-    return config
-end,
-[18] = function(config)
-    if type(config) ~= "table" then return config end
-    local movement = config.Movement
-    if type(movement) ~= "table" then
-        movement = {}
-        config.Movement = movement
-    end
-    local autoSlide = movement.AutoSlide
-    if type(autoSlide) ~= "table" then
-        autoSlide = {}
-        movement.AutoSlide = autoSlide
-    end
-    if type(autoSlide.Enabled) ~= "boolean" then autoSlide.Enabled = false end
-    return config
-end,
-}
-end
-
-tbl17.bF = function()
-local bf = tbl17.cache.bF
-
-if not bf then
-bf = { c = fn35() }
-tbl17.cache.bF = bf
-end
-
-return bf.c
-end
-end
-do
-local function fn35()
 local v115 = tbl17.l()
 local v116 = tbl17.m()
 local v117 = tbl17.n()
@@ -24222,10 +24166,10 @@ local v118 = tbl17.bc()
 
 return (v117:Add(v115.new({
 DefaultConfig = tbl17.bm(),
-CurrentVersion = 19,
+CurrentVersion = 20,
 LegacyVersion = 1,
 SavePath = "kiciahook/rivals_v3/configs/",
-Migrations = tbl17.bF(),
+SkipMigrations = true,
 Serialize = v116.normalize,
 Deserialize = v118.deserialize,
 })))
@@ -29486,28 +29430,75 @@ local ANTI_AIM_RAGEBOT_TARGET_KEY = "__CrefyRagebotTargetState"
 local ANTI_AIM_RAGEBOT_CONTROL_TTL = 0.75
 local ANTI_AIM_RAGEBOT_TARGET_TTL = 0.5
 
+local function antiAimSafeNow()
+    local okClock, now = pcall(function()
+        if type(os) ~= "table" or type(os.clock) ~= "function" then
+            return nil
+        end
+        return os.clock()
+    end)
+    if okClock and type(now) == "number" and now == now
+        and now ~= math.huge and now ~= -math.huge then
+        return now
+    end
+    return 0
+end
+
+local function antiAimSafeNumber(value)
+    if type(value) == "number" then
+        if value == value and value ~= math.huge and value ~= -math.huge then
+            return value
+        end
+        return nil
+    end
+    if type(value) ~= "string" then
+        return nil
+    end
+    local okNumber, numberValue = pcall(function()
+        return tonumber(value)
+    end)
+    if okNumber and type(numberValue) == "number" and numberValue == numberValue
+        and numberValue ~= math.huge and numberValue ~= -math.huge then
+        return numberValue
+    end
+    return nil
+end
+
 local function antiAimReadSharedState(key)
     local candidates = {}
-    if type(getgenv) == "function" then
-        local okEnv, env = pcall(getgenv)
+    local getgenvValue = nil
+    local okGetgenv, getgenvValueResult = pcall(function()
+        return getgenv
+    end)
+    if okGetgenv then
+        getgenvValue = getgenvValueResult
+    end
+    if type(getgenvValue) == "function" then
+        local okEnv, env = pcall(function()
+            return getgenvValue()
+        end)
         if okEnv and type(env) == "table" then
             candidates[#candidates + 1] = env
         end
     end
-    if type(_G) == "table" then
+    if type(_G) == "table" and candidates[1] ~= _G then
         candidates[#candidates + 1] = _G
     end
 
     local best, bestUpdatedAt, fallback = nil, -math.huge, nil
-    local now = os.clock()
-    for _, env in ipairs(candidates) do
-        local okRead, value = pcall(rawget, env, key)
+    local now = antiAimSafeNow()
+    for index = 1, #candidates do
+        local env = candidates[index]
+        local okRead, value = pcall(function()
+            return env[key]
+        end)
         if okRead and type(value) == "table" then
             if fallback == nil then fallback = value end
-            local updatedAt = tonumber(rawget(value, "updatedAt"))
-            if type(updatedAt) == "number" and updatedAt == updatedAt
-                and updatedAt ~= math.huge and updatedAt ~= -math.huge
-                and updatedAt <= now and updatedAt >= bestUpdatedAt then
+            local okTimestamp, timestampValue = pcall(function()
+                return value.updatedAt
+            end)
+            local updatedAt = okTimestamp and antiAimSafeNumber(timestampValue) or nil
+            if updatedAt ~= nil and now > 0 and updatedAt <= now and updatedAt >= bestUpdatedAt then
                 best = value
                 bestUpdatedAt = updatedAt
             end
@@ -29517,13 +29508,18 @@ local function antiAimReadSharedState(key)
 end
 
 local function antiAimRagebotIsActive()
-    local now = os.clock()
+    local now = antiAimSafeNow()
+    if now <= 0 then
+        return nil
+    end
+
     local control = antiAimReadSharedState(ANTI_AIM_RAGEBOT_CONTROL_KEY)
     if type(control) == "table" then
-        local enabled = rawget(control, "enabled")
-        local updatedAt = tonumber(rawget(control, "updatedAt"))
-        if type(enabled) == "boolean" and type(updatedAt) == "number"
-            and updatedAt == updatedAt and updatedAt ~= math.huge and updatedAt ~= -math.huge then
+        local okFields, enabled, timestampValue = pcall(function()
+            return control.enabled, control.updatedAt
+        end)
+        local updatedAt = okFields and antiAimSafeNumber(timestampValue) or nil
+        if okFields and type(enabled) == "boolean" and updatedAt ~= nil then
             local age = now - updatedAt
             if age >= 0 and age <= ANTI_AIM_RAGEBOT_CONTROL_TTL then
                 return enabled
@@ -29532,24 +29528,52 @@ local function antiAimRagebotIsActive()
     end
 
     local target = antiAimReadSharedState(ANTI_AIM_RAGEBOT_TARGET_KEY)
-    if type(target) == "table" and rawget(target, "active") == true then
-        local updatedAt = tonumber(rawget(target, "updatedAt")) or 0
-        local age = now - updatedAt
-        return age >= 0 and age <= ANTI_AIM_RAGEBOT_TARGET_TTL
+    if type(target) == "table" then
+        local okFields, active, timestampValue = pcall(function()
+            return target.active, target.updatedAt
+        end)
+        local updatedAt = okFields and antiAimSafeNumber(timestampValue) or nil
+        if okFields and active == true and updatedAt ~= nil then
+            local age = now - updatedAt
+            return age >= 0 and age <= ANTI_AIM_RAGEBOT_TARGET_TTL
+        end
     end
     return false
 end
 
 local function antiAimShouldSuppress()
-    local configOk, config = pcall(function()
-        return type(tbl17) == "table" and type(tbl17.bG) == "function" and tbl17.bG() or nil
+    local config = nil
+    local configReader = nil
+    local okReader, reader = pcall(function()
+        return type(tbl17) == "table" and tbl17.bG or nil
     end)
-    local data = configOk and type(config) == "table" and config.Data or nil
+    if not okReader or type(reader) ~= "function" then
+        return true
+    end
+    configReader = reader
+    local okConfig, configValue = pcall(function()
+        return configReader()
+    end)
+    if not okConfig or type(configValue) ~= "table" then
+        return true
+    end
+    config = configValue
+
+    local data = type(config) == "table" and config.Data or nil
     local modifiers = type(data) == "table" and data.ItemModifiers or nil
-    local ragebotActive = antiAimRagebotIsActive()
-    local backstabMode = type(modifiers) == "table" and rawget(modifiers, "AlwaysBackstabMode") or nil
+    local ragebotActive = false
+    local ragebotOk, ragebotValue = pcall(function()
+        return antiAimRagebotIsActive()
+    end)
+    if not ragebotOk or ragebotValue == nil then
+        -- Fail closed if the shared state cannot be read; never let Anti-Aim fight Ragebot.
+        return true
+    end
+    ragebotActive = ragebotValue == true
+
+    local backstabMode = type(modifiers) == "table" and modifiers.AlwaysBackstabMode or nil
     local alwaysBackstabActive = type(modifiers) == "table"
-        and rawget(modifiers, "AlwaysBackstab") == true
+        and modifiers.AlwaysBackstab == true
         and (backstabMode == "Knife" or backstabMode == "Riot")
 
     -- Anti-Aim must yield to either combat system; inventory state is irrelevant.
@@ -30127,7 +30151,12 @@ arg._trove:Connect(RunService.Heartbeat, function()
     if not suppressOk then
         if now >= (arg._nextAntiAimWarningAt or 0) then
             arg._nextAntiAimWarningAt = now + 5
-            warn("[AntiAim] Feature suppression check failed; leaving camera rotation unmodified: " .. tostring(suppressed))
+            local detail = tostring(suppressed)
+            if type(debug) == "table" and type(debug.traceback) == "function" then
+                local traceOk, trace = pcall(debug.traceback, detail, 2)
+                if traceOk and type(trace) == "string" then detail = trace end
+            end
+            warn("[AntiAim] Feature suppression check failed; leaving camera rotation unmodified: " .. detail)
         end
         return
     end
@@ -59036,6 +59065,36 @@ local v124 = v86[133]
 return tostring(math.round(arg * 10) / v124)
 end
 
+local function createDamageNumbersGui()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "CrefyDamageNumbers"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 500
+
+    local parented = false
+    if type(gethui) == "function" then
+        local okParent, parent = pcall(gethui)
+        if okParent and parent ~= nil then
+            parented = pcall(function() screenGui.Parent = parent end)
+        end
+    end
+    if not parented then
+        local okCore = pcall(function()
+            screenGui.Parent = game:GetService("CoreGui")
+        end)
+        parented = okCore and screenGui.Parent ~= nil
+    end
+    if not parented then
+        pcall(function()
+            local localPlayer = game:GetService("Players").LocalPlayer
+            local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
+            if playerGui ~= nil then screenGui.Parent = playerGui end
+        end)
+    end
+    return screenGui
+end
+
 index2.new = function(arg, arg2, arg3)
 local PlayerHit = v121.new("combat_feedback.PlayerHit")
 local v124 = v117.new()
@@ -59050,6 +59109,8 @@ _sfxSoundStorage = arg3,
 _noGameHitsound = PlayerHit:Add(v118.new()),
 _hitFlash = PlayerHit:Add(v120.new()),
 _chams = {},
+_damageNumbers = {},
+_damageGui = createDamageNumbersGui(),
 _headSoundId = nil,
 _bodySoundId = nil,
 }
@@ -59060,8 +59121,16 @@ v125:SetHandler(function(arg4)
 tbl18:_HandleReplicate(arg4)
 end)
 
-tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", v86[44] }), function(arg4)
-tbl18:_SetEnabled(arg4)
+tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", v86[44] }), function()
+tbl18:_SetEnabled()
+end)
+
+tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageNumbers", "Enabled" }), function()
+tbl18:_SetEnabled()
+end)
+
+tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageNumbers", "RemoveGameNumbers" }), function()
+tbl18:_SetEnabled()
 end)
 
 tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "Sound", "DisableGameSound" }), function(arg4)
@@ -59101,33 +59170,184 @@ local playerHit = v116.Data.PlayerHit
 local sound = playerHit.Sound
 fn37(sound.HeadName)
 fn38(sound.BodyName)
-tbl18:_SetEnabled(playerHit.Enabled)
+tbl18:_SetEnabled()
 tbl18._errorReporter:ReportResult(tbl18._noGameHitsound:SetEnabled(playerHit.Sound.DisableGameSound))
 return tbl18
 end
 
-index2._SetEnabled = function(arg, arg2)
-arg._replicateBinding:SetEnabled(arg2)
+index2._SetEnabled = function(arg)
+local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
+local damageNumbers = type(playerHit) == "table" and playerHit.DamageNumbers or nil
+local enabled = type(playerHit) == "table" and playerHit.Enabled == true
+    or type(damageNumbers) == "table" and (damageNumbers.Enabled == true or damageNumbers.RemoveGameNumbers == true)
+arg._replicateBinding:SetEnabled(enabled == true)
 end
 
 index2._HandleReplicate = function(arg, arg2)
-if arg2.EnumName ~= "DamageNumberEffect" then
+if type(arg2) ~= "table" or arg2.EnumName ~= "DamageNumberEffect" then
 return
 end
-local inner = arg._playerContext.Inner
-if inner == nil then
+local inner = arg._playerContext ~= nil and arg._playerContext.Inner or nil
+local fighterState = inner ~= nil and inner.FighterState or nil
+if fighterState == nil or arg2.ObjectId ~= fighterState.ObjectId then
 return
 end
 
-if arg2.ObjectId ~= inner.FighterState.ObjectId then
-return
-end
 local args = arg2.Args
-local parent = args[1].Parent
-if parent == nil then
-return
+if type(args) ~= "table" then return end
+local hitRoot = args[1]
+local hitDamage = args[2]
+if hitRoot == nil or type(hitDamage) ~= "number" then return end
+local okParent, parent = pcall(function() return hitRoot.Parent end)
+if not okParent or parent == nil then return end
+
+local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
+local damageNumbers = type(playerHit) == "table" and playerHit.DamageNumbers or nil
+local showDamageNumbers = type(damageNumbers) == "table" and damageNumbers.Enabled == true
+local removeGameNumbers = type(damageNumbers) == "table" and damageNumbers.RemoveGameNumbers == true
+if showDamageNumbers and (arg._damageGui == nil or arg._damageGui.Parent == nil) then
+    local okGui, replacementGui = pcall(createDamageNumbersGui)
+    if okGui and replacementGui ~= nil then
+        arg._damageGui = replacementGui
+    end
 end
-arg:_HandleHit(args[2], args[v86[155]] == true and "Head" or "Body", parent)
+local customOverlayReady = false
+if showDamageNumbers then
+    local okOverlay, overlayReady = pcall(function()
+        return arg._damageGui ~= nil and arg._damageGui.Parent ~= nil
+    end)
+    customOverlayReady = okOverlay and overlayReady == true
+end
+if customOverlayReady or removeGameNumbers then
+    -- Block the original game number only when a replacement is visible or removal was requested.
+    arg2.Block = true
+end
+
+local isHeadshot = args[v86[155]] == true
+if customOverlayReady then
+    local okPosition, worldPosition = pcall(function()
+        return hitRoot.Position + Vector3.new(0, isHeadshot and 2.6 or 2.1, 0)
+    end)
+    if okPosition and worldPosition ~= nil then
+        arg:_SpawnDamageNumber(hitDamage, worldPosition)
+    end
+end
+
+if type(playerHit) == "table" and playerHit.Enabled == true then
+    arg:_HandleHit(hitDamage, isHeadshot and "Head" or "Body", parent)
+end
+end
+
+index2._SpawnDamageNumber = function(arg, damage, worldPosition)
+    local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
+    local cfg = type(playerHit) == "table" and playerHit.DamageNumbers or nil
+    if type(cfg) ~= "table" or cfg.Enabled ~= true or typeof(worldPosition) ~= "Vector3" then
+        return
+    end
+    local camera = workspace.CurrentCamera
+    local gui = arg._damageGui
+    if camera == nil or gui == nil or gui.Parent == nil then return end
+
+    local okProjection, screenPoint, onScreen = pcall(function()
+        local point, visible = camera:WorldToViewportPoint(worldPosition)
+        return point, visible
+    end)
+    if not okProjection or not onScreen or screenPoint == nil or screenPoint.Z <= 0 then return end
+
+    local amount = tonumber(damage)
+    if amount == nil or amount ~= amount or amount == math.huge or amount == -math.huge then return end
+    local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
+    local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 210, 90)
+    local font = Enum.Font.GothamBold
+    local okFont, requestedFont = pcall(function()
+        return Enum.Font[cfg.Font]
+    end)
+    if okFont and requestedFont ~= nil then font = requestedFont end
+
+    local textSize = math.clamp(tonumber(cfg.TextSize) or 18, 10, 40)
+    local duration = math.clamp(tonumber(cfg.Duration) or 0.8, 0.2, 3)
+    local rise = math.clamp(tonumber(cfg.Rise) or 42, 0, 120)
+    local colorType = cfg.ColorType
+    local label = Instance.new("TextLabel")
+    label.Name = "DamageNumber"
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.fromOffset(140, math.max(26, textSize + 8))
+    label.AnchorPoint = Vector2.new(0.5, 0.5)
+    label.Position = UDim2.fromOffset(screenPoint.X, screenPoint.Y)
+    label.Font = font
+    label.TextSize = textSize
+    label.Text = "-" .. tostring(math.floor(amount + 0.5))
+    label.TextStrokeTransparency = 1
+    label.TextColor3 = color1
+    label.ZIndex = 10
+    label.Parent = gui
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1.5
+    stroke.Color = Color3.new(0, 0, 0)
+    stroke.Transparency = 0.15
+    stroke.LineJoinMode = Enum.LineJoinMode.Round
+    stroke.Parent = label
+
+    local scale = Instance.new("UIScale")
+    scale.Scale = 0.5
+    scale.Parent = label
+
+    if colorType == "Gradient" then
+        local gradient = Instance.new("UIGradient")
+        gradient.Color = ColorSequence.new(color1, color2)
+        gradient.Rotation = 90
+        gradient.Parent = label
+        label.TextColor3 = Color3.new(1, 1, 1)
+    end
+
+    local startX, startY = screenPoint.X, screenPoint.Y
+    local jitter = math.random(-14, 14)
+    local startedAt = os.clock()
+    local record = { Label = label, Connection = nil }
+    local function cleanup()
+        if record.Connection ~= nil then
+            record.Connection:Disconnect()
+            record.Connection = nil
+        end
+        pcall(function() label:Destroy() end)
+        for index = #arg._damageNumbers, 1, -1 do
+            if arg._damageNumbers[index] == record then
+                table.remove(arg._damageNumbers, index)
+                break
+            end
+        end
+    end
+
+    record.Connection = _RunService.RenderStepped:Connect(function()
+        if label.Parent == nil then
+            cleanup()
+            return
+        end
+        local elapsed = os.clock() - startedAt
+        local t = elapsed / duration
+        if t >= 1 then
+            cleanup()
+            return
+        end
+        t = math.clamp(t, 0, 1)
+        local eased = 1 - (1 - t) * (1 - t) * (1 - t)
+        if colorType == "Rainbow" then
+            label.TextColor3 = Color3.fromHSV((os.clock() * 0.6) % 1, 0.75, 1)
+        end
+        local scaleValue
+        if t < 0.16 then
+            scaleValue = 0.5 + (t / 0.16) * 0.62
+        else
+            scaleValue = 1.12 - ((t - 0.16) / 0.84) * 0.12
+        end
+        scale.Scale = scaleValue
+        local fade = t < 0.55 and 0 or (t - 0.55) / 0.45
+        label.Position = UDim2.fromOffset(startX + jitter * eased, startY - rise * eased)
+        label.TextTransparency = fade
+        stroke.Transparency = 0.15 + 0.85 * fade
+    end)
+    table.insert(arg._damageNumbers, record)
 end
 
 index2._HandleHit = function(arg, arg2, arg3, arg4)
@@ -59182,6 +59402,14 @@ index2.Destroy = function(arg)
 for _, v124 in arg._chams, nil, nil do
 v124:Destroy()
 end
+
+for index = #arg._damageNumbers, 1, -1 do
+    local record = arg._damageNumbers[index]
+    if record.Connection ~= nil then pcall(function() record.Connection:Disconnect() end) end
+    if record.Label ~= nil then pcall(function() record.Label:Destroy() end) end
+    arg._damageNumbers[index] = nil
+end
+if arg._damageGui ~= nil then pcall(function() arg._damageGui:Destroy() end) end
 
 table.clear(arg._chams)
 arg._errorReporter:Destroy()
@@ -65497,7 +65725,60 @@ return ib.c
 end
 end
 do
-local function fn35()local I= tbl17 .a8(); tbl17 .aE(); tbl17 .hN();return function(l,W,N)local P=W:AddSection({Title="Hit Feedback",Side="left"});P:AddToggle({Label="Enable Hit Feedback",Config={"PlayerHit","Enabled"}});P:AddDivider({Label="Sound"});local a,e=P:AddGroup({Source=P:AddToggle({Label="Play Hit Sound",Config={"PlayerHit","Sound","Enabled"}})}),l.SfxSoundStorage:GetNames();local c=a:AddDropdown({Label="Headshot Sound",Options=e,Config={"PlayerHit","Sound","HeadName"}});c:Connect(l.SfxSoundStorage.Changed,function(E)c:SetOptions(E);end);a:AddSlider({Label="Headshot Volume",Min=0.1,Max=10,Step=0.1,Config={"PlayerHit","Sound","HeadVolume"}});a:AddSlider({Label="Headshot Pitch",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","Sound","HeadPitch"}});local c_148=a:AddDropdown({Label="Body Hit Sound",Options=e,Config={"PlayerHit","Sound","BodyName"}});c_148:Connect(l.SfxSoundStorage.Changed,function(e)c_148:SetOptions(e);end);a:AddSlider({Label="Body Hit Volume",Min=0.1,Max=10,Step=0.1,Config={"PlayerHit","Sound","BodyVolume"}});a:AddSlider({Label="Body Hit Pitch",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","Sound","BodyPitch"}});a:AddToggle({Label="Mute Game Hit Sound",Config={"PlayerHit","Sound","DisableGameSound"}});a:AddButton({Label="Manage Custom Sounds",OnClick=N});P:AddDivider({Label="Visual Chams"});l=P:AddToggle({Label="Enable Hit Chams",Config={"PlayerHit","Chams","Enabled"}});P:AddColor({Row=l.Row,Alpha=true,Config={"PlayerHit","Chams","Color"},Transparency={"PlayerHit","Chams","Transparency"},Animatable=true});N=P:AddGroup({Source=l});N:AddSlider({Label="Hit Chams Duration",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","Chams","Duration"}});N:AddDropdown({Label="Hit Chams Material",Options=I.Names,Config={"PlayerHit","Chams","Material"}});P:AddDivider({Label="Flash"});W=P:AddToggle({Label="Enable Hit Flash",Config={"PlayerHit","HitFlash","Enabled"}});P:AddColor({Row=W.Row,Config={"PlayerHit","HitFlash","Color"},Animatable=true});P:AddGroup({Source=W}):AddSlider({Label="Hit Flash Duration",Min=0.1,Max=3,Step=0.1,Config={"PlayerHit","HitFlash","Duration"}});P:AddDivider({Label="Notification"});P:AddGroup({Source=P:AddToggle({Label="Enable Hit Notification",Config={"PlayerHit","Notification","Enabled"}})}):AddTextBox({Label="Hit Notification Text",Config={"PlayerHit","Notification","Text"}});end;end
+local function fn35()
+    local I = tbl17.a8()
+    tbl17.aE()
+    tbl17.hN()
+    return function(l, W, N)
+        local P = W:AddSection({ Title = "Hit Feedback", Side = "left" })
+        P:AddToggle({ Label = "Enable Hit Feedback", Config = { "PlayerHit", "Enabled" } })
+
+        P:AddDivider({ Label = "Sound" })
+        local a, e = P:AddGroup({ Source = P:AddToggle({ Label = "Play Hit Sound", Config = { "PlayerHit", "Sound", "Enabled" } }) }), l.SfxSoundStorage:GetNames()
+        local c = a:AddDropdown({ Label = "Headshot Sound", Options = e, Config = { "PlayerHit", "Sound", "HeadName" } })
+        c:Connect(l.SfxSoundStorage.Changed, function(E) c:SetOptions(E) end)
+        a:AddSlider({ Label = "Headshot Volume", Min = 0.1, Max = 10, Step = 0.1, Config = { "PlayerHit", "Sound", "HeadVolume" } })
+        a:AddSlider({ Label = "Headshot Pitch", Min = 0.1, Max = 3, Step = 0.1, Config = { "PlayerHit", "Sound", "HeadPitch" } })
+        local c_148 = a:AddDropdown({ Label = "Body Hit Sound", Options = e, Config = { "PlayerHit", "Sound", "BodyName" } })
+        c_148:Connect(l.SfxSoundStorage.Changed, function() c_148:SetOptions(l.SfxSoundStorage:GetNames()) end)
+        a:AddSlider({ Label = "Body Hit Volume", Min = 0.1, Max = 10, Step = 0.1, Config = { "PlayerHit", "Sound", "BodyVolume" } })
+        a:AddSlider({ Label = "Body Hit Pitch", Min = 0.1, Max = 3, Step = 0.1, Config = { "PlayerHit", "Sound", "BodyPitch" } })
+        a:AddToggle({ Label = "Mute Game Hit Sound", Config = { "PlayerHit", "Sound", "DisableGameSound" } })
+        a:AddButton({ Label = "Manage Custom Sounds", OnClick = N })
+
+        P:AddDivider({ Label = "Visual Chams" })
+        l = P:AddToggle({ Label = "Enable Hit Chams", Config = { "PlayerHit", "Chams", "Enabled" } })
+        P:AddColor({ Row = l.Row, Alpha = true, Config = { "PlayerHit", "Chams", "Color" }, Transparency = { "PlayerHit", "Chams", "Transparency" }, Animatable = true })
+        N = P:AddGroup({ Source = l })
+        N:AddSlider({ Label = "Hit Chams Duration", Min = 0.1, Max = 3, Step = 0.1, Config = { "PlayerHit", "Chams", "Duration" } })
+        N:AddDropdown({ Label = "Hit Chams Material", Options = I.Names, Config = { "PlayerHit", "Chams", "Material" } })
+
+        P:AddDivider({ Label = "Flash" })
+        W = P:AddToggle({ Label = "Enable Hit Flash", Config = { "PlayerHit", "HitFlash", "Enabled" } })
+        P:AddColor({ Row = W.Row, Config = { "PlayerHit", "HitFlash", "Color" }, Animatable = true })
+        P:AddGroup({ Source = W }):AddSlider({ Label = "Hit Flash Duration", Min = 0.1, Max = 3, Step = 0.1, Config = { "PlayerHit", "HitFlash", "Duration" } })
+
+        P:AddDivider({ Label = "Damage Numbers" })
+        local damageToggle = P:AddToggle({ Label = "Enable Damage Numbers", Config = { "PlayerHit", "DamageNumbers", "Enabled" } })
+        P:AddColor({ Row = damageToggle.Row, Config = { "PlayerHit", "DamageNumbers", "Color1" }, Animatable = true })
+        P:AddColor({ Row = damageToggle.Row, Config = { "PlayerHit", "DamageNumbers", "Color2" }, Animatable = true })
+        P:AddToggle({ Label = "Remove Game Damage Numbers", Config = { "PlayerHit", "DamageNumbers", "RemoveGameNumbers" } })
+        local damageGroup = P:AddGroup({ Source = damageToggle })
+        damageGroup:AddDropdown({ Label = "Damage Number Color Type", Options = { "Gradient", "Solid", "Rainbow" }, Config = { "PlayerHit", "DamageNumbers", "ColorType" } })
+        damageGroup:AddDropdown({ Label = "Damage Number Font", Options = {
+            "GothamBold", "GothamBlack", "GothamMedium", "Gotham", "SourceSansBold", "SourceSansSemibold", "Code", "RobotoMono", "RobotoCondensed",
+            "Fantasy", "Arcade", "SciFi", "Cartoon", "Antique", "Highway", "Bangers", "Michroma", "LuckiestGuy", "PermanentMarker", "Creepster",
+            "FredokaOne", "DenkOne", "GrenzeGotisch", "SpecialElite", "Oswald", "Sarpanch", "TitilliumWeb", "Ubuntu", "JosefinSans", "Jura",
+            "Kalam", "IndieFlower", "PatrickHand", "AmaticSC", "Merriweather", "Nunito", "Fondamento", "Bodoni", "Garamond", "BuilderSansExtraBold",
+        }, Config = { "PlayerHit", "DamageNumbers", "Font" } })
+        damageGroup:AddSlider({ Label = "Damage Number Size", Min = 10, Max = 40, Config = { "PlayerHit", "DamageNumbers", "TextSize" } })
+        damageGroup:AddSlider({ Label = "Damage Number Rise", Min = 0, Max = 120, Config = { "PlayerHit", "DamageNumbers", "Rise" } })
+        damageGroup:AddSlider({ Label = "Damage Number Duration", Min = 0.2, Max = 3, Step = 0.05, Config = { "PlayerHit", "DamageNumbers", "Duration" } })
+
+        P:AddDivider({ Label = "Notification" })
+        P:AddGroup({ Source = P:AddToggle({ Label = "Enable Hit Notification", Config = { "PlayerHit", "Notification", "Enabled" } }) }):AddTextBox({ Label = "Hit Notification Text", Config = { "PlayerHit", "Notification", "Text" } })
+    end
+end
 
 tbl17.ic = function()
 local ic = tbl17.cache.ic
