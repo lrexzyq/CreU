@@ -2512,6 +2512,7 @@ CurrentVersion = arg.CurrentVersion,
 LegacyVersion = arg.LegacyVersion,
 SavePath = arg.SavePath,
 Migrations = arg.Migrations,
+SkipMigrations = arg.SkipMigrations == true,
 Serialize = arg.Serialize,
 Deserialize = arg.Deserialize,
 }),
@@ -22489,7 +22490,7 @@ return bj.c
 end
 end
 do
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoInspectAnimation=false,NoAttackAnimation=false,NoAimAnimation=false,NoChargeAnimation=false,NoThrowAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoInspectAnimation=false,NoAttackAnimation=false,NoAimAnimation=false,NoChargeAnimation=false,NoThrowAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,Style="Arcane Orbit",ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -59066,6 +59067,34 @@ return tostring(math.round(arg * 10) / v124)
 end
 
 local function createDamageNumbersGui()
+    local containers = {}
+    local seen = {}
+    local function addContainer(container)
+        if container ~= nil and not seen[container] then
+            seen[container] = true
+            table.insert(containers, container)
+        end
+    end
+
+    if type(gethui) == "function" then
+        local ok, parent = pcall(gethui)
+        if ok then addContainer(parent) end
+    end
+    pcall(function() addContainer(game:GetService("CoreGui")) end)
+    pcall(function()
+        local players = game:GetService("Players")
+        local localPlayer = players and players.LocalPlayer
+        local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
+        addContainer(playerGui)
+    end)
+
+    for _, container in next, containers do
+        pcall(function()
+            local previous = container:FindFirstChild("CrefyDamageNumbers")
+            if previous ~= nil then previous:Destroy() end
+        end)
+    end
+
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "CrefyDamageNumbers"
     screenGui.ResetOnSpawn = false
@@ -59073,24 +59102,19 @@ local function createDamageNumbersGui()
     screenGui.DisplayOrder = 500
 
     local parented = false
-    if type(gethui) == "function" then
-        local okParent, parent = pcall(gethui)
-        if okParent and parent ~= nil then
-            parented = pcall(function() screenGui.Parent = parent end)
+    for _, container in next, containers do
+        if not parented then
+            local okParent, actualParent = pcall(function()
+                screenGui.Parent = container
+                return screenGui.Parent
+            end)
+            parented = okParent and actualParent ~= nil
         end
     end
+
     if not parented then
-        local okCore = pcall(function()
-            screenGui.Parent = game:GetService("CoreGui")
-        end)
-        parented = okCore and screenGui.Parent ~= nil
-    end
-    if not parented then
-        pcall(function()
-            local localPlayer = game:GetService("Players").LocalPlayer
-            local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
-            if playerGui ~= nil then screenGui.Parent = playerGui end
-        end)
+        pcall(function() screenGui:Destroy() end)
+        return nil
     end
     return screenGui
 end
@@ -59111,6 +59135,8 @@ _hitFlash = PlayerHit:Add(v120.new()),
 _chams = {},
 _damageNumbers = {},
 _damageGui = createDamageNumbersGui(),
+_damageGuiRetryAt = 0,
+_damageSpawnWarnAt = 0,
 _headSoundId = nil,
 _bodySoundId = nil,
 }
@@ -59205,32 +59231,46 @@ local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit o
 local damageNumbers = type(playerHit) == "table" and playerHit.DamageNumbers or nil
 local showDamageNumbers = type(damageNumbers) == "table" and damageNumbers.Enabled == true
 local removeGameNumbers = type(damageNumbers) == "table" and damageNumbers.RemoveGameNumbers == true
-if showDamageNumbers and (arg._damageGui == nil or arg._damageGui.Parent == nil) then
-    local okGui, replacementGui = pcall(createDamageNumbersGui)
-    if okGui and replacementGui ~= nil then
-        arg._damageGui = replacementGui
-    end
-end
 local customOverlayReady = false
-if showDamageNumbers then
+if arg._damageGui ~= nil then
     local okOverlay, overlayReady = pcall(function()
-        return arg._damageGui ~= nil and arg._damageGui.Parent ~= nil
+        return arg._damageGui.Parent ~= nil
     end)
     customOverlayReady = okOverlay and overlayReady == true
 end
-if customOverlayReady or removeGameNumbers then
-    -- Block the original game number only when a replacement is visible or removal was requested.
-    arg2.Block = true
+if showDamageNumbers and not customOverlayReady then
+    local now = os.clock()
+    if now - (arg._damageGuiRetryAt or 0) >= 2 then
+        arg._damageGuiRetryAt = now
+        local okGui, replacementGui = pcall(createDamageNumbersGui)
+        if okGui then
+            arg._damageGui = replacementGui
+            customOverlayReady = replacementGui ~= nil
+        end
+    end
 end
-
 local isHeadshot = args[v86[155]] == true
+local customNumberShown = false
 if customOverlayReady then
     local okPosition, worldPosition = pcall(function()
         return hitRoot.Position + Vector3.new(0, isHeadshot and 2.6 or 2.1, 0)
     end)
     if okPosition and worldPosition ~= nil then
-        arg:_SpawnDamageNumber(hitDamage, worldPosition)
+        local okSpawn, spawnResult = pcall(function()
+            return arg:_SpawnDamageNumber(hitDamage, worldPosition, isHeadshot)
+        end)
+        customNumberShown = okSpawn and spawnResult == true
+        if not okSpawn then
+            local now = os.clock()
+            if now - (arg._damageSpawnWarnAt or 0) >= 5 then
+                arg._damageSpawnWarnAt = now
+                warn("[DamageNumbers] spawn failed: " .. tostring(spawnResult))
+            end
+        end
     end
+end
+if customNumberShown or removeGameNumbers then
+    arg2.Block = true
 end
 
 if type(playerHit) == "table" and playerHit.Enabled == true then
@@ -59238,116 +59278,248 @@ if type(playerHit) == "table" and playerHit.Enabled == true then
 end
 end
 
-index2._SpawnDamageNumber = function(arg, damage, worldPosition)
+index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
     local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
     local cfg = type(playerHit) == "table" and playerHit.DamageNumbers or nil
     if type(cfg) ~= "table" or cfg.Enabled ~= true or typeof(worldPosition) ~= "Vector3" then
-        return
+        return false
     end
+
     local camera = workspace.CurrentCamera
     local gui = arg._damageGui
-    if camera == nil or gui == nil or gui.Parent == nil then return end
+    if camera == nil or gui == nil then return false end
 
     local okProjection, screenPoint, onScreen = pcall(function()
         local point, visible = camera:WorldToViewportPoint(worldPosition)
         return point, visible
     end)
-    if not okProjection or not onScreen or screenPoint == nil or screenPoint.Z <= 0 then return end
+    if not okProjection or not onScreen or screenPoint == nil or screenPoint.Z <= 0 then
+        return false
+    end
 
     local amount = tonumber(damage)
-    if amount == nil or amount ~= amount or amount == math.huge or amount == -math.huge then return end
+    if amount == nil or amount ~= amount or amount == math.huge or amount == -math.huge then
+        return false
+    end
+
     local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
     local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 210, 90)
     local font = Enum.Font.GothamBold
-    local okFont, requestedFont = pcall(function()
-        return Enum.Font[cfg.Font]
-    end)
+    local okFont, requestedFont = pcall(function() return Enum.Font[cfg.Font] end)
     if okFont and requestedFont ~= nil then font = requestedFont end
 
     local textSize = math.clamp(tonumber(cfg.TextSize) or 18, 10, 40)
     local duration = math.clamp(tonumber(cfg.Duration) or 0.8, 0.2, 3)
     local rise = math.clamp(tonumber(cfg.Rise) or 42, 0, 120)
     local colorType = cfg.ColorType
-    local label = Instance.new("TextLabel")
-    label.Name = "DamageNumber"
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.fromOffset(140, math.max(26, textSize + 8))
-    label.AnchorPoint = Vector2.new(0.5, 0.5)
-    label.Position = UDim2.fromOffset(screenPoint.X, screenPoint.Y)
-    label.Font = font
-    label.TextSize = textSize
-    label.Text = "-" .. tostring(math.floor(amount + 0.5))
-    label.TextStrokeTransparency = 1
-    label.TextColor3 = color1
-    label.ZIndex = 10
-    label.Parent = gui
+    local style = cfg.Style
+    local allowedStyles = {
+        ["Classic Float"] = true,
+        ["Critical Burst"] = true,
+        ["Neon Rift"] = true,
+        ["Glitch Echo"] = true,
+        ["Arcane Orbit"] = true,
+        ["Void Shatter"] = true,
+        ["Matrix Rain"] = true,
+        ["Celestial Sigil"] = true,
+    }
+    if not allowedStyles[style] then style = "Arcane Orbit" end
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 1.5
-    stroke.Color = Color3.new(0, 0, 0)
-    stroke.Transparency = 0.15
-    stroke.LineJoinMode = Enum.LineJoinMode.Round
-    stroke.Parent = label
+    local TweenService = game:GetService("TweenService")
+    local Debris = game:GetService("Debris")
+    local startX, startY = screenPoint.X, screenPoint.Y
+    local amountText = (isHeadshot == true and "✦ " or "") .. "-" .. tostring(math.floor(amount + 0.5))
+    local objects = {}
+    local tweens = {}
 
+    local function trackObject(object)
+        table.insert(objects, object)
+        pcall(function() Debris:AddItem(object, duration + 0.18) end)
+        return object
+    end
+
+    local function makeText(text, x, y, size, color, rotation, zIndex, chosenFont)
+        local label = Instance.new("TextLabel")
+        label.Name = "CrefyDamageEffect"
+        label.BackgroundTransparency = 1
+        label.BorderSizePixel = 0
+        label.AnchorPoint = Vector2.new(0.5, 0.5)
+        label.Size = UDim2.fromOffset(math.max(140, size * 10.5), size * 2.2)
+        label.Position = UDim2.fromOffset(x, y)
+        label.Font = chosenFont or font
+        label.TextSize = size
+        label.Text = text
+        label.TextColor3 = color or color1
+        label.TextTransparency = 0
+        label.TextStrokeTransparency = 0.55
+        label.TextStrokeColor3 = Color3.new(0, 0, 0)
+        label.Rotation = rotation or 0
+        label.ZIndex = zIndex or 10
+        label.Parent = gui
+        trackObject(label)
+        return label
+    end
+
+    local function addStroke(label, color, thickness, transparency)
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = color or Color3.new(0, 0, 0)
+        stroke.Thickness = thickness or 1.5
+        stroke.Transparency = transparency or 0.15
+        stroke.LineJoinMode = Enum.LineJoinMode.Round
+        stroke.Parent = label
+        trackObject(stroke)
+        return stroke
+    end
+
+    local function play(object, tweenDuration, goals, easingStyle, delayTime)
+        local okTween, tween = pcall(function()
+            local info = TweenInfo.new(
+                math.max(0.05, tweenDuration),
+                easingStyle or Enum.EasingStyle.Quint,
+                Enum.EasingDirection.Out,
+                0,
+                false,
+                delayTime or 0
+            )
+            return TweenService:Create(object, info, goals)
+        end)
+        if okTween and tween ~= nil then
+            table.insert(tweens, tween)
+            pcall(function() tween:Play() end)
+        end
+        return okTween
+    end
+
+    local function decorate(text, dx, dy, size, color, rotation, endDx, endDy, endRotation)
+        local glyph = makeText(text, startX + dx, startY + dy, size, color, rotation, 11, Enum.Font.GothamBlack)
+        glyph.TextStrokeTransparency = 0.25
+        play(glyph, duration, {
+            Position = UDim2.fromOffset(startX + (endDx or dx * 1.8), startY - rise * 0.55 + (endDy or dy * 1.8)),
+            Rotation = endRotation or ((rotation or 0) + 150),
+            TextTransparency = 1,
+            TextStrokeTransparency = 1,
+        }, Enum.EasingStyle.Quint)
+        return glyph
+    end
+
+    local mainText = amountText
+    if style == "Critical Burst" then
+        mainText = "✦ " .. amountText .. " ✦"
+    elseif style == "Neon Rift" then
+        mainText = "⟦ " .. amountText .. " ⟧"
+    elseif style == "Glitch Echo" then
+        mainText = "// " .. amountText .. " //"
+    elseif style == "Arcane Orbit" then
+        mainText = "⟡ " .. amountText .. " ⟡"
+    elseif style == "Void Shatter" then
+        mainText = "◆ " .. amountText .. " ◆"
+    elseif style == "Matrix Rain" then
+        mainText = "[ " .. amountText .. " ]"
+    elseif style == "Celestial Sigil" then
+        mainText = "☼ " .. amountText .. " ☽"
+    end
+
+    if style == "Neon Rift" or style == "Glitch Echo" then
+        local ghostA = makeText(mainText, startX - 4, startY + 1, textSize, color2, -4, 9)
+        ghostA.TextTransparency = 0.22
+        play(ghostA, duration * 0.72, {
+            Position = UDim2.fromOffset(startX - (style == "Glitch Echo" and 21 or 10), startY - rise * 0.8),
+            Rotation = style == "Glitch Echo" and -12 or -7,
+            TextTransparency = 1,
+            TextStrokeTransparency = 1,
+        }, Enum.EasingStyle.Quart)
+        local ghostB = makeText(mainText, startX + 4, startY - 1, textSize, color1, 4, 9)
+        ghostB.TextTransparency = 0.28
+        play(ghostB, duration * 0.78, {
+            Position = UDim2.fromOffset(startX + (style == "Glitch Echo" and 21 or 10), startY - rise * 0.65),
+            Rotation = style == "Glitch Echo" and 12 or 7,
+            TextTransparency = 1,
+            TextStrokeTransparency = 1,
+        }, Enum.EasingStyle.Quart)
+    end
+
+    local main = makeText(mainText, startX, startY, textSize + ((style == "Critical Burst" or isHeadshot == true) and 4 or 0), color1, 0, 12)
+    main.TextStrokeTransparency = 1
+    local mainStroke = addStroke(main, color2, style == "Neon Rift" and 2.5 or 1.6, 0.08)
     local scale = Instance.new("UIScale")
-    scale.Scale = 0.5
-    scale.Parent = label
+    scale.Scale = 0.35
+    scale.Parent = main
+    trackObject(scale)
 
     if colorType == "Gradient" then
         local gradient = Instance.new("UIGradient")
         gradient.Color = ColorSequence.new(color1, color2)
         gradient.Rotation = 90
-        gradient.Parent = label
-        label.TextColor3 = Color3.new(1, 1, 1)
+        gradient.Parent = main
+        trackObject(gradient)
+    elseif colorType == "Rainbow" then
+        local gradient = Instance.new("UIGradient")
+        gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 90)),
+            ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 190, 65)),
+            ColorSequenceKeypoint.new(0.40, Color3.fromRGB(120, 255, 130)),
+            ColorSequenceKeypoint.new(0.60, Color3.fromRGB(70, 220, 255)),
+            ColorSequenceKeypoint.new(0.80, Color3.fromRGB(160, 110, 255)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 210)),
+        })
+        gradient.Parent = main
+        trackObject(gradient)
+        play(gradient, duration, { Rotation = 360 }, Enum.EasingStyle.Linear)
     end
 
-    local startX, startY = screenPoint.X, screenPoint.Y
-    local jitter = math.random(-14, 14)
-    local startedAt = os.clock()
-    local record = { Label = label, Connection = nil }
-    local function cleanup()
-        if record.Connection ~= nil then
-            record.Connection:Disconnect()
-            record.Connection = nil
-        end
-        pcall(function() label:Destroy() end)
-        for index = #arg._damageNumbers, 1, -1 do
-            if arg._damageNumbers[index] == record then
-                table.remove(arg._damageNumbers, index)
-                break
+    play(scale, 0.22, { Scale = style == "Critical Burst" and 1.32 or 1.08 }, Enum.EasingStyle.Back)
+    play(main, duration, {
+        Position = UDim2.fromOffset(startX + math.random(-12, 12), startY - rise),
+        TextTransparency = 1,
+        TextStrokeTransparency = 1,
+        Rotation = style == "Glitch Echo" and math.random(-7, 7) or math.random(-3, 3),
+    }, Enum.EasingStyle.Quint)
+    play(mainStroke, duration * 0.72, { Transparency = 1 }, Enum.EasingStyle.Quad, duration * 0.28)
+    play(scale, duration * 0.75, { Scale = 0.82 }, Enum.EasingStyle.Quad, 0.22)
+
+    if style == "Critical Burst" then
+        decorate("✦", -48, -8, textSize, color2, -25, -82, -35, -130)
+        decorate("✦", 48, -8, textSize, color2, 25, 82, -35, 130)
+        decorate("·", -30, 20, textSize, color1, 0, -60, 30, -80)
+        decorate("·", 30, 20, textSize, color1, 0, 60, 30, 80)
+    elseif style == "Arcane Orbit" then
+        decorate("◈", -43, -15, textSize * 0.78, color2, -30, -68, -48, -210)
+        decorate("⌬", 43, -15, textSize * 0.78, color1, 30, 68, -48, 210)
+        decorate("✧", -30, 22, textSize * 0.72, color2, 0, -58, 54, -160)
+        decorate("✧", 30, 22, textSize * 0.72, color1, 0, 58, 54, 160)
+    elseif style == "Void Shatter" then
+        decorate("◆", -38, -12, textSize * 0.82, color2, -20, -92, -52, -170)
+        decorate("◇", 38, -12, textSize * 0.82, color1, 20, 92, -52, 170)
+        decorate("▪", -24, 20, textSize * 0.65, color2, 0, -72, 62, -220)
+        decorate("▪", 24, 20, textSize * 0.65, color1, 0, 72, 62, 220)
+        decorate("·", 0, -28, textSize * 0.6, color2, 0, 0, -90, 180)
+    elseif style == "Matrix Rain" then
+        decorate("0", -54, -18, textSize * 0.65, color2, 0, -70, -68, 0)
+        decorate("1", -32, -29, textSize * 0.65, color1, 0, -45, -90, 0)
+        decorate("1", 36, -26, textSize * 0.65, color2, 0, 50, -86, 0)
+        decorate("0", 55, -12, textSize * 0.65, color1, 0, 78, -60, 0)
+    elseif style == "Celestial Sigil" then
+        decorate("☄", -50, -12, textSize * 0.8, color2, -35, -90, -70, -170)
+        decorate("✶", 50, -12, textSize * 0.8, color1, 35, 90, -70, 170)
+        decorate("·", -28, 25, textSize * 0.75, color2, 0, -58, 62, -120)
+        decorate("·", 28, 25, textSize * 0.75, color1, 0, 58, 62, 120)
+    end
+
+    while #arg._damageNumbers >= 24 do
+        local oldest = table.remove(arg._damageNumbers, 1)
+        if oldest ~= nil then
+            for _, object in next, oldest.Objects or {} do
+                pcall(function() object:Destroy() end)
+            end
+            for _, tween in next, oldest.Tweens or {} do
+                pcall(function() tween:Cancel() end)
             end
         end
     end
 
-    record.Connection = _RunService.RenderStepped:Connect(function()
-        if label.Parent == nil then
-            cleanup()
-            return
-        end
-        local elapsed = os.clock() - startedAt
-        local t = elapsed / duration
-        if t >= 1 then
-            cleanup()
-            return
-        end
-        t = math.clamp(t, 0, 1)
-        local eased = 1 - (1 - t) * (1 - t) * (1 - t)
-        if colorType == "Rainbow" then
-            label.TextColor3 = Color3.fromHSV((os.clock() * 0.6) % 1, 0.75, 1)
-        end
-        local scaleValue
-        if t < 0.16 then
-            scaleValue = 0.5 + (t / 0.16) * 0.62
-        else
-            scaleValue = 1.12 - ((t - 0.16) / 0.84) * 0.12
-        end
-        scale.Scale = scaleValue
-        local fade = t < 0.55 and 0 or (t - 0.55) / 0.45
-        label.Position = UDim2.fromOffset(startX + jitter * eased, startY - rise * eased)
-        label.TextTransparency = fade
-        stroke.Transparency = 0.15 + 0.85 * fade
-    end)
+    local record = { Objects = objects, Tweens = tweens }
     table.insert(arg._damageNumbers, record)
+    return true
 end
 
 index2._HandleHit = function(arg, arg2, arg3, arg4)
@@ -59405,8 +59577,14 @@ end
 
 for index = #arg._damageNumbers, 1, -1 do
     local record = arg._damageNumbers[index]
-    if record.Connection ~= nil then pcall(function() record.Connection:Disconnect() end) end
-    if record.Label ~= nil then pcall(function() record.Label:Destroy() end) end
+    if record ~= nil then
+        for _, tween in next, record.Tweens or {} do
+            pcall(function() tween:Cancel() end)
+        end
+        for _, object in next, record.Objects or {} do
+            pcall(function() object:Destroy() end)
+        end
+    end
     arg._damageNumbers[index] = nil
 end
 if arg._damageGui ~= nil then pcall(function() arg._damageGui:Destroy() end) end
@@ -65764,6 +65942,10 @@ local function fn35()
         P:AddColor({ Row = damageToggle.Row, Config = { "PlayerHit", "DamageNumbers", "Color2" }, Animatable = true })
         P:AddToggle({ Label = "Remove Game Damage Numbers", Config = { "PlayerHit", "DamageNumbers", "RemoveGameNumbers" } })
         local damageGroup = P:AddGroup({ Source = damageToggle })
+        damageGroup:AddDropdown({ Label = "Damage Visual Style", Options = {
+            "Classic Float", "Critical Burst", "Neon Rift", "Glitch Echo",
+            "Arcane Orbit", "Void Shatter", "Matrix Rain", "Celestial Sigil",
+        }, Config = { "PlayerHit", "DamageNumbers", "Style" } })
         damageGroup:AddDropdown({ Label = "Damage Number Color Type", Options = { "Gradient", "Solid", "Rainbow" }, Config = { "PlayerHit", "DamageNumbers", "ColorType" } })
         damageGroup:AddDropdown({ Label = "Damage Number Font", Options = {
             "GothamBold", "GothamBlack", "GothamMedium", "Gotham", "SourceSansBold", "SourceSansSemibold", "Code", "RobotoMono", "RobotoCondensed",
