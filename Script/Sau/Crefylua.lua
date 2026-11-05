@@ -33949,6 +33949,34 @@ local function ragebotOwnsCameraRotation()
 end
 
 local nextHookRestoreWarningAt = 0
+local riotSetReadonly = K.fn("setreadonly")
+local riotIsReadonly = K.fn("isreadonly")
+local function riotWriteEncoderEntry(target, replacement, rollback)
+    if type(target) ~= "table" or type(replacement) ~= "function" then
+        return false, "invalid encoder table or replacement"
+    end
+    local restoreReadonly = false
+    if type(riotIsReadonly) == "function" and type(riotSetReadonly) == "function" then
+        local readOk, isReadonly = pcall(riotIsReadonly, target)
+        if readOk and isReadonly == true then
+            local writableOk = pcall(riotSetReadonly, target, false)
+            if not writableOk then return false, "could not make encoder table writable" end
+            restoreReadonly = true
+        end
+    end
+    local writeOk, writeError = pcall(rawset, target, "EncodeCameraRotation", replacement)
+    if restoreReadonly then
+        local readonlyOk = pcall(riotSetReadonly, target, true)
+        if not readonlyOk then
+            pcall(riotSetReadonly, target, false)
+            if writeOk then pcall(rawset, target, "EncodeCameraRotation", rollback) end
+            pcall(riotSetReadonly, target, true)
+            return false, "could not restore encoder table readonly state"
+        end
+    end
+    return writeOk, writeError
+end
+
 local function restoreReplicationHook()
     local target, wrapper, original = hookTarget, hookWrapper, hookOriginal
     if target ~= nil and wrapper ~= nil and original ~= nil then
@@ -33959,7 +33987,7 @@ local function restoreReplicationHook()
             return false
         end
         if current == wrapper then
-            local okWrite = pcall(rawset, target, "EncodeCameraRotation", original)
+            local okWrite = riotWriteEncoderEntry(target, original, wrapper)
             local okVerify, restored = pcall(rawget, target, "EncodeCameraRotation")
             if not okWrite or not okVerify or restored ~= original then
 
@@ -34074,7 +34102,7 @@ local function installReplicationHook()
         end
         return original(...)
     end
-    local okWrite = pcall(rawset, target, "EncodeCameraRotation", wrapper)
+    local okWrite = riotWriteEncoderEntry(target, wrapper, original)
     if not okWrite then return false end
 
     hookTarget, hookOriginal, hookWrapper = target, original, wrapper
@@ -34272,11 +34300,6 @@ local function findNearest(triggerDistance, preferredCharacter)
             end
             local stateModel = fighterState.Model
             if stateModel ~= nil and stateModel ~= character then return nil, nil end
-
-            local observer = fighter.ItemObserver
-            if observer == nil or not riotObserverHasRiotShield(observer) then
-                return nil, nil
-            end
 
             local distance = (stateRoot.Position - myPosition).Magnitude
             if distance ~= distance or distance == math.huge or distance == -math.huge
@@ -34547,12 +34570,17 @@ local function riotHeartbeatStep()
         return
     end
 
-    if typeof(targetChar) ~= "Instance" or not targetChar:IsA("Model") or targetChar.Parent == nil then
-        riotClearActiveTarget()
-        return
-    end
-    local targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
-    if targetHumanoid == nil or targetHumanoid.Health <= 0 then
+    local targetValid = false
+    local targetHumanoid = nil
+    pcall(function()
+        targetValid = typeof(targetChar) == "Instance"
+            and targetChar:IsA("Model") and targetChar.Parent ~= nil
+        if targetValid then
+            targetHumanoid = targetChar:FindFirstChildOfClass("Humanoid")
+            targetValid = targetHumanoid ~= nil and targetHumanoid.Health > 0
+        end
+    end)
+    if not targetValid then
         riotClearActiveTarget()
         return
     end
@@ -34563,33 +34591,62 @@ local function riotHeartbeatStep()
         return
     end
 
-    local controller = riotState.characterController
-    if controller == nil then
-        local context = riotState.innerContext
-        controller = context ~= nil and context.CharacterController or nil
-    end
-    if controller == nil then
-        riotClearActiveTarget()
-        return
+    local targetAimPart = targetRoot
+    pcall(function()
+        local fighters = type(riotState.fighters) == "table" and riotState.fighters or nil
+        local enemies = fighters ~= nil and fighters.EnemyByPlayer or nil
+        if type(enemies) == "table" then
+            for player, fighter in pairs(enemies) do
+                if player ~= nil and player.Character == targetChar and fighter ~= nil then
+                    local fighterCharacter = fighter.Character
+                    local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
+                    local hitboxHead = fighterState ~= nil and fighterState.HitboxHead or nil
+                    if isLiveBasePart(hitboxHead, targetChar) then
+                        targetAimPart = hitboxHead
+                    end
+                    break
+                end
+            end
+        end
+        if targetAimPart == targetRoot then
+            local head = targetChar:FindFirstChild("Head")
+            if isLiveBasePart(head, targetChar) then targetAimPart = head end
+        end
+    end)
+    if not isLiveBasePart(targetAimPart, targetChar) then
+        targetAimPart = targetRoot
     end
 
+    local controller = riotState.characterController
+    if controller == nil then
+        controller = context ~= nil and context.CharacterController or nil
+    end
     local originPosition = getRiotOriginPosition()
-    local originOk, serverOrigin = pcall(function()
-        return controller:GetServerHeadOrigin()
-    end)
-    if originOk and typeof(serverOrigin) == "CFrame" then
-        originPosition = serverOrigin.Position
+    if controller ~= nil then
+        local originOk, serverOrigin = pcall(function()
+            return controller:GetServerHeadOrigin()
+        end)
+        if originOk and typeof(serverOrigin) == "CFrame" then
+            originPosition = serverOrigin.Position
+        end
     end
     if typeof(originPosition) ~= "Vector3" then
         riotClearActiveTarget()
         return
     end
-    local direction = targetRoot.Position - originPosition
+
+    local direction = targetAimPart.Position - originPosition
+    local directionMagnitude = direction.Magnitude
+    if directionMagnitude ~= directionMagnitude or directionMagnitude == math.huge
+        or directionMagnitude <= 1e-4 then
+        riotClearActiveTarget()
+        return
+    end
+
     local horizontalMagnitude = math.sqrt(direction.X * direction.X + direction.Z * direction.Z)
     local pitch = math.atan2(direction.Y, horizontalMagnitude)
     local yaw = math.atan2(-direction.X, -direction.Z)
-    if direction.Magnitude < 1e-4
-        or pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge
+    if pitch ~= pitch or yaw ~= yaw or pitch == math.huge or pitch == -math.huge
         or yaw == math.huge or yaw == -math.huge then
         riotClearActiveTarget()
         return
@@ -34600,53 +34657,110 @@ local function riotHeartbeatStep()
     local targetChanged = riotState.targetCharacter ~= targetChar
     if targetChanged or type(riotState.filteredPitch) ~= "number"
         or type(riotState.filteredYaw) ~= "number" then
-        riotState.lastAngleAt = 0
         riotState.filteredPitch = targetPitch
         riotState.filteredYaw = targetYaw
         riotState.lastAngleSampleAt = now
     else
         local sampleAt = tonumber(riotState.lastAngleSampleAt) or now
         local sampleDt = math.clamp(now - sampleAt, 0, 0.1)
-        if sampleDt > 0 then
-            local alpha = 1 - math.exp(-sampleDt / 0.035)
-            local yawDelta = (targetYaw - riotState.filteredYaw + 180) % 360 - 180
+        local yawDelta = (targetYaw - riotState.filteredYaw + 180) % 360 - 180
+        if math.abs(yawDelta) >= 135 or sampleDt >= 0.12 then
+            riotState.filteredPitch = targetPitch
+            riotState.filteredYaw = targetYaw
+        elseif sampleDt > 0 then
+            local alpha = 1 - math.exp(-sampleDt / 0.025)
             riotState.filteredPitch += (targetPitch - riotState.filteredPitch) * alpha
             riotState.filteredYaw += yawDelta * alpha
         end
         riotState.lastAngleSampleAt = now
     end
+
     riotState.targetCharacter = targetChar
-    riotState.aimPart = targetRoot
-    if now - (tonumber(riotState.lastAngleAt) or 0) < FIRE_INTERVAL then
+    riotState.aimPart = targetAimPart
+
+    if hookInstalled then
+        local verifyOk, currentEncoder = false, nil
+        if hookTarget ~= nil then
+            verifyOk, currentEncoder = pcall(rawget, hookTarget, "EncodeCameraRotation")
+        end
+        if not verifyOk or currentEncoder ~= hookWrapper then
+            hookInstalled = false
+            riotState.hookInstalled = false
+        end
+    end
+    if not hookInstalled and now >= nextHookScanAt then
+        nextHookScanAt = now + 0.75
+        local installCallOk, installResult = pcall(installReplicationHook)
+        if not installCallOk or installResult ~= true then
+            if now >= nextHookWarningAt then
+                nextHookWarningAt = now + 5
+                warn("[AlwaysBackstab.Riot] Camera encoder hook unavailable; direct replication will continue while retrying.")
+            end
+        end
+    end
+
+    if riotRagebotHasPriority() then
+        silentActive = false
+        local stop = riotState.stop
+        if type(stop) == "function" then
+            stop()
+        else
+            riotClearActiveTarget()
+        end
+        return
+    end
+
+    local encoded = encodeByte(math.rad(riotState.filteredPitch)) .. encodeByte(math.rad(riotState.filteredYaw))
+    local encodedLengthOk, encodedCharacters = pcall(utf8.len, encoded)
+    if type(encoded) ~= "string" or not encodedLengthOk or encodedCharacters ~= 2 then
+        riotClearActiveTarget()
+        return
+    end
+
+    lastEncoded = encoded
+    riotState.lastEncoded = encoded
+    silentActive = hookInstalled == true
+
+    local sender = riotState.sendRagebotCamera
+    if type(sender) ~= "function" then
+        silentActive = false
+        riotState.active = false
+        local warningNow = os.clock()
+        if warningNow >= (riotState.nextFireWarningAt or 0) then
+            riotState.nextFireWarningAt = warningNow + 5
+            warn("[AlwaysBackstab.Riot] Camera replication sender is unavailable.")
+        end
+        return
+    end
+
+    local sendCallOk, sendOk, sentAt, didSend, sendFailure = pcall(sender, encoded)
+    if not sendCallOk or sendOk ~= true then
+        silentActive = false
+        riotState.active = false
+        local warningNow = os.clock()
+        if warningNow >= (riotState.nextFireWarningAt or 0) then
+            riotState.nextFireWarningAt = warningNow + 5
+            local reason = not sendCallOk and tostring(sendOk)
+                or (type(sendFailure) == "string" and sendFailure or "camera replication rejected")
+            warn("[AlwaysBackstab.Riot] Camera replication failed: " .. reason)
+        end
         return
     end
 
     local payload = {
         Kind = "Normalized",
         Pitch = riotState.filteredPitch,
-                                                                                  
         Yaw = riotState.filteredYaw,
     }
-                                                                                   
-                                                       
-    riotState.characterController = controller
-    riotState.viewAngleApplied = true
-    local sendOk, sendError = riotWriteViewAngle(controller, payload)
-    if not sendOk then
-        riotClearActiveTarget()
-        if now >= (riotState.nextFireWarningAt or 0) then
-            riotState.nextFireWarningAt = now + 5
-            warn("[AlwaysBackstab.Riot] CharacterController camera update failed: " .. tostring(sendError))
-        end
-        return
-    end
-
     riotState.active = true
-    riotState.viewAngleApplied = true
+    riotState.viewAngleApplied = false
     riotState.payload = payload
     riotState.lastAngleAt = now
-    riotState.lastFireAt = now
-    riotState.sendCount = (tonumber(riotState.sendCount) or 0) + 1
+    riotState.lastFireAt = tonumber(sentAt) or now
+    lastFireAt = riotState.lastFireAt
+    if didSend == true then
+        riotState.sendCount = (tonumber(riotState.sendCount) or 0) + 1
+    end
 end
 
 local function riotCancelSlotCleanupRetry()
@@ -59990,7 +60104,58 @@ end
 do
 local function fn35()
 tbl17.c_()
-return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
+return function(l, origin, hitbox)
+if typeof(origin) ~= "Vector3" or typeof(hitbox) ~= "Instance"
+or not hitbox:IsA("BasePart") or not hitbox:IsDescendantOf(workspace) then
+return false, nil
+end
+
+local targetParent = hitbox.Parent
+if targetParent == nil then
+return false, nil
+end
+
+local directlyVisible, raycastResult = l:Check(origin, hitbox, targetParent)
+if directlyVisible then
+return true, origin
+end
+
+local offset = hitbox.Position - origin
+local distance = offset.Magnitude
+if distance <= 1e-4 or distance ~= distance or distance == math.huge then
+return false, nil
+end
+
+local direction = offset / distance
+local hitboxRadius = hitbox.Size.Magnitude * 0.5
+local candidateDistance = math.min(9.9, distance - hitboxRadius)
+local usedForwardCandidate = false
+
+if raycastResult ~= nil and candidateDistance > 0 and raycastResult.Distance < candidateDistance then
+local forwardOrigin = origin + direction * candidateDistance
+if l:Check(forwardOrigin, hitbox, targetParent) then
+return false, forwardOrigin
+end
+usedForwardCandidate = true
+end
+
+local referenceAxis = Vector3.yAxis
+local sideAxis = direction:Cross(
+math.abs(direction:Dot(referenceAxis)) > 0.99 and Vector3.xAxis or referenceAxis
+).Unit
+local upAxis = sideAxis:Cross(direction).Unit
+local candidateCount = usedForwardCandidate and 6 or 7
+
+for index = 0, candidateCount - 1 do
+local angle = math.tau * index / candidateCount
+local candidateOrigin = origin + (sideAxis * math.cos(angle) + upAxis * math.sin(angle)) * 9.9
+if l:Check(candidateOrigin, hitbox, targetParent) then
+return false, candidateOrigin
+end
+end
+
+return false, nil
+end
 end
 
 tbl17.gU = function()
@@ -60044,23 +60209,96 @@ local targetConditions = silentAim2.TargetConditions
 local v134 = silentAim2.TargetHitboxes[v127.DefaultProfile.Class]
 local manipulate = silentAim2.Manipulate
 local obj = setmetatable({}, { __mode = "k" })
+local manipulationAttempts = setmetatable({}, { __mode = "k" })
+local MANIPULATION_RETRY_INTERVAL = 0.22
+local MANIPULATION_ORIGIN_TOLERANCE = 2.5
+local MANIPULATION_TARGET_TOLERANCE = 4
+
+local function isFiniteVector3(value)
+return typeof(value) == "Vector3"
+and value.X == value.X and value.Y == value.Y and value.Z == value.Z
+and math.abs(value.X) < math.huge
+and math.abs(value.Y) < math.huge
+and math.abs(value.Z) < math.huge
+end
 
 local function fn36(arg6, arg7, arg8)
-if manipulate.Enabled then
 local mode = manipulate.Mode
+local shouldManipulate = manipulate.Enabled
+and (mode == "OnAllTargets" or arg8 and mode == "OnBestTarget")
 
-if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
-local v135, v136 = v132(arg3, arg6, arg7)
-
-if not v135 then
-obj[arg7] = v136
+if shouldManipulate then
+if not isFiniteVector3(arg6) or typeof(arg7) ~= "Instance"
+or not arg7:IsA("BasePart") or not arg7:IsDescendantOf(workspace) then
+if arg7 ~= nil then
+obj[arg7] = nil
+manipulationAttempts[arg7] = nil
+end
+return false
 end
 
-return v136 ~= nil
-end
+local now = os.clock()
+local targetPosition = arg7.Position
+local cached = manipulationAttempts[arg7]
+
+if cached ~= nil then
+local sameOrigin = isFiniteVector3(cached.Origin)
+and (arg6 - cached.Origin).Magnitude <= MANIPULATION_ORIGIN_TOLERANCE
+local sameTarget = isFiniteVector3(cached.TargetPosition)
+and (targetPosition - cached.TargetPosition).Magnitude <= MANIPULATION_TARGET_TOLERANCE
+
+if sameOrigin and sameTarget and now - cached.At < MANIPULATION_RETRY_INTERVAL then
+local directCheckOk, directlyVisible = pcall(function()
+return arg3:Check(arg6, arg7, arg7.Parent)
+end)
+
+if directCheckOk and directlyVisible then
+obj[arg7] = nil
+manipulationAttempts[arg7] = nil
+return true
 end
 
 obj[arg7] = nil
+return false
+end
+end
+
+local solveOk, directlyVisible, manipulatedOrigin = pcall(v132, arg3, arg6, arg7)
+if not solveOk then
+obj[arg7] = nil
+manipulationAttempts[arg7] = {
+At = now,
+Origin = arg6,
+TargetPosition = targetPosition,
+Success = false,
+}
+return false
+end
+
+if directlyVisible then
+obj[arg7] = nil
+manipulationAttempts[arg7] = nil
+return true
+end
+
+if isFiniteVector3(manipulatedOrigin) then
+obj[arg7] = manipulatedOrigin
+manipulationAttempts[arg7] = nil
+return true
+end
+
+obj[arg7] = nil
+manipulationAttempts[arg7] = {
+At = now,
+Origin = arg6,
+TargetPosition = targetPosition,
+Success = false,
+}
+return false
+end
+
+obj[arg7] = nil
+manipulationAttempts[arg7] = nil
 return not targetConditions.Visible or arg3:Check(arg6, arg7, arg7.Parent)
 end
 
@@ -60103,6 +60341,10 @@ end)
 local v138 = v129(arg2, silentAim, "features.SilentAim", v137, function() return data.SilentAim.TargetHitboxes end)
 local function fn37(selection) tbl18._targetSelection:SetHitboxSelectionMode(v115.buildHitboxSelectionMode(selection)) end
 local function fn38(m)
+if manipulate ~= m then
+ table.clear(obj)
+ table.clear(manipulationAttempts)
+end
 manipulate = m
 v137:UseBestFirstConditionCheck(m.Enabled and m.Mode == "OnBestTarget")
 end
@@ -60182,6 +60424,7 @@ index2._Reset = function(arg)
 arg._currentTarget = nil
 arg._currentHitbox = nil
 arg._targetScreenPosition = nil
+table.clear(arg._visibleOriginByHitbox)
 arg._targetAcquisition:Reset()
 end
 
