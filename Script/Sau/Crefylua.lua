@@ -33204,84 +33204,9 @@ end
 
 index2.GetTargets = function(l)return l._enemyByPlayer;end
 index2.PreScan = function(I)I._shooterPosition= v117 ().Position;end
-
-index2.TargetMeetsConditions = function(self, target)
-    if target == nil then return false end
-    local okState, state = pcall(function()
-        local character = target.Character
-        return character ~= nil and character.State or nil
-    end)
-    if not okState or type(state) ~= "table" or state.Alive ~= true then
-        return false
-    end
-
-    local conditions = self._conditions
-    if type(conditions) ~= "table" then return false end
-    if conditions.Vulnerable then
-        local okInvincible, invincible = pcall(function() return target:IsInvincible() end)
-        if not okInvincible or invincible then return false end
-    end
-
-    local inner = self._innerContext
-    if inner ~= nil and inner.ItemBehaviors ~= nil then
-        local okEquipped, equipped = pcall(function()
-            return inner.ItemBehaviors:GetEquipped()
-        end)
-        if not okEquipped then return false end
-        if equipped ~= nil then
-            local okShielded, shielded = pcall(function()
-                return v115.isShielded(equipped, target, self._shooterPosition,
-                    conditions.NotDeflecting, conditions.NotShielded)
-            end)
-            if not okShielded or shielded then return false end
-        end
-    end
-    return true
-end
-
-index2.HitboxMeetsConditions = function(self, hitbox, bypass)
-    if type(self._hitboxMeetsConditions) ~= "function" then return false end
-    local ok, result = pcall(self._hitboxMeetsConditions, self._shooterPosition, hitbox, bypass)
-    return ok and result == true
-end
-
-index2.ResolveHitboxes = function(self, target)
-    local resolved = self._resolvedHitboxes
-    if type(resolved) ~= "table" then
-        resolved = {}
-        self._resolvedHitboxes = resolved
-    else
-        table.clear(resolved)
-    end
-
-    local okState, state = pcall(function()
-        local character = target and target.Character
-        return character ~= nil and character.State or nil
-    end)
-    if not okState or type(state) ~= "table" then return resolved end
-
-    local partsByName = state.TargetPartsByName
-    local humanoid = state.Humanoid
-    if type(partsByName) ~= "table" or humanoid == nil then return resolved end
-
-    local okGetState, humanoidState = pcall(function()
-        local getter = humanoid.GetState
-        if type(getter) ~= "function" then return nil end
-        return getter(humanoid)
-    end)
-    if not okGetState or humanoidState == nil then return resolved end
-
-    local hitboxSet = self._hitboxes
-    if type(hitboxSet) ~= "table" then return resolved end
-    local requested = humanoidState == Enum.HumanoidStateType.Freefall and hitboxSet.Air or hitboxSet.Ground
-    if type(requested) ~= "table" then return resolved end
-
-    for _, name in ipairs(requested) do
-        local part = partsByName[name]
-        if part ~= nil then table.insert(resolved, part) end
-    end
-    return resolved
-end
+index2.TargetMeetsConditions = function(I,W)if not W.Character.State.Alive then return false;end;local N=I._conditions;if N.Vulnerable and(W:IsInvincible())then return false;end;local P=I._innerContext;if P~=nil then local a=P.ItemBehaviors:GetEquipped();if a~=nil and( v115 .isShielded(a,W,I._shooterPosition,N.NotDeflecting,N.NotShielded))then return false;end;end;return true;end
+index2.HitboxMeetsConditions = function(l,I,W)return l._hitboxMeetsConditions(l._shooterPosition,I,W);end
+index2.ResolveHitboxes = function(l,I)local W=I.Character.State;local I_79,N,P=W.TargetPartsByName,W.Humanoid:GetState()==Enum.HumanoidStateType.Freefall and l._hitboxes.Air or l._hitboxes.Ground,l._resolvedHitboxes;table.clear(P);for l in N,nil,nil do table.insert(P,I_79[l]);end;return P;end
 return index2
 end
 
@@ -59374,25 +59299,28 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
 
     local function trackObject(object)
         objects[#objects + 1] = object
-        pcall(function() Debris:AddItem(object, duration + 0.3) end)
+        pcall(function() Debris:AddItem(object, duration + 0.4) end)
         return object
     end
 
     local function makeText(text, x, y, size, color, rotation, zIndex, chosenFont, parent)
         local label = Instance.new("TextLabel")
-        label.Name = "CrefyDamageEffect"
+        label.Name = "CrefyDamageText"
         label.BackgroundTransparency = 1
         label.BorderSizePixel = 0
         label.AnchorPoint = Vector2.new(0.5, 0.5)
-        label.Size = UDim2.fromOffset(math.max(100, size * 10.5), size * 2.4)
+        label.Size = UDim2.fromOffset(math.max(116, size * 8 + 44), size * 2.5)
         label.Position = UDim2.fromOffset(x, y)
         label.Font = chosenFont or font
         label.TextSize = size
         label.Text = text
         label.TextColor3 = color or color1
         label.TextTransparency = 0
-        label.TextStrokeTransparency = 0.55
+        label.TextStrokeTransparency = 1
         label.TextStrokeColor3 = Color3.new(0, 0, 0)
+        label.TextXAlignment = Enum.TextXAlignment.Center
+        label.TextYAlignment = Enum.TextYAlignment.Center
+        label.TextWrapped = false
         label.Rotation = rotation or 0
         label.ZIndex = zIndex or 10
         label.Parent = parent or gui
@@ -59416,9 +59344,9 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
         return frame
     end
 
-    local function addCorner(frame, radius)
+    local function addCorner(frame, scale, offset)
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(radius or 1, 0)
+        corner.CornerRadius = UDim.new(scale or 1, offset or 0)
         corner.Parent = frame
         trackObject(corner)
         return corner
@@ -59433,6 +59361,35 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
         stroke.Parent = object
         trackObject(stroke)
         return stroke
+    end
+
+    local function addGradient(object, first, second, rotation)
+        local gradient = Instance.new("UIGradient")
+        gradient.Color = ColorSequence.new(first or color1, second or color2)
+        gradient.Rotation = rotation or 0
+        gradient.Parent = object
+        trackObject(gradient)
+        return gradient
+    end
+
+    local function attachColor(label)
+        if colorType == "Gradient" then
+            addGradient(label, color1, color2, 90)
+        elseif colorType == "Rainbow" then
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 90)),
+                ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 190, 65)),
+                ColorSequenceKeypoint.new(0.40, Color3.fromRGB(120, 255, 130)),
+                ColorSequenceKeypoint.new(0.60, Color3.fromRGB(70, 220, 255)),
+                ColorSequenceKeypoint.new(0.80, Color3.fromRGB(160, 110, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 210)),
+            })
+            gradient.Parent = label
+            trackObject(gradient)
+            return gradient
+        end
+        return nil
     end
 
     local function play(object, tweenDuration, goals, easingStyle, delayTime, repeatCount, reverses)
@@ -59455,198 +59412,270 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
         return nil
     end
 
-    local function attachColor(main)
-        if colorType == "Gradient" then
-            local gradient = Instance.new("UIGradient")
-            gradient.Color = ColorSequence.new(color1, color2)
-            gradient.Rotation = 90
-            gradient.Parent = main
-            trackObject(gradient)
-        elseif colorType == "Rainbow" then
-            local gradient = Instance.new("UIGradient")
-            gradient.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 90)),
-                ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 190, 65)),
-                ColorSequenceKeypoint.new(0.40, Color3.fromRGB(120, 255, 130)),
-                ColorSequenceKeypoint.new(0.60, Color3.fromRGB(70, 220, 255)),
-                ColorSequenceKeypoint.new(0.80, Color3.fromRGB(160, 110, 255)),
-                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 210)),
-            })
-            gradient.Parent = main
-            trackObject(gradient)
-            play(gradient, duration, { Rotation = 360 }, Enum.EasingStyle.Linear)
-        end
-    end
-
-    local function makeMain(startScale)
-        local main = makeText(amountText, startX, startY, textSize + (isHeadshot == true and 2 or 0), color1, 0, 14)
-        local stroke = addStroke(main, color2, style == "Neon Rift" and 2.5 or 1.25, 0.08)
+    local function makeMain(scaleValue, sizeBonus, zIndex)
+        local main = makeText(amountText, startX, startY, textSize + (sizeBonus or 0), color1, 0, zIndex or 16)
+        local stroke = addStroke(main, color2, 1.35, 0.08)
         local scale = Instance.new("UIScale")
-        scale.Scale = startScale or 1
+        scale.Scale = scaleValue or 1
         scale.Parent = main
         trackObject(scale)
         attachColor(main)
         return main, stroke, scale
     end
 
-    local function fadeMain(main, endX, endY, endRotation, easing, delayTime)
-        play(main, duration, {
+    local function fadeText(label, endX, endY, rotation, tweenDuration, easing, delayTime)
+        play(label, tweenDuration or duration, {
             Position = UDim2.fromOffset(endX, endY),
             TextTransparency = 1,
             TextStrokeTransparency = 1,
-            Rotation = endRotation or 0,
+            Rotation = rotation or 0,
         }, easing or Enum.EasingStyle.Quint, delayTime or 0)
     end
 
     if style == "Classic Float" then
-        local main, stroke, scale = makeMain(0.92)
-        play(scale, 0.18, { Scale = 1.08 }, Enum.EasingStyle.Back)
-        play(scale, duration * 0.7, { Scale = 0.94 }, Enum.EasingStyle.Quad, 0.18)
-        fadeMain(main, startX, startY - rise, 0)
-        play(stroke, duration, { Transparency = 1 }, Enum.EasingStyle.Quad)
+        local shadow = makeText(amountText, startX + 2, startY + 3, textSize, Color3.fromRGB(8, 10, 16), 0, 14)
+        shadow.TextTransparency = 0.22
+        local main = makeText(amountText, startX, startY, textSize, color1, 0, 15)
+        main.TextStrokeTransparency = 0.72
+        attachColor(main)
+        fadeText(shadow, startX + 2, startY - rise, 0, duration, Enum.EasingStyle.Quart)
+        fadeText(main, startX, startY - rise, 0, duration, Enum.EasingStyle.Quart)
+        play(main, duration * 0.32, { TextSize = textSize + 2 }, Enum.EasingStyle.Quad)
 
     elseif style == "Critical Burst" then
-        local main, stroke, scale = makeMain(0.22)
-        play(scale, 0.2, { Scale = 1.28 }, Enum.EasingStyle.Back)
-        play(scale, duration * 0.72, { Scale = 0.9 }, Enum.EasingStyle.Quint, 0.2)
-        fadeMain(main, startX, startY - rise * 0.32, 0, Enum.EasingStyle.Quart)
-        play(stroke, duration * 0.65, { Transparency = 1, Thickness = 0.4 }, Enum.EasingStyle.Quad)
-        for index = 0, 7 do
-            local angle = math.tau * index / 8
-            local fromX = startX + math.cos(angle) * 9
-            local fromY = startY + math.sin(angle) * 9
-            local toX = startX + math.cos(angle) * 58
-            local toY = startY + math.sin(angle) * 58
-            local ray = makeFrame(fromX, fromY, 3, 24, index % 2 == 0 and color2 or color1, math.deg(angle) + 90, 0, 9)
+        local shock = makeFrame(startX, startY, 20, 20, color1, 0, 1, 9)
+        addCorner(shock, 1, 0)
+        local shockStroke = addStroke(shock, color2, 3, 0.02)
+        play(shock, duration * 0.58, { Size = UDim2.fromOffset(116, 116) }, Enum.EasingStyle.Quart)
+        play(shockStroke, duration * 0.58, { Transparency = 1, Thickness = 0.35 }, Enum.EasingStyle.Quart)
+        for index = 0, 11 do
+            local angle = math.tau * index / 12
+            local innerRadius = 13 + (index % 3) * 3
+            local outerRadius = 48 + (index % 4) * 7
+            local ray = makeFrame(
+                startX + math.cos(angle) * innerRadius,
+                startY + math.sin(angle) * innerRadius,
+                index % 3 == 0 and 4 or 2.5,
+                10 + (index % 4) * 4,
+                index % 2 == 0 and color2 or color1,
+                math.deg(angle) + 90,
+                0,
+                10
+            )
             play(ray, duration * 0.48, {
-                Position = UDim2.fromOffset(toX, toY),
-                Rotation = math.deg(angle) + 90,
+                Position = UDim2.fromOffset(startX + math.cos(angle) * outerRadius, startY + math.sin(angle) * outerRadius),
                 BackgroundTransparency = 1,
-            }, Enum.EasingStyle.Quart, index * 0.008)
+                Rotation = math.deg(angle) + 130,
+            }, Enum.EasingStyle.Quart, (index % 3) * 0.012)
         end
+        local main, stroke, scale = makeMain(0.28, 8, 18)
+        play(scale, 0.14, { Scale = 1.24 }, Enum.EasingStyle.Back)
+        play(scale, 0.16, { Scale = 1 }, Enum.EasingStyle.Quint, 0.14)
+        fadeText(main, startX, startY - math.max(12, rise * 0.24), 0, duration * 0.9, Enum.EasingStyle.Quart, 0.12)
+        play(stroke, duration * 0.75, { Transparency = 1 }, Enum.EasingStyle.Quad)
+        local tagOffset = textSize + 14
+        local tag = makeText(isHeadshot == true and "HEADSHOT" or "IMPACT", startX, startY - tagOffset, math.max(9, textSize * 0.42), color2, 0, 19, Enum.Font.GothamBlack)
+        fadeText(tag, startX, startY - tagOffset - 17, 0, duration * 0.58, Enum.EasingStyle.Quart)
 
     elseif style == "Neon Rift" then
-        local ghostLeft = makeText(amountText, startX - 5, startY + 1, textSize, color2, -3, 11)
-        local ghostRight = makeText(amountText, startX + 5, startY - 1, textSize, color1, 3, 12)
-        ghostLeft.TextTransparency = 0.18
-        ghostRight.TextTransparency = 0.22
-        play(ghostLeft, duration * 0.82, { Position = UDim2.fromOffset(startX - 26, startY - rise * 0.55), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = -9 }, Enum.EasingStyle.Quart)
-        play(ghostRight, duration * 0.78, { Position = UDim2.fromOffset(startX + 26, startY - rise * 0.45), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = 9 }, Enum.EasingStyle.Quart)
-        local main, stroke = makeMain(1)
-        fadeMain(main, startX, startY - rise * 0.72, 0)
-        play(stroke, duration, { Transparency = 1, Thickness = 3.5 }, Enum.EasingStyle.Quad)
-        local slash = makeFrame(startX, startY + textSize * 0.65, textSize * 5.4, 2, color2, -8, 0, 10)
-        play(slash, duration * 0.62, { Position = UDim2.fromOffset(startX + 34, startY - rise * 0.38), Rotation = 8, BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
+        local panelWidth = math.clamp(#amountText * textSize * 0.61 + 44, 124, 260)
+        local panelHeight = math.max(46, textSize * 2.2)
+        local panel = makeFrame(startX, startY, panelWidth, panelHeight, Color3.fromRGB(8, 16, 31), 0, 0.12, 10)
+        addCorner(panel, 0, 9)
+        local panelStroke = addStroke(panel, color1, 1.8, 0.04)
+        addGradient(panel, Color3.fromRGB(12, 24, 45), Color3.fromRGB(17, 10, 34), 0)
+        local label = makeText(amountText, 0, 0, textSize, color1, 0, 16, nil, panel)
+        label.Position = UDim2.fromScale(0.5, 0.5)
+        label.Size = UDim2.fromScale(1, 1)
+        attachColor(label)
+        local scanWidth = math.min(48, panelWidth * 0.32)
+        local scanY = panelHeight * 0.5
+        local scan = makeFrame(0, 0, scanWidth, 2, color2, 0, 0.02, 17, panel, UDim2.new(0, -scanWidth * 0.5, 0, scanY))
+        local leftCap = makeFrame(0, 0, 3, panelHeight * 0.48, color1, 0, 0, 15, panel, UDim2.new(0, 5, 0.5, 0))
+        local rightCap = makeFrame(0, 0, 3, panelHeight * 0.48, color2, 0, 0, 15, panel, UDim2.new(1, -5, 0.5, 0))
+        play(panel, duration, {
+            Position = UDim2.fromOffset(startX, startY - rise * 0.38),
+            Size = UDim2.fromOffset(panelWidth + 18, panelHeight + 4),
+            BackgroundTransparency = 1,
+        }, Enum.EasingStyle.Quint)
+        play(panelStroke, duration, { Transparency = 1, Thickness = 0.35 }, Enum.EasingStyle.Quad)
+        play(scan, duration * 0.58, { Position = UDim2.new(0, panelWidth + scanWidth * 0.5, 0, scanY), BackgroundTransparency = 1 }, Enum.EasingStyle.Linear)
+        play(leftCap, duration * 0.72, { Position = UDim2.new(0, -8, 0.5, 0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
+        play(rightCap, duration * 0.72, { Position = UDim2.new(1, 8, 0.5, 0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
+        play(label, duration, {
+            Position = UDim2.fromScale(0.5, 0.5),
+            TextTransparency = 1,
+            TextStrokeTransparency = 1,
+            Rotation = 0,
+        }, Enum.EasingStyle.Quint)
 
     elseif style == "Glitch Echo" then
-        local main, stroke = makeMain(1)
-        local echoA = makeText(amountText, startX - 2, startY + 4, textSize, color2, -1, 11)
-        local echoB = makeText(amountText, startX + 2, startY - 4, textSize, color1, 1, 12)
-        echoA.TextTransparency = 0.35
-        echoB.TextTransparency = 0.42
-        play(echoA, duration * 0.52, { Position = UDim2.fromOffset(startX - 9, startY - rise * 0.35), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = -4 }, Enum.EasingStyle.Linear, 0.025)
-        play(echoB, duration * 0.48, { Position = UDim2.fromOffset(startX + 11, startY - rise * 0.28), TextTransparency = 1, TextStrokeTransparency = 1, Rotation = 4 }, Enum.EasingStyle.Linear, 0.055)
-        local scanA = makeFrame(startX - 30, startY - 7, 62, 2, color2, 0, 0.08, 13)
-        local scanB = makeFrame(startX + 26, startY + 8, 48, 2, color1, 0, 0.15, 13)
-        play(scanA, duration * 0.26, { Position = UDim2.fromOffset(startX + 34, startY - 7), BackgroundTransparency = 1 }, Enum.EasingStyle.Linear)
-        play(scanB, duration * 0.24, { Position = UDim2.fromOffset(startX - 35, startY + 8), BackgroundTransparency = 1 }, Enum.EasingStyle.Linear, 0.04)
-        play(main, 0.055, { Position = UDim2.fromOffset(startX + 7, startY - 2), Rotation = 2 }, Enum.EasingStyle.Linear, 0, 1, true)
-        fadeMain(main, startX + 2, startY - rise * 0.58, 0, Enum.EasingStyle.Linear, 0.12)
-        play(stroke, duration * 0.6, { Transparency = 1 }, Enum.EasingStyle.Linear)
+        local echoBack = makeText(amountText, startX - 5, startY + 1, textSize + 1, color2, -2, 12)
+        local echoFront = makeText(amountText, startX + 5, startY - 1, textSize + 1, color1, 2, 13)
+        echoBack.TextTransparency = 0.35
+        echoFront.TextTransparency = 0.42
+        local main = makeText(amountText, startX, startY, textSize, color1, 0, 17)
+        main.TextStrokeTransparency = 0.35
+        attachColor(main)
+        play(echoBack, 0.075, { Position = UDim2.fromOffset(startX - 13, startY + 2) }, Enum.EasingStyle.Linear, 0, 3, true)
+        play(echoFront, 0.065, { Position = UDim2.fromOffset(startX + 12, startY - 3) }, Enum.EasingStyle.Linear, 0.02, 3, true)
+        play(echoBack, duration * 0.72, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Linear, 0.08)
+        play(echoFront, duration * 0.68, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Linear, 0.1)
+        for index = 1, 4 do
+            local barWidth = 16 + (index % 3) * 9
+            local bar = makeFrame(
+                startX + (index % 2 == 0 and 1 or -1) * (18 + index * 6),
+                startY - 15 + index * 10,
+                barWidth,
+                index % 2 == 0 and 3 or 2,
+                index % 2 == 0 and color2 or color1,
+                0,
+                0.12,
+                18
+            )
+            play(bar, 0.09 + index * 0.015, {
+                Position = UDim2.fromOffset(startX + (index % 2 == 0 and -1 or 1) * (34 + index * 5), startY - 15 + index * 10),
+                BackgroundTransparency = 1,
+            }, Enum.EasingStyle.Linear, index * 0.035)
+        end
+        fadeText(main, startX + 1, startY - rise * 0.56, 0, duration, Enum.EasingStyle.Linear, 0.08)
 
     elseif style == "Arcane Orbit" then
-        local ring = makeFrame(startX, startY, 70, 70, color1, 0, 1, 8)
-        addCorner(ring, 1)
-        local ringStroke = addStroke(ring, color2, 2.1, 0.08)
-        local orbitDotA = makeFrame(0, 0, 7, 7, color2, 0, 0, 12, ring, UDim2.new(0.5, -3.5, 0, -3.5))
-        local orbitDotB = makeFrame(0, 0, 5, 5, color1, 0, 0, 12, ring, UDim2.new(1, -2.5, 0.5, -2.5))
-        local orbitDotC = makeFrame(0, 0, 4, 4, color2, 0, 0, 12, ring, UDim2.new(0, -2, 0.5, -2))
-        addCorner(orbitDotA, 1)
-        addCorner(orbitDotB, 1)
-        addCorner(orbitDotC, 1)
-        local main = makeText(amountText, startX, startY, textSize, color1, 0, 14)
-        local mainStroke = addStroke(main, color2, 1.2, 0.12)
+        local orbit = makeFrame(startX, startY, 74, 74, color1, 0, 1, 8)
+        addCorner(orbit, 1, 0)
+        local orbitStroke = addStroke(orbit, color1, 2, 0.04)
+        local innerOrbit = makeFrame(startX, startY, 48, 48, color2, -22, 1, 9)
+        addCorner(innerOrbit, 1, 0)
+        local innerStroke = addStroke(innerOrbit, color2, 1.25, 0.08)
+        local satellites = {
+            { Color = color2, Position = UDim2.new(0.5, 0, 0, -3), Size = 8 },
+            { Color = color1, Position = UDim2.new(1, 3, 0.5, 0), Size = 6 },
+            { Color = color2, Position = UDim2.new(0.5, 0, 1, 3), Size = 5 },
+        }
+        for _, data in ipairs(satellites) do
+            local dot = makeFrame(0, 0, data.Size, data.Size, data.Color, 0, 0, 13, orbit, data.Position)
+            addCorner(dot, 1, 0)
+            play(dot, duration * 0.82, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
+        end
+        play(orbit, duration, { Position = UDim2.fromOffset(startX, startY - rise * 0.44), Rotation = 250, Size = UDim2.fromOffset(104, 104) }, Enum.EasingStyle.Quint)
+        play(innerOrbit, duration * 0.88, { Position = UDim2.fromOffset(startX, startY - rise * 0.44), Rotation = -205, Size = UDim2.fromOffset(27, 27) }, Enum.EasingStyle.Quart)
+        play(orbitStroke, duration, { Transparency = 1, Thickness = 0.35 }, Enum.EasingStyle.Quad)
+        play(innerStroke, duration * 0.84, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
+        local main = makeText(amountText, startX, startY, textSize, color1, 0, 18)
         attachColor(main)
-        play(ring, duration, { Position = UDim2.fromOffset(startX, startY - rise * 0.5), Size = UDim2.fromOffset(106, 106), Rotation = 360 }, Enum.EasingStyle.Quint)
-        play(ringStroke, duration, { Transparency = 1, Thickness = 0.6 }, Enum.EasingStyle.Quad)
-        play(orbitDotA, duration * 0.8, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
-        play(orbitDotB, duration * 0.72, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, 0.05)
-        play(orbitDotC, duration * 0.72, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, 0.1)
-        fadeMain(main, startX, startY - rise * 0.5, 0)
-        play(mainStroke, duration, { Transparency = 1 }, Enum.EasingStyle.Quad)
+        fadeText(main, startX, startY - rise * 0.44, 0, duration, Enum.EasingStyle.Quint)
 
     elseif style == "Void Shatter" then
-        local main, stroke, scale = makeMain(1.12)
-        play(scale, duration * 0.48, { Scale = 0.72 }, Enum.EasingStyle.Quint)
-        fadeMain(main, startX, startY - rise * 0.24, 0, Enum.EasingStyle.Quart)
-        play(stroke, duration * 0.48, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
-        for index = 0, 9 do
-            local angle = math.tau * index / 10 + 0.12
-            local startRadius = 7 + (index % 3) * 3
-            local endRadius = 34 + (index % 4) * 12
+        local core = makeFrame(startX, startY, 42, 42, Color3.fromRGB(9, 8, 18), 0, 0.08, 8)
+        addCorner(core, 1, 0)
+        local coreStroke = addStroke(core, color1, 2.2, 0.02)
+        local implosion = makeFrame(startX, startY, 92, 92, color2, 0, 1, 7)
+        addCorner(implosion, 1, 0)
+        local implosionStroke = addStroke(implosion, color2, 2.3, 0.02)
+        play(implosion, duration * 0.5, { Size = UDim2.fromOffset(8, 8) }, Enum.EasingStyle.Quint)
+        play(implosionStroke, duration * 0.5, { Transparency = 1, Thickness = 0.2 }, Enum.EasingStyle.Quint)
+        play(core, duration * 0.7, { Size = UDim2.fromOffset(8, 8), BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
+        play(coreStroke, duration * 0.7, { Transparency = 1, Thickness = 0.2 }, Enum.EasingStyle.Quad)
+        local main, stroke, scale = makeMain(1.18, 2, 19)
+        play(scale, duration * 0.42, { Scale = 0.76 }, Enum.EasingStyle.Quint)
+        fadeText(main, startX, startY - math.max(8, rise * 0.18), 0, duration * 0.72, Enum.EasingStyle.Quint)
+        play(stroke, duration * 0.62, { Transparency = 1, Thickness = 0.25 }, Enum.EasingStyle.Quad)
+        for index = 1, 13 do
+            local angle = math.rad((index * 137.5) % 360)
+            local startRadius = 13 + (index % 3) * 4
+            local endRadius = 34 + (index % 5) * 10
+            local width = 3 + (index % 3) * 2
+            local height = 7 + (index % 4) * 4
             local shard = makeFrame(
                 startX + math.cos(angle) * startRadius,
                 startY + math.sin(angle) * startRadius,
-                5 + (index % 3), 5 + (index % 3),
+                width,
+                height,
                 index % 2 == 0 and color2 or color1,
-                45 + index * 13, 0, 10
+                math.deg(angle) + 35,
+                0,
+                12
             )
-            play(shard, duration * (0.55 + (index % 3) * 0.08), {
-                Position = UDim2.fromOffset(startX + math.cos(angle) * endRadius, startY + math.sin(angle) * endRadius + rise * 0.18),
-                Rotation = 180 + index * 27,
+            play(shard, duration * (0.52 + (index % 4) * 0.075), {
+                Position = UDim2.fromOffset(
+                    startX + math.cos(angle) * endRadius,
+                    startY + math.sin(angle) * endRadius + rise * (0.08 + (index % 3) * 0.035)
+                ),
+                Rotation = math.deg(angle) + 210 + index * 9,
                 BackgroundTransparency = 1,
             }, Enum.EasingStyle.Quad, (index % 4) * 0.018)
         end
 
     elseif style == "Matrix Rain" then
         local matrixFont = Enum.Font.Code
-        local main = makeText(amountText, startX, startY, textSize, color2, 0, 14, matrixFont)
-        local mainStroke = addStroke(main, color1, 1.1, 0.2)
-        attachColor(main)
-        for index = 1, 5 do
-            local columnX = startX + (index - 3) * 22
-            local column = makeText(index % 2 == 0 and "1\n0\n1\n0" or "0\n1\n0\n1", columnX, startY - 28 - (index % 2) * 12, textSize * 0.48, color1, 0, 8, matrixFont)
+        local columns = { "1\n0\n1\n0", "0\n1\n0\n1", "λ\n0\n1\n0", "1\n1\n0\n1", "0\nλ\n1\n0", "1\n0\n0\n1" }
+        for index = 1, 6 do
+            local columnX = startX + (index - 3.5) * 19
+            local guide = makeFrame(columnX, startY - 8, 1, 72, index % 2 == 0 and color2 or color1, 0, 0.74, 7)
+            play(guide, duration * 0.8, { BackgroundTransparency = 1, Size = UDim2.fromOffset(1, 100) }, Enum.EasingStyle.Linear, index * 0.025)
+            local column = makeText(columns[index], columnX, startY - 27 - (index % 2) * 8, textSize * 0.48, color1, 0, 9, matrixFont)
+            column.Size = UDim2.fromOffset(20, textSize * 3.8)
             column.TextTransparency = 0.18 + (index % 3) * 0.08
-            column.Size = UDim2.fromOffset(22, textSize * 3.4)
-            play(column, duration * (0.62 + (index % 3) * 0.08), {
-                Position = UDim2.fromOffset(columnX + (index % 2 == 0 and 5 or -4), startY + 68 + index * 5),
+            play(column, duration * (0.66 + (index % 3) * 0.07), {
+                Position = UDim2.fromOffset(columnX + (index % 2 == 0 and 3 or -3), startY + 78 + index * 3),
                 TextTransparency = 1,
                 TextStrokeTransparency = 1,
             }, Enum.EasingStyle.Linear, index * 0.035)
         end
-        fadeMain(main, startX, startY - rise * 0.42, 0, Enum.EasingStyle.Linear)
-        play(mainStroke, duration * 0.75, { Transparency = 1 }, Enum.EasingStyle.Linear)
+        local main = makeText(amountText, startX, startY - 4, textSize + 2, color2, 0, 18, matrixFont)
+        local mainStroke = addStroke(main, color1, 1.5, 0.12)
+        attachColor(main)
+        fadeText(main, startX, startY - rise * 0.36, 0, duration, Enum.EasingStyle.Linear)
+        play(mainStroke, duration * 0.82, { Transparency = 1 }, Enum.EasingStyle.Linear)
 
     elseif style == "Celestial Sigil" then
-        local outerRing = makeFrame(startX, startY, 54, 54, color1, 0, 1, 7)
-        addCorner(outerRing, 1)
-        local outerStroke = addStroke(outerRing, color2, 1.5, 0.05)
-        local innerRing = makeFrame(startX, startY, 32, 32, color2, 45, 1, 8)
-        addCorner(innerRing, 1)
-        local innerStroke = addStroke(innerRing, color1, 1.2, 0.1)
-        local main = makeText(amountText, startX, startY, textSize, color1, 0, 14)
-        attachColor(main)
-        for index = 0, 11 do
-            local angle = math.tau * index / 12
-            local radius = 34 + (index % 2) * 6
-            local ray = makeFrame(
-                startX + math.cos(angle) * radius,
-                startY + math.sin(angle) * radius,
-                2.5, 12 + (index % 3) * 3,
-                index % 2 == 0 and color2 or color1,
-                math.deg(angle), 0, 9
-            )
-            play(ray, duration * 0.86, {
-                Position = UDim2.fromOffset(startX + math.cos(angle) * (radius + 25), startY + math.sin(angle) * (radius + 25) - rise * 0.22),
-                Rotation = math.deg(angle) + 35,
-                BackgroundTransparency = 1,
-            }, Enum.EasingStyle.Quart, (index % 4) * 0.012)
+        local main, stroke, scale = makeMain(0.84, 1, 18)
+        play(scale, 0.2, { Scale = 1.08 }, Enum.EasingStyle.Back)
+        play(scale, duration * 0.72, { Scale = 0.98 }, Enum.EasingStyle.Sine, 0.2)
+        fadeText(main, startX, startY - rise * 0.32, 0, duration, Enum.EasingStyle.Sine)
+        play(stroke, duration, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
+        for side = -1, 1, 2 do
+            for index = 1, 5 do
+                local offsetX = side * (17 + index * 5)
+                local offsetY = 10 - index * 8
+                local feather = makeFrame(
+                    startX + offsetX,
+                    startY + offsetY,
+                    3 + (index % 2),
+                    16 + index * 3,
+                    index % 2 == 0 and color1 or color2,
+                    side * (24 + index * 8),
+                    0.05,
+                    10
+                )
+                play(feather, duration * (0.7 + index * 0.035), {
+                    Position = UDim2.fromOffset(startX + offsetX * 1.72, startY + offsetY - 18 - index * 3),
+                    Rotation = side * (42 + index * 9),
+                    BackgroundTransparency = 1,
+                }, Enum.EasingStyle.Quint, index * 0.018)
+            end
         end
-        play(outerRing, duration, { Position = UDim2.fromOffset(startX, startY - rise * 0.35), Size = UDim2.fromOffset(100, 100), Rotation = 180 }, Enum.EasingStyle.Quint)
-        play(innerRing, duration * 0.88, { Position = UDim2.fromOffset(startX, startY - rise * 0.35), Size = UDim2.fromOffset(18, 18), Rotation = -135 }, Enum.EasingStyle.Quart)
-        play(outerStroke, duration, { Transparency = 1, Thickness = 0.5 }, Enum.EasingStyle.Quad)
-        play(innerStroke, duration * 0.82, { Transparency = 1 }, Enum.EasingStyle.Quad)
-        fadeMain(main, startX, startY - rise * 0.35, 0)
+        for index = 0, 6 do
+            local angle = math.rad(205 + index * (130 / 6))
+            local ray = makeFrame(
+                startX + math.cos(angle) * 48,
+                startY + math.sin(angle) * 33,
+                2,
+                10 + (index % 3) * 4,
+                index % 2 == 0 and color2 or color1,
+                math.deg(angle) + 90,
+                0.08,
+                9
+            )
+            play(ray, duration * 0.72, {
+                Position = UDim2.fromOffset(startX + math.cos(angle) * 67, startY + math.sin(angle) * 50 - rise * 0.16),
+                BackgroundTransparency = 1,
+            }, Enum.EasingStyle.Sine, index * 0.025)
+        end
+        local crest = makeText("✧", startX, startY - 30, textSize * 0.8, color2, 0, 19, Enum.Font.GothamBlack)
+        fadeText(crest, startX, startY - 57, 0, duration * 0.66, Enum.EasingStyle.Sine)
+        local baseline = makeFrame(startX, startY + 22, 64, 2, color1, 0, 0.08, 9)
+        play(baseline, duration * 0.62, { Size = UDim2.fromOffset(116, 1), BackgroundTransparency = 1 }, Enum.EasingStyle.Quint)
     end
 
     while #arg._damageNumbers >= 20 do
@@ -59664,7 +59693,6 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
     table.insert(arg._damageNumbers, { Objects = objects, Tweens = tweens })
     return true
 end
-
 index2._HandleHit = function(arg, arg2, arg3, arg4)
 local playerHit = v116.Data.PlayerHit
 local sound = playerHit.Sound
@@ -59906,92 +59934,7 @@ end
 do
 local function fn35()
 tbl17.c_()
-local function finiteVector3(value)
-    return typeof(value) == "Vector3"
-        and value.X == value.X and value.Y == value.Y and value.Z == value.Z
-        and value.X ~= math.huge and value.X ~= -math.huge
-        and value.Y ~= math.huge and value.Y ~= -math.huge
-        and value.Z ~= math.huge and value.Z ~= -math.huge
-end
-return function(raycaster, origin, targetPart)
-    if raycaster == nil or not finiteVector3(origin) or targetPart == nil then
-        return false, nil
-    end
-    local parent, position, size, frame
-    local partOk = pcall(function()
-        if not targetPart:IsA("BasePart") or targetPart.Parent == nil
-            or not targetPart:IsDescendantOf(workspace) then
-            error("target hitbox is no longer live")
-        end
-        parent = targetPart.Parent
-        position = targetPart.Position
-        size = targetPart.Size
-        frame = targetPart.CFrame
-    end)
-    if not partOk or not finiteVector3(position) or not finiteVector3(size)
-        or typeof(frame) ~= "CFrame" then
-        return false, nil
-    end
-
-    local checkOk, directlyVisible, hitResult = pcall(function()
-        return raycaster:Check(origin, targetPart, parent)
-    end)
-    if not checkOk then return false, nil end
-    if directlyVisible then return true, origin end
-
-    local delta = position - origin
-    local distance = delta.Magnitude
-    if distance ~= distance or distance == math.huge or distance == -math.huge then
-        return false, nil
-    end
-
-    local direction
-    if distance > 1e-4 then
-        direction = delta / distance
-    else
-        local look = frame.LookVector
-        direction = finiteVector3(look) and look.Magnitude > 1e-4 and look.Unit or Vector3.zAxis
-    end
-    if not finiteVector3(direction) then return false, nil end
-
-    local radius = math.min(9.9, distance - size.Magnitude / 2)
-    local triedForward = false
-    local hitDistance = nil
-    if hitResult ~= nil then
-        pcall(function() hitDistance = hitResult.Distance end)
-    end
-    if type(hitDistance) == "number" and hitDistance == hitDistance
-        and radius > 0 and hitDistance < radius then
-        local candidate = origin + direction * radius
-        local candidateOk, visible = pcall(function()
-            return raycaster:Check(candidate, targetPart, parent)
-        end)
-        if candidateOk and visible then return false, candidate end
-        triedForward = true
-    end
-
-    local referenceAxis = Vector3.yAxis
-    if math.abs(direction:Dot(referenceAxis)) > 0.99 then
-        referenceAxis = Vector3.xAxis
-    end
-    local right = direction:Cross(referenceAxis)
-    if right.Magnitude <= 1e-4 then return false, nil end
-    right = right.Unit
-    local tangent = right:Cross(direction)
-    if tangent.Magnitude <= 1e-4 then return false, nil end
-    tangent = tangent.Unit
-
-    local sampleCount = triedForward and 6 or 7
-    for index = 0, sampleCount - 1 do
-        local angle = math.tau * index / sampleCount
-        local candidate = origin + (right * math.cos(angle) + tangent * math.sin(angle)) * 9.9
-        local candidateOk, visible = pcall(function()
-            return raycaster:Check(candidate, targetPart, parent)
-        end)
-        if candidateOk and visible then return false, candidate end
-    end
-    return false, nil
-end
+return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
 end
 
 tbl17.gU = function()
@@ -60049,16 +59992,18 @@ local obj = setmetatable({}, { __mode = "k" })
 local function fn36(arg6, arg7, arg8)
 if manipulate.Enabled then
 local mode = manipulate.Mode
+
 if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
-local directlyVisible, alternateOrigin = v132(arg3, arg6, arg7)
-if directlyVisible then
-obj[arg7] = nil
-else
-obj[arg7] = alternateOrigin
+local v135, v136 = v132(arg3, arg6, arg7)
+
+if not v135 then
+obj[arg7] = v136
 end
-return alternateOrigin ~= nil
+
+return v136 ~= nil
 end
 end
+
 obj[arg7] = nil
 return not targetConditions.Visible or arg3:Check(arg6, arg7, arg7.Parent)
 end
@@ -60178,10 +60123,6 @@ arg._textIndicatorList:Show("Manipulated", "Manipulated", v120.Manipulate)
 end
 
 index2._Reset = function(arg)
-local previousHitbox = arg._currentHitbox
-if previousHitbox ~= nil then
-    arg._visibleOriginByHitbox[previousHitbox] = nil
-end
 arg._currentTarget = nil
 arg._currentHitbox = nil
 arg._targetScreenPosition = nil
@@ -60207,162 +60148,82 @@ arg._targetScreenPosition = nil
 end
 
 if not arg._targetAcquisition:Acquire(arg2, v134, arg4.ReactionTime, arg4.SwitchDelay) then
-    if arg._currentTarget ~= v134 or arg._currentHitbox ~= v135 then
-        local previousHitbox = arg._currentHitbox
-        if previousHitbox ~= nil then arg._visibleOriginByHitbox[previousHitbox] = nil end
-        arg._currentTarget = nil
-        arg._currentHitbox = nil
-    end
-    return
+return
 end
 arg._currentTarget = v134
 arg._currentHitbox = v135
 end
 
 index2._HandleInput = function(arg, arg2)
-if type(arg2) ~= "table" or arg2.Type ~= "StartShooting" then return end
-local currentTarget = arg._currentTarget
+if arg2.Type ~= "StartShooting" then
+return
+end
 local currentHitbox = arg._currentHitbox
-if currentTarget == nil or currentHitbox == nil then return end
-
-local targetHitboxValid = false
-local validationOk = pcall(function()
-    if not currentHitbox:IsA("BasePart") or currentHitbox.Parent == nil
-        or not currentHitbox:IsDescendantOf(workspace) then
-        return
-    end
-    local character = currentTarget.Character
-    local state = character ~= nil and character.State or nil
-    if state == nil or state.Alive ~= true then return end
-    local partsByName = state.TargetPartsByName
-    if type(partsByName) ~= "table" then return end
-    for _, candidate in pairs(partsByName) do
-        if candidate == currentHitbox then
-            targetHitboxValid = true
-            return
-        end
-    end
-end)
-if not validationOk or not targetHitboxValid then
-    arg:_Reset()
-    return
+if currentHitbox == nil then
+return
+end
+local inner = arg._playerContext.Inner
+if inner == nil then
+return
 end
 
-local inner = arg._playerContext ~= nil and arg._playerContext.Inner or nil
-if inner == nil or inner.FighterState == nil then return end
-
-local activationChance = tonumber(data.SilentAim.ActivationChance) or 0
-if not (activationChance / 100 >= math.random()) then return end
-if arg2.ObjectId == nil then return end
-local itemOk, item = pcall(function()
-    return inner.FighterState:FindItemByObjectId(arg2.ObjectId)
-end)
-if not itemOk or item == nil or v102(v102(item, "Info"), "Type") ~= "Gun" then return end
-
-local pointOk, targetPoint = pcall(function()
-    local _, computedPoint = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
-    return computedPoint
-end)
-if not pointOk or typeof(targetPoint) ~= "Vector3"
-    or targetPoint.X ~= targetPoint.X or targetPoint.Y ~= targetPoint.Y or targetPoint.Z ~= targetPoint.Z
-    or math.abs(targetPoint.X) == math.huge or math.abs(targetPoint.Y) == math.huge
-    or math.abs(targetPoint.Z) == math.huge then
-    return
+if not (data.SilentAim.ActivationChance / 100 >= math.random()) then
+return
+end
+local v134 = inner.FighterState:FindItemByObjectId(arg2.ObjectId)
+if v134 == nil then
+return
 end
 
-local shotArgs = arg2.Args
-if type(shotArgs) ~= "table" then return end
-local packedShot = shotArgs["\1"]
-if type(packedShot) ~= "table" then return end
-local decodeOk, originalCFrame, secondaryCFrame = pcall(function()
-    return v116.decode(packedShot["\0"]), v116.decode(packedShot["\1"])
-end)
-if not decodeOk or typeof(originalCFrame) ~= "CFrame" or typeof(secondaryCFrame) ~= "CFrame" then
-    return
+if v102(v102(v134, "Info"), "Type") ~= "Gun" then
+return
 end
+if typeof(currentHitbox) ~= "Instance" or not currentHitbox:IsA("BasePart") or not currentHitbox:IsDescendantOf(workspace) then
+return
+end
+local _v135, v136 = arg._computeTargetPoint(workspace.CurrentCamera, v133(), currentHitbox)
+if typeof(v136) ~= "Vector3" then
+return
+end
+local v137 = arg2.Args["\1"]
+if type(v137) ~= "table" then
+return
+end
+local v138 = v116.decode(v137["\0"])
+local v139 = v116.decode(v137["\1"])
+if v138 == nil or v139 == nil then
+return
+end
+local position = v138.Position
+local v140 = v131(position, currentHitbox, v136)
+if v140 == nil then
+local surfaceOk, surfacePoint = pcall(function()
+return currentHitbox:GetClosestPointOnSurface(v136)
+end)
+if surfaceOk and typeof(surfacePoint) == "Vector3" then
+local localPointOk, localPoint = pcall(function()
+return currentHitbox.CFrame:PointToObjectSpace(surfacePoint)
+end)
+if localPointOk and typeof(localPoint) == "Vector3" then
+v140 = localPoint
+end
+end
+end
+if v140 == nil then
+return
+end
+local v141 = arg._visibleOriginByHitbox[currentHitbox]
 
-local originalOrigin = originalCFrame.Position
-local effectiveOrigin = originalOrigin
-local useManipulate = manipulate.Enabled == true
-    and (manipulate.Mode == "OnAllTargets" or manipulate.Mode == "OnBestTarget")
-if useManipulate then
-    local manipulateCallOk, directlyVisible, alternateOrigin = pcall(v132, arg3, originalOrigin, currentHitbox)
-    if not manipulateCallOk then
-        arg._visibleOriginByHitbox[currentHitbox] = nil
-        return
-    end
-    if directlyVisible then
-        arg._visibleOriginByHitbox[currentHitbox] = nil
-    else
-        if typeof(alternateOrigin) ~= "Vector3"
-            or alternateOrigin.X ~= alternateOrigin.X or alternateOrigin.Y ~= alternateOrigin.Y or alternateOrigin.Z ~= alternateOrigin.Z
-            or math.abs(alternateOrigin.X) == math.huge or math.abs(alternateOrigin.Y) == math.huge
-            or math.abs(alternateOrigin.Z) == math.huge then
-            arg._visibleOriginByHitbox[currentHitbox] = nil
-            return
-        end
-        effectiveOrigin = alternateOrigin
-        arg._visibleOriginByHitbox[currentHitbox] = alternateOrigin
-    end
+if v141 ~= nil then
+v137["\0"] = v116.encode(CFrame.lookAt(v141, v136))
+v137["\1"] = v116.encode(CFrame.lookAt(v141, v136))
 else
-    arg._visibleOriginByHitbox[currentHitbox] = nil
+v137["\0"] = v116.encode(CFrame.lookAt(position, v136))
+v137["\1"] = v116.encode(CFrame.lookAt(v139.Position, v136))
 end
 
-local surfaceOk, localHitPoint = pcall(v131, effectiveOrigin, currentHitbox, targetPoint)
-if not surfaceOk then return end
-if typeof(localHitPoint) ~= "Vector3" then
-    local fallbackOk, fallbackPoint = pcall(function()
-        local currentFrame = currentHitbox.CFrame
-        local localPoint = currentFrame:PointToObjectSpace(targetPoint)
-        if localPoint == Vector3.zero then
-            local surfacePoint = currentHitbox:GetClosestPointOnSurface(effectiveOrigin)
-            localPoint = currentFrame:PointToObjectSpace(surfacePoint)
-        end
-        return localPoint
-    end)
-    if fallbackOk and typeof(fallbackPoint) == "Vector3"
-        and fallbackPoint ~= Vector3.zero
-        and fallbackPoint.X == fallbackPoint.X and fallbackPoint.Y == fallbackPoint.Y and fallbackPoint.Z == fallbackPoint.Z
-        and math.abs(fallbackPoint.X) ~= math.huge
-        and math.abs(fallbackPoint.Y) ~= math.huge
-        and math.abs(fallbackPoint.Z) ~= math.huge then
-        localHitPoint = fallbackPoint
-    end
-end
-if typeof(localHitPoint) ~= "Vector3"
-    or localHitPoint.X ~= localHitPoint.X or localHitPoint.Y ~= localHitPoint.Y or localHitPoint.Z ~= localHitPoint.Z
-    or math.abs(localHitPoint.X) == math.huge or math.abs(localHitPoint.Y) == math.huge
-    or math.abs(localHitPoint.Z) == math.huge then
-    return
-end
-
-local stillOwned = false
-local finalCheckOk = pcall(function()
-    if currentHitbox.Parent == nil or not currentHitbox:IsDescendantOf(workspace) then return end
-    local currentCharacter = currentTarget.Character
-    local state = currentCharacter ~= nil and currentCharacter.State or nil
-    if state == nil or state.Alive ~= true then return end
-    local partsByName = state.TargetPartsByName
-    if type(partsByName) ~= "table" then return end
-    for _, candidate in pairs(partsByName) do
-        if candidate == currentHitbox then stillOwned = true; return end
-    end
-end)
-if not finalCheckOk or not stillOwned then
-    arg:_Reset()
-    return
-end
-
-if effectiveOrigin ~= originalOrigin then
-    local shotCFrame = CFrame.lookAt(effectiveOrigin, targetPoint)
-    packedShot["\0"] = v116.encode(shotCFrame)
-    packedShot["\1"] = v116.encode(shotCFrame)
-else
-    packedShot["\0"] = v116.encode(CFrame.lookAt(originalOrigin, targetPoint))
-    packedShot["\1"] = v116.encode(CFrame.lookAt(secondaryCFrame.Position, targetPoint))
-end
-packedShot["\2"] = currentHitbox
-packedShot["\3"] = v116.encode(CFrame.new(localHitPoint))
+v137["\2"] = currentHitbox
+v137["\3"] = v116.encode(CFrame.new(v140))
 end
 
 index2.Destroy = function(arg)
