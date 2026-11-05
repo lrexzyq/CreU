@@ -1,3 +1,104 @@
+local __crefyQueuedBootGeneration = nil
+local __crefyQueuedBootEnvironment = _G
+pcall(function()
+    if type(getgenv) == "function" then
+        local candidate = getgenv()
+        if type(candidate) == "table" then
+            __crefyQueuedBootEnvironment = candidate
+        end
+    end
+    __crefyQueuedBootGeneration = rawget(__crefyQueuedBootEnvironment, "__CrefyQueuedRerunExpectedGeneration")
+    if __crefyQueuedBootGeneration == nil then
+        __crefyQueuedBootGeneration = rawget(_G, "__CrefyQueuedRerunExpectedGeneration")
+    end
+end)
+
+if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGeneration) == "number" then
+    print("[Crefy] Re-run After Teleport: waiting for the game client to become ready...")
+    local __crefyReadyStartedAt = os.clock()
+    local __crefyReadyDeadline = __crefyReadyStartedAt + 150
+    local __crefyControllersSeen = false
+    local __crefyClientReady = false
+    local __crefyReadyStableSince = nil
+
+    while os.clock() < __crefyReadyDeadline do
+        local __checkOk, __isReady = pcall(function()
+            if not game:IsLoaded() then return false end
+
+            local players = game:GetService("Players")
+            local localPlayer = players.LocalPlayer
+            if localPlayer == nil then return false end
+
+            local playerScripts = localPlayer:FindFirstChild("PlayerScripts")
+            local controllers = playerScripts and playerScripts:FindFirstChild("Controllers") or nil
+            if controllers ~= nil then __crefyControllersSeen = true end
+
+            local playerModules = playerScripts and playerScripts:FindFirstChild("Modules") or nil
+            local clientReplicatedClasses = playerModules
+                and playerModules:FindFirstChild("ClientReplicatedClasses") or nil
+
+            local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+                or localPlayer:FindFirstChild("PlayerGui")
+            local screenGuiCount = 0
+            if playerGui ~= nil then
+                for _, child in ipairs(playerGui:GetChildren()) do
+                    if child:IsA("ScreenGui") then
+                        screenGuiCount = screenGuiCount + 1
+                    end
+                end
+            end
+
+            local character = localPlayer.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
+            local rootPart = character and character:FindFirstChild("HumanoidRootPart") or nil
+
+            local replicatedStorage = game:GetService("ReplicatedStorage")
+            local modules = replicatedStorage:FindFirstChild("Modules")
+            local remotes = replicatedStorage:FindFirstChild("Remotes")
+            local replication = remotes and remotes:FindFirstChild("Replication") or nil
+            local fighterRemotes = replication and replication:FindFirstChild("Fighter") or nil
+            local duelsRemotes = remotes and remotes:FindFirstChild("Duels") or nil
+            local miscRemotes = remotes and remotes:FindFirstChild("Misc") or nil
+
+            return controllers ~= nil
+                and clientReplicatedClasses ~= nil
+                and screenGuiCount >= 2
+                and humanoid ~= nil
+                and rootPart ~= nil
+                and modules ~= nil
+                and fighterRemotes ~= nil
+                and duelsRemotes ~= nil
+                and miscRemotes ~= nil
+        end)
+
+        if __checkOk and __isReady == true then
+            if __crefyReadyStableSince == nil then
+                __crefyReadyStableSince = os.clock()
+            elseif os.clock() - __crefyReadyStableSince >= 2 then
+                __crefyClientReady = true
+                break
+            end
+        else
+            __crefyReadyStableSince = nil
+        end
+
+        if not __crefyControllersSeen and os.clock() - __crefyReadyStartedAt >= 45 then
+            break
+        end
+        task.wait(0.5)
+    end
+
+    if not __crefyClientReady then
+        local failedRunKey = tostring(__crefyQueuedBootGeneration) .. ":" .. tostring(game.PlaceId)
+        pcall(rawset, __crefyQueuedBootEnvironment, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
+        pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
+        warn("[Crefy] Re-run After Teleport aborted: the client, character, UI, or required Rivals modules were not ready. No Crefy modules were loaded.")
+        return
+    end
+
+    print("[Crefy] Re-run After Teleport: client and required modules are ready.")
+end
+
 if getgenv().KiciaRebuild and getgenv().KiciaRebuild.Unload then
     pcall(getgenv().KiciaRebuild.Unload)
 end
@@ -20259,7 +20360,7 @@ local function __finish()
 end
 local __taskDelay = type(task) == "table" and task.delay or nil
 if type(__taskDelay) == "function" then
-    pcall(__taskDelay, 240, function()
+    pcall(__taskDelay, 420, function()
         if __getSetting("__CrefyQueuedRerunInFlight") == __lockToken then
             __timedOut = true
             if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") ~= __runKey then
@@ -20301,7 +20402,7 @@ local function __runQueuedSource()
         warn("[Crefy] Re-run After Teleport execution failed: " .. tostring(__runError))
         return false
     end
-    local __deadline = os.clock() + 240
+    local __deadline = os.clock() + 420
     while os.clock() < __deadline and not __timedOut do
         if __getSetting("__CrefyAutoExecuteLastSuccessfulRunKey") == __runKey then
             return true
@@ -20313,7 +20414,7 @@ local function __runQueuedSource()
         task.wait(0.25)
     end
     if __timedOut then return false end
-    warn("[Crefy] Re-run After Teleport did not receive bootstrap confirmation within 240s.")
+    warn("[Crefy] Re-run After Teleport did not receive bootstrap confirmation within 420s.")
     return false
 end
 local __callOk, __callResult = pcall(__runQueuedSource)
@@ -34349,6 +34450,23 @@ local function riotWriteViewAngle(controller, payload)
     return writeViewAngleSlot(controller, RIOT_VIEW_ANGLE_SLOT, payload, "Riot")
 end
 
+local function clearViewAngleSlotDeferred(controller, slot, ownerName)
+    ownerName = type(ownerName) == "string" and ownerName or "camera"
+    if controller == nil then return false, "CharacterController unavailable" end
+    local sendCallOk, sendResult = pcall(function()
+        return controller:SendViewAngles(slot, nil)
+    end)
+    if not sendCallOk then
+        return false, "SendViewAngles raised while clearing " .. ownerName .. ": " .. tostring(sendResult)
+    end
+    if type(sendResult) ~= "table" or rawget(sendResult, "Ok") ~= true then
+        local detail = type(sendResult) == "table" and type(rawget(sendResult, "Error")) == "table"
+            and rawget(rawget(sendResult, "Error"), "Detail") or sendResult
+        return false, "SendViewAngles rejected clearing " .. ownerName .. ": " .. tostring(detail)
+    end
+    return true
+end
+
 local function riotClearActiveTarget(skipSlotClear)
     local controller = riotState.characterController
     if controller == nil and type(riotState.innerContext) == "table" then
@@ -34748,6 +34866,11 @@ end)
 end
 
 index2._ClearAnglePayload = function(arg, characterController)
+local arbiter = arg._cameraArbiter
+if type(arbiter) == "table" and type(arbiter.release) == "function" then
+    pcall(arbiter.release, "AlwaysBackstab.Knife")
+end
+arg._knifeCameraClaimed = false
 local ownerController = arg._anglePayloadController or characterController or arg._lastCharacterController
 if not arg._anglePayloadApplied and not arg._anglePayloadPending then
     arg._anglePayloadController = nil
@@ -34755,7 +34878,17 @@ if not arg._anglePayloadApplied and not arg._anglePayloadPending then
     return true
 end
 if ownerController == nil then return false end
-local clearOk, clearError = writeViewAngleSlot(ownerController, KNIFE_VIEW_ANGLE_SLOT, nil, "Knife")
+local deferFlush = riotRagebotHasPriority()
+if not deferFlush and type(arbiter) == "table" and type(arbiter.isBlockedFor) == "function" then
+    local blockOk, blocked = pcall(arbiter.isBlockedFor, "AlwaysBackstab.Knife", 0)
+    deferFlush = blockOk and blocked == true
+end
+local clearOk, clearError
+if deferFlush then
+    clearOk, clearError = clearViewAngleSlotDeferred(ownerController, KNIFE_VIEW_ANGLE_SLOT, "Knife")
+else
+    clearOk, clearError = writeViewAngleSlot(ownerController, KNIFE_VIEW_ANGLE_SLOT, nil, "Knife")
+end
 if clearOk then
     arg._anglePayloadApplied = false
     arg._anglePayloadPending = false
@@ -34875,14 +35008,23 @@ end
 arg._lastBackstabMode = mode
 
 if mode == "Riot" then
+arg:_ClearAnglePayload(characterController)
 arg:_UpdateRiot(innerContext, itemModifiers.AlwaysBackstabTriggerDist)
 return
 end
 
 riotStop()
-if arg._cameraArbiter ~= nil and arg._cameraArbiter.isBlockedFor("AlwaysBackstab.Knife", 0) then
-arg:_ClearAnglePayload(characterController)
-return
+local cameraArbiter = arg._cameraArbiter
+local ragebotOwnsCamera = riotRagebotHasPriority()
+local higherPriorityOwnsCamera = false
+if not ragebotOwnsCamera and type(cameraArbiter) == "table"
+    and type(cameraArbiter.isBlockedFor) == "function" then
+    local blockOk, blocked = pcall(cameraArbiter.isBlockedFor, "AlwaysBackstab.Knife", 0)
+    higherPriorityOwnsCamera = blockOk and blocked == true
+end
+if ragebotOwnsCamera or higherPriorityOwnsCamera then
+    arg:_ClearAnglePayload(characterController)
+    return
 end
 
 local itemBehaviors = innerContext.ItemBehaviors
@@ -34911,6 +35053,17 @@ Kind = "Normalized",
 Pitch = math.deg(pitch),
 Yaw = math.deg(yaw),
 }
+if riotRagebotHasPriority() then
+    arg:_ClearAnglePayload(characterController)
+    return
+end
+if type(cameraArbiter) == "table" and type(cameraArbiter.isBlockedFor) == "function" then
+    local blockOk, blocked = pcall(cameraArbiter.isBlockedFor, "AlwaysBackstab.Knife", 0)
+    if not blockOk or blocked == true then
+        arg:_ClearAnglePayload(characterController)
+        return
+    end
+end
 arg._anglePayloadPending = true
 arg._anglePayloadController = characterController
 local knifeSendOk, knifeSendError = writeViewAngleSlot(characterController, KNIFE_VIEW_ANGLE_SLOT, knifePayload, "Knife")
