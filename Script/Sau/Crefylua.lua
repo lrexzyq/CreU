@@ -22490,7 +22490,7 @@ return bj.c
 end
 end
 do
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoInspectAnimation=false,NoAttackAnimation=false,NoAimAnimation=false,NoChargeAnimation=false,NoThrowAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,Style="Arcane Orbit",ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,Style="Arcane Orbit",ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -33359,13 +33359,7 @@ local function fn38(I)local W= stateByPlayer [I.Player];return W~=nil and W.IsEn
 local v134 = v128.new()
 local aimbot = data.Aimbot
 local fov = aimbot.Fov
-
-local headOnlyHitboxesByClass = {
-Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
-Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
-}
-local selectedHeadHitboxes = headOnlyHitboxesByClass[v129.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
-local v135 = v126.new(arg2, arg, aimbot.TargetConditions, selectedHeadHitboxes, function(origin, part) return not data.Aimbot.TargetConditions.Visible or arg3:Check(origin, part, part.Parent) end)
+local v135 = v126.new(arg2, arg, aimbot.TargetConditions, aimbot.TargetHitboxes[v129.DefaultProfile.Class], function(origin, part) return not data.Aimbot.TargetConditions.Visible or arg3:Check(origin, part, part.Parent) end)
 local v136 = v127.new(v135, v116.buildMeasure(fov.Radius, aimbot.TargetConditions.WithinFov), v132)
 local followTarget = fov.Circle.FollowTarget
 local speed = followTarget.Speed
@@ -33412,7 +33406,7 @@ v134:Add(v122:ObserveEnabledKeybind({ "Aimbot" }, function(active)
 tbl18._active = active
 end))
 
-local v141 = v131(arg2, v134, "features.Aimbot", v135, function() return headOnlyHitboxesByClass end)
+local v141 = v131(arg2, v134, "features.Aimbot", v135, function() return data.Aimbot.TargetHitboxes end)
 local function fn39(selection) v136:SetHitboxSelectionMode(v116.buildHitboxSelectionMode(selection)) end
 v134:Connect(v120:GetPropertyChangedSignal({ "Aimbot", "HitboxPoint" }), function(point) tbl18._computeTargetPoint = v116.buildTargetPoint(point) end)
 v134:Connect(v120:GetPropertyChangedSignal({ "Aimbot", "Fov" }), function(f)
@@ -35263,7 +35257,16 @@ local handler = v120.Handler
 if handler == nil then
 continue
 else
-handler(arg2)
+local dispatchOk, dispatchError = pcall(handler, arg2)
+if dispatchOk then
+v120._lastDispatchError = nil
+else
+local errorText = tostring(dispatchError)
+if v120._lastDispatchError ~= errorText then
+v120._lastDispatchError = errorText
+warn("[Crefy InputHook] Handler failed: " .. errorText)
+end
+end
 if not arg2.Block then
 continue
 end
@@ -53907,11 +53910,7 @@ local index2 = {}
 index2.__index = index2
 
 index2.new = function()
-return setmetatable({
-    _disabledSprint = false, _disabledShoot = false, _disabledEquip = false, _disabledReload = false,
-    _disabledInspect = false, _disabledAttack = false, _disabledAim = false,
-    _disabledCharge = false, _disabledThrow = false,
-}, index2)
+return setmetatable({ _disabledSprint = false, _disabledShoot = false, _disabledEquip = false, _disabledReload = false }, index2)
 end
 
 index2.SetSprintDisabled = function(arg, disabledSprint)
@@ -53934,49 +53933,6 @@ arg._disabledReload = disabledReload
 return arg:_Load()
 end
 
-index2.SetInspectDisabled = function(arg, disabledInspect)
-arg._disabledInspect = disabledInspect
-return arg:_Load()
-end
-
-index2.SetAttackDisabled = function(arg, disabledAttack)
-arg._disabledAttack = disabledAttack
-return arg:_Load()
-end
-
-index2.SetAimDisabled = function(arg, disabledAim)
-arg._disabledAim = disabledAim
-return arg:_Load()
-end
-
-index2.SetChargeDisabled = function(arg, disabledCharge)
-arg._disabledCharge = disabledCharge
-return arg:_Load()
-end
-
-index2.SetThrowDisabled = function(arg, disabledThrow)
-arg._disabledThrow = disabledThrow
-return arg:_Load()
-end
-
-local function animationNameHasToken(animationName, aliases)
-if type(animationName) ~= "string" or animationName == "" then return false end
-for token in string.gmatch(animationName, "[%w]+") do
-    if aliases[token] then return true end
-end
-return false
-end
-
-local ANIMATION_NAME_ALIASES = {
-    shoot = { shoot = true, shooting = true, fire = true, firing = true, quickshot = true },
-    reload = { reload = true, reloading = true },
-    inspect = { inspect = true, inspecting = true },
-    attack = { attack = true, attacking = true, melee = true, stab = true, slash = true },
-    aim = { aim = true, aiming = true, ads = true },
-    charge = { charge = true, charging = true },
-    throw = { throw = true, throwing = true },
-}
-
 index2._ShouldSuppress = function(arg, arg2, arg3)
 if arg._disabledSprint and arg3 == v102(arg2, "_sprint_animation") then
 return true
@@ -53986,32 +53942,11 @@ if arg._disabledEquip and arg3 == v102(arg2, "_equip_animation") then
 return v86[34]
 end
 
-local animationName = type(arg3) == "string" and string.lower(arg3) or ""
-if arg._disabledShoot and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.shoot) then
+if arg._disabledShoot and (string.find(arg3, "Shoot", 1, true) ~= nil or arg3 == "QuickShot") then
 return true
 end
 
-if arg._disabledReload and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.reload) then
-return true
-end
-
-if arg._disabledInspect and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.inspect) then
-return true
-end
-
-if arg._disabledAttack and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.attack) then
-return true
-end
-
-if arg._disabledAim and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.aim) then
-return true
-end
-
-if arg._disabledCharge and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.charge) then
-return true
-end
-
-if arg._disabledThrow and animationNameHasToken(animationName, ANIMATION_NAME_ALIASES.throw) then
+if arg._disabledReload and string.find(arg3, "Reload", 1, v86[34]) ~= nil then
 return true
 end
 return false
@@ -55150,41 +55085,11 @@ local function fn39()
 arg3:ReportResult(arg._animationDisabler:SetReloadDisabled(v118.Data.ItemModifiers.NoReloadAnimation))
 end
 
-local function fn40()
-arg3:ReportResult(arg._animationDisabler:SetInspectDisabled(v118.Data.ItemModifiers.NoInspectAnimation))
-end
-
-local function fn41()
-arg3:ReportResult(arg._animationDisabler:SetAttackDisabled(v118.Data.ItemModifiers.NoAttackAnimation))
-end
-
-local function fn42()
-arg3:ReportResult(arg._animationDisabler:SetAimDisabled(v118.Data.ItemModifiers.NoAimAnimation))
-end
-
-local function fn43()
-arg3:ReportResult(arg._animationDisabler:SetChargeDisabled(v118.Data.ItemModifiers.NoChargeAnimation))
-end
-
-local function fn44()
-arg3:ReportResult(arg._animationDisabler:SetThrowDisabled(v118.Data.ItemModifiers.NoThrowAnimation))
-end
-
 arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoReloadAnimation" }), fn39)
-arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoInspectAnimation" }), fn40)
-arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoAttackAnimation" }), fn41)
-arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoAimAnimation" }), fn42)
-arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoChargeAnimation" }), fn43)
-arg2:Connect(v118:GetPropertyChangedSignal({ "ItemModifiers", "NoThrowAnimation" }), fn44)
 fn36()
 fn37()
 fn38()
 fn39()
-fn40()
-fn41()
-fn42()
-fn43()
-fn44()
 end
 
 index2._SetupNoSpread = function(arg, arg2)
@@ -59469,8 +59374,7 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
             }, Enum.EasingStyle.Quart, (index % 3) * 0.012)
         end
         local main, stroke, scale = makeMain(0.28, 8, 18)
-        play(scale, 0.14, { Scale = 1.24 }, Enum.EasingStyle.Back)
-        play(scale, 0.16, { Scale = 1 }, Enum.EasingStyle.Quint, 0.14)
+        play(scale, 0.34, { Scale = 1 }, Enum.EasingStyle.Back)
         fadeText(main, startX, startY - math.max(12, rise * 0.24), 0, duration * 0.9, Enum.EasingStyle.Quart, 0.12)
         play(stroke, duration * 0.75, { Transparency = 1 }, Enum.EasingStyle.Quad)
         local tagOffset = textSize + 14
@@ -59630,8 +59534,7 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
 
     elseif style == "Celestial Sigil" then
         local main, stroke, scale = makeMain(0.84, 1, 18)
-        play(scale, 0.2, { Scale = 1.08 }, Enum.EasingStyle.Back)
-        play(scale, duration * 0.72, { Scale = 0.98 }, Enum.EasingStyle.Sine, 0.2)
+        play(scale, math.max(0.25, duration * 0.72), { Scale = 0.98 }, Enum.EasingStyle.Back)
         fadeText(main, startX, startY - rise * 0.32, 0, duration, Enum.EasingStyle.Sine)
         play(stroke, duration, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
         for side = -1, 1, 2 do
@@ -60196,20 +60099,51 @@ return
 end
 local position = v138.Position
 local v140 = v131(position, currentHitbox, v136)
-if v140 == nil then
+if v140 == nil or v140 == Vector3.zero then
 local surfaceOk, surfacePoint = pcall(function()
 return currentHitbox:GetClosestPointOnSurface(v136)
 end)
-if surfaceOk and typeof(surfacePoint) == "Vector3" then
+if surfaceOk and typeof(surfacePoint) == "Vector3" and (surfacePoint - v136).Magnitude > 1e-4 then
 local localPointOk, localPoint = pcall(function()
 return currentHitbox.CFrame:PointToObjectSpace(surfacePoint)
 end)
-if localPointOk and typeof(localPoint) == "Vector3" then
+if localPointOk and typeof(localPoint) == "Vector3" and localPoint ~= Vector3.zero then
 v140 = localPoint
 end
 end
 end
-if v140 == nil then
+if v140 == nil or v140 == Vector3.zero then
+local fallbackOk, fallbackPoint = pcall(function()
+local hitboxFrame = currentHitbox.CFrame
+local halfSize = currentHitbox.Size * 0.5
+local localTarget = hitboxFrame:PointToObjectSpace(v136)
+local surfaceLocal = Vector3.new(
+math.clamp(localTarget.X, -halfSize.X, halfSize.X),
+math.clamp(localTarget.Y, -halfSize.Y, halfSize.Y),
+math.clamp(localTarget.Z, -halfSize.Z, halfSize.Z)
+)
+local inside = math.abs(localTarget.X) <= halfSize.X
+and math.abs(localTarget.Y) <= halfSize.Y
+and math.abs(localTarget.Z) <= halfSize.Z
+if inside then
+local distanceX = halfSize.X - math.abs(localTarget.X)
+local distanceY = halfSize.Y - math.abs(localTarget.Y)
+local distanceZ = halfSize.Z - math.abs(localTarget.Z)
+if distanceX <= distanceY and distanceX <= distanceZ then
+surfaceLocal = Vector3.new((localTarget.X >= 0 and 1 or -1) * halfSize.X, surfaceLocal.Y, surfaceLocal.Z)
+elseif distanceY <= distanceZ then
+surfaceLocal = Vector3.new(surfaceLocal.X, (localTarget.Y >= 0 and 1 or -1) * halfSize.Y, surfaceLocal.Z)
+else
+surfaceLocal = Vector3.new(surfaceLocal.X, surfaceLocal.Y, (localTarget.Z >= 0 and 1 or -1) * halfSize.Z)
+end
+end
+return surfaceLocal
+end)
+if fallbackOk and typeof(fallbackPoint) == "Vector3" and fallbackPoint ~= Vector3.zero then
+v140 = fallbackPoint
+end
+end
+if v140 == nil or v140 == Vector3.zero then
 return
 end
 local v141 = arg._visibleOriginByHitbox[currentHitbox]
@@ -66885,8 +66819,8 @@ local function fn35()
         chamsGroup:AddDropdown({ Label = "Character Chams Material", Options = materials.List, Config = { "Chams", "Character", "Material" } })
         chamsGroup:AddToggle({ Label = "Strip Character Chams Textures", Config = { "Chams", "Character", "StripTextures" } })
 
-        local antiAim = characterGrid:AddSection({ Title = "Anti-Aim", Side = "left" })
-        local antiAimToggle = antiAim:AddToggle({ Label = "Enable Anti-Aim", Config = { "ItemModifiers", "AntiAim", "Enabled" } })
+        local antiAim = characterGrid:AddSection({ Title = "Anti Aim", Side = "left" })
+        local antiAimToggle = antiAim:AddToggle({ Label = "Enable Anti Aim", Config = { "ItemModifiers", "AntiAim", "Enabled" } })
         local controls = antiAim:AddGroup({ Source = antiAimToggle })
         controls:AddDropdown({ Label = "Pitch", Options = { "disabled", "offset", "random", "look up", "look down", "custom", "extended custom", "extended random" }, Config = { "ItemModifiers", "AntiAim", "Pitch" } })
         controls:AddSlider({ Label = "Custom Pitch", Min = -180, Max = 180, Step = 1, Config = { "ItemModifiers", "AntiAim", "CustomPitch" } })
@@ -68663,7 +68597,7 @@ return iu.c
 end
 end
 do
-local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Hide Shoot Animation",Config={"ItemModifiers","NoShootAnimation"}});l:AddToggle({Label="Hide Sprint Animation",Config={"ItemModifiers","NoSprintAnimation"}});l:AddToggle({Label="Hide Equip Animation",Config={"ItemModifiers","NoEquipAnimation"}});l:AddToggle({Label="Hide Reload Animation",Config={"ItemModifiers","NoReloadAnimation"}});l:AddToggle({Label="Hide Inspect Animation",Config={"ItemModifiers","NoInspectAnimation"}});l:AddToggle({Label="Hide Attack Animation",Config={"ItemModifiers","NoAttackAnimation"}});l:AddToggle({Label="Hide Aim Animation",Config={"ItemModifiers","NoAimAnimation"}});l:AddToggle({Label="Hide Charge Animation",Config={"ItemModifiers","NoChargeAnimation"}});l:AddToggle({Label="Hide Throw Animation",Config={"ItemModifiers","NoThrowAnimation"}});l:AddDivider({Label="Motion"});l:AddToggle({Label="Remove Weapon Motion",Config={"ItemModifiers","NoMotion"}});l:AddToggle({Label="Remove Camera Shake",Config={"ItemModifiers","NoCameraShake"}});l:AddToggle({Label="Remove Camera Sway",Config={"ItemModifiers","NoCameraSway"}});end;end
+local function fn35() tbl17 .aE();return function(l)l:AddToggle({Label="Hide Shoot Animation",Config={"ItemModifiers","NoShootAnimation"}});l:AddToggle({Label="Hide Sprint Animation",Config={"ItemModifiers","NoSprintAnimation"}});l:AddToggle({Label="Hide Equip Animation",Config={"ItemModifiers","NoEquipAnimation"}});l:AddToggle({Label="Hide Reload Animation",Config={"ItemModifiers","NoReloadAnimation"}});l:AddDivider({Label="Motion"});l:AddToggle({Label="Remove Weapon Motion",Config={"ItemModifiers","NoMotion"}});l:AddToggle({Label="Remove Camera Shake",Config={"ItemModifiers","NoCameraShake"}});l:AddToggle({Label="Remove Camera Sway",Config={"ItemModifiers","NoCameraSway"}});end;end
 
 tbl17.iV = function()
 local iv = tbl17.cache.iV
@@ -70353,13 +70287,7 @@ end
 index2.new = function(arg, arg2, arg3)
 local flickbot = v123.new("flickbot")
 local aimbot = data.Aimbot
-
-local headOnlyHitboxesByClass = {
-Standard = { Air = { "HitboxHead" }, Ground = { "HitboxHead" } },
-Small = { Air = { "HitboxHeadSmall" }, Ground = { "HitboxHeadSmall" } },
-}
-local selectedHeadHitboxes = headOnlyHitboxesByClass[v124.DefaultProfile.Class] or headOnlyHitboxesByClass.Standard
-local v129 = v121.new(arg2, arg, aimbot.TargetConditions, selectedHeadHitboxes, function(I,W)return( arg3 :Check(I,W,W.Parent));end)
+local v129 = v121.new(arg2, arg, aimbot.TargetConditions, aimbot.TargetHitboxes[v124.DefaultProfile.Class], function(I,W)return not data.Aimbot.TargetConditions.Visible or arg3:Check(I,W,W.Parent);end)
 
 local tbl18 = {
 _trove = flickbot,
@@ -70382,7 +70310,7 @@ flickbot:Add(v119:ObserveEnabledKeybind({ "Flickbot" }, function(arg4)
 tbl18:_OnKeybindChanged(arg4)
 end))
 
-local v130 = v125(arg2, flickbot, "features.Aimbot", v129, function() return headOnlyHitboxesByClass end)
+local v130 = v125(arg2, flickbot, "features.Aimbot", v129, function() return data.Aimbot.TargetHitboxes end)
 local function fn37(selection) tbl18._targetSelection:SetHitboxSelectionMode(v115.buildHitboxSelectionMode(selection)) end
 flickbot:Connect(v118:GetPropertyChangedSignal({ "Aimbot", "Fov" }), function(f) tbl18._targetSelection:SetMeasure(v115.buildMeasure(f.Radius, data.Aimbot.TargetConditions.WithinFov)) end)
 flickbot:Connect(v118:GetPropertyChangedSignal({ "Aimbot", "TargetConditions" }), function(c)
