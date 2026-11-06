@@ -31032,6 +31032,142 @@ local function pendingAmmoNumber(value)
 return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge and value >= 0
 end
 
+-- Ragebot gun cadence mirrors Ue's scheduling model without replacing Crefy's
+-- encoded-shot path: one serialized request, a per-item NextFire deadline, and
+-- the weapon's native cooldown/equip/reload deadlines as authoritative gates.
+local RAGEBOT_GUN_CADENCE_STATES = setmetatable({}, { __mode = "k" })
+-- Ue's Rage scheduler defaults to 25% of the weapon's declared cooldown.
+-- Keep this as a local Ragebot cadence policy; do not mutate the game's Info table.
+local RAGEBOT_GUN_COOLDOWN_PERCENT = 25
+local function ragebotGunFinite(value)
+return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function ragebotGunCadenceState(item)
+local inner = type(item) == "table" and item.Inner or nil
+if inner == nil then return nil end
+local state = RAGEBOT_GUN_CADENCE_STATES[inner]
+if type(state) ~= "table" then
+    state = { NextFire = 0, Busy = false, BusySince = 0, LastRequestAt = -math.huge, Generation = 0 }
+    RAGEBOT_GUN_CADENCE_STATES[inner] = state
+end
+return state
+end
+
+local function ragebotGunCurrentInfo(item)
+local info = type(item) == "table" and item.Info or nil
+pcall(function()
+    local current = v102(item.Inner, "Info")
+    if type(current) == "table" then info = current end
+end)
+return type(info) == "table" and info or {}
+end
+
+local function ragebotGunConfiguredCooldown(item)
+local info = ragebotGunCurrentInfo(item)
+local value
+if item.Name == "Revolver" then
+    value = tonumber(info.QuickShotCooldown)
+end
+if not ragebotGunFinite(value) or value < 0 then
+    value = tonumber(info.ShootCooldown)
+end
+local burstCount = tonumber(info.ShootBurst) or 1
+local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
+if not ragebotGunFinite(burstCount) or burstCount < 1 then burstCount = 1 end
+if not ragebotGunFinite(burstCooldown) or burstCooldown < 0 then burstCooldown = 0 end
+if not ragebotGunFinite(value) or value < 0 then value = 0 end
+if item.Name ~= "Revolver" and burstCount > 1 then
+    value = (burstCount - 1) * burstCooldown + math.max(value, burstCooldown)
+end
+local scale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
+return math.clamp(math.max(1 / 240, value * scale), 1 / 240, 10)
+end
+
+local function ragebotGunNativeReadyIn(item)
+local inner = type(item) == "table" and item.Inner or nil
+if inner == nil then return 0 end
+local nativeNow = tick()
+local remaining = 0
+local function includeDeadline(value)
+    if ragebotGunFinite(value) then
+        local delay = value - nativeNow
+        if delay > 0 and delay < 60 then remaining = math.max(remaining, delay) end
+    end
+end
+for _, field in ipairs({ "_shoot_cooldown", "_equip_cooldown", "_is_revolver_quick_shooting" }) do
+    local ok, value = pcall(rawget, inner, field)
+    if ok then includeDeadline(value) end
+end
+local reloadEnding, reloadCancel, reloadExpiration
+pcall(function()
+    reloadEnding = rawget(inner, "_reload_cooldown")
+    reloadCancel = rawget(inner, "_reload_cancel_cooldown")
+    reloadExpiration = rawget(inner, "_reload_cancel_expiration")
+end)
+local ammo = nil
+pcall(function() ammo = item:GetAmmo() end)
+local canCancelReload = ragebotGunFinite(ammo) and ammo > 0
+    and ragebotGunFinite(reloadCancel) and ragebotGunFinite(reloadExpiration)
+    and nativeNow >= reloadCancel and nativeNow < reloadExpiration
+if not canCancelReload then includeDeadline(reloadEnding) end
+return remaining
+end
+
+index2.GetRagebotShotWait = function(item, now)
+now = ragebotGunFinite(now) and now or os.clock()
+local state = ragebotGunCadenceState(item)
+if state == nil then return 0 end
+if state.Busy == true then
+    local busyAge = now - (tonumber(state.BusySince) or now)
+    if busyAge >= 0 and busyAge < 1.0 then return math.max(1 / 120, 1.0 - busyAge) end
+    -- A failed/yielded callback must not permanently wedge the weapon.
+    state.Busy = false
+    state.BusySince = 0
+end
+local scheduled = tonumber(state.NextFire) or 0
+if not ragebotGunFinite(scheduled) then scheduled = 0 end
+local scheduledWait = math.max(0, scheduled - now)
+-- Keep the pre-existing pending-shot estimate in the same gate. It is useful
+-- while ammo replication is outstanding, but NextFire remains independent so
+-- reconciliation cannot accidentally erase the weapon cadence deadline.
+local pendingDeadline = tonumber(item._nextLikelyShotRequestAt) or 0
+if not ragebotGunFinite(pendingDeadline) then pendingDeadline = 0 end
+local pendingWait = math.max(0, pendingDeadline - now)
+local nativeWait = ragebotGunNativeReadyIn(item)
+pcall(function()
+    local remaining = item:GetShootTimeRemaining()
+    if ragebotGunFinite(remaining) and remaining > nativeWait then nativeWait = remaining end
+end)
+return math.max(scheduledWait, pendingWait, nativeWait)
+end
+
+index2.BeginRagebotShot = function(item, now)
+now = ragebotGunFinite(now) and now or os.clock()
+local waitFor = item:GetRagebotShotWait(now)
+if waitFor > 0 then return false, waitFor end
+local state = ragebotGunCadenceState(item)
+if state == nil or state.Busy == true then return false, math.max(waitFor, 1 / 120) end
+state.Busy = true
+state.BusySince = now
+state.Generation = (tonumber(state.Generation) or 0) + 1
+return true, state.Generation
+end
+
+index2.FinishRagebotShot = function(item, sent, now, generation)
+now = ragebotGunFinite(now) and now or os.clock()
+local state = ragebotGunCadenceState(item)
+if state == nil then return false end
+if generation ~= nil and state.Generation ~= generation then return false end
+state.Busy = false
+state.BusySince = 0
+if sent == true then
+    state.LastRequestAt = now
+    state.NextFire = math.max(tonumber(state.NextFire) or 0, now + ragebotGunConfiguredCooldown(item))
+end
+return true
+end
+
 local function syncPendingShotSummary(item)
 local batches = item._pendingShotBatches
 if type(batches) ~= "table" then
@@ -31198,14 +31334,17 @@ table.insert(pendingBatches, { spend = predictedSpend, deadline = deadline })
 syncPendingShotSummary(arg)
 local quickShotCooldown = arg:IsFanFired() and v102(info, "QuickShotCooldown") or nil
 if type(quickShotCooldown) == "number" and quickShotCooldown == quickShotCooldown and quickShotCooldown >= 0 and quickShotCooldown < math.huge then
-arg._nextLikelyShotRequestAt = now2 + quickShotCooldown
+local cadenceScale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
+arg._nextLikelyShotRequestAt = now2 + math.max(1 / 240, quickShotCooldown * cadenceScale)
 return
 end
 local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
 local shootCooldown = tonumber(info.ShootCooldown) or 0
 if burstCooldown ~= burstCooldown or burstCooldown < 0 or burstCooldown == math.huge or burstCooldown == -math.huge then burstCooldown = 0 end
 if shootCooldown ~= shootCooldown or shootCooldown < 0 or shootCooldown == math.huge or shootCooldown == -math.huge then shootCooldown = 0 end
-arg._nextLikelyShotRequestAt = now2 + (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
+local cadenceScale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
+local configuredCooldown = (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
+arg._nextLikelyShotRequestAt = now2 + math.max(1 / 240, configuredCooldown * cadenceScale)
 end
 
 index2.Equip = function(arg)
@@ -71635,6 +71774,13 @@ else
     end
 end
 
+if type(arg4.GetRagebotShotWait) == "function" then
+    local cadenceOk, cadenceWait = pcall(arg4.GetRagebotShotWait, arg4, os.clock())
+    if not cadenceOk or (ragebotFiniteNumber(cadenceWait) and cadenceWait > 0) then
+        return n, nil
+    end
+end
+
 return n, function()
 local targetStillValid = false
 local targetReadOk = pcall(function()
@@ -71701,6 +71847,14 @@ if voidSpamEnabledNow then
         return false
     end
 end
+local callbackReloadOk, callbackReloading = pcall(function() return arg4:IsReloading() end)
+if not callbackReloadOk or callbackReloading ~= false then return false end
+local cadenceGeneration = nil
+if type(arg4.BeginRagebotShot) == "function" then
+    local beginOk, began, token = pcall(arg4.BeginRagebotShot, arg4, os.clock())
+    if not beginOk or began ~= true then return false end
+    cadenceGeneration = token
+end
 local requestedAmmoBefore = nil
 local requestedShotCount = nil
 local requestCountBefore = nil
@@ -71756,6 +71910,9 @@ local okSend, sendError = pcall(function()
     requestedShotCount = afterCount
 end)
 if okSend then
+    if type(arg4.FinishRagebotShot) == "function" then
+        pcall(arg4.FinishRagebotShot, arg4, true, os.clock(), cadenceGeneration)
+    end
     ragebotVoidSpamMarkShotRequest(arg4, requestedAmmoBefore, requestedShotCount)
     return true
 end
@@ -71764,12 +71921,18 @@ if requestCountBefore ~= nil
     and okCountAfterFailure
     and ragebotFiniteNumber(countAfterFailure)
     and countAfterFailure > requestCountBefore then
+    if type(arg4.FinishRagebotShot) == "function" then
+        pcall(arg4.FinishRagebotShot, arg4, true, os.clock(), cadenceGeneration)
+    end
     ragebotVoidSpamMarkShotRequest(arg4, requestedAmmoBefore, countAfterFailure)
     if os.clock() >= (arg._nextShotRequestWarningAt or 0) then
         arg._nextShotRequestWarningAt = os.clock() + 5
         warn("[Ragebot] ShootEncoded raised after queuing the request; preserving Hide/cooldown: " .. tostring(sendError))
     end
     return true
+end
+if type(arg4.FinishRagebotShot) == "function" then
+    pcall(arg4.FinishRagebotShot, arg4, false, os.clock(), cadenceGeneration)
 end
 if os.clock() >= (arg._nextShotRequestWarningAt or 0) then
     arg._nextShotRequestWarningAt = os.clock() + 5
