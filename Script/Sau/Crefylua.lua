@@ -22867,7 +22867,7 @@ return bj.c
 end
 end
 do
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,Style="Arcane Orbit",ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,Style="Arcane Orbit",ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18},DamageEffects={Enabled=false,FortniteDamage=true,Slashes=false,Explosion=false,Bubble=false,PhantomForces=false,Weld=false,StackDamage=true,CycleTextColors=false,OriginalPhantomColors=false,Material="Neon",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,190,70),Color3=Color3.fromRGB(120,210,255),Duration=1.2,Scale=1}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -58977,6 +58977,9 @@ _noGameHitsound = PlayerHit:Add(v118.new()),
 _hitFlash = PlayerHit:Add(v120.new()),
 _chams = {},
 _damageNumbers = {},
+_damageEffectObjects = {},
+_damageEffectStacks = setmetatable({}, { __mode = "k" }),
+_damageEffectColorIndex = 0,
 _damageGui = createDamageNumbersGui(),
 _damageGuiRetryAt = 0,
 _damageSpawnWarnAt = 0,
@@ -58999,6 +59002,10 @@ tbl18:_SetEnabled()
 end)
 
 tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageNumbers", "RemoveGameNumbers" }), function()
+tbl18:_SetEnabled()
+end)
+
+tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageEffects", "Enabled" }), function()
 tbl18:_SetEnabled()
 end)
 
@@ -59047,8 +59054,10 @@ end
 index2._SetEnabled = function(arg)
 local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
 local damageNumbers = type(playerHit) == "table" and playerHit.DamageNumbers or nil
+local damageEffects = type(playerHit) == "table" and playerHit.DamageEffects or nil
 local enabled = type(playerHit) == "table" and playerHit.Enabled == true
     or type(damageNumbers) == "table" and (damageNumbers.Enabled == true or damageNumbers.RemoveGameNumbers == true)
+    or type(damageEffects) == "table" and damageEffects.Enabled == true
 arg._replicateBinding:SetEnabled(enabled == true)
 end
 
@@ -59114,6 +59123,20 @@ if customOverlayReady then
 end
 if customNumberShown or removeGameNumbers then
     arg2.Block = true
+end
+
+local damageEffects = type(playerHit) == "table" and playerHit.DamageEffects or nil
+if type(damageEffects) == "table" and damageEffects.Enabled == true then
+    local okEffect, effectResult = pcall(function()
+        return arg:_SpawnDamageEffects(hitDamage, hitRoot, isHeadshot, parent)
+    end)
+    if not okEffect then
+        local now = os.clock()
+        if now - (arg._damageEffectWarnAt or 0) >= 5 then
+            arg._damageEffectWarnAt = now
+            warn("[DamageEffects] spawn failed: " .. tostring(effectResult))
+        end
+    end
 end
 
 if type(playerHit) == "table" and playerHit.Enabled == true then
@@ -59569,6 +59592,264 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
     table.insert(arg._damageNumbers, { Objects = objects, Tweens = tweens })
     return true
 end
+index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel)
+    local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
+    local cfg = type(playerHit) == "table" and playerHit.DamageEffects or nil
+    if type(cfg) ~= "table" or cfg.Enabled ~= true then return false end
+    if typeof(hitRoot) ~= "Instance" or not hitRoot:IsA("BasePart") or hitRoot.Parent == nil then
+        return false
+    end
+
+    local amount = tonumber(damage)
+    if amount == nil or amount ~= amount or amount == math.huge or amount == -math.huge then
+        return false
+    end
+
+    local model = typeof(hitModel) == "Instance" and hitModel:IsA("Model") and hitModel
+        or hitRoot:FindFirstAncestorOfClass("Model")
+    local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
+    local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 190, 70)
+    local color3 = typeof(cfg.Color3) == "Color3" and cfg.Color3 or Color3.fromRGB(120, 210, 255)
+    local colors = { color1, color2, color3 }
+    local colorIndex = 1
+    if cfg.CycleTextColors == true then
+        arg._damageEffectColorIndex = (tonumber(arg._damageEffectColorIndex) or 0) % #colors + 1
+        colorIndex = arg._damageEffectColorIndex
+    elseif isHeadshot == true then
+        colorIndex = 2
+    end
+    local mainColor = colors[colorIndex]
+    local duration = math.clamp(tonumber(cfg.Duration) or 1.2, 0.2, 4)
+    local scale = math.clamp(tonumber(cfg.Scale) or 1, 0.4, 3)
+    local selectedMaterial = cfg.Material == "ForceField" and Enum.Material.ForceField or Enum.Material.Neon
+    local useWeld = cfg.Weld == true
+    local workspaceService = workspace
+    local TweenService = game:GetService("TweenService")
+    local Debris = game:GetService("Debris")
+    local camera = workspace.CurrentCamera
+    local look = camera and camera.CFrame.LookVector or Vector3.new(0, 0, -1)
+    local origin = hitRoot.Position + Vector3.new(0, isHeadshot and 1.25 or 0.65, 0)
+    local face = CFrame.lookAt(origin, origin + look)
+    local damageText = "-" .. tostring(math.floor(amount + 0.5))
+
+    local function untrack(object)
+        for index = #arg._damageEffectObjects, 1, -1 do
+            if arg._damageEffectObjects[index] == object then
+                table.remove(arg._damageEffectObjects, index)
+                break
+            end
+        end
+    end
+
+    local function track(object, lifetime)
+        if object == nil then return nil end
+        table.insert(arg._damageEffectObjects, object)
+        local ttl = lifetime or (duration + 0.35)
+        pcall(function() Debris:AddItem(object, ttl) end)
+        task.delay(ttl + 0.75, function() untrack(object) end)
+        return object
+    end
+
+    local function trackPersistent(object)
+        if object ~= nil then
+            table.insert(arg._damageEffectObjects, object)
+        end
+        return object
+    end
+
+    local function makePart(name, shape, size, cframe, color, transparency)
+        local part = Instance.new("Part")
+        part.Name = name
+        part.Shape = shape or Enum.PartType.Block
+        part.Size = size
+        part.CFrame = cframe
+        part.Color = color or mainColor
+        part.Material = selectedMaterial
+        part.Transparency = transparency or 0.12
+        part.Anchored = not (useWeld and hitRoot.Parent ~= nil)
+        part.Massless = true
+        part.CanCollide = false
+        part.CanTouch = false
+        part.CanQuery = false
+        part.CastShadow = false
+        part.Parent = workspaceService
+        if not part.Anchored then
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = hitRoot
+            weld.Part1 = part
+            weld.Parent = part
+            track(weld, duration + 0.35)
+        end
+        track(part)
+        return part
+    end
+
+    local function tween(object, time, goal, style)
+        local ok, value = pcall(function()
+            local created = TweenService:Create(object, TweenInfo.new(math.max(0.05, time), style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            created:Play()
+            return created
+        end)
+        if ok and value then
+            arg._damageEffectObjects[#arg._damageEffectObjects + 1] = value
+            value.Completed:Connect(function() untrack(value) end)
+            task.delay(math.max(0.05, time) + 0.75, function() untrack(value) end)
+            return value
+        end
+        return nil
+    end
+
+    -- Fortnite-style world billboard with optional damage stacking and a three-colour cycle.
+    if cfg.FortniteDamage == true then
+        local stacked = cfg.StackDamage == true and arg._damageEffectStacks[hitRoot] or nil
+        local billboard, label, stroke, gradient
+        if type(stacked) == "table" and stacked.Billboard ~= nil and stacked.Billboard.Parent ~= nil
+            and stacked.Label ~= nil and stacked.Label.Parent ~= nil then
+            billboard, label, stroke, gradient = stacked.Billboard, stacked.Label, stacked.Stroke, stacked.Gradient
+            stacked.Amount = (tonumber(stacked.Amount) or 0) + amount
+            stacked.Generation = (tonumber(stacked.Generation) or 0) + 1
+            for _, oldTween in next, stacked.Tweens or {} do
+                pcall(function() oldTween:Cancel() end)
+            end
+            stacked.Tweens = {}
+            label.Text = "-" .. tostring(math.floor(stacked.Amount + 0.5))
+            label.TextColor3 = mainColor
+            label.TextTransparency = 0
+            label.TextStrokeTransparency = 0.08
+            label.Rotation = 0
+            billboard.StudsOffsetWorldSpace = Vector3.new(0, isHeadshot and 3.1 or 2.5, 0)
+            if stroke then stroke.Color = color3 end
+            if gradient then
+                local secondColor = colors[colorIndex % #colors + 1]
+                local thirdColor = colors[(colorIndex + 1) % #colors + 1]
+                gradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, mainColor),
+                    ColorSequenceKeypoint.new(0.5, secondColor),
+                    ColorSequenceKeypoint.new(1, thirdColor),
+                })
+            end
+        else
+            billboard = Instance.new("BillboardGui")
+            billboard.Name = "CrefyFortniteDamage"
+            billboard.Adornee = hitRoot
+            billboard.AlwaysOnTop = true
+            billboard.LightInfluence = 0
+            billboard.Size = UDim2.fromOffset(150, 64)
+            billboard.StudsOffsetWorldSpace = Vector3.new(0, isHeadshot and 3.1 or 2.5, 0)
+            billboard.Parent = hitRoot
+            label = Instance.new("TextLabel")
+            label.Name = "Damage"
+            label.BackgroundTransparency = 1
+            label.Size = UDim2.fromScale(1, 1)
+            label.Font = Enum.Font.GothamBlack
+            label.Text = damageText
+            label.TextColor3 = mainColor
+            label.TextScaled = true
+            label.TextStrokeColor3 = Color3.fromRGB(28, 24, 28)
+            label.TextStrokeTransparency = 0.08
+            label.Parent = billboard
+            gradient = Instance.new("UIGradient")
+            gradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, colors[colorIndex]),
+                ColorSequenceKeypoint.new(0.5, colors[colorIndex % #colors + 1]),
+                ColorSequenceKeypoint.new(1, colors[(colorIndex + 1) % #colors + 1]),
+            })
+            gradient.Parent = label
+            stroke = Instance.new("UIStroke")
+            stroke.Color = color3
+            stroke.Thickness = isHeadshot == true and 2.2 or 1.5
+            stroke.Parent = label
+            if cfg.StackDamage == true then
+                trackPersistent(billboard)
+            else
+                track(billboard, duration + 0.4)
+            end
+            stacked = {
+                Billboard = billboard, Label = label, Stroke = stroke, Gradient = gradient,
+                Amount = amount, Generation = 1, Tweens = {},
+            }
+            if cfg.StackDamage == true then arg._damageEffectStacks[hitRoot] = stacked end
+        end
+        local generation = stacked.Generation
+        local labelTween = tween(label, duration, {
+            TextTransparency = 1,
+            TextStrokeTransparency = 1,
+            Rotation = isHeadshot == true and -8 or 6,
+        }, Enum.EasingStyle.Quint)
+        local billboardTween = tween(billboard, duration, {
+            StudsOffsetWorldSpace = Vector3.new(0, (isHeadshot and 3.1 or 2.5) + 1.1 * scale, 0),
+        }, Enum.EasingStyle.Quint)
+        stacked.Tweens = { labelTween, billboardTween }
+        task.delay(duration + 0.05, function()
+            if arg._damageEffectStacks[hitRoot] == stacked and stacked.Generation == generation then
+                arg._damageEffectStacks[hitRoot] = nil
+                untrack(billboard)
+                pcall(function() billboard:Destroy() end)
+            end
+        end)
+    end
+
+    -- Slashes: three short camera-facing energy cuts.
+    if cfg.Slashes == true then
+        for index = 1, 3 do
+            local angle = math.rad(-42 + index * 42)
+            local width = (1.45 + (index % 2) * 0.35) * scale
+            local slash = makePart("CrefyHitSlash", Enum.PartType.Block,
+                Vector3.new(width, 0.075 * scale, 0.045 * scale),
+                face * CFrame.new((index - 2) * 0.23 * scale, (2 - index) * 0.16 * scale, 0)
+                    * CFrame.Angles(0, 0, angle), index == 2 and color2 or mainColor, 0.08)
+            tween(slash, duration * 0.72, {
+                Size = Vector3.new(width * 0.18, 0.025 * scale, 0.025 * scale),
+                Transparency = 1,
+                CFrame = slash.CFrame * CFrame.new((index - 2) * 0.3 * scale, 0.45 * scale, 0),
+            }, Enum.EasingStyle.Quart)
+        end
+    end
+
+    -- Explosion: a quick expanding shell plus a flattened shock ring.
+    if cfg.Explosion == true then
+        local core = makePart("CrefyHitExplosion", Enum.PartType.Ball,
+            Vector3.new(0.35, 0.35, 0.35) * scale, CFrame.new(origin), color2, 0.18)
+        tween(core, duration * 0.55, {
+            Size = Vector3.new(4.8, 4.8, 4.8) * scale,
+            Transparency = 1,
+        }, Enum.EasingStyle.Quart)
+        local ring = makePart("CrefyHitShockwave", Enum.PartType.Cylinder,
+            Vector3.new(0.12, 1.1, 1.1) * scale, CFrame.new(origin) * CFrame.Angles(0, 0, math.rad(90)), mainColor, 0.1)
+        tween(ring, duration * 0.62, {
+            Size = Vector3.new(0.08, 6.5, 6.5) * scale,
+            Transparency = 1,
+        }, Enum.EasingStyle.Quint)
+    end
+
+    -- Bubble: a translucent ForceField/Neon orb that expands and fades.
+    if cfg.Bubble == true then
+        local bubble = makePart("CrefyHitBubble", Enum.PartType.Ball,
+            Vector3.new(1.1, 1.1, 1.1) * scale, CFrame.new(origin), color3, 0.42)
+        tween(bubble, duration, {
+            Size = Vector3.new(5.2, 5.2, 5.2) * scale,
+            Transparency = 1,
+        }, Enum.EasingStyle.Sine)
+    end
+
+    -- Phantom Forces: a short target highlight. Original-colour mode samples the actual hit part.
+    if cfg.PhantomForces == true and model ~= nil then
+        local phantom = Instance.new("Highlight")
+        phantom.Name = "CrefyPhantomHit"
+        phantom.Adornee = model
+        phantom.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        phantom.FillColor = cfg.OriginalPhantomColors == true and hitRoot.Color or mainColor
+        phantom.OutlineColor = cfg.OriginalPhantomColors == true and hitRoot.Color or color3
+        phantom.FillTransparency = 0.28
+        phantom.OutlineTransparency = 0.05
+        phantom.Parent = workspaceService
+        track(phantom, duration + 0.2)
+        tween(phantom, duration, { FillTransparency = 1, OutlineTransparency = 1 }, Enum.EasingStyle.Quad)
+    end
+
+    return true
+end
+
 index2._HandleHit = function(arg, arg2, arg3, arg4)
 local playerHit = v116.Data.PlayerHit
 local sound = playerHit.Sound
@@ -59635,6 +59916,14 @@ for index = #arg._damageNumbers, 1, -1 do
     arg._damageNumbers[index] = nil
 end
 if arg._damageGui ~= nil then pcall(function() arg._damageGui:Destroy() end) end
+for index = #arg._damageEffectObjects, 1, -1 do
+    local object = arg._damageEffectObjects[index]
+    if object ~= nil then pcall(function()
+        if typeof(object) == "Instance" then object:Destroy() else object:Cancel() end
+    end) end
+    arg._damageEffectObjects[index] = nil
+end
+table.clear(arg._damageEffectStacks)
 
 table.clear(arg._chams)
 arg._errorReporter:Destroy()
@@ -65999,6 +66288,25 @@ local function fn35()
         damageGroup:AddSlider({ Label = "Damage Number Size", Min = 10, Max = 40, Config = { "PlayerHit", "DamageNumbers", "TextSize" } })
         damageGroup:AddSlider({ Label = "Damage Number Rise", Min = 0, Max = 120, Config = { "PlayerHit", "DamageNumbers", "Rise" } })
         damageGroup:AddSlider({ Label = "Damage Number Duration", Min = 0.2, Max = 3, Step = 0.05, Config = { "PlayerHit", "DamageNumbers", "Duration" } })
+
+        P:AddDivider({ Label = "3D Damage Effects" })
+        local effectsToggle = P:AddToggle({ Label = "Enable Damage Effects", Config = { "PlayerHit", "DamageEffects", "Enabled" } })
+        local effectsGroup = P:AddGroup({ Source = effectsToggle })
+        effectsGroup:AddToggle({ Label = "Fortnite Damage", Config = { "PlayerHit", "DamageEffects", "FortniteDamage" } })
+        effectsGroup:AddToggle({ Label = "Slashes", Config = { "PlayerHit", "DamageEffects", "Slashes" } })
+        effectsGroup:AddToggle({ Label = "Explosion", Config = { "PlayerHit", "DamageEffects", "Explosion" } })
+        effectsGroup:AddToggle({ Label = "Bubble", Config = { "PlayerHit", "DamageEffects", "Bubble" } })
+        effectsGroup:AddToggle({ Label = "Phantom Forces", Config = { "PlayerHit", "DamageEffects", "PhantomForces" } })
+        effectsGroup:AddToggle({ Label = "Weld Effects to Target", Config = { "PlayerHit", "DamageEffects", "Weld" } })
+        effectsGroup:AddToggle({ Label = "Stack Damage Together", Config = { "PlayerHit", "DamageEffects", "StackDamage" } })
+        effectsGroup:AddToggle({ Label = "Cycle Text Colors", Config = { "PlayerHit", "DamageEffects", "CycleTextColors" } })
+        effectsGroup:AddToggle({ Label = "Original Colors (Phantom Forces)", Config = { "PlayerHit", "DamageEffects", "OriginalPhantomColors" } })
+        effectsGroup:AddDropdown({ Label = "Effect Material", Options = { "Neon", "ForceField" }, Config = { "PlayerHit", "DamageEffects", "Material" } })
+        effectsGroup:AddColor({ Row = effectsToggle.Row, Config = { "PlayerHit", "DamageEffects", "Color1" }, Animatable = true })
+        effectsGroup:AddColor({ Row = effectsGroup:AddLabel({ Label = "Effect Color 2" }).Row, Config = { "PlayerHit", "DamageEffects", "Color2" }, Animatable = true })
+        effectsGroup:AddColor({ Row = effectsGroup:AddLabel({ Label = "Effect Color 3" }).Row, Config = { "PlayerHit", "DamageEffects", "Color3" }, Animatable = true })
+        effectsGroup:AddSlider({ Label = "Effect Duration", Min = 0.2, Max = 4, Step = 0.1, Config = { "PlayerHit", "DamageEffects", "Duration" } })
+        effectsGroup:AddSlider({ Label = "Effect Scale", Min = 0.4, Max = 3, Step = 0.1, Config = { "PlayerHit", "DamageEffects", "Scale" } })
 
         P:AddDivider({ Label = "Notification" })
         P:AddGroup({ Source = P:AddToggle({ Label = "Enable Hit Notification", Config = { "PlayerHit", "Notification", "Enabled" } }) }):AddTextBox({ Label = "Hit Notification Text", Config = { "PlayerHit", "Notification", "Text" } })
@@ -73351,34 +73659,45 @@ end
 local function readAmmoState(item)
 local okAmmoBased, ammoBased = pcall(function() return item:IsAmmoBased() end)
 if not okAmmoBased or type(ammoBased) ~= "boolean" then
-local okFallback, fallbackBased = pcall(function()
-local data = item._data
-if type(data) ~= "table" then return nil end
-return rawget(data, "Ammo") ~= nil
-end)
+    local okFallback, fallbackBased = pcall(function()
+        local data = item._data
+        if type(data) ~= "table" then return nil end
+        return rawget(data, "Ammo") ~= nil
+    end)
+    if okFallback and type(fallbackBased) == "boolean" then
+        ammoBased = fallbackBased
+    else
+        -- Some item wrappers do not expose ammo metadata. Do not discard an
+        -- otherwise valid weapon merely because the optional ammo API is absent.
+        return true, nil, nil
+    end
+end
 
-if not okFallback or type(fallbackBased) ~= "boolean" then return false end
-if fallbackBased == false then return false end
-ammoBased = fallbackBased
+-- Non-ammo weapons must not be queried through GetAmmo(); several melee /
+-- special weapon wrappers legitimately do not implement that method.
+if ammoBased == false then
+    return true, false, nil
 end
 
 local okAmmo, ammo = pcall(function() return item:GetAmmo() end)
 if not okAmmo then
-local okFallback, fallbackAmmo = pcall(function()
-local data = item._data
-if type(data) == "table" then return rawget(data, "Ammo") end
-return nil
-end)
-if okFallback and fallbackAmmo ~= nil then
-okAmmo = true
-ammo = fallbackAmmo
+    local okFallback, fallbackAmmo = pcall(function()
+        local data = item._data
+        if type(data) == "table" then return rawget(data, "Ammo") end
+        return nil
+    end)
+    if okFallback and fallbackAmmo ~= nil then
+        okAmmo = true
+        ammo = fallbackAmmo
+    end
 end
+if not okAmmo or type(ammo) ~= "number" or ammo ~= ammo
+    or ammo == math.huge or ammo == -math.huge or ammo < 0 then
+    -- Ammo state is temporarily unreadable: preserve the item as eligible and
+    -- let the native action/cooldown path decide whether it can fire.
+    return true, nil, nil
 end
-if not okAmmo then return false end
-if ammoBased and (type(ammo) ~= "number" or ammo ~= ammo or ammo == math.huge or ammo == -math.huge or ammo < 0) then
-return false
-end
-return true, ammoBased, ammo
+return true, true, ammo
 end
 
 return { getAction = function(arg)
@@ -74374,7 +74693,7 @@ local function ragebotRequestVoidSpamTransformRestore()
                 end
                 if not warnedPending and os.clock() - startedAt >= 3 then
                     warnedPending = true
-                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot preserved and retries continue at reduced rate.")
+                    warn("[Ragebot] Void Spam transform restore remains pending; snapshot preserved. Reason: " .. tostring(state._voidSpamTransformRestoreReason or "restore has not been confirmed") .. ". Retrying at reduced rate.")
                 end
             end
             if type(state) == "table" and state._voidSpamRestoreRetryScheduledToken == token then
@@ -76485,6 +76804,7 @@ local function ragebotClearVoidSpamTransformSnapshot(state)
     state.voidSpamRootPart = nil
     state._voidSpamRestoreRetryScheduledToken = nil
     state._voidSpamTransformRestorePending = false
+    state._voidSpamTransformRestoreReason = nil
     state.fakePositionActive = false
     state.fakePositionOffsetX = nil
     state.fakePositionOffsetZ = nil
@@ -76503,6 +76823,11 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     if type(state) ~= "table" or state.voidSpamTransformApplied ~= true then
         return true
     end
+    local function blocked(reason)
+        state._voidSpamTransformRestoreReason = reason
+        state._voidSpamTransformRestorePending = true
+        return false
+    end
 
     local controller = state.voidSpamController
     local baseCFrame = state.voidSpamBaseCFrame
@@ -76511,44 +76836,48 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         and state.voidSpamFakeOffset or Vector3.zero
     if type(controller) ~= "table" or typeof(baseCFrame) ~= "CFrame"
         or typeof(lastOutputCFrame) ~= "CFrame" then
-        return false
+        return blocked("snapshot/controller/CFrame data is incomplete")
     end
 
     local setFn
-    local methodsOk = pcall(function()
-        setFn = controller.SetServerCFrame
-    end)
+    local methodsOk = pcall(function() setFn = controller.SetServerCFrame end)
     if not methodsOk then setFn = nil end
 
     local currentRoot = ragebotVoidSpamControllerRoot(controller)
-    if typeof(currentRoot) ~= "Instance" then return false end
+    if typeof(currentRoot) ~= "Instance" then
+        return blocked("controller has no current RootPart")
+    end
     local rootValidOk, rootValid = pcall(function()
         return currentRoot:IsA("BasePart")
             and currentRoot.Parent ~= nil
             and currentRoot:IsDescendantOf(workspace)
     end)
-    if not rootValidOk or not rootValid then return false end
+    if not rootValidOk or not rootValid then
+        return blocked("current RootPart is not a live workspace BasePart")
+    end
 
     local snapshotRoot = state.voidSpamRootPart
     if snapshotRoot ~= nil then
-        if typeof(snapshotRoot) ~= "Instance" then return false end
+        if typeof(snapshotRoot) ~= "Instance" then
+            return blocked("saved RootPart reference is invalid")
+        end
         local oldRootReadOk, oldRootStillInWorld = pcall(function()
             return snapshotRoot:IsA("BasePart") and snapshotRoot:IsDescendantOf(workspace)
         end)
-        if not oldRootReadOk then return false end
-        if snapshotRoot ~= currentRoot then
-
-            ragebotClearVoidSpamTransformSnapshot(state)
-            return true
+        if not oldRootReadOk then
+            return blocked("saved RootPart validity could not be read")
         end
-        if not oldRootStillInWorld then
+        if snapshotRoot ~= currentRoot or not oldRootStillInWorld then
+            -- A respawn/replacement means the old transform no longer belongs to this rig.
             ragebotClearVoidSpamTransformSnapshot(state)
             return true
         end
     end
 
     local currentReadOk, currentCFrame = pcall(function() return currentRoot.CFrame end)
-    if not currentReadOk or typeof(currentCFrame) ~= "CFrame" then return false end
+    if not currentReadOk or typeof(currentCFrame) ~= "CFrame" then
+        return blocked("current RootPart CFrame could not be read")
+    end
 
     local currentPos = currentCFrame.Position
     local outputPos = lastOutputCFrame.Position
@@ -76564,31 +76893,33 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local nearBasePosition = deltaBase <= normalTolerance
 
     if snapshotRoot == nil then
-
         local outputOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, lastOutputCFrame)
         local baseOrientationMatches = ragebotCFrameOrientationMatches(currentCFrame, baseCFrame)
         local exactLegacyPoseMatches = (nearOutputPosition and outputOrientationMatches)
             or (nearBasePosition and baseOrientationMatches)
-        if not exactLegacyPoseMatches then return false end
+        if not exactLegacyPoseMatches then
+            return blocked("current pose no longer matches the saved legacy snapshot")
+        end
         state.voidSpamRootPart = currentRoot
     end
 
-    if ragebotPoseRestoreGateIsActive() then return false end
+    if ragebotPoseRestoreGateIsActive() then
+        return blocked("another Ragebot pose-restore transaction still owns the root")
+    end
 
     local outputScore = ragebotCFrameOrientationScore(currentCFrame, lastOutputCFrame)
     local baseScore = ragebotCFrameOrientationScore(currentCFrame, baseCFrame)
-    if outputScore == nil or baseScore == nil then return false end
-
+    if outputScore == nil or baseScore == nil then
+        return blocked("orientation comparison failed")
+    end
     local rotationIsStillRolled = outputScore > baseScore + 0.15
     local rotationAlreadyRestored = baseScore > outputScore + 0.15
     if not rotationIsStillRolled and not rotationAlreadyRestored then
-
-        return false
+        return blocked("current orientation is ambiguous between transformed and restored poses")
     end
 
     if largeHideOffset and not nearOutputPosition and not nearBasePosition and not hideOffsetStillVisible then
-
-        return false
+        return blocked("large hidden offset is no longer at a verifiable output position")
     end
 
     local restoredPosition = currentPos
@@ -76599,7 +76930,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     elseif nearBasePosition then
         restoredPosition = currentPos
     elseif not largeHideOffset then
-
         restoredPosition = currentPos
     elseif hideOffsetStillVisible then
         restoredPosition = currentPos - fakeOffset
@@ -76609,7 +76939,6 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local restoredRotation = currentCFrame.Rotation
     local rotationNeedsCorrection = false
     if rotationIsStillRolled then
-
         restoredRotation = (currentCFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90)):Inverse()).Rotation
         rotationNeedsCorrection = true
     end
@@ -76620,44 +76949,59 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
                 controller, currentRoot, lastOutputCFrame, baseCFrame, currentCFrame,
                 fakeOffset, normalTolerance
             )
-            if not cachesOk then return false end
+            if not cachesOk then
+                return blocked("RootDesync caches could not be reconciled after pose was already restored")
+            end
             ragebotClearVoidSpamTransformSnapshot(state)
             return true
         end
-        if not nearOutputPosition and not hideOffsetStillVisible then return false end
+        if not nearOutputPosition and not hideOffsetStillVisible then
+            return blocked("restored orientation found at an unverified position")
+        end
     end
 
     if rotationNeedsCorrection or positionNeedsCorrection then
-        if ragebotPoseRestoreGateIsActive() then return false end
+        if ragebotPoseRestoreGateIsActive() then
+            return blocked("pose restore gate became active before write")
+        end
         local restoredCFrame = CFrame.new(restoredPosition) * restoredRotation
         local setterOk, setterResult = false, nil
         if type(setFn) == "function" then
             setterOk, setterResult = pcall(setFn, controller, restoredCFrame)
         end
         if not setterOk or setterResult == false then
-
             local rootDesyncPresent = false
             pcall(function() rootDesyncPresent = controller._rootDesync ~= nil end)
-            if rootDesyncPresent or ragebotPoseRestoreGateIsActive() then return false end
+            if rootDesyncPresent or ragebotPoseRestoreGateIsActive() then
+                return blocked("SetServerCFrame is gated by active RootDesync/pose restore")
+            end
         end
 
-        if ragebotPoseRestoreGateIsActive() then return false end
+        if ragebotPoseRestoreGateIsActive() then
+            return blocked("pose restore gate became active before direct verification")
+        end
         local rootStillCurrent = ragebotVoidSpamControllerRoot(controller) == currentRoot
-        if not rootStillCurrent then return false end
+        if not rootStillCurrent then
+            return blocked("RootPart changed while restore was being applied")
+        end
         local directWriteOk = pcall(function() currentRoot.CFrame = restoredCFrame end)
-        if not directWriteOk then return false end
+        if not directWriteOk then
+            return blocked("direct RootPart CFrame restore was rejected")
+        end
         local verifyOk, verifyCFrame = pcall(function() return currentRoot.CFrame end)
         if not verifyOk or typeof(verifyCFrame) ~= "CFrame"
             or not ragebotCFrameOrientationMatches(verifyCFrame, restoredCFrame)
             or (verifyCFrame.Position - restoredCFrame.Position).Magnitude > 0.25 then
-            return false
+            return blocked("restored RootPart CFrame did not pass verification")
         end
 
         local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
             controller, currentRoot, lastOutputCFrame, baseCFrame, restoredCFrame,
             fakeOffset, normalTolerance
         )
-        if not cachesOk then return false end
+        if not cachesOk then
+            return blocked("RootDesync caches could not be reconciled after restore")
+        end
     end
 
     ragebotClearVoidSpamTransformSnapshot(state)
