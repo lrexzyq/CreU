@@ -838,6 +838,8 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
         local iv = now - last
         -- Duplicate signatures from one replication tick are not separate Knife attacks.
         if iv < KNIFE_COOLDOWN_MIN_PLAUSIBLE then
+            -- Ignore duplicate signatures without moving the last genuine
+            -- attack timestamp; otherwise a duplicate can poison the next interval.
             return false
         end
         if iv <= KNIFE_COOLDOWN_MAX_PLAUSIBLE then
@@ -849,7 +851,13 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
             if #s >= 2 then
                 local sorted = table.move(s, 1, #s, 1, {})
                 table.sort(sorted)
-                local med = sorted[math.ceil(#sorted / 2)]
+                local med
+                if #sorted % 2 == 0 then
+                    local middle = #sorted / 2
+                    med = (sorted[middle] + sorted[middle + 1]) * 0.5
+                else
+                    med = sorted[math.ceil(#sorted / 2)]
+                end
                 t.estimatedCooldown = math.clamp(med,
                     KNIFE_COOLDOWN_MIN_PLAUSIBLE, KNIFE_COOLDOWN_MAX_PLAUSIBLE)
                 t.hitboxWindowEst = t.estimatedCooldown * 0.5
@@ -1133,20 +1141,22 @@ local function ragebotResolveRepRootTarget(controller, target)
         end
         local okInvincible, isInvincible = pcall(fighter.IsInvincible, fighter)
         if not okInvincible or isInvincible then return nil, nil, nil end
+        -- ItemObserver is ancillary metadata, not part of target validity.
+        -- During equip/replication transitions it may be nil or temporarily unreadable;
+        -- the movement/RepRoot detector must still sample this live enemy.
         local itemObserver = fighter.ItemObserver
-        if itemObserver == nil then return nil, nil, nil end
-        local okMelee, melee = pcall(function()
-            return itemObserver:EquippedItemAsMelee()
-        end)
-         
-        if not okMelee then return nil, nil, nil end
-        if melee ~= nil then
-            local okDeflecting, isDeflecting = pcall(function()
-                return melee:IsDeflecting()
+        if itemObserver ~= nil then
+            local okMelee, melee = pcall(function()
+                return itemObserver:EquippedItemAsMelee()
             end)
-            -- Only exclude a target when deflection is positively confirmed.
-            -- A transient/unavailable IsDeflecting read must not suppress the Knife detector.
-            if okDeflecting and isDeflecting == true then return nil, nil, nil end
+            if okMelee and melee ~= nil then
+                local okDeflecting, isDeflecting = pcall(function()
+                    return melee:IsDeflecting()
+                end)
+                -- Exclude only a positively confirmed deflect. Unavailable metadata
+                -- must not make the target disappear from the detector.
+                if okDeflecting and isDeflecting == true then return nil, nil, nil end
+            end
         end
         return state, candidateRoot, candidateHitbox
     end)
@@ -1211,6 +1221,21 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
                 return candidate.target, "rep-root-contact"
             end
 
+            -- This detector was present but never called. Sample it for every
+            -- eligible enemy so pure-TP attacks are not invisible when no RepRoot
+            -- property or hitbox discontinuity is exposed.
+            local pureTpAttack = false
+            local okPureTp, pureTpResult = pcall(
+                ragebotObservePureTpAttack, candidate.root, localRoot, now
+            )
+            if okPureTp then pureTpAttack = pureTpResult == true end
+            if pureTpAttack then
+                if knifeState == true then
+                    ragebotRecordKnifeAttack(candidate.root, now)
+                end
+                return candidate.target, "pure-tp-attack"
+            end
+
             if knifeState == true then
                 local imminentAttack, cooldownEst, timeUntilNext =
                     ragebotKnifePredictImminent(candidate.root, now)
@@ -1220,14 +1245,17 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
             end
 
             local fakePositionCounterInRange = candidate.distance <= 36
-            if knifeState == false and fakePositionCounterInRange then
-
+            -- FakePosition is a movement signature, not a non-Knife-only feature.
+            -- The old knifeState == false gate silently discarded Knife users and
+            -- targets whose ItemObserver was momentarily unavailable.
+            if fakePositionCounterInRange and (recentlyDesynced or recentKnifeThreat) then
                 local fakeTrack = RAGEBOT_FAKE_POSITION_TRACKS[candidate.root]
-                local lastDesyncAt = type(fakeTrack) == "table" and tonumber(fakeTrack.lastDesyncAt) or -math.huge
+                local lastDesyncAt = type(fakeTrack) == "table"
+                    and tonumber(fakeTrack.lastDesyncAt) or -math.huge
                 local eventUnconsumed = type(fakeTrack) == "table"
                     and fakePositionFiniteNumber(lastDesyncAt)
                     and fakeTrack.lastCounterConsumedDesyncAt ~= lastDesyncAt
-                if (recentlyDesynced or recentKnifeThreat) and eventUnconsumed then
+                if eventUnconsumed then
                     fakeTrack.lastCounterConsumedDesyncAt = lastDesyncAt
                     RAGEBOT_REP_ROOT_CONTACT_TRACKS[candidate.root] = nil
                     return candidate.target, recentlyDesynced and "fake-position" or "fake-position-memory"
@@ -71430,7 +71458,6 @@ _shootLock = v116.new(),
 _hitboxWindowUntil = -1,
 _hitboxWindowTarget = nil,
 _hitboxWindowAliveState = nil,
-_hitboxWindowInitialHealth = nil,
 _hitboxWindowConfirmed = false,
 _attackCooldown = -1,
 _attackCooldownTarget = nil,
@@ -71551,27 +71578,19 @@ if okPing and type(ping) == "number" and ping == ping and ping >= 0 and ping < 1
 primeDelay = math.clamp(0.05 + ping * 0.5, 0.075, 0.18)
 end
 
-local function finiteKnifeHealth(state)
-    local okHealth, healthValue = pcall(function()
-        return state ~= nil and state.Health or nil
-    end)
-    local health = okHealth and tonumber(healthValue) or nil
-    if type(health) ~= "number" or health ~= health or health == math.huge or health == -math.huge or health < 0 then
-        return nil
-    end
-    return health
-end
-
 local function refreshBackstabConfirmation(expectedTarget)
     local trackedTarget = expectedTarget or hitboxHead
     if arg._hitboxWindowTarget ~= trackedTarget or arg._hitboxWindowConfirmed == true then
         return
     end
-    local baseline = tonumber(arg._hitboxWindowInitialHealth)
-    local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
-    if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
-        and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
-
+    local trackedState = arg._hitboxWindowAliveState
+    local okAlive, stillAlive = pcall(function()
+        return trackedState ~= nil and trackedState.Alive
+    end)
+    -- Knife confirmation is based only on the explicit elimination state.
+    -- Health deltas are intentionally not read: a front/side hit is not proof
+    -- of a backstab, and health replication can arrive on a different tick.
+    if okAlive and stillAlive == false then
         arg._hitboxWindowConfirmed = true
         arg._hitboxWindowUntil = -1
         arg._nextKnifeWindowAttackAt = 0
@@ -71591,13 +71610,11 @@ if arg._lastKnifeTarget ~= hitboxHead then
         arg._hitboxWindowUntil = -1
         arg._hitboxWindowTarget = nil
         arg._hitboxWindowAliveState = nil
-        arg._hitboxWindowInitialHealth = nil
         arg._hitboxWindowConfirmed = false
     end
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
@@ -71665,9 +71682,12 @@ elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitbox
         arg._hitboxWindowUntil = -1
         arg._hitboxWindowTarget = nil
         arg._hitboxWindowAliveState = nil
-        arg._hitboxWindowInitialHealth = nil
-        arg._hitboxWindowConfirmed = false
+                arg._hitboxWindowConfirmed = false
         arg._nextKnifeWindowAttackAt = 0
+        if arg._attackCooldownTarget == hitboxHead then
+            arg._attackCooldown = -1
+            arg._attackCooldownTarget = nil
+        end
     end
 end
 
@@ -71705,12 +71725,11 @@ if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
     return
 end
-local healthBeforeAttack = finiteKnifeHealth(aliveState)
 local okAttack, attackResult = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and attackResult ~= false then
-arg:_RecordBackstab(hitboxHead, aliveState, healthBeforeAttack)
+arg:_RecordBackstab(hitboxHead, aliveState)
 else
 arg:_AbortBackstabAttempt(hitboxHead)
 end
@@ -71734,18 +71753,12 @@ end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
+index2._RecordBackstab = function(arg, targetHitbox, targetAliveState)
 local now2 = os.clock()
 
 arg._hitboxWindowUntil = now2 + 0.625
 arg._hitboxWindowTarget = targetHitbox
 arg._hitboxWindowAliveState = targetAliveState
-local baselineHealth = tonumber(healthBeforeAttack)
-if type(baselineHealth) ~= "number" or baselineHealth ~= baselineHealth
-    or baselineHealth == math.huge or baselineHealth == -math.huge or baselineHealth < 0 then
-    baselineHealth = nil
-end
-arg._hitboxWindowInitialHealth = baselineHealth
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = now2 + 0.08
 arg._attackCooldown = now2 + 1.25
@@ -71757,7 +71770,6 @@ if targetHitbox == nil or arg._hitboxWindowTarget == targetHitbox then
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 end
@@ -71777,7 +71789,6 @@ index2.InvalidateKnifeState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 arg._attackCooldown = -1
@@ -71793,7 +71804,6 @@ index2.ResetState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 arg._attackCooldown = -1
@@ -74430,7 +74440,7 @@ end
 
 local repRootCounterActive = false
 local repRootCounterTarget = nil
-if okAction and (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker")
+if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker")
     and arg._reloadGun == nil and (v130 == nil or v130.Type ~= "Reload") then
     local nowForRepRoot = os.clock()
     local storedCounterTarget = arg._repRootCounterTarget
@@ -74446,11 +74456,14 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         local storedKnifeState = ragebotTargetKnifeState(storedCounterTarget)
         local storedKind = arg._repRootCounterKind
         local confirmedTPOrRepRoot = storedKind == "rep-root-contact"
-         
+        local confirmedMovementAttack = storedKind == "pure-tp-attack"
+            or storedKind == "fake-position" or storedKind == "fake-position-memory"
+        -- The prediction was only created while Knife was positively observed.
+        -- Keep that bounded response alive through a transient ItemObserver gap.
         local confirmedKnifePrediction = storedKind == "knife-cooldown-predict"
-            and storedKnifeState == true
         local restorePendingNow = arg._repRootCounterRestorePending == true
-        local targetPolicyValid = storedKnifeState == false or confirmedTPOrRepRoot or confirmedKnifePrediction
+        local targetPolicyValid = storedKnifeState == false or confirmedTPOrRepRoot
+            or confirmedKnifePrediction or confirmedMovementAttack
         local targetShouldExpire = not restorePendingNow
             and (nowForRepRoot >= counterUntil or not storedTargetValid or not targetPolicyValid)
         if targetShouldExpire then
@@ -74466,9 +74479,11 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
 
     end
 
+    local detectorRetryAt = tonumber(arg._repRootRestoreRetryAt) or 0
+    if not fakePositionFiniteNumber(detectorRetryAt) then detectorRetryAt = 0 end
     if not repRootCounterActive
         and arg._repRootCounterRestorePending ~= true
-        and nowForRepRoot >= (tonumber(arg._repRootRestoreRetryAt) or 0) then
+        and nowForRepRoot >= detectorRetryAt then
         local okDetect, detectedTarget, detectedKind = pcall(ragebotFindRepRootContactTarget, arg, rootPart, nowForRepRoot)
         if not okDetect then
             if nowForRepRoot >= (arg._nextRepRootDetectorWarningAt or 0) then
@@ -74481,10 +74496,12 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
         if detectedTarget ~= nil then
             local detectedKnifeState = ragebotTargetKnifeState(detectedTarget)
             local confirmedTPOrRepRoot = detectedKind == "rep-root-contact"
-             
+            local confirmedMovementAttack = detectedKind == "pure-tp-attack"
+                or detectedKind == "fake-position" or detectedKind == "fake-position-memory"
             local confirmedKnifePrediction = detectedKind == "knife-cooldown-predict"
                 and detectedKnifeState == true
-            if detectedKnifeState == false or confirmedTPOrRepRoot or confirmedKnifePrediction then
+            if detectedKnifeState == false or confirmedTPOrRepRoot
+                or confirmedKnifePrediction or confirmedMovementAttack then
                 arg._repRootCounterTarget = detectedTarget
                 arg._repRootCounterKind = detectedKind
 
@@ -74551,6 +74568,8 @@ if okAction and (mode == "Translocate" or mode == "Random" or mode == "Projectil
                         warn(string.format(
                             "[Ragebot] Knife cooldown prediction fired: estimated cooldown=%.3fs, next attack in %.3fs; pre-activating counter.",
                             cdEst, timeUntil))
+                    elseif detectedKind == "pure-tp-attack" then
+                        warn("[Ragebot] Pure-TP movement signature confirmed; opening one bounded counter window.")
                     else
                         warn("[Ragebot] Observable FakePosition displacement triggered a bounded response window.")
                     end
@@ -74935,7 +74954,9 @@ local candidateModel = nil
 local targetWorldPosition = nil
 if target ~= nil and target.AliveState ~= nil then
 local candidateFighter = target.FighterState
-local candidatePlayer = candidateFighter ~= nil and candidateFighter.Player or nil
+-- Detector-created targets carry the authoritative Player resolved from EnemyByPlayer.
+-- Prefer that value; FighterState.Player may be absent during a replication transition.
+local candidatePlayer = target.Player or (candidateFighter ~= nil and candidateFighter.Player or nil)
 local candidateAliveState = target.AliveState
 local candidateRoot = candidateAliveState ~= nil and candidateAliveState.RootPart or nil
 local candidateHitbox = candidateAliveState ~= nil and candidateAliveState.HitboxHead or nil
@@ -75244,7 +75265,7 @@ local function ragebotRiotFiniteNumber(value)
         and value ~= math.huge and value ~= -math.huge
 end
 
-local function ragebotBuildRiotKnifeViewAngles(target, owner)
+local function ragebotBuildRiotKnifeViewAngles(target, owner, plannedCFrame)
     local aliveState = target ~= nil and target.AliveState or nil
     local hitbox = aliveState ~= nil and aliveState.HitboxHead or nil
     local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
@@ -75257,9 +75278,14 @@ local function ragebotBuildRiotKnifeViewAngles(target, owner)
     if not okPart or not validPart then return nil end
 
     local originPosition = nil
+    -- The angle is for the pose Ragebot is about to place on the server.
+    -- A pre-teleport origin produces the wrong yaw after a large reposition.
+    if typeof(plannedCFrame) == "CFrame" then
+        originPosition = plannedCFrame.Position
+    end
     local controller = type(owner) == "table" and owner._innerContext ~= nil
         and owner._innerContext.CharacterController or nil
-    if controller ~= nil then
+    if typeof(originPosition) ~= "Vector3" and controller ~= nil then
         local originOk, serverOrigin = pcall(function()
             return controller:GetServerHeadOrigin()
         end)
@@ -75425,7 +75451,10 @@ local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "t
 local stationaryUntil = tonumber(arg._repRootCounterStationaryUntil) or 0
 local stationaryCounterResponse = arg._enabled == true and os.clock() < stationaryUntil
     and (counterKind == "rep-root-contact"
-        or counterKind == "knife-cooldown-predict")
+        or counterKind == "knife-cooldown-predict"
+        or counterKind == "pure-tp-attack"
+        or counterKind == "fake-position"
+        or counterKind == "fake-position-memory")
     and counterTargetMatches
 local actionItem = arg3 ~= nil and arg3.Item or nil
 local shouldLockKnifeCamera = arg._enabled
@@ -75566,20 +75595,18 @@ if arg._knifeExternalRiotCamera == true then
     if type(v133) == "function" and not ragebotPrimeExternalRiotCamera(arg, arg4) then
         v133 = nil
     end
-elseif ragebotShouldUseRiotKnifeRotation(item, arg._innerContext, arg4) then
-    local riotViewAngles, riotAnglePart = ragebotBuildRiotKnifeViewAngles(arg4, arg)
-    if riotViewAngles ~= nil and riotAnglePart ~= nil then
-                                                                       
-                                                                             
-                                                          
-        v132 = riotViewAngles
+elseif shouldLockKnifeCamera then
+    -- Ragebot owns Knife camera replication even when standalone Always Backstab
+    -- (Riot mode) is disabled. Aim from the planned attack pose toward the target.
+    local knifeViewAngles, knifeAnglePart = ragebotBuildRiotKnifeViewAngles(arg4, arg, v131)
+    if knifeViewAngles ~= nil and knifeAnglePart ~= nil then
+        v132 = knifeViewAngles
     else
         v132 = nil
         v133 = nil
         ragebotResetRiotCameraPrime(arg)
     end
 end
-
 return {
 CFrame = v131,
 ViewAngles = v132,
@@ -76635,6 +76662,20 @@ local function gateKnifeTeleportUntilCameraReady()
     return true
 end
 
+local function refreshKnifeAnglesForFinalPose(finalPose)
+    if arg._knifeActionExpected ~= true or arg._knifeExternalRiotCamera == true
+        or typeof(finalPose) ~= "CFrame" then
+        return
+    end
+    local freshAngles = ragebotBuildRiotKnifeViewAngles(arg3, arg, finalPose)
+    if freshAngles ~= nil then
+        -- Underground / VoidSpam may translate the final server pose after Plan.
+        -- Re-aim from the pose that will actually be transmitted, not the pre-offset pose.
+        defensiveViewAngles = freshAngles
+        arg._lastDefensiveViewAngles = freshAngles
+    end
+end
+
 if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
     local holdCFrame = arg._repRootCounterHoldCFrame
     local holdUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
@@ -76688,7 +76729,8 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
     characterController:SetServerCFrame(heldServerCFrame)
     if arg._knifeExternalRiotCamera ~= true then
         local viewAngleSlot = (arg._knifeCameraLocked == true or arg._knifeActionExpected == true) and 20 or v86[9]
-        local viewAnglePayload = arg2.ViewAngles or arg._lastDefensiveViewAngles
+        local viewAnglePayload = arg._knifeActionExpected == true
+    and defensiveViewAngles or (arg2.ViewAngles or arg._lastDefensiveViewAngles)
         characterController:SendViewAngles(viewAngleSlot, viewAnglePayload)
     end
     return
@@ -76735,8 +76777,9 @@ if shouldSkipDefense and typeof(cFrame) == "CFrame" and arg3 ~= nil
             end
         end)
         if facingOk and typeof(facingCFrame) == "CFrame" then
-            if gateKnifeTeleportUntilCameraReady() then return end
             local finalFacingCFrame = arg:_ApplyUndergroundOffset(facingCFrame, characterController)
+            refreshKnifeAnglesForFinalPose(finalFacingCFrame)
+            if gateKnifeTeleportUntilCameraReady() then return end
             characterController:SetServerCFrame(finalFacingCFrame)
             if shieldState == "Equipped" then
                 local shieldAngles = v116.getDefensiveViewAngles(shieldState, arg3.FighterState)
@@ -76757,10 +76800,11 @@ end
 
 if cFrame == nil or arg3 == nil or shouldSkipDefense then
 
-if typeof(cFrame) == "CFrame" and arg3 ~= nil and gateKnifeTeleportUntilCameraReady() then
+local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
+refreshKnifeAnglesForFinalPose(safeFallbackCFrame)
+if typeof(safeFallbackCFrame) == "CFrame" and arg3 ~= nil and gateKnifeTeleportUntilCameraReady() then
     return
 end
-local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
 characterController:SetServerCFrame(typeof(safeFallbackCFrame) == "CFrame" and safeFallbackCFrame or nil)
 if arg._knifeExternalRiotCamera ~= true and not knifeAnglesFlushedBeforeMove then
     characterController:SendViewAngles(20, defensiveViewAngles)
@@ -76775,6 +76819,7 @@ local aliveState = arg3.AliveState
 local v130 = v129(arg4.ItemBehaviors)
 local v131 = v116.getDefensiveCFrame(cFrame, v130, arg3.FighterState, aliveState.RootPart)
 local finalServerCFrame = arg:_ApplyUndergroundOffset(v131, characterController)
+refreshKnifeAnglesForFinalPose(finalServerCFrame)
 if gateKnifeTeleportUntilCameraReady() then return end
 if arg2.IsAimPose == true and type(arg2.WeaponAction) == "function" and typeof(finalServerCFrame) == "CFrame" then
 arg._lastAimServerCFrame = finalServerCFrame
