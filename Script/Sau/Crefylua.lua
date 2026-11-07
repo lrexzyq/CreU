@@ -19224,14 +19224,7 @@ local CREFY_LANGUAGE_TRANSLATIONS = {
     ["Use Display Names"] = "Hiện tên hiển thị",
     ["Manage Custom Sounds"] = "Quản lý âm thanh tùy chỉnh",
     ["Enable Hit Feedback"] = "Bật hiệu ứng khi trúng đòn",
-    ["Damage Numbers"] = "Hiển thị sát thương",
-    ["Enable Damage Numbers"] = "Hiện số sát thương",
     ["Remove Game Damage Numbers"] = "Ẩn số sát thương mặc định của game",
-    ["Damage Number Color Type"] = "Kiểu màu số sát thương",
-    ["Damage Number Font"] = "Phông chữ sát thương",
-    ["Damage Number Size"] = "Cỡ chữ sát thương",
-    ["Damage Number Rise"] = "Độ bay lên",
-    ["Damage Number Duration"] = "Thời lượng hiển thị sát thương",
     ["Enable Elimination Feedback"] = "Bật hiệu ứng khi hạ gục",
     ["Play Hit Sound"] = "Phát âm thanh khi trúng đòn",
     ["Play Elimination Sound"] = "Phát âm thanh khi hạ gục",
@@ -22867,7 +22860,7 @@ return bj.c
 end
 end
 do
-local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageNumbers={Enabled=false,RemoveGameNumbers=false,Style="Arcane Orbit",ColorType="Gradient",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,210,90),Font="GothamBold",Duration=0.8,Rise=42,TextSize=18},DamageEffects={Enabled=false,FortniteDamage=true,Slashes=false,Explosion=false,Bubble=false,PhantomForces=false,Weld=false,StackDamage=true,CycleTextColors=false,OriginalPhantomColors=false,Material="Neon",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,190,70),Color3=Color3.fromRGB(120,210,255),Duration=1.2,Scale=1}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
+local function fn35() tbl17 .a9();return{ItemModifiers={NoMotion=false,NoCameraShake=false,NoCameraSway=false,NoShootAnimation=false,NoSprintAnimation=false,NoEquipAnimation=false,NoReloadAnimation=false,NoSpread=false,AimCooldown={Enabled=false,Percentage=50},Recoil={Enabled=false,Percentage=75},FireCooldown={Enabled=false,Percentage=25},AimSpeed={Enabled=false,Percentage=300},MeleeCooldown={Enabled=false,Percentage=25},DashCooldown={Enabled=false,Percentage=25},ExtendMeleeRange={Enabled=false,Range=10},AutomaticWeapon=false,InfiniteDoubleJumps=false,AlwaysBackstab=false,AlwaysBackstabMode="Knife",AlwaysBackstabTriggerDist=25,AntiAim={Enabled=false,Pitch="disabled",CustomPitch=0,Yaw="disabled",CustomYaw=0},GrenadeFuse={Enabled=false,ExplodeOn="Impact",RemoveFuse=false}},BulletTracers={Enabled=false,Color=Color3.fromRGB(120,220,255),Width=0.06,Lifetime=0.6,FadeTime=0.35,Style="Beam",TextureLength=4,TextureSpeed=1,Emission=1,Glow=1,Expand=true,ExpandSpeed=18,ExpandDamper=0.7},ViewModelOffset={Enabled=false,X=0,Y=0,Z=0,Pitch=0,Yaw=0,Roll=0},Chams={Character={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false},Arms={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=true},Item={Enabled=false,Material="Ghost",Color=Color3.fromRGB(255,255,255),Transparency=0,StripTextures=false}},ViewModelHighlight={Arms={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0},Item={Enabled=false,AlwaysOnTop=false,FillColor=Color3.fromRGB(255,255,255),FillTransparency=0.5,OutlineColor=Color3.fromRGB(255,255,255),OutlineTransparency=0}},ViewModelWireframe={Arms={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025},Item={Enabled=false,Color=Color3.fromRGB(255,255,255),Width=0.0025}},PlayerHit={Enabled=false,Sound={Enabled=false,DisableGameSound=false,HeadName=nil,BodyName=nil,HeadVolume=1,HeadPitch=1,BodyVolume=1,BodyPitch=1},Notification={Enabled=false,Text="Hit %DNAME% (%NAME%) for %DMG% in %PART%"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},HitFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35},DamageEffects={Enabled=false,RemoveGameNumbers=false,FortniteDamage=true,Slashes=false,Explosion=false,Bubble=false,PhantomForces=false,StackDamage=true,CycleTextColors=false,OriginalPhantomColors=false,Material="Neon",Color1=Color3.fromRGB(255,80,80),Color2=Color3.fromRGB(255,190,70),Color3=Color3.fromRGB(120,210,255),Duration=1.2,Scale=1}},PlayerElimination={Enabled=false,Sound={Enabled=false,Name=nil,Volume=1,Pitch=1},Notification={Enabled=false,Text="Eliminated %DNAME% (%NAME%)"},Chams={Enabled=false,Color=Color3.fromRGB(255,0,0),Transparency=0,Duration=0.8,Material="Ghost"},KillFlash={Enabled=false,Color=Color3.fromRGB(90,170,255),Duration=1.35}}};end
 
 tbl17.bk = function()
 local bk = tbl17.cache.bk
@@ -31006,7 +30999,6 @@ _clientFighter = v102(arg, "ClientFighter"),
 _aimScopePercent = v102(info2, "AimScopePercent"),
 _equipRequestedAt = nil,
 _expectedAmmoRaw = v102(data, "Ammo"),
-_nextLikelyShotRequestAt = 0,
 _outstandingAmmoSpend = 0,
 _outstandingAmmoSpendDeadline = nil,
 _pendingShotBatches = {},
@@ -31032,13 +31024,10 @@ local function pendingAmmoNumber(value)
 return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge and value >= 0
 end
 
--- Ragebot gun cadence mirrors Ue's scheduling model without replacing Crefy's
--- encoded-shot path: one serialized request, a per-item NextFire deadline, and
--- the weapon's native cooldown/equip/reload deadlines as authoritative gates.
+-- One cadence owner per weapon. Ammo prediction is deliberately not allowed
+-- to schedule shots: it only reconciles magazine state. Native weapon deadlines
+-- remain authoritative; Info cooldown is the fallback when replication is late.
 local RAGEBOT_GUN_CADENCE_STATES = setmetatable({}, { __mode = "k" })
--- Ue's Rage scheduler defaults to 25% of the weapon's declared cooldown.
--- Keep this as a local Ragebot cadence policy; do not mutate the game's Info table.
-local RAGEBOT_GUN_COOLDOWN_PERCENT = 25
 local function ragebotGunFinite(value)
 return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
@@ -31048,7 +31037,7 @@ local inner = type(item) == "table" and item.Inner or nil
 if inner == nil then return nil end
 local state = RAGEBOT_GUN_CADENCE_STATES[inner]
 if type(state) ~= "table" then
-    state = { NextFire = 0, Busy = false, BusySince = 0, LastRequestAt = -math.huge, Generation = 0 }
+    state = { NextFire = 0, Busy = false, BusySince = 0, Generation = 0 }
     RAGEBOT_GUN_CADENCE_STATES[inner] = state
 end
 return state
@@ -31080,8 +31069,7 @@ if not ragebotGunFinite(value) or value < 0 then value = 0 end
 if item.Name ~= "Revolver" and burstCount > 1 then
     value = (burstCount - 1) * burstCooldown + math.max(value, burstCooldown)
 end
-local scale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
-return math.clamp(math.max(1 / 240, value * scale), 1 / 240, 10)
+return math.clamp(math.max(1 / 240, value), 1 / 240, 10)
 end
 
 local function ragebotGunNativeReadyIn(item)
@@ -31095,22 +31083,10 @@ local function includeDeadline(value)
         if delay > 0 and delay < 60 then remaining = math.max(remaining, delay) end
     end
 end
-for _, field in ipairs({ "_shoot_cooldown", "_equip_cooldown", "_is_revolver_quick_shooting" }) do
-    local ok, value = pcall(rawget, inner, field)
-    if ok then includeDeadline(value) end
-end
-local reloadEnding, reloadCancel, reloadExpiration
-pcall(function()
-    reloadEnding = rawget(inner, "_reload_cooldown")
-    reloadCancel = rawget(inner, "_reload_cancel_cooldown")
-    reloadExpiration = rawget(inner, "_reload_cancel_expiration")
-end)
-local ammo = nil
-pcall(function() ammo = item:GetAmmo() end)
-local canCancelReload = ragebotGunFinite(ammo) and ammo > 0
-    and ragebotGunFinite(reloadCancel) and ragebotGunFinite(reloadExpiration)
-    and nativeNow >= reloadCancel and nativeNow < reloadExpiration
-if not canCancelReload then includeDeadline(reloadEnding) end
+local okShoot, shootDeadline = pcall(rawget, inner, "_shoot_cooldown")
+if okShoot then includeDeadline(shootDeadline) end
+local okEquip, equipDeadline = pcall(rawget, inner, "_equip_cooldown")
+if okEquip then includeDeadline(equipDeadline) end
 return remaining
 end
 
@@ -31120,26 +31096,17 @@ local state = ragebotGunCadenceState(item)
 if state == nil then return 0 end
 if state.Busy == true then
     local busyAge = now - (tonumber(state.BusySince) or now)
-    if busyAge >= 0 and busyAge < 1.0 then return math.max(1 / 120, 1.0 - busyAge) end
-    -- A failed/yielded callback must not permanently wedge the weapon.
+    -- ShootEncoded is synchronous. A callback that survives 250 ms is stale;
+    -- do not leave the weapon frozen for the old one-second watchdog window.
+    if busyAge >= 0 and busyAge < 0.25 then return math.max(1 / 120, 0.25 - busyAge) end
     state.Busy = false
     state.BusySince = 0
 end
 local scheduled = tonumber(state.NextFire) or 0
 if not ragebotGunFinite(scheduled) then scheduled = 0 end
 local scheduledWait = math.max(0, scheduled - now)
--- Keep the pre-existing pending-shot estimate in the same gate. It is useful
--- while ammo replication is outstanding, but NextFire remains independent so
--- reconciliation cannot accidentally erase the weapon cadence deadline.
-local pendingDeadline = tonumber(item._nextLikelyShotRequestAt) or 0
-if not ragebotGunFinite(pendingDeadline) then pendingDeadline = 0 end
-local pendingWait = math.max(0, pendingDeadline - now)
 local nativeWait = ragebotGunNativeReadyIn(item)
-pcall(function()
-    local remaining = item:GetShootTimeRemaining()
-    if ragebotGunFinite(remaining) and remaining > nativeWait then nativeWait = remaining end
-end)
-return math.max(scheduledWait, pendingWait, nativeWait)
+return math.max(scheduledWait, nativeWait)
 end
 
 index2.BeginRagebotShot = function(item, now)
@@ -31162,8 +31129,7 @@ if generation ~= nil and state.Generation ~= generation then return false end
 state.Busy = false
 state.BusySince = 0
 if sent == true then
-    state.LastRequestAt = now
-    state.NextFire = math.max(tonumber(state.NextFire) or 0, now + ragebotGunConfiguredCooldown(item))
+    state.NextFire = now + ragebotGunConfiguredCooldown(item)
 end
 return true
 end
@@ -31225,7 +31191,6 @@ index2._ClearPendingShots = function(arg)
 local okAmmo, ammo = pcall(arg.GetAmmo, arg)
 local validAmmo = okAmmo and pendingAmmoNumber(ammo)
 arg._expectedAmmoRaw = validAmmo and ammo or nil
-arg._nextLikelyShotRequestAt = 0
 arg._pendingShotBatches = {}
 arg._outstandingAmmoSpend = 0
 arg._outstandingAmmoSpendDeadline = nil
@@ -31257,7 +31222,6 @@ end
 syncPendingShotSummary(arg)
 if #batches == 0 then
 arg._expectedAmmoRaw = nil
-arg._nextLikelyShotRequestAt = 0
 end
 return false
 end
@@ -31268,7 +31232,6 @@ arg._expectedAmmoRaw = ammo
 arg._pendingShotBatches = {}
 arg._outstandingAmmoSpend = 0
 arg._outstandingAmmoSpendDeadline = nil
-arg._nextLikelyShotRequestAt = 0
 return true
 end
 if ammo > expectedAmmoRaw then
@@ -31276,7 +31239,6 @@ arg._expectedAmmoRaw = ammo
 arg._pendingShotBatches = {}
 arg._outstandingAmmoSpend = 0
 arg._outstandingAmmoSpendDeadline = nil
-arg._nextLikelyShotRequestAt = 0
 return true
 end
 if ammo < expectedAmmoRaw then
@@ -31290,9 +31252,6 @@ local deadline = type(batch) == "table" and tonumber(batch.deadline) or nil
 if deadline ~= nil and now >= deadline then table.remove(batches, i) end
 end
 syncPendingShotSummary(arg)
-if #batches == 0 then
-arg._nextLikelyShotRequestAt = 0
-end
 return true
 end
 
@@ -31303,11 +31262,6 @@ if reconciled ~= true then return end
 local expectedAmmoRaw = arg._expectedAmmoRaw
 if not pendingAmmoNumber(expectedAmmoRaw) then return end
 
-local nextRequestAt = tonumber(arg._nextLikelyShotRequestAt) or 0
-if nextRequestAt ~= nextRequestAt or nextRequestAt == math.huge or nextRequestAt == -math.huge then
-nextRequestAt = 0
-end
-if now2 < nextRequestAt then return end
 local outstanding = tonumber(arg._outstandingAmmoSpend) or 0
 if outstanding ~= outstanding or outstanding == math.huge or outstanding == -math.huge or outstanding < 0 then outstanding = 0 end
 local available = math.max(expectedAmmoRaw - outstanding, 0)
@@ -31332,19 +31286,6 @@ arg._pendingShotBatches = pendingBatches
 end
 table.insert(pendingBatches, { spend = predictedSpend, deadline = deadline })
 syncPendingShotSummary(arg)
-local quickShotCooldown = arg:IsFanFired() and v102(info, "QuickShotCooldown") or nil
-if type(quickShotCooldown) == "number" and quickShotCooldown == quickShotCooldown and quickShotCooldown >= 0 and quickShotCooldown < math.huge then
-local cadenceScale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
-arg._nextLikelyShotRequestAt = now2 + math.max(1 / 240, quickShotCooldown * cadenceScale)
-return
-end
-local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
-local shootCooldown = tonumber(info.ShootCooldown) or 0
-if burstCooldown ~= burstCooldown or burstCooldown < 0 or burstCooldown == math.huge or burstCooldown == -math.huge then burstCooldown = 0 end
-if shootCooldown ~= shootCooldown or shootCooldown < 0 or shootCooldown == math.huge or shootCooldown == -math.huge then shootCooldown = 0 end
-local cadenceScale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
-local configuredCooldown = (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
-arg._nextLikelyShotRequestAt = now2 + math.max(1 / 240, configuredCooldown * cadenceScale)
 end
 
 index2.Equip = function(arg)
@@ -58905,61 +58846,8 @@ local index2 = {}
 index2.__index = index2
 
 local function fn36(arg)
-local v124 = v86[133]
-return tostring(math.round(arg * 10) / v124)
-end
-
-local function createDamageNumbersGui()
-    local containers = {}
-    local seen = {}
-    local function addContainer(container)
-        if container ~= nil and not seen[container] then
-            seen[container] = true
-            table.insert(containers, container)
-        end
-    end
-
-    if type(gethui) == "function" then
-        local ok, parent = pcall(gethui)
-        if ok then addContainer(parent) end
-    end
-    pcall(function() addContainer(game:GetService("CoreGui")) end)
-    pcall(function()
-        local players = game:GetService("Players")
-        local localPlayer = players and players.LocalPlayer
-        local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
-        addContainer(playerGui)
-    end)
-
-    for _, container in next, containers do
-        pcall(function()
-            local previous = container:FindFirstChild("CrefyDamageNumbers")
-            if previous ~= nil then previous:Destroy() end
-        end)
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "CrefyDamageNumbers"
-    screenGui.ResetOnSpawn = false
-    screenGui.IgnoreGuiInset = true
-    screenGui.DisplayOrder = 500
-
-    local parented = false
-    for _, container in next, containers do
-        if not parented then
-            local okParent, actualParent = pcall(function()
-                screenGui.Parent = container
-                return screenGui.Parent
-            end)
-            parented = okParent and actualParent ~= nil
-        end
-    end
-
-    if not parented then
-        pcall(function() screenGui:Destroy() end)
-        return nil
-    end
-    return screenGui
+    local v124 = v86[133]
+    return tostring(math.round(arg * 10) / v124)
 end
 
 index2.new = function(arg, arg2, arg3)
@@ -58976,13 +58864,9 @@ _sfxSoundStorage = arg3,
 _noGameHitsound = PlayerHit:Add(v118.new()),
 _hitFlash = PlayerHit:Add(v120.new()),
 _chams = {},
-_damageNumbers = {},
 _damageEffectObjects = {},
 _damageEffectStacks = setmetatable({}, { __mode = "k" }),
 _damageEffectColorIndex = 0,
-_damageGui = createDamageNumbersGui(),
-_damageGuiRetryAt = 0,
-_damageSpawnWarnAt = 0,
 _headSoundId = nil,
 _bodySoundId = nil,
 }
@@ -58997,15 +58881,11 @@ tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", v86[44] }), fu
 tbl18:_SetEnabled()
 end)
 
-tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageNumbers", "Enabled" }), function()
-tbl18:_SetEnabled()
-end)
-
-tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageNumbers", "RemoveGameNumbers" }), function()
-tbl18:_SetEnabled()
-end)
-
 tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageEffects", "Enabled" }), function()
+tbl18:_SetEnabled()
+end)
+
+tbl18._trove:Connect(v116:GetPropertyChangedSignal({ "PlayerHit", "DamageEffects", "RemoveGameNumbers" }), function()
 tbl18:_SetEnabled()
 end)
 
@@ -59052,561 +58932,84 @@ return tbl18
 end
 
 index2._SetEnabled = function(arg)
-local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
-local damageNumbers = type(playerHit) == "table" and playerHit.DamageNumbers or nil
-local damageEffects = type(playerHit) == "table" and playerHit.DamageEffects or nil
-local enabled = type(playerHit) == "table" and playerHit.Enabled == true
-    or type(damageNumbers) == "table" and (damageNumbers.Enabled == true or damageNumbers.RemoveGameNumbers == true)
-    or type(damageEffects) == "table" and damageEffects.Enabled == true
-arg._replicateBinding:SetEnabled(enabled == true)
+    local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
+    local damageEffects = type(playerHit) == "table" and playerHit.DamageEffects or nil
+    local removeGameNumbers = type(damageEffects) == "table" and damageEffects.RemoveGameNumbers == true
+    local enabled = type(playerHit) == "table" and playerHit.Enabled == true
+        or type(damageEffects) == "table" and damageEffects.Enabled == true
+        or removeGameNumbers == true
+    arg._replicateBinding:SetEnabled(enabled == true)
 end
 
 index2._HandleReplicate = function(arg, arg2)
-if type(arg2) ~= "table" or arg2.EnumName ~= "DamageNumberEffect" then
-return
-end
-local inner = arg._playerContext ~= nil and arg._playerContext.Inner or nil
-local fighterState = inner ~= nil and inner.FighterState or nil
-if fighterState == nil or arg2.ObjectId ~= fighterState.ObjectId then
-return
-end
-
-local args = arg2.Args
-if type(args) ~= "table" then return end
-local hitRoot = args[1]
-local hitDamage = args[2]
-if hitRoot == nil or type(hitDamage) ~= "number" then return end
-local okParent, parent = pcall(function() return hitRoot.Parent end)
-if not okParent or parent == nil then return end
-
-local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
-local damageNumbers = type(playerHit) == "table" and playerHit.DamageNumbers or nil
-local showDamageNumbers = type(damageNumbers) == "table" and damageNumbers.Enabled == true
-local removeGameNumbers = type(damageNumbers) == "table" and damageNumbers.RemoveGameNumbers == true
-local customOverlayReady = false
-if arg._damageGui ~= nil then
-    local okOverlay, overlayReady = pcall(function()
-        return arg._damageGui.Parent ~= nil
-    end)
-    customOverlayReady = okOverlay and overlayReady == true
-end
-if showDamageNumbers and not customOverlayReady then
-    local now = os.clock()
-    if now - (arg._damageGuiRetryAt or 0) >= 2 then
-        arg._damageGuiRetryAt = now
-        local okGui, replacementGui = pcall(createDamageNumbersGui)
-        if okGui then
-            arg._damageGui = replacementGui
-            customOverlayReady = replacementGui ~= nil
-        end
+    if type(arg2) ~= "table" or arg2.EnumName ~= "DamageNumberEffect" then
+        return
     end
-end
-local isHeadshot = args[v86[155]] == true
-local customNumberShown = false
-if customOverlayReady then
-    local okPosition, worldPosition = pcall(function()
-        return hitRoot.Position + Vector3.new(0, isHeadshot and 2.6 or 2.1, 0)
-    end)
-    if okPosition and worldPosition ~= nil then
-        local okSpawn, spawnResult = pcall(function()
-            return arg:_SpawnDamageNumber(hitDamage, worldPosition, isHeadshot)
-        end)
-        customNumberShown = okSpawn and spawnResult == true
-        if not okSpawn then
-            local now = os.clock()
-            if now - (arg._damageSpawnWarnAt or 0) >= 5 then
-                arg._damageSpawnWarnAt = now
-                warn("[DamageNumbers] spawn failed: " .. tostring(spawnResult))
-            end
-        end
+
+    local inner = arg._playerContext ~= nil and arg._playerContext.Inner or nil
+    local fighterState = inner ~= nil and inner.FighterState or nil
+    if fighterState == nil or arg2.ObjectId ~= fighterState.ObjectId then
+        return
     end
-end
-if customNumberShown or removeGameNumbers then
-    arg2.Block = true
-end
 
-local damageEffects = type(playerHit) == "table" and playerHit.DamageEffects or nil
-if type(damageEffects) == "table" and damageEffects.Enabled == true then
-    local okEffect, effectResult = pcall(function()
-        return arg:_SpawnDamageEffects(hitDamage, hitRoot, isHeadshot, parent)
-    end)
-    if not okEffect then
-        local now = os.clock()
-        if now - (arg._damageEffectWarnAt or 0) >= 5 then
-            arg._damageEffectWarnAt = now
-            warn("[DamageEffects] spawn failed: " .. tostring(effectResult))
-        end
-    end
-end
+    local args = arg2.Args
+    if type(args) ~= "table" then return end
+    local hitRoot = args[1]
+    local hitDamage = args[2]
+    if hitRoot == nil or type(hitDamage) ~= "number" then return end
 
-if type(playerHit) == "table" and playerHit.Enabled == true then
-    arg:_HandleHit(hitDamage, isHeadshot and "Head" or "Body", parent)
-end
-end
+    local okParent, parent = pcall(function() return hitRoot.Parent end)
+    if not okParent or parent == nil then return end
 
-index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot)
     local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
-    local cfg = type(playerHit) == "table" and playerHit.DamageNumbers or nil
-    if type(cfg) ~= "table" or cfg.Enabled ~= true or typeof(worldPosition) ~= "Vector3" then
-        return false
-    end
+    local effects = type(playerHit) == "table" and playerHit.DamageEffects or nil
+    local removeGameNumbers = type(effects) == "table" and effects.RemoveGameNumbers == true
+    local isHeadshot = args[v86[155]] == true
 
-    local camera = workspace.CurrentCamera
-    local gui = arg._damageGui
-    if camera == nil or gui == nil then return false end
-
-    local okProjection, screenPoint, onScreen = pcall(function()
-        local point, visible = camera:WorldToViewportPoint(worldPosition)
-        return point, visible
-    end)
-    if not okProjection or not onScreen or screenPoint == nil or screenPoint.Z <= 0 then
-        return false
-    end
-
-    local amount = tonumber(damage)
-    if amount == nil or amount ~= amount or amount == math.huge or amount == -math.huge then
-        return false
-    end
-
-    local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
-    local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 210, 90)
-    local font = Enum.Font.GothamBold
-    local okFont, requestedFont = pcall(function() return Enum.Font[cfg.Font] end)
-    if okFont and requestedFont ~= nil then font = requestedFont end
-
-    local textSize = math.clamp(tonumber(cfg.TextSize) or 18, 10, 40)
-    local duration = math.clamp(tonumber(cfg.Duration) or 0.8, 0.2, 3)
-    local rise = math.clamp(tonumber(cfg.Rise) or 42, 0, 120)
-    local colorType = cfg.ColorType
-    local style = cfg.Style
-    local allowedStyles = {
-        ["Classic Float"] = true,
-        ["Critical Burst"] = true,
-        ["Neon Rift"] = true,
-        ["Glitch Echo"] = true,
-        ["Arcane Orbit"] = true,
-        ["Void Shatter"] = true,
-        ["Matrix Rain"] = true,
-        ["Celestial Sigil"] = true,
-    }
-    if not allowedStyles[style] then style = "Classic Float" end
-
-    local TweenService = game:GetService("TweenService")
-    local Debris = game:GetService("Debris")
-    local startX, startY = screenPoint.X, screenPoint.Y
-    local amountText = (isHeadshot == true and "✦ " or "") .. "-" .. tostring(math.floor(amount + 0.5))
-    local objects = {}
-    local tweens = {}
-
-    local function trackObject(object)
-        objects[#objects + 1] = object
-        pcall(function() Debris:AddItem(object, duration + 0.4) end)
-        return object
-    end
-
-    local function makeText(text, x, y, size, color, rotation, zIndex, chosenFont, parent)
-        local label = Instance.new("TextLabel")
-        label.Name = "CrefyDamageText"
-        label.BackgroundTransparency = 1
-        label.BorderSizePixel = 0
-        label.AnchorPoint = Vector2.new(0.5, 0.5)
-        label.Size = UDim2.fromOffset(math.max(116, size * 8 + 44), size * 2.5)
-        label.Position = UDim2.fromOffset(x, y)
-        label.Font = chosenFont or font
-        label.TextSize = size
-        label.Text = text
-        label.TextColor3 = color or color1
-        label.TextTransparency = 0
-        label.TextStrokeTransparency = 1
-        label.TextStrokeColor3 = Color3.new(0, 0, 0)
-        label.TextXAlignment = Enum.TextXAlignment.Center
-        label.TextYAlignment = Enum.TextYAlignment.Center
-        label.TextWrapped = false
-        label.Rotation = rotation or 0
-        label.ZIndex = zIndex or 10
-        label.Parent = parent or gui
-        trackObject(label)
-        return label
-    end
-
-    local function makeFrame(x, y, width, height, color, rotation, transparency, zIndex, parent, relativePosition)
-        local frame = Instance.new("Frame")
-        frame.Name = "CrefyDamageShape"
-        frame.AnchorPoint = Vector2.new(0.5, 0.5)
-        frame.Size = UDim2.fromOffset(width, height)
-        frame.Position = relativePosition or UDim2.fromOffset(x, y)
-        frame.BackgroundColor3 = color or color1
-        frame.BackgroundTransparency = transparency == nil and 0 or transparency
-        frame.BorderSizePixel = 0
-        frame.Rotation = rotation or 0
-        frame.ZIndex = zIndex or 8
-        frame.Parent = parent or gui
-        trackObject(frame)
-        return frame
-    end
-
-    local function addCorner(frame, scale, offset)
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(scale or 1, offset or 0)
-        corner.Parent = frame
-        trackObject(corner)
-        return corner
-    end
-
-    local function addStroke(object, color, thickness, transparency)
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = color or color1
-        stroke.Thickness = thickness or 1.5
-        stroke.Transparency = transparency or 0.12
-        stroke.LineJoinMode = Enum.LineJoinMode.Round
-        stroke.Parent = object
-        trackObject(stroke)
-        return stroke
-    end
-
-    local function addGradient(object, first, second, rotation)
-        local gradient = Instance.new("UIGradient")
-        gradient.Color = ColorSequence.new(first or color1, second or color2)
-        gradient.Rotation = rotation or 0
-        gradient.Parent = object
-        trackObject(gradient)
-        return gradient
-    end
-
-    local function attachColor(label)
-        if colorType == "Gradient" then
-            addGradient(label, color1, color2, 90)
-        elseif colorType == "Rainbow" then
-            local gradient = Instance.new("UIGradient")
-            gradient.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 70, 90)),
-                ColorSequenceKeypoint.new(0.20, Color3.fromRGB(255, 190, 65)),
-                ColorSequenceKeypoint.new(0.40, Color3.fromRGB(120, 255, 130)),
-                ColorSequenceKeypoint.new(0.60, Color3.fromRGB(70, 220, 255)),
-                ColorSequenceKeypoint.new(0.80, Color3.fromRGB(160, 110, 255)),
-                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 90, 210)),
-            })
-            gradient.Parent = label
-            trackObject(gradient)
-            return gradient
-        end
-        return nil
-    end
-
-    local function play(object, tweenDuration, goals, easingStyle, delayTime, repeatCount, reverses)
-        local okTween, tween = pcall(function()
-            local info = TweenInfo.new(
-                math.max(0.04, tweenDuration),
-                easingStyle or Enum.EasingStyle.Quint,
-                Enum.EasingDirection.Out,
-                repeatCount or 0,
-                reverses == true,
-                delayTime or 0
-            )
-            return TweenService:Create(object, info, goals)
+    if type(effects) == "table" and effects.Enabled == true then
+        local okEffect, effectResult = pcall(function()
+            return arg:_SpawnDamageEffects(hitDamage, hitRoot, isHeadshot, parent)
         end)
-        if okTween and tween ~= nil then
-            tweens[#tweens + 1] = tween
-            pcall(function() tween:Play() end)
-            return tween
-        end
-        return nil
-    end
-
-    local function makeMain(scaleValue, sizeBonus, zIndex)
-        local main = makeText(amountText, startX, startY, textSize + (sizeBonus or 0), color1, 0, zIndex or 16)
-        local stroke = addStroke(main, color2, 1.35, 0.08)
-        local scale = Instance.new("UIScale")
-        scale.Scale = scaleValue or 1
-        scale.Parent = main
-        trackObject(scale)
-        attachColor(main)
-        return main, stroke, scale
-    end
-
-    local function fadeText(label, endX, endY, rotation, tweenDuration, easing, delayTime)
-        play(label, tweenDuration or duration, {
-            Position = UDim2.fromOffset(endX, endY),
-            TextTransparency = 1,
-            TextStrokeTransparency = 1,
-            Rotation = rotation or 0,
-        }, easing or Enum.EasingStyle.Quint, delayTime or 0)
-    end
-
-    if style == "Classic Float" then
-        local shadow = makeText(amountText, startX + 2, startY + 3, textSize, Color3.fromRGB(8, 10, 16), 0, 14)
-        shadow.TextTransparency = 0.22
-        local main = makeText(amountText, startX, startY, textSize, color1, 0, 15)
-        main.TextStrokeTransparency = 0.72
-        attachColor(main)
-        fadeText(shadow, startX + 2, startY - rise, 0, duration, Enum.EasingStyle.Quart)
-        fadeText(main, startX, startY - rise, 0, duration, Enum.EasingStyle.Quart)
-        play(main, duration * 0.32, { TextSize = textSize + 2 }, Enum.EasingStyle.Quad)
-
-    elseif style == "Critical Burst" then
-        local shock = makeFrame(startX, startY, 20, 20, color1, 0, 1, 9)
-        addCorner(shock, 1, 0)
-        local shockStroke = addStroke(shock, color2, 3, 0.02)
-        play(shock, duration * 0.58, { Size = UDim2.fromOffset(116, 116) }, Enum.EasingStyle.Quart)
-        play(shockStroke, duration * 0.58, { Transparency = 1, Thickness = 0.35 }, Enum.EasingStyle.Quart)
-        for index = 0, 11 do
-            local angle = math.tau * index / 12
-            local innerRadius = 13 + (index % 3) * 3
-            local outerRadius = 48 + (index % 4) * 7
-            local ray = makeFrame(
-                startX + math.cos(angle) * innerRadius,
-                startY + math.sin(angle) * innerRadius,
-                index % 3 == 0 and 4 or 2.5,
-                10 + (index % 4) * 4,
-                index % 2 == 0 and color2 or color1,
-                math.deg(angle) + 90,
-                0,
-                10
-            )
-            play(ray, duration * 0.48, {
-                Position = UDim2.fromOffset(startX + math.cos(angle) * outerRadius, startY + math.sin(angle) * outerRadius),
-                BackgroundTransparency = 1,
-                Rotation = math.deg(angle) + 130,
-            }, Enum.EasingStyle.Quart, (index % 3) * 0.012)
-        end
-        local main, stroke, scale = makeMain(0.28, 8, 18)
-        play(scale, 0.34, { Scale = 1 }, Enum.EasingStyle.Back)
-        fadeText(main, startX, startY - math.max(12, rise * 0.24), 0, duration * 0.9, Enum.EasingStyle.Quart, 0.12)
-        play(stroke, duration * 0.75, { Transparency = 1 }, Enum.EasingStyle.Quad)
-        local tagOffset = textSize + 14
-        local tag = makeText(isHeadshot == true and "HEADSHOT" or "IMPACT", startX, startY - tagOffset, math.max(9, textSize * 0.42), color2, 0, 19, Enum.Font.GothamBlack)
-        fadeText(tag, startX, startY - tagOffset - 17, 0, duration * 0.58, Enum.EasingStyle.Quart)
-
-    elseif style == "Neon Rift" then
-        local panelWidth = math.clamp(#amountText * textSize * 0.61 + 44, 124, 260)
-        local panelHeight = math.max(46, textSize * 2.2)
-        local panel = makeFrame(startX, startY, panelWidth, panelHeight, Color3.fromRGB(8, 16, 31), 0, 0.12, 10)
-        addCorner(panel, 0, 9)
-        local panelStroke = addStroke(panel, color1, 1.8, 0.04)
-        addGradient(panel, Color3.fromRGB(12, 24, 45), Color3.fromRGB(17, 10, 34), 0)
-        local label = makeText(amountText, 0, 0, textSize, color1, 0, 16, nil, panel)
-        label.Position = UDim2.fromScale(0.5, 0.5)
-        label.Size = UDim2.fromScale(1, 1)
-        attachColor(label)
-        local scanWidth = math.min(48, panelWidth * 0.32)
-        local scanY = panelHeight * 0.5
-        local scan = makeFrame(0, 0, scanWidth, 2, color2, 0, 0.02, 17, panel, UDim2.new(0, -scanWidth * 0.5, 0, scanY))
-        local leftCap = makeFrame(0, 0, 3, panelHeight * 0.48, color1, 0, 0, 15, panel, UDim2.new(0, 5, 0.5, 0))
-        local rightCap = makeFrame(0, 0, 3, panelHeight * 0.48, color2, 0, 0, 15, panel, UDim2.new(1, -5, 0.5, 0))
-        play(panel, duration, {
-            Position = UDim2.fromOffset(startX, startY - rise * 0.38),
-            Size = UDim2.fromOffset(panelWidth + 18, panelHeight + 4),
-            BackgroundTransparency = 1,
-        }, Enum.EasingStyle.Quint)
-        play(panelStroke, duration, { Transparency = 1, Thickness = 0.35 }, Enum.EasingStyle.Quad)
-        play(scan, duration * 0.58, { Position = UDim2.new(0, panelWidth + scanWidth * 0.5, 0, scanY), BackgroundTransparency = 1 }, Enum.EasingStyle.Linear)
-        play(leftCap, duration * 0.72, { Position = UDim2.new(0, -8, 0.5, 0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
-        play(rightCap, duration * 0.72, { Position = UDim2.new(1, 8, 0.5, 0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quart)
-        play(label, duration, {
-            Position = UDim2.fromScale(0.5, 0.5),
-            TextTransparency = 1,
-            TextStrokeTransparency = 1,
-            Rotation = 0,
-        }, Enum.EasingStyle.Quint)
-
-    elseif style == "Glitch Echo" then
-        local echoBack = makeText(amountText, startX - 5, startY + 1, textSize + 1, color2, -2, 12)
-        local echoFront = makeText(amountText, startX + 5, startY - 1, textSize + 1, color1, 2, 13)
-        echoBack.TextTransparency = 0.35
-        echoFront.TextTransparency = 0.42
-        local main = makeText(amountText, startX, startY, textSize, color1, 0, 17)
-        main.TextStrokeTransparency = 0.35
-        attachColor(main)
-        play(echoBack, 0.075, { Position = UDim2.fromOffset(startX - 13, startY + 2) }, Enum.EasingStyle.Linear, 0, 3, true)
-        play(echoFront, 0.065, { Position = UDim2.fromOffset(startX + 12, startY - 3) }, Enum.EasingStyle.Linear, 0.02, 3, true)
-        play(echoBack, duration * 0.72, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Linear, 0.08)
-        play(echoFront, duration * 0.68, { TextTransparency = 1, TextStrokeTransparency = 1 }, Enum.EasingStyle.Linear, 0.1)
-        for index = 1, 4 do
-            local barWidth = 16 + (index % 3) * 9
-            local bar = makeFrame(
-                startX + (index % 2 == 0 and 1 or -1) * (18 + index * 6),
-                startY - 15 + index * 10,
-                barWidth,
-                index % 2 == 0 and 3 or 2,
-                index % 2 == 0 and color2 or color1,
-                0,
-                0.12,
-                18
-            )
-            play(bar, 0.09 + index * 0.015, {
-                Position = UDim2.fromOffset(startX + (index % 2 == 0 and -1 or 1) * (34 + index * 5), startY - 15 + index * 10),
-                BackgroundTransparency = 1,
-            }, Enum.EasingStyle.Linear, index * 0.035)
-        end
-        fadeText(main, startX + 1, startY - rise * 0.56, 0, duration, Enum.EasingStyle.Linear, 0.08)
-
-    elseif style == "Arcane Orbit" then
-        local orbit = makeFrame(startX, startY, 74, 74, color1, 0, 1, 8)
-        addCorner(orbit, 1, 0)
-        local orbitStroke = addStroke(orbit, color1, 2, 0.04)
-        local innerOrbit = makeFrame(startX, startY, 48, 48, color2, -22, 1, 9)
-        addCorner(innerOrbit, 1, 0)
-        local innerStroke = addStroke(innerOrbit, color2, 1.25, 0.08)
-        local satellites = {
-            { Color = color2, Position = UDim2.new(0.5, 0, 0, -3), Size = 8 },
-            { Color = color1, Position = UDim2.new(1, 3, 0.5, 0), Size = 6 },
-            { Color = color2, Position = UDim2.new(0.5, 0, 1, 3), Size = 5 },
-        }
-        for _, data in ipairs(satellites) do
-            local dot = makeFrame(0, 0, data.Size, data.Size, data.Color, 0, 0, 13, orbit, data.Position)
-            addCorner(dot, 1, 0)
-            play(dot, duration * 0.82, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
-        end
-        play(orbit, duration, { Position = UDim2.fromOffset(startX, startY - rise * 0.44), Rotation = 250, Size = UDim2.fromOffset(104, 104) }, Enum.EasingStyle.Quint)
-        play(innerOrbit, duration * 0.88, { Position = UDim2.fromOffset(startX, startY - rise * 0.44), Rotation = -205, Size = UDim2.fromOffset(27, 27) }, Enum.EasingStyle.Quart)
-        play(orbitStroke, duration, { Transparency = 1, Thickness = 0.35 }, Enum.EasingStyle.Quad)
-        play(innerStroke, duration * 0.84, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
-        local main = makeText(amountText, startX, startY, textSize, color1, 0, 18)
-        attachColor(main)
-        fadeText(main, startX, startY - rise * 0.44, 0, duration, Enum.EasingStyle.Quint)
-
-    elseif style == "Void Shatter" then
-        local core = makeFrame(startX, startY, 42, 42, Color3.fromRGB(9, 8, 18), 0, 0.08, 8)
-        addCorner(core, 1, 0)
-        local coreStroke = addStroke(core, color1, 2.2, 0.02)
-        local implosion = makeFrame(startX, startY, 92, 92, color2, 0, 1, 7)
-        addCorner(implosion, 1, 0)
-        local implosionStroke = addStroke(implosion, color2, 2.3, 0.02)
-        play(implosion, duration * 0.5, { Size = UDim2.fromOffset(8, 8) }, Enum.EasingStyle.Quint)
-        play(implosionStroke, duration * 0.5, { Transparency = 1, Thickness = 0.2 }, Enum.EasingStyle.Quint)
-        play(core, duration * 0.7, { Size = UDim2.fromOffset(8, 8), BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
-        play(coreStroke, duration * 0.7, { Transparency = 1, Thickness = 0.2 }, Enum.EasingStyle.Quad)
-        local main, stroke, scale = makeMain(1.18, 2, 19)
-        play(scale, duration * 0.42, { Scale = 0.76 }, Enum.EasingStyle.Quint)
-        fadeText(main, startX, startY - math.max(8, rise * 0.18), 0, duration * 0.72, Enum.EasingStyle.Quint)
-        play(stroke, duration * 0.62, { Transparency = 1, Thickness = 0.25 }, Enum.EasingStyle.Quad)
-        for index = 1, 13 do
-            local angle = math.rad((index * 137.5) % 360)
-            local startRadius = 13 + (index % 3) * 4
-            local endRadius = 34 + (index % 5) * 10
-            local width = 3 + (index % 3) * 2
-            local height = 7 + (index % 4) * 4
-            local shard = makeFrame(
-                startX + math.cos(angle) * startRadius,
-                startY + math.sin(angle) * startRadius,
-                width,
-                height,
-                index % 2 == 0 and color2 or color1,
-                math.deg(angle) + 35,
-                0,
-                12
-            )
-            play(shard, duration * (0.52 + (index % 4) * 0.075), {
-                Position = UDim2.fromOffset(
-                    startX + math.cos(angle) * endRadius,
-                    startY + math.sin(angle) * endRadius + rise * (0.08 + (index % 3) * 0.035)
-                ),
-                Rotation = math.deg(angle) + 210 + index * 9,
-                BackgroundTransparency = 1,
-            }, Enum.EasingStyle.Quad, (index % 4) * 0.018)
-        end
-
-    elseif style == "Matrix Rain" then
-        local matrixFont = Enum.Font.Code
-        local columns = { "1\n0\n1\n0", "0\n1\n0\n1", "λ\n0\n1\n0", "1\n1\n0\n1", "0\nλ\n1\n0", "1\n0\n0\n1" }
-        for index = 1, 6 do
-            local columnX = startX + (index - 3.5) * 19
-            local guide = makeFrame(columnX, startY - 8, 1, 72, index % 2 == 0 and color2 or color1, 0, 0.74, 7)
-            play(guide, duration * 0.8, { BackgroundTransparency = 1, Size = UDim2.fromOffset(1, 100) }, Enum.EasingStyle.Linear, index * 0.025)
-            local column = makeText(columns[index], columnX, startY - 27 - (index % 2) * 8, textSize * 0.48, color1, 0, 9, matrixFont)
-            column.Size = UDim2.fromOffset(20, textSize * 3.8)
-            column.TextTransparency = 0.18 + (index % 3) * 0.08
-            play(column, duration * (0.66 + (index % 3) * 0.07), {
-                Position = UDim2.fromOffset(columnX + (index % 2 == 0 and 3 or -3), startY + 78 + index * 3),
-                TextTransparency = 1,
-                TextStrokeTransparency = 1,
-            }, Enum.EasingStyle.Linear, index * 0.035)
-        end
-        local main = makeText(amountText, startX, startY - 4, textSize + 2, color2, 0, 18, matrixFont)
-        local mainStroke = addStroke(main, color1, 1.5, 0.12)
-        attachColor(main)
-        fadeText(main, startX, startY - rise * 0.36, 0, duration, Enum.EasingStyle.Linear)
-        play(mainStroke, duration * 0.82, { Transparency = 1 }, Enum.EasingStyle.Linear)
-
-    elseif style == "Celestial Sigil" then
-        local main, stroke, scale = makeMain(0.84, 1, 18)
-        play(scale, math.max(0.25, duration * 0.72), { Scale = 0.98 }, Enum.EasingStyle.Back)
-        fadeText(main, startX, startY - rise * 0.32, 0, duration, Enum.EasingStyle.Sine)
-        play(stroke, duration, { Transparency = 1, Thickness = 0.3 }, Enum.EasingStyle.Quad)
-        for side = -1, 1, 2 do
-            for index = 1, 5 do
-                local offsetX = side * (17 + index * 5)
-                local offsetY = 10 - index * 8
-                local feather = makeFrame(
-                    startX + offsetX,
-                    startY + offsetY,
-                    3 + (index % 2),
-                    16 + index * 3,
-                    index % 2 == 0 and color1 or color2,
-                    side * (24 + index * 8),
-                    0.05,
-                    10
-                )
-                play(feather, duration * (0.7 + index * 0.035), {
-                    Position = UDim2.fromOffset(startX + offsetX * 1.72, startY + offsetY - 18 - index * 3),
-                    Rotation = side * (42 + index * 9),
-                    BackgroundTransparency = 1,
-                }, Enum.EasingStyle.Quint, index * 0.018)
-            end
-        end
-        for index = 0, 6 do
-            local angle = math.rad(205 + index * (130 / 6))
-            local ray = makeFrame(
-                startX + math.cos(angle) * 48,
-                startY + math.sin(angle) * 33,
-                2,
-                10 + (index % 3) * 4,
-                index % 2 == 0 and color2 or color1,
-                math.deg(angle) + 90,
-                0.08,
-                9
-            )
-            play(ray, duration * 0.72, {
-                Position = UDim2.fromOffset(startX + math.cos(angle) * 67, startY + math.sin(angle) * 50 - rise * 0.16),
-                BackgroundTransparency = 1,
-            }, Enum.EasingStyle.Sine, index * 0.025)
-        end
-        local crest = makeText("✧", startX, startY - 30, textSize * 0.8, color2, 0, 19, Enum.Font.GothamBlack)
-        fadeText(crest, startX, startY - 57, 0, duration * 0.66, Enum.EasingStyle.Sine)
-        local baseline = makeFrame(startX, startY + 22, 64, 2, color1, 0, 0.08, 9)
-        play(baseline, duration * 0.62, { Size = UDim2.fromOffset(116, 1), BackgroundTransparency = 1 }, Enum.EasingStyle.Quint)
-    end
-
-    while #arg._damageNumbers >= 20 do
-        local oldest = table.remove(arg._damageNumbers, 1)
-        if oldest ~= nil then
-            for _, tween in next, oldest.Tweens or {} do
-                pcall(function() tween:Cancel() end)
-            end
-            for _, object in next, oldest.Objects or {} do
-                pcall(function() object:Destroy() end)
+        if not okEffect then
+            local now = os.clock()
+            if now - (arg._damageEffectWarnAt or 0) >= 5 then
+                arg._damageEffectWarnAt = now
+                warn("[DamageEffects] spawn failed: " .. tostring(effectResult))
             end
         end
     end
 
-    table.insert(arg._damageNumbers, { Objects = objects, Tweens = tweens })
-    return true
+    if removeGameNumbers then
+        arg2.Block = true
+    end
+
+    if type(playerHit) == "table" and playerHit.Enabled == true then
+        arg:_HandleHit(hitDamage, isHeadshot and "Head" or "Body", parent)
+    end
 end
+
 index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel)
     local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
     local cfg = type(playerHit) == "table" and playerHit.DamageEffects or nil
     if type(cfg) ~= "table" or cfg.Enabled ~= true then return false end
-    if typeof(hitRoot) ~= "Instance" or not hitRoot:IsA("BasePart") or hitRoot.Parent == nil then
-        return false
-    end
+    if typeof(hitRoot) ~= "Instance" or not hitRoot:IsA("BasePart") then return false end
+
+    local okState, hitPosition, hitParent = pcall(function()
+        return hitRoot.Position, hitRoot.Parent
+    end)
+    if not okState or hitParent == nil or typeof(hitPosition) ~= "Vector3" then return false end
 
     local amount = tonumber(damage)
     if amount == nil or amount ~= amount or amount == math.huge or amount == -math.huge then
         return false
     end
 
-    local model = typeof(hitModel) == "Instance" and hitModel:IsA("Model") and hitModel
-        or hitRoot:FindFirstAncestorOfClass("Model")
+    local model = typeof(hitModel) == "Instance" and hitModel:IsA("Model") and hitModel or nil
+    if model == nil then
+        local okModel, ancestor = pcall(function() return hitRoot:FindFirstAncestorOfClass("Model") end)
+        if okModel then model = ancestor end
+    end
+
     local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
     local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 190, 70)
     local color3 = typeof(cfg.Color3) == "Color3" and cfg.Color3 or Color3.fromRGB(120, 210, 255)
@@ -59618,17 +59021,17 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
     elseif isHeadshot == true then
         colorIndex = 2
     end
+
     local mainColor = colors[colorIndex]
     local duration = math.clamp(tonumber(cfg.Duration) or 1.2, 0.2, 4)
     local scale = math.clamp(tonumber(cfg.Scale) or 1, 0.4, 3)
-    local selectedMaterial = cfg.Material == "ForceField" and Enum.Material.ForceField or Enum.Material.Neon
-    local useWeld = cfg.Weld == true
+    local material = cfg.Material == "ForceField" and Enum.Material.ForceField or Enum.Material.Neon
     local workspaceService = workspace
     local TweenService = game:GetService("TweenService")
     local Debris = game:GetService("Debris")
     local camera = workspace.CurrentCamera
     local look = camera and camera.CFrame.LookVector or Vector3.new(0, 0, -1)
-    local origin = hitRoot.Position + Vector3.new(0, isHeadshot and 1.25 or 0.65, 0)
+    local origin = hitPosition + Vector3.new(0, isHeadshot and 1.25 or 0.65, 0)
     local face = CFrame.lookAt(origin, origin + look)
     local damageText = "-" .. tostring(math.floor(amount + 0.5))
 
@@ -59636,24 +59039,23 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
         for index = #arg._damageEffectObjects, 1, -1 do
             if arg._damageEffectObjects[index] == object then
                 table.remove(arg._damageEffectObjects, index)
-                break
+                return
             end
         end
     end
 
-    local function track(object, lifetime)
+    local function trackInstance(object, lifetime)
         if object == nil then return nil end
         table.insert(arg._damageEffectObjects, object)
-        local ttl = lifetime or (duration + 0.35)
-        pcall(function() Debris:AddItem(object, ttl) end)
-        task.delay(ttl + 0.75, function() untrack(object) end)
+        pcall(function() Debris:AddItem(object, lifetime or (duration + 0.4)) end)
+        task.delay((lifetime or (duration + 0.4)) + 0.8, function()
+            untrack(object)
+        end)
         return object
     end
 
     local function trackPersistent(object)
-        if object ~= nil then
-            table.insert(arg._damageEffectObjects, object)
-        end
+        if object ~= nil then table.insert(arg._damageEffectObjects, object) end
         return object
     end
 
@@ -59664,52 +59066,52 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
         part.Size = size
         part.CFrame = cframe
         part.Color = color or mainColor
-        part.Material = selectedMaterial
+        part.Material = material
         part.Transparency = transparency or 0.12
-        part.Anchored = not (useWeld and hitRoot.Parent ~= nil)
+        part.Anchored = true
         part.Massless = true
         part.CanCollide = false
         part.CanTouch = false
         part.CanQuery = false
         part.CastShadow = false
         part.Parent = workspaceService
-        if not part.Anchored then
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = hitRoot
-            weld.Part1 = part
-            weld.Parent = part
-            track(weld, duration + 0.35)
-        end
-        track(part)
+        trackInstance(part, duration + 0.4)
         return part
     end
 
-    local function tween(object, time, goal, style)
-        local ok, value = pcall(function()
-            local created = TweenService:Create(object, TweenInfo.new(math.max(0.05, time), style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+    local function playTween(object, time, goal, style)
+        local okTween, tweenObject = pcall(function()
+            local created = TweenService:Create(
+                object,
+                TweenInfo.new(math.max(0.05, time), style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                goal
+            )
             created:Play()
             return created
         end)
-        if ok and value then
-            arg._damageEffectObjects[#arg._damageEffectObjects + 1] = value
-            value.Completed:Connect(function() untrack(value) end)
-            task.delay(math.max(0.05, time) + 0.75, function() untrack(value) end)
-            return value
-        end
-        return nil
+        if not okTween or tweenObject == nil then return nil end
+        table.insert(arg._damageEffectObjects, tweenObject)
+        tweenObject.Completed:Connect(function() untrack(tweenObject) end)
+        task.delay(math.max(0.05, time) + 0.8, function() untrack(tweenObject) end)
+        return tweenObject
     end
 
-    -- Fortnite-style world billboard with optional damage stacking and a three-colour cycle.
+    -- Fortnite-style damage popup: the BillboardGui follows its Adornee directly.
+    -- All 3D geometry stays anchored at the exact impact position.
     if cfg.FortniteDamage == true then
         local stacked = cfg.StackDamage == true and arg._damageEffectStacks[hitRoot] or nil
         local billboard, label, stroke, gradient
-        if type(stacked) == "table" and stacked.Billboard ~= nil and stacked.Billboard.Parent ~= nil
-            and stacked.Label ~= nil and stacked.Label.Parent ~= nil then
+        local reusable = type(stacked) == "table"
+            and stacked.Billboard ~= nil and stacked.Billboard.Parent ~= nil
+            and stacked.Label ~= nil and stacked.Label.Parent ~= nil
+
+        if reusable then
             billboard, label, stroke, gradient = stacked.Billboard, stacked.Label, stacked.Stroke, stacked.Gradient
             stacked.Amount = (tonumber(stacked.Amount) or 0) + amount
             stacked.Generation = (tonumber(stacked.Generation) or 0) + 1
             for _, oldTween in next, stacked.Tweens or {} do
                 pcall(function() oldTween:Cancel() end)
+                untrack(oldTween)
             end
             stacked.Tweens = {}
             label.Text = "-" .. tostring(math.floor(stacked.Amount + 0.5))
@@ -59718,25 +59120,24 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
             label.TextStrokeTransparency = 0.08
             label.Rotation = 0
             billboard.StudsOffsetWorldSpace = Vector3.new(0, isHeadshot and 3.1 or 2.5, 0)
-            if stroke then stroke.Color = color3 end
-            if gradient then
-                local secondColor = colors[colorIndex % #colors + 1]
-                local thirdColor = colors[(colorIndex + 1) % #colors + 1]
+            if stroke ~= nil then stroke.Color = color3 end
+            if gradient ~= nil then
                 gradient.Color = ColorSequence.new({
                     ColorSequenceKeypoint.new(0, mainColor),
-                    ColorSequenceKeypoint.new(0.5, secondColor),
-                    ColorSequenceKeypoint.new(1, thirdColor),
+                    ColorSequenceKeypoint.new(0.5, colors[colorIndex % #colors + 1]),
+                    ColorSequenceKeypoint.new(1, colors[(colorIndex + 1) % #colors + 1]),
                 })
             end
         else
             billboard = Instance.new("BillboardGui")
-            billboard.Name = "CrefyFortniteDamage"
+            billboard.Name = "CrefyDamageEffect"
             billboard.Adornee = hitRoot
             billboard.AlwaysOnTop = true
             billboard.LightInfluence = 0
-            billboard.Size = UDim2.fromOffset(150, 64)
+            billboard.Size = UDim2.fromOffset(170, 68)
             billboard.StudsOffsetWorldSpace = Vector3.new(0, isHeadshot and 3.1 or 2.5, 0)
             billboard.Parent = hitRoot
+
             label = Instance.new("TextLabel")
             label.Name = "Damage"
             label.BackgroundTransparency = 1
@@ -59748,6 +59149,7 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
             label.TextStrokeColor3 = Color3.fromRGB(28, 24, 28)
             label.TextStrokeTransparency = 0.08
             label.Parent = billboard
+
             gradient = Instance.new("UIGradient")
             gradient.Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0, colors[colorIndex]),
@@ -59755,50 +59157,65 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
                 ColorSequenceKeypoint.new(1, colors[(colorIndex + 1) % #colors + 1]),
             })
             gradient.Parent = label
+
             stroke = Instance.new("UIStroke")
             stroke.Color = color3
             stroke.Thickness = isHeadshot == true and 2.2 or 1.5
             stroke.Parent = label
+
+            stacked = {
+                Billboard = billboard,
+                Label = label,
+                Stroke = stroke,
+                Gradient = gradient,
+                Amount = amount,
+                Generation = 1,
+                Tweens = {},
+            }
             if cfg.StackDamage == true then
                 trackPersistent(billboard)
+                arg._damageEffectStacks[hitRoot] = stacked
             else
-                track(billboard, duration + 0.4)
+                trackInstance(billboard, duration + 0.4)
             end
-            stacked = {
-                Billboard = billboard, Label = label, Stroke = stroke, Gradient = gradient,
-                Amount = amount, Generation = 1, Tweens = {},
-            }
-            if cfg.StackDamage == true then arg._damageEffectStacks[hitRoot] = stacked end
         end
+
         local generation = stacked.Generation
-        local labelTween = tween(label, duration, {
+        local labelTween = playTween(label, duration, {
             TextTransparency = 1,
             TextStrokeTransparency = 1,
             Rotation = isHeadshot == true and -8 or 6,
         }, Enum.EasingStyle.Quint)
-        local billboardTween = tween(billboard, duration, {
+        local billboardTween = playTween(billboard, duration, {
             StudsOffsetWorldSpace = Vector3.new(0, (isHeadshot and 3.1 or 2.5) + 1.1 * scale, 0),
         }, Enum.EasingStyle.Quint)
         stacked.Tweens = { labelTween, billboardTween }
-        task.delay(duration + 0.05, function()
-            if arg._damageEffectStacks[hitRoot] == stacked and stacked.Generation == generation then
-                arg._damageEffectStacks[hitRoot] = nil
-                untrack(billboard)
-                pcall(function() billboard:Destroy() end)
-            end
-        end)
+
+        if cfg.StackDamage == true then
+            task.delay(duration + 0.08, function()
+                if arg._damageEffectStacks[hitRoot] == stacked and stacked.Generation == generation then
+                    arg._damageEffectStacks[hitRoot] = nil
+                    untrack(billboard)
+                    pcall(function() billboard:Destroy() end)
+                end
+            end)
+        end
     end
 
-    -- Slashes: three short camera-facing energy cuts.
     if cfg.Slashes == true then
         for index = 1, 3 do
             local angle = math.rad(-42 + index * 42)
             local width = (1.45 + (index % 2) * 0.35) * scale
-            local slash = makePart("CrefyHitSlash", Enum.PartType.Block,
+            local slash = makePart(
+                "CrefyHitSlash",
+                Enum.PartType.Block,
                 Vector3.new(width, 0.075 * scale, 0.045 * scale),
                 face * CFrame.new((index - 2) * 0.23 * scale, (2 - index) * 0.16 * scale, 0)
-                    * CFrame.Angles(0, 0, angle), index == 2 and color2 or mainColor, 0.08)
-            tween(slash, duration * 0.72, {
+                    * CFrame.Angles(0, 0, angle),
+                index == 2 and color2 or mainColor,
+                0.08
+            )
+            playTween(slash, duration * 0.72, {
                 Size = Vector3.new(width * 0.18, 0.025 * scale, 0.025 * scale),
                 Transparency = 1,
                 CFrame = slash.CFrame * CFrame.new((index - 2) * 0.3 * scale, 0.45 * scale, 0),
@@ -59806,45 +59223,58 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
         end
     end
 
-    -- Explosion: a quick expanding shell plus a flattened shock ring.
     if cfg.Explosion == true then
-        local core = makePart("CrefyHitExplosion", Enum.PartType.Ball,
-            Vector3.new(0.35, 0.35, 0.35) * scale, CFrame.new(origin), color2, 0.18)
-        tween(core, duration * 0.55, {
+        local core = makePart(
+            "CrefyHitExplosion", Enum.PartType.Ball,
+            Vector3.new(0.35, 0.35, 0.35) * scale, CFrame.new(origin), color2, 0.18
+        )
+        playTween(core, duration * 0.55, {
             Size = Vector3.new(4.8, 4.8, 4.8) * scale,
             Transparency = 1,
         }, Enum.EasingStyle.Quart)
-        local ring = makePart("CrefyHitShockwave", Enum.PartType.Cylinder,
-            Vector3.new(0.12, 1.1, 1.1) * scale, CFrame.new(origin) * CFrame.Angles(0, 0, math.rad(90)), mainColor, 0.1)
-        tween(ring, duration * 0.62, {
+
+        local ring = makePart(
+            "CrefyHitShockwave", Enum.PartType.Cylinder,
+            Vector3.new(0.12, 1.1, 1.1) * scale,
+            CFrame.new(origin) * CFrame.Angles(0, 0, math.rad(90)), mainColor, 0.1
+        )
+        playTween(ring, duration * 0.62, {
             Size = Vector3.new(0.08, 6.5, 6.5) * scale,
             Transparency = 1,
         }, Enum.EasingStyle.Quint)
     end
 
-    -- Bubble: a translucent ForceField/Neon orb that expands and fades.
     if cfg.Bubble == true then
-        local bubble = makePart("CrefyHitBubble", Enum.PartType.Ball,
-            Vector3.new(1.1, 1.1, 1.1) * scale, CFrame.new(origin), color3, 0.42)
-        tween(bubble, duration, {
+        local bubble = makePart(
+            "CrefyHitBubble", Enum.PartType.Ball,
+            Vector3.new(1.1, 1.1, 1.1) * scale, CFrame.new(origin), color3, 0.42
+        )
+        playTween(bubble, duration, {
             Size = Vector3.new(5.2, 5.2, 5.2) * scale,
             Transparency = 1,
         }, Enum.EasingStyle.Sine)
     end
 
-    -- Phantom Forces: a short target highlight. Original-colour mode samples the actual hit part.
     if cfg.PhantomForces == true and model ~= nil then
         local phantom = Instance.new("Highlight")
         phantom.Name = "CrefyPhantomHit"
         phantom.Adornee = model
         phantom.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        phantom.FillColor = cfg.OriginalPhantomColors == true and hitRoot.Color or mainColor
-        phantom.OutlineColor = cfg.OriginalPhantomColors == true and hitRoot.Color or color3
+        local originalColor = color3
+        if cfg.OriginalPhantomColors == true then
+            local okColor, actualColor = pcall(function() return hitRoot.Color end)
+            if okColor and typeof(actualColor) == "Color3" then originalColor = actualColor end
+        end
+        phantom.FillColor = cfg.OriginalPhantomColors == true and originalColor or mainColor
+        phantom.OutlineColor = originalColor
         phantom.FillTransparency = 0.28
         phantom.OutlineTransparency = 0.05
         phantom.Parent = workspaceService
-        track(phantom, duration + 0.2)
-        tween(phantom, duration, { FillTransparency = 1, OutlineTransparency = 1 }, Enum.EasingStyle.Quad)
+        trackInstance(phantom, duration + 0.2)
+        playTween(phantom, duration, {
+            FillTransparency = 1,
+            OutlineTransparency = 1,
+        }, Enum.EasingStyle.Quad)
     end
 
     return true
@@ -59903,19 +59333,6 @@ for _, v124 in arg._chams, nil, nil do
 v124:Destroy()
 end
 
-for index = #arg._damageNumbers, 1, -1 do
-    local record = arg._damageNumbers[index]
-    if record ~= nil then
-        for _, tween in next, record.Tweens or {} do
-            pcall(function() tween:Cancel() end)
-        end
-        for _, object in next, record.Objects or {} do
-            pcall(function() object:Destroy() end)
-        end
-    end
-    arg._damageNumbers[index] = nil
-end
-if arg._damageGui ~= nil then pcall(function() arg._damageGui:Destroy() end) end
 for index = #arg._damageEffectObjects, 1, -1 do
     local object = arg._damageEffectObjects[index]
     if object ~= nil then pcall(function()
@@ -66268,36 +65685,15 @@ local function fn35()
         P:AddColor({ Row = W.Row, Config = { "PlayerHit", "HitFlash", "Color" }, Animatable = true })
         P:AddGroup({ Source = W }):AddSlider({ Label = "Hit Flash Duration", Min = 0.1, Max = 3, Step = 0.1, Config = { "PlayerHit", "HitFlash", "Duration" } })
 
-        P:AddDivider({ Label = "Damage Numbers" })
-        local damageToggle = P:AddToggle({ Label = "Enable Damage Numbers", Config = { "PlayerHit", "DamageNumbers", "Enabled" } })
-        P:AddColor({ Row = damageToggle.Row, Config = { "PlayerHit", "DamageNumbers", "Color1" }, Animatable = true })
-        P:AddColor({ Row = damageToggle.Row, Config = { "PlayerHit", "DamageNumbers", "Color2" }, Animatable = true })
-        P:AddToggle({ Label = "Remove Game Damage Numbers", Config = { "PlayerHit", "DamageNumbers", "RemoveGameNumbers" } })
-        local damageGroup = P:AddGroup({ Source = damageToggle })
-        damageGroup:AddDropdown({ Label = "Damage Visual Style", Options = {
-            "Classic Float", "Critical Burst", "Neon Rift", "Glitch Echo",
-            "Arcane Orbit", "Void Shatter", "Matrix Rain", "Celestial Sigil",
-        }, Config = { "PlayerHit", "DamageNumbers", "Style" } })
-        damageGroup:AddDropdown({ Label = "Damage Number Color Type", Options = { "Gradient", "Solid", "Rainbow" }, Config = { "PlayerHit", "DamageNumbers", "ColorType" } })
-        damageGroup:AddDropdown({ Label = "Damage Number Font", Options = {
-            "GothamBold", "GothamBlack", "GothamMedium", "Gotham", "SourceSansBold", "SourceSansSemibold", "Code", "RobotoMono", "RobotoCondensed",
-            "Fantasy", "Arcade", "SciFi", "Cartoon", "Antique", "Highway", "Bangers", "Michroma", "LuckiestGuy", "PermanentMarker", "Creepster",
-            "FredokaOne", "DenkOne", "GrenzeGotisch", "SpecialElite", "Oswald", "Sarpanch", "TitilliumWeb", "Ubuntu", "JosefinSans", "Jura",
-            "Kalam", "IndieFlower", "PatrickHand", "AmaticSC", "Merriweather", "Nunito", "Fondamento", "Bodoni", "Garamond", "BuilderSansExtraBold",
-        }, Config = { "PlayerHit", "DamageNumbers", "Font" } })
-        damageGroup:AddSlider({ Label = "Damage Number Size", Min = 10, Max = 40, Config = { "PlayerHit", "DamageNumbers", "TextSize" } })
-        damageGroup:AddSlider({ Label = "Damage Number Rise", Min = 0, Max = 120, Config = { "PlayerHit", "DamageNumbers", "Rise" } })
-        damageGroup:AddSlider({ Label = "Damage Number Duration", Min = 0.2, Max = 3, Step = 0.05, Config = { "PlayerHit", "DamageNumbers", "Duration" } })
-
-        P:AddDivider({ Label = "3D Damage Effects" })
+        P:AddDivider({ Label = "Damage Effects" })
         local effectsToggle = P:AddToggle({ Label = "Enable Damage Effects", Config = { "PlayerHit", "DamageEffects", "Enabled" } })
+        P:AddToggle({ Label = "Remove Game Damage Numbers", Config = { "PlayerHit", "DamageEffects", "RemoveGameNumbers" } })
         local effectsGroup = P:AddGroup({ Source = effectsToggle })
         effectsGroup:AddToggle({ Label = "Fortnite Damage", Config = { "PlayerHit", "DamageEffects", "FortniteDamage" } })
         effectsGroup:AddToggle({ Label = "Slashes", Config = { "PlayerHit", "DamageEffects", "Slashes" } })
         effectsGroup:AddToggle({ Label = "Explosion", Config = { "PlayerHit", "DamageEffects", "Explosion" } })
         effectsGroup:AddToggle({ Label = "Bubble", Config = { "PlayerHit", "DamageEffects", "Bubble" } })
         effectsGroup:AddToggle({ Label = "Phantom Forces", Config = { "PlayerHit", "DamageEffects", "PhantomForces" } })
-        effectsGroup:AddToggle({ Label = "Weld Effects to Target", Config = { "PlayerHit", "DamageEffects", "Weld" } })
         effectsGroup:AddToggle({ Label = "Stack Damage Together", Config = { "PlayerHit", "DamageEffects", "StackDamage" } })
         effectsGroup:AddToggle({ Label = "Cycle Text Colors", Config = { "PlayerHit", "DamageEffects", "CycleTextColors" } })
         effectsGroup:AddToggle({ Label = "Original Colors (Phantom Forces)", Config = { "PlayerHit", "DamageEffects", "OriginalPhantomColors" } })
@@ -71060,7 +70456,16 @@ if arg == nil or not arg.IsEnemy or localEnvironmentId == nil then
 return false
 end
 local environmentOk, targetEnvironmentId = pcall(function() return arg.EnvironmentId end)
-if not environmentOk or targetEnvironmentId ~= localEnvironmentId then
+if not environmentOk then
+    return false
+end
+if targetEnvironmentId == nil and player ~= nil then
+    pcall(function()
+        targetEnvironmentId = player:GetAttribute("EnvironmentID")
+            or player:GetAttribute("EnvironmentId")
+    end)
+end
+if targetEnvironmentId ~= localEnvironmentId then
     return false
 end
 local okInvincible, isInvincible = pcall(function() return arg:IsInvincible() end)
@@ -71123,7 +70528,16 @@ local function getLocalEnvironmentId(fighters)
         local localState = fighters and fighters.LocalState or nil
         return localState and localState.EnvironmentId or nil
     end)
-    if ok then return environmentId end
+    if ok and environmentId ~= nil then
+        return environmentId
+    end
+    local okAttribute, attributeEnvironmentId = pcall(function()
+        local localPlayer = game:GetService("Players").LocalPlayer
+        if localPlayer == nil then return nil end
+        return localPlayer:GetAttribute("EnvironmentID")
+            or localPlayer:GetAttribute("EnvironmentId")
+    end)
+    if okAttribute then return attributeEnvironmentId end
     return nil
 end
 
@@ -72652,6 +72066,19 @@ end
 
 if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
     return fn36(), nil, nil
+end
+
+if not isKnife then
+    local nativeAttackDeadline = nil
+    local nativeCooldownOk = pcall(function()
+        nativeAttackDeadline = v102(arg4.Inner, "_attack_cooldown")
+    end)
+    if nativeCooldownOk and type(nativeAttackDeadline) == "number"
+        and nativeAttackDeadline == nativeAttackDeadline
+        and nativeAttackDeadline ~= math.huge and nativeAttackDeadline ~= -math.huge
+        and tick() < nativeAttackDeadline then
+        return n, fn37(v121, v122), nil
+    end
 end
 
 if isKnife then
@@ -76166,6 +75593,26 @@ if arg._knifeActionExpected == true and type(weaponAction) == "function" then
         or primedAt == math.huge or primedAt == -math.huge
         or os.clock() - primedAt < 0.06 then
         weaponAction = nil
+    end
+end
+
+local isAttackOrMeleeAction = type(v130) == "table"
+    and (v130.Type == "Attack" or v130.Type == "Melee")
+local hasAimPayload = type(v131.ViewAngles) == "table"
+    or type(arg._lastDefensiveViewAngles) == "table"
+if weaponAction ~= nil and type(weaponAction) == "function"
+    and isAttackOrMeleeAction and hasAimPayload and arg._knifeActionExpected ~= true then
+    local characterController = innerContext ~= nil and innerContext.CharacterController or nil
+    local flushOk, flushResult = pcall(function()
+        if characterController == nil then error("CharacterController is unavailable") end
+        return characterController:FlushViewAngles()
+    end)
+    if not flushOk or flushResult ~= true then
+        weaponAction = nil
+        if os.clock() >= (arg._nextPreShotAngleFlushWarningAt or 0) then
+            arg._nextPreShotAngleFlushWarningAt = os.clock() + 5
+            warn("[Ragebot] Pre-shot view-angle flush failed; withholding the shot to avoid firing with stale aim: " .. tostring(flushOk and flushResult or flushResult))
+        end
     end
 end
 
