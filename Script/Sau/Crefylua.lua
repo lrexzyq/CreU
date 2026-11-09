@@ -72477,32 +72477,28 @@ local function buildFreshKnifeAttackPayload()
         local fighter = arg3 ~= nil and arg3.FighterState or nil
         local characterState = fighter ~= nil and fighter.Character or nil
         local liveState = characterState ~= nil and characterState.State or nil
-        local currentModel = hitboxHead ~= nil and hitboxHead:FindFirstAncestorOfClass("Model") or nil
-        local player = fighter ~= nil and fighter.Player or nil
-        if arg3 == nil or fighter == nil or fighter.IsEnemy ~= true
+
+        if arg3 == nil or fighter == nil
             or arg3.AliveState ~= aliveState
-            or aliveState == nil or aliveState.Alive ~= true
-            or liveState == nil or liveState.Alive ~= true
-            or currentModel == nil
-            or player == nil or player.Parent == nil or player.Character ~= currentModel
-            or (liveState.Model ~= nil and liveState.Model ~= currentModel)
+            or aliveState == nil
+            or not (aliveState.Alive == true or (liveState ~= nil and liveState.Alive == true))
             or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead
-            or not rootPart:IsA("BasePart") or not rootPart:IsDescendantOf(workspace)
-            or not rootPart:IsDescendantOf(currentModel)
-            or not hitboxHead:IsA("BasePart") or not hitboxHead:IsDescendantOf(workspace)
-            or not hitboxHead:IsDescendantOf(currentModel) then
+            or not rootPart:IsA("BasePart") or rootPart.Parent == nil
+            or not rootPart:IsDescendantOf(workspace)
+            or not hitboxHead:IsA("BasePart") or hitboxHead.Parent == nil
+            or not hitboxHead:IsDescendantOf(workspace) then
             return nil, nil
         end
-        local targetHumanoid = currentModel:FindFirstChildWhichIsA("Humanoid", true)
-        if targetHumanoid == nil or type(targetHumanoid.Health) ~= "number"
-            or targetHumanoid.Health ~= targetHumanoid.Health
-            or targetHumanoid.Health == math.huge or targetHumanoid.Health == -math.huge
-            or targetHumanoid.Health <= 0 then
-            return nil, nil
-        end
-        local invincibleOk, isInvincible = pcall(function() return fighter:IsInvincible() end)
-        if not invincibleOk or isInvincible == true then return nil, nil end
+
+        local invincibleOk, isInvincible = pcall(function()
+            return fighter:IsInvincible()
+        end)
+        if invincibleOk and isInvincible == true then return nil, nil end
+
         local _, currentYaw, currentRoll = rootPart.CFrame:ToOrientation()
+        if not fakePositionFiniteNumber(currentYaw) or not fakePositionFiniteNumber(currentRoll) then
+            return nil, nil
+        end
         return fn38(v124, n33, currentYaw, currentRoll),
             fn38(v125, n33, currentYaw, currentRoll)
     end)
@@ -76304,8 +76300,8 @@ local function ragebotShouldUseAlwaysBackstabKnifeRotation(item, innerContext, t
     local data = type(v115) == "table" and v115.Data or nil
     local modifiers = type(data) == "table" and data.ItemModifiers or nil
     if type(modifiers) ~= "table" or modifiers.AlwaysBackstab ~= true then return false end
-    -- Ragebot owns only the dedicated Knife mode. Riot remains independent.
-    return modifiers.AlwaysBackstabMode == "Knife"
+    local mode = modifiers.AlwaysBackstabMode
+    return mode ~= "Riot"
 end
 
 local function ragebotFiniteNumber(value)
@@ -76314,39 +76310,20 @@ local function ragebotFiniteNumber(value)
 end
 
 local function ragebotGetKnifeAimPart(target)
-    local okResolve, resolvedPart = pcall(function()
-        local aliveState = target ~= nil and target.AliveState or nil
-        local fighter = target ~= nil and target.FighterState or nil
-        local player = fighter ~= nil and fighter.Player or nil
-        local fighterCharacter = fighter ~= nil and fighter.Character or nil
-        local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
-        local model = player ~= nil and player.Character
-            or (aliveState ~= nil and aliveState.Model)
-            or (fighterState ~= nil and fighterState.Model)
-        if model == nil or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
-            return nil
-        end
+    local aliveState = target ~= nil and target.AliveState or nil
+    if aliveState == nil then return nil end
 
-        local candidates = {}
-        local function addCandidate(part)
-            if part ~= nil then table.insert(candidates, part) end
-        end
-        addCandidate(aliveState ~= nil and aliveState.HitboxHead or nil)
-        addCandidate(fighterState ~= nil and fighterState.HitboxHead or nil)
-        addCandidate(model:FindFirstChild("Head"))
-        addCandidate(aliveState ~= nil and aliveState.RootPart or nil)
-        addCandidate(model:FindFirstChild("HumanoidRootPart"))
-        addCandidate(model.PrimaryPart)
-
-        for _, part in ipairs(candidates) do
-            local validPart = part:IsA("BasePart")
+    local candidates = { aliveState.HitboxHead, aliveState.RootPart }
+    for _, part in ipairs(candidates) do
+        local okPart, validPart = pcall(function()
+            return part ~= nil
+                and part:IsA("BasePart")
+                and part.Parent ~= nil
                 and part:IsDescendantOf(workspace)
-                and part:IsDescendantOf(model)
-            if validPart then return part end
-        end
-        return nil
-    end)
-    return okResolve and resolvedPart or nil
+        end)
+        if okPart and validPart then return part end
+    end
+    return nil
 end
 
 local function ragebotBuildBackstabKnifeViewAngles(target, owner)
@@ -76355,24 +76332,18 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, validPart = pcall(function()
         if anglePart == nil or not anglePart:IsA("BasePart")
-            or not anglePart:IsDescendantOf(workspace) then
+            or anglePart.Parent == nil or not anglePart:IsDescendantOf(workspace) then
             return false
         end
-        local player = fighter ~= nil and fighter.Player or nil
-        local model = player ~= nil and player.Character
-            or (aliveState ~= nil and aliveState.Model or nil)
-        if model == nil or not model:IsA("Model") or not model:IsDescendantOf(workspace)
-            or not anglePart:IsDescendantOf(model) then
-            return false
-        end
-        if fighter == nil or fighter.IsEnemy ~= true or aliveState.Alive ~= true then return false end
-        if player ~= nil and (player.Parent ~= Players or player.Character ~= model) then return false end
-        local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
-        if humanoid == nil or not ragebotFiniteNumber(humanoid.Health) or humanoid.Health <= 0 then
-            return false
-        end
-        local invincibleOk, isInvincible = pcall(function() return fighter:IsInvincible() end)
-        if not invincibleOk or isInvincible == true then return false end
+        if aliveState == nil then return false end
+        local fighterCharacter = fighter ~= nil and fighter.Character or nil
+        local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
+        local alive = aliveState.Alive == true or (fighterState ~= nil and fighterState.Alive == true)
+        if not alive then return false end
+        local invincibleOk, isInvincible = pcall(function()
+            return fighter ~= nil and fighter:IsInvincible() or false
+        end)
+        if invincibleOk and isInvincible == true then return false end
         return true
     end)
     if not okPart or not validPart then return nil end
@@ -76548,12 +76519,9 @@ arg._hitscanStrategy:ResetState()
 local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
 
 if useAlwaysBackstabKnifeRotation then
-    local backstabViewAngles, backstabAnglePart = ragebotBuildBackstabKnifeViewAngles(arg4, arg)
-    if backstabViewAngles ~= nil and backstabAnglePart ~= nil then
+    local backstabViewAngles = ragebotBuildBackstabKnifeViewAngles(arg4, arg)
+    if backstabViewAngles ~= nil then
         v132 = backstabViewAngles
-    else
-        v132 = nil
-        v133 = nil
     end
 end
 
@@ -77548,25 +77516,11 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     end
     owner._knifeCameraSlotActive = true
 
-    local baseline = owner._knifeCameraPrimeAngles
     local primeAt = tonumber(owner._knifeCameraPrimeAt)
     local primeAtValid = type(primeAt) == "number" and primeAt == primeAt
         and primeAt ~= math.huge and primeAt ~= -math.huge
-    local now = os.clock()
-    if baseline == nil or not primeAtValid then
-        owner._knifeCameraPrimeAt = now
-    else
-        local baselinePitch = tonumber(baseline.Pitch)
-        local baselineYaw = tonumber(baseline.Yaw)
-        if not ragebotFiniteNumber(baselinePitch) or not ragebotFiniteNumber(baselineYaw) then
-            owner._knifeCameraPrimeAt = now
-        else
-            local pitchDelta = math.abs(pitch - baselinePitch)
-            local yawDelta = math.abs((yaw - baselineYaw + 180) % 360 - 180)
-            if pitchDelta > 12 or yawDelta > 12 then
-                owner._knifeCameraPrimeAt = now
-            end
-        end
+    if owner._knifeCameraPrimeAngles == nil or not primeAtValid then
+        owner._knifeCameraPrimeAt = os.clock()
     end
     owner._knifeCameraPrimeAngles = { Pitch = pitch, Yaw = yaw }
     return true
