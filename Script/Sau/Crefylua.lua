@@ -66452,7 +66452,7 @@ return ii.c
 end
 end
 do
-local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});if W.IsArcadeServer then  tbl17 .ie()(k);else  tbl17 .ih()(k);end;D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
+local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});tbl17 .ih()(k);D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
 
 tbl17.ij = function()
 local ij = tbl17.cache.ij
@@ -72387,9 +72387,6 @@ _partGlue = arg,
 _shootLock = v116.new(),
 _hitboxWindowUntil = -1,
 _hitboxWindowTarget = nil,
-_hitboxWindowAliveState = nil,
-_hitboxWindowInitialHealth = nil,
-_hitboxWindowConfirmed = false,
 _attackCooldown = -1,
 _attackCooldownTarget = nil,
 _lastKnifeTarget = nil,
@@ -72520,54 +72517,19 @@ if okPing and type(ping) == "number" and ping == ping and ping >= 0 and ping < 1
 primeDelay = math.clamp(0.05 + ping * 0.5, 0.075, 0.18)
 end
 
-local function finiteKnifeHealth(state)
-    local okHealth, healthValue = pcall(function()
-        return state ~= nil and state.Health or nil
-    end)
-    local health = okHealth and tonumber(healthValue) or nil
-    if type(health) ~= "number" or health ~= health or health == math.huge or health == -math.huge or health < 0 then
-        return nil
-    end
-    return health
-end
-
-local function refreshBackstabConfirmation(expectedTarget)
-    local trackedTarget = expectedTarget or hitboxHead
-    if arg._hitboxWindowTarget ~= trackedTarget or arg._hitboxWindowConfirmed == true then
-        return
-    end
-    local baseline = tonumber(arg._hitboxWindowInitialHealth)
-    local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
-    if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
-        and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
-
-        arg._hitboxWindowConfirmed = true
-        arg._hitboxWindowUntil = -1
-        arg._nextKnifeWindowAttackAt = 0
-    end
-end
-
 if isKnife then
 if arg._lastKnifeTarget ~= hitboxHead then
     local previousWindowTarget = arg._hitboxWindowTarget
     if previousWindowTarget ~= nil and previousWindowTarget ~= hitboxHead then
-        refreshBackstabConfirmation(previousWindowTarget)
-
-        if arg._hitboxWindowConfirmed ~= true and arg._attackCooldownTarget == previousWindowTarget then
+        if arg._attackCooldownTarget == previousWindowTarget then
             arg._attackCooldown = -1
             arg._attackCooldownTarget = nil
         end
         arg._hitboxWindowUntil = -1
         arg._hitboxWindowTarget = nil
-        arg._hitboxWindowAliveState = nil
-        arg._hitboxWindowInitialHealth = nil
-        arg._hitboxWindowConfirmed = false
     end
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 arg._knifePrimePitch = nil
@@ -72583,7 +72545,6 @@ arg:InvalidateKnifeState()
 end
 
 local hasHitboxWindow = isKnife
-and arg._hitboxWindowConfirmed ~= true
 and now2 < arg._hitboxWindowUntil
 and arg._hitboxWindowTarget == hitboxHead
 
@@ -72622,22 +72583,9 @@ arg:_AbortBackstabAttempt(hitboxHead)
 end
 end
 elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitboxWindowUntil then
-
-    refreshBackstabConfirmation(hitboxHead)
-    if arg._hitboxWindowConfirmed == true then
-
-        arg._nextKnifeWindowAttackAt = 0
-    else
-                                                                             
-                                                                               
-                                                                               
-        arg._hitboxWindowUntil = -1
-        arg._hitboxWindowTarget = nil
-        arg._hitboxWindowAliveState = nil
-        arg._hitboxWindowInitialHealth = nil
-        arg._hitboxWindowConfirmed = false
-        arg._nextKnifeWindowAttackAt = 0
-    end
+    arg._hitboxWindowUntil = -1
+    arg._hitboxWindowTarget = nil
+    arg._nextKnifeWindowAttackAt = 0
 end
 
 local meleeDt = tonumber(arg2) or 0
@@ -72674,12 +72622,11 @@ if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
     return
 end
-local healthBeforeAttack = finiteKnifeHealth(aliveState)
 local okAttack, attackResult = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and attackResult ~= false then
-arg:_RecordBackstab(hitboxHead, aliveState, healthBeforeAttack)
+arg:_RecordBackstab(hitboxHead)
 else
 arg:_AbortBackstabAttempt(hitboxHead)
 end
@@ -72703,19 +72650,11 @@ end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
+index2._RecordBackstab = function(arg, targetHitbox)
 local now2 = os.clock()
 
 arg._hitboxWindowUntil = now2 + 0.625
 arg._hitboxWindowTarget = targetHitbox
-arg._hitboxWindowAliveState = targetAliveState
-local baselineHealth = tonumber(healthBeforeAttack)
-if type(baselineHealth) ~= "number" or baselineHealth ~= baselineHealth
-    or baselineHealth == math.huge or baselineHealth == -math.huge or baselineHealth < 0 then
-    baselineHealth = nil
-end
-arg._hitboxWindowInitialHealth = baselineHealth
-arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = now2 + 0.08
 arg._attackCooldown = now2 + 1.25
 arg._attackCooldownTarget = targetHitbox
@@ -72725,9 +72664,6 @@ index2._AbortBackstabAttempt = function(arg, targetHitbox)
 if targetHitbox == nil or arg._hitboxWindowTarget == targetHitbox then
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 end
 if targetHitbox == nil or arg._attackCooldownTarget == targetHitbox then
@@ -72745,9 +72681,6 @@ end
 index2.InvalidateKnifeState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 arg._attackCooldown = -1
 arg._attackCooldownTarget = nil
@@ -72761,9 +72694,6 @@ end
 index2.ResetState = function(arg)
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
 arg._attackCooldown = -1
 arg._attackCooldownTarget = nil
