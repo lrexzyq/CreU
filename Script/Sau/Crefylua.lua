@@ -39,14 +39,6 @@ if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGenera
 
             local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
                 or localPlayer:FindFirstChild("PlayerGui")
-            local screenGuiCount = 0
-            if playerGui ~= nil then
-                for _, child in ipairs(playerGui:GetChildren()) do
-                    if child:IsA("ScreenGui") then
-                        screenGuiCount = screenGuiCount + 1
-                    end
-                end
-            end
 
             local character = localPlayer.Character
             local humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
@@ -62,7 +54,7 @@ if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGenera
 
             return controllers ~= nil
                 and clientReplicatedClasses ~= nil
-                and screenGuiCount >= 2
+                and playerGui ~= nil
                 and humanoid ~= nil
                 and rootPart ~= nil
                 and modules ~= nil
@@ -92,7 +84,7 @@ if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGenera
         local failedRunKey = tostring(__crefyQueuedBootGeneration) .. ":" .. tostring(game.PlaceId)
         pcall(rawset, __crefyQueuedBootEnvironment, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
         pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
-        warn("[Crefy] Re-run After Teleport aborted: the client, character, UI, or required Rivals modules were not ready. No Crefy modules were loaded.")
+        warn("[Crefy] Re-run After Teleport aborted: the client, character, PlayerGui, or required Rivals modules were not ready. No Crefy modules were loaded.")
         return
     end
 
@@ -101,10 +93,6 @@ end
 
 if getgenv().KiciaRebuild and getgenv().KiciaRebuild.Unload then
     pcall(getgenv().KiciaRebuild.Unload)
-end
-do
-    local cleanup = rawget(_G, "__LuaHookUndergroundStandaloneCleanup")
-    if type(cleanup) == "function" then pcall(cleanup) end
 end
 if not game:IsLoaded() then game.Loaded:Wait() end
 print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId))
@@ -29744,8 +29732,26 @@ local function antiAimEnsureDecoderGuard()
         and rawget(priorGuard, "target") == target
         and type(rawget(priorGuard, "original")) == "function"
         and type(rawget(priorGuard, "wrapper")) == "function" then
-        antiAimDecoderGuardInstalled = true
-        return true
+        if rawget(priorGuard, "managed") == true then
+            -- A previous runtime may have left a disabled pass-through wrapper.
+            -- Reuse it rather than stacking another hook over the same decoder.
+            pcall(rawset, priorGuard, "active", true)
+            pcall(rawset, priorGuard, "owner", K)
+            antiAimDecoderGuardInstalled = true
+            return true
+        end
+        -- Migrate legacy guards only if the prior wrapper can be identified safely.
+        if type(hookfunction) ~= "function" then return false end
+        local restoreOk, displaced = pcall(hookfunction, target, rawget(priorGuard, "original"))
+        if not restoreOk or displaced ~= rawget(priorGuard, "wrapper") then
+            if restoreOk and type(displaced) == "function" then
+                pcall(hookfunction, target, displaced)
+            end
+            antiAimDecoderGuardInstalled = false
+            return false
+        end
+        pcall(rawset, priorGuard, "installed", false)
+        pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, nil)
     end
 
     antiAimDecoderGuardInstalled = false
@@ -29753,10 +29759,21 @@ local function antiAimEnsureDecoderGuard()
     antiAimDecoderGuardNextRetryAt = now + 2
     if type(hookfunction) ~= "function" then return false end
 
-    local original = nil
+    local record = {
+        managed = true,
+        active = true,
+        installed = false,
+        owner = K,
+        utility = utility,
+        target = target,
+        original = nil,
+        wrapper = nil,
+    }
     local nextDecodeWarningAt = 0
     local wrapper = function(...)
+        local original = record.original
         if type(original) ~= "function" then return {} end
+        if record.active ~= true then return original(...) end
         local packed = table.pack(...)
         local isExtendedPayload = false
         local budget = { count = 4096 }
@@ -29788,17 +29805,40 @@ local function antiAimEnsureDecoderGuard()
 
     local hookOk, previous = pcall(hookfunction, target, wrapper)
     if not hookOk or type(previous) ~= "function" then return false end
-    original = previous
+    record.original = previous
+    record.wrapper = wrapper
+    record.installed = true
+    pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, record)
     antiAimDecoderGuardInstalled = true
-    pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, {
-        installed = true,
-        utility = utility,
-        target = target,
-        original = previous,
-        wrapper = wrapper,
-    })
     return true
 end
+
+K.onUnload(function()
+    local record = rawget(_G, ANTI_AIM_DECODE_GUARD_KEY)
+    if type(record) ~= "table" or rawget(record, "owner") ~= K then return end
+    -- Stop custom decoding first. If physical unhook is unsupported, the wrapper
+    -- stays installed but becomes a transparent pass-through to the original.
+    pcall(rawset, record, "active", false)
+    local target = rawget(record, "target")
+    local original = rawget(record, "original")
+    local wrapper = rawget(record, "wrapper")
+    if type(hookfunction) == "function" and type(target) == "function"
+        and type(original) == "function" and type(wrapper) == "function" then
+        local restoreOk, displaced = pcall(hookfunction, target, original)
+        if restoreOk and displaced == wrapper then
+            pcall(rawset, record, "installed", false)
+            if rawget(_G, ANTI_AIM_DECODE_GUARD_KEY) == record then
+                pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, nil)
+            end
+            return
+        end
+        if restoreOk and type(displaced) == "function" then
+            pcall(hookfunction, target, displaced)
+        end
+    end
+    pcall(rawset, record, "unhookPending", true)
+    warn("[AntiAim] Decoder hook could not be physically removed; custom behavior is disabled and the wrapper is pass-through.")
+end)
 
 local function antiAimCodePoint(value)
     local point = math.floor(tonumber(value) or 0)
@@ -29923,42 +29963,31 @@ local function antiAimRagebotIsActive()
 end
 
 local function antiAimShouldSuppress()
-    local config = nil
-    local configReader = nil
-    local okReader, reader = pcall(function()
-        return type(tbl17) == "table" and tbl17.bG or nil
+    local ok, config = pcall(function()
+        return tbl17.bG()
     end)
-    if not okReader or type(reader) ~= "function" then
+    if not ok or type(config) ~= "table" then
         return true
     end
-    configReader = reader
-    local okConfig, configValue = pcall(function()
-        return configReader()
-    end)
-    if not okConfig or type(configValue) ~= "table" then
-        return true
-    end
-    config = configValue
 
-    local data = type(config) == "table" and config.Data or nil
+    local data = config.Data
+    local ragebot = type(data) == "table" and data.Ragebot or nil
+    if type(ragebot) == "table" and ragebot.Enabled == true then
+        return true
+    end
+
+    local okState, ragebotActive = pcall(antiAimRagebotIsActive)
+    if not okState or ragebotActive == nil then
+        return true
+    end
+
     local modifiers = type(data) == "table" and data.ItemModifiers or nil
-    local ragebotActive = false
-    local ragebotOk, ragebotValue = pcall(function()
-        return antiAimRagebotIsActive()
-    end)
-    if not ragebotOk or ragebotValue == nil then
-                                                                                            
-        return true
-    end
-    ragebotActive = ragebotValue == true
-
-    local backstabMode = type(modifiers) == "table" and modifiers.AlwaysBackstabMode or nil
-    local alwaysBackstabActive = type(modifiers) == "table"
+    local mode = type(modifiers) == "table" and modifiers.AlwaysBackstabMode or nil
+    local backstabActive = type(modifiers) == "table"
         and modifiers.AlwaysBackstab == true
-        and (backstabMode == "Knife" or backstabMode == "Riot")
+        and (mode == "Knife" or mode == "Riot")
 
-                                                                                  
-    return ragebotActive or alwaysBackstabActive
+    return ragebotActive == true or backstabActive
 end
 
 local function antiAimReadSettings()
@@ -30156,14 +30185,34 @@ if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
 return v115.err("ViewAngleDriver", "setupvalue", "debug.setupvalue is unavailable")
 end
 local patchedUtility = setmetatable({ EncodeCameraRotation = function(arg2, arg3)
-                                                                          
-                                                                            
-                                                              
-if arg._fullySuppressed then
-v103(fighterController, "_replication_stopped", false)
-return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
-end
-return antiAimEncodeCameraRotation(arg3)
+    local rotation = typeof(arg3) == "Vector2" and arg3
+        or (typeof(arg2) == "Vector2" and arg2 or nil)
+    local payloadBySlot = type(arg._payloadBySlot) == "table" and arg._payloadBySlot or nil
+    local hasExplicitCameraOwner = payloadBySlot ~= nil and next(payloadBySlot) ~= nil
+
+    local function encodeUnmodified()
+        v103(fighterController, "_replication_stopped", false)
+        local lastEncoded = v102(fighterController, "_last_encoded_camera_rotation")
+        if type(lastEncoded) == "string" and cameraPayloadHasTwoCharacters(lastEncoded) then
+            return lastEncoded
+        end
+        if rotation ~= nil then
+            return v117.encodeCameraRotation(rotation)
+        end
+        local originalEncoder = v122.EncodeCameraRotation
+        if type(originalEncoder) == "function" then
+            return originalEncoder(arg2, arg3)
+        end
+        return v117.encodeCameraRotation(get())
+    end
+
+    if arg._fullySuppressed or hasExplicitCameraOwner then
+        return encodeUnmodified()
+    end
+    if rotation == nil then
+        return encodeUnmodified()
+    end
+    return antiAimEncodeCameraRotation(rotation)
 end }, { __index = v122 })
 local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
 if not okSetup then
@@ -30521,7 +30570,7 @@ arg._trove:Connect(RunService.Heartbeat, function()
     end
 
     if now < (tonumber(arg._antiAimNextHookCheckAt) or 0) then return end
-    arg._antiAimNextHookCheckAt = now + 0.25
+    arg._antiAimNextHookCheckAt = now + 0.10
 
     local settings = nil
     local settingsOk = pcall(function()
@@ -35074,7 +35123,6 @@ return
 end
 
 if not track.IsPlaying then
-arg._track = nil
 arg:_Apply()
 return
 end
@@ -35123,9 +35171,9 @@ end
 local track = arg._track
 
 if track ~= nil then
-track:Stop()
-track:Destroy()
-arg._track = nil
+    arg._track = nil
+    pcall(function() track:Stop() end)
+    pcall(function() track:Destroy() end)
 end
 end
 
@@ -39842,8 +39890,32 @@ local simulateInputBegan = v102(v122, "SimulateInputBegan")
 if simulateInputBegan == nil then
 return v115.err("UseEmoteHook", "function_lookup", "MechanicsController.SimulateInputBegan not found")
 end
-local v123 = debug.getupvalue(v120, 1)
-if v123 == nil then
+local function readUpvalue(func, index)
+    if type(debug) ~= "table" or type(debug.getupvalue) ~= "function" then
+        return false, nil
+    end
+    local okRead, first, second = pcall(debug.getupvalue, func, index)
+    if not okRead then return false, nil end
+    if type(first) == "string" and second ~= nil then return true, second end
+    if first ~= nil then return true, first end
+    return false, nil
+end
+
+local function writeUpvalueVerified(func, index, value)
+    if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
+        return false, "debug.setupvalue is unavailable"
+    end
+    local callOk, callResult = pcall(debug.setupvalue, func, index, value)
+    if not callOk then return false, tostring(callResult) end
+    local readOk, actual = readUpvalue(func, index)
+    if not readOk or actual ~= value then
+        return false, "upvalue read-back did not match the requested value"
+    end
+    return true
+end
+
+local originalReadOk, v123 = readUpvalue(v120, 1)
+if not originalReadOk or type(v123) ~= "table" then
 return v115.err("UseEmoteHook", "upvalue_scan", "EmoteController upvalue not found at index 1 of PickEmote._PickByKey")
 end
 
@@ -39860,32 +39932,96 @@ arg:_PlayResolvedEmote(v125, v124)
 return nil
 end }, { __index = v123 })
 
-debug.setupvalue(v120, v86[63], obj)
-debug.setupvalue(simulateInputBegan, 8, obj)
-arg._restore = { PickByKeyFunc = v120, SimulateInputBeganFunc = simulateInputBegan, EmoteController = v123 }
+local restoreRecord = {
+    PickByKeyFunc = v120,
+    SimulateInputBeganFunc = simulateInputBegan,
+    EmoteController = v123,
+    PickByKeyApplied = false,
+    SimulateInputApplied = false,
+}
+local firstApplied, firstError = writeUpvalueVerified(v120, 1, obj)
+if not firstApplied then
+    local rollbackOk, rollbackError = writeUpvalueVerified(v120, 1, v123)
+    if not rollbackOk then
+        restoreRecord.PickByKeyApplied = true
+        arg._restore = restoreRecord
+        return v115.err("UseEmoteHook", "rollback", "PickByKey install failed: "
+            .. tostring(firstError) .. "; restoring the original upvalue is still pending: " .. tostring(rollbackError))
+    end
+    return v115.err("UseEmoteHook", "setupvalue", "PickEmote._PickByKey hook failed: " .. tostring(firstError))
+end
+restoreRecord.PickByKeyApplied = true
+
+local secondApplied, secondError = writeUpvalueVerified(simulateInputBegan, 8, obj)
+if not secondApplied then
+    local secondRollbackOk, secondRollbackError = writeUpvalueVerified(
+        simulateInputBegan, 8, v123
+    )
+    local firstRollbackOk, firstRollbackError = writeUpvalueVerified(v120, 1, v123)
+    restoreRecord.SimulateInputApplied = not secondRollbackOk
+    restoreRecord.PickByKeyApplied = not firstRollbackOk
+    if not secondRollbackOk or not firstRollbackOk then
+        arg._restore = restoreRecord
+        return v115.err("UseEmoteHook", "rollback", "SimulateInputBegan hook failed: "
+            .. tostring(secondError) .. "; rollback pending (SimulateInputBegan: "
+            .. tostring(secondRollbackError) .. "; PickByKey: " .. tostring(firstRollbackError) .. ")")
+    end
+    return v115.err("UseEmoteHook", "setupvalue", "SimulateInputBegan hook failed; both hook slots were rolled back: " .. tostring(secondError))
+end
+restoreRecord.SimulateInputApplied = true
+arg._restore = restoreRecord
 return v115.VoidOk
 end
 
 index2._Restore = function(arg)
 local restore = arg._restore
 if restore == nil then
-return
+return v115.VoidOk
 end
-arg._restore = nil
-debug.setupvalue(restore.PickByKeyFunc, 1, restore.EmoteController)
-debug.setupvalue(restore.SimulateInputBeganFunc, 8, restore.EmoteController)
+local failures = {}
+if restore.SimulateInputApplied then
+    local okRestore, detail = writeUpvalueVerified(
+        restore.SimulateInputBeganFunc, 8, restore.EmoteController
+    )
+    if okRestore then restore.SimulateInputApplied = false
+    else failures[#failures + 1] = "SimulateInputBegan: " .. tostring(detail) end
+end
+if restore.PickByKeyApplied then
+    local okRestore, detail = writeUpvalueVerified(
+        restore.PickByKeyFunc, 1, restore.EmoteController
+    )
+    if okRestore then restore.PickByKeyApplied = false
+    else failures[#failures + 1] = "PickByKey: " .. tostring(detail) end
+end
+if #failures == 0 then
+    arg._restore = nil
+    return v115.VoidOk
+end
+return v115.err("UseEmoteHook", "restore", table.concat(failures, "; "))
 end
 
 index2.SetEnabled = function(arg, arg2)
 if arg2 then
 return arg:_Apply()
 end
-arg:_Restore()
-return v115.VoidOk
+return arg:_Restore()
 end
 
 index2.Destroy = function(arg)
-arg:_Restore()
+local result = arg:_Restore()
+if type(result) == "table" and rawget(result, "Ok") == false then
+    warn("[UseEmoteHook] Initial restore failed; retrying the upvalue rollback.")
+    task.spawn(function()
+        for attempt = 1, 5 do
+            task.wait(0.15)
+            local retryResult = arg:_Restore()
+            if type(retryResult) ~= "table" or rawget(retryResult, "Ok") ~= false then
+                return
+            end
+        end
+        warn("[UseEmoteHook] Upvalue restore is still pending after retries; the restore record was retained.")
+    end)
+end
 end
 
 return index2
@@ -59081,8 +59217,6 @@ if fighterState == nil or arg2.ObjectId ~= fighterState.ObjectId then return end
 local args = arg2.Args
 if type(args) ~= "table" then return end
 
--- EliminationEffect is the framework's authoritative kill signal. Remove every
--- screen-space damage number anchored anywhere inside the eliminated character.
 if enumName == "EliminationEffect" then
     local victimPlayer = args[v86[63]]
     if typeof(victimPlayer) == "Instance" and victimPlayer:IsA("Player") then
@@ -59323,8 +59457,6 @@ index2._BindDamageNumberTarget = function(arg, targetModel)
         end)
     end
 
-    -- Track the owning Player even for nested/custom rigs without a Humanoid.
-    -- This also lets an EliminationEffect clear numbers if Player.Character is already nil.
     local targetPlayer = arg:_FindDamageNumberPlayer(targetModel)
     if targetPlayer ~= nil then
         pcall(function()
@@ -59821,7 +59953,6 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, hit
         arg:_BindDamageNumberTarget(targetModel)
     end
 
-    -- Debris is the primary timeout; this explicit cleanup also handles failed Debris scheduling.
     task.delay(duration + 0.55, function()
         if record.Cleared == true then return end
         local recordTarget = record.TargetModel
@@ -67508,10 +67639,6 @@ return is.c
 end
 end
 do
-local previousStandaloneCleanup = rawget(_G, "__LuaHookUndergroundStandaloneCleanup")
-if type(previousStandaloneCleanup) == "function" then
-pcall(previousStandaloneCleanup)
-end
 local previousController = rawget(_G, "__CrefyUndergroundController")
 if type(previousController) == "table" and type(previousController.Stop) == "function" then
 pcall(previousController.Stop, true)
@@ -67550,7 +67677,6 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
-local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -67573,7 +67699,7 @@ UndergroundRootDesync.__index = UndergroundRootDesync
 function UndergroundRootDesync.new(rootPart)
     local self = setmetatable({
         _rootPart = rootPart,
-        _boundId = 'LuaHook_Underground_' .. tostring({}),
+        _boundId = 'CrefyUnderground_' .. tostring({}),
         _oldCFrame = rootPart.CFrame,
         _cframe = nil,
     }, UndergroundRootDesync)
@@ -68829,14 +68955,37 @@ undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame, weap
 if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
 return cframe
 end
-if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
-undergroundLastClientCFrame = clientCFrame
+if ragebotPoseRestoreGateIsActive() then
+return cframe
 end
 
-local offset = Vector3.new(0, UNDERGROUND_RAGEBOT_Y_OFFSET, 0)
-local adjusted = cframe + offset
-undergroundLastServerCFrame = adjusted
-return adjusted
+local char = undergroundGetCharacter()
+local root = undergroundGetRoot(char)
+if char == nil or root == nil or root.Parent == nil or char ~= undergroundSnapshotCharacter then
+return cframe
+end
+
+local referenceClientPose = typeof(clientCFrame) == "CFrame" and clientCFrame or nil
+if referenceClientPose == nil then
+    referenceClientPose = undergroundLastClientCFrame
+end
+if referenceClientPose == nil then
+    local okRoot, liveRootPose = pcall(function() return root.CFrame end)
+    if okRoot and typeof(liveRootPose) == "CFrame" then
+        referenceClientPose = liveRootPose
+    end
+end
+if typeof(referenceClientPose) == "CFrame" then
+    local previousClientPose = undergroundLastClientCFrame
+    if typeof(previousClientPose) == "CFrame"
+        and (referenceClientPose.Position - previousClientPose.Position).Magnitude > UNDERGROUND_CLIENT_ESCAPE_DISTANCE then
+        undergroundLastServerCFrame = nil
+        undergroundAdaptiveScanAt = 0
+    end
+    undergroundLastClientCFrame = referenceClientPose
+end
+
+return cframe + Vector3.new(0, -4, 0)
 end
 _G.__CrefyUndergroundController = undergroundController
 local savedUndergroundEnabled = false
@@ -68855,11 +69004,6 @@ if savedUndergroundEnabled then
         pcall(startSavedUnderground)
     end
 end
-local undergroundCleanup = function()
- 
-undergroundController.Stop(true)
-end
-_G.__LuaHookUndergroundStandaloneCleanup = undergroundCleanup
 if type(K) == "table" and type(K.onUnload) == "function" then
 K.onUnload(function()
 
@@ -68906,9 +69050,6 @@ undergroundRespawnConnection = nil
 end
 if rawget(_G, "__CrefyUndergroundController") == undergroundController then
 rawset(_G, "__CrefyUndergroundController", nil)
-end
-if rawget(_G, "__LuaHookUndergroundStandaloneCleanup") == undergroundCleanup then
-rawset(_G, "__LuaHookUndergroundStandaloneCleanup", nil)
 end
 end)
 end
@@ -72701,7 +72842,6 @@ _shootLock = v116.new(),
 _hitboxWindowUntil = -1,
 _hitboxWindowTarget = nil,
 _attackCooldown = -1,
-_attackCooldownTarget = nil, -- legacy compatibility; cooldown ownership is per item below
 _weaponCooldownUntilByItem = {},
 _pendingBackstabByItem = {},
 _lastKnifeTarget = nil,
@@ -72791,12 +72931,16 @@ local function buildFreshKnifeAttackPayload()
         local fighter = arg3 ~= nil and arg3.FighterState or nil
         local characterState = fighter ~= nil and fighter.Character or nil
         local liveState = characterState ~= nil and characterState.State or nil
+        local targetPlayer = fighter ~= nil and fighter.Player or (arg3 ~= nil and arg3.Player or nil)
+        local targetModel = rootPart ~= nil and rootPart:FindFirstAncestorOfClass("Model") or nil
 
-        if arg3 == nil or fighter == nil
-            or arg3.AliveState ~= aliveState
-            or aliveState == nil
-            or not (aliveState.Alive == true or (liveState ~= nil and liveState.Alive == true))
+        if arg3 == nil or fighter == nil or fighter.IsEnemy ~= true
+            or characterState == nil or liveState == nil or liveState.Alive ~= true
+            or arg3.AliveState ~= aliveState or aliveState == nil or aliveState.Alive ~= true
             or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead
+            or (liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
+            or (liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
+            or targetModel == nil or hitboxHead:FindFirstAncestorOfClass("Model") ~= targetModel
             or not rootPart:IsA("BasePart") or rootPart.Parent == nil
             or not rootPart:IsDescendantOf(workspace)
             or not hitboxHead:IsA("BasePart") or hitboxHead.Parent == nil
@@ -72804,10 +72948,22 @@ local function buildFreshKnifeAttackPayload()
             return nil, nil
         end
 
-        local invincibleOk, isInvincible = pcall(function()
-            return fighter:IsInvincible()
-        end)
-        if invincibleOk and isInvincible == true then return nil, nil end
+        if targetPlayer ~= nil then
+            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+                or targetPlayer.Parent ~= Players then
+                return nil, nil
+            end
+            local currentCharacter = targetPlayer.Character
+            if currentCharacter == nil or not rootPart:IsDescendantOf(currentCharacter)
+                or not hitboxHead:IsDescendantOf(currentCharacter) then
+                return nil, nil
+            end
+        end
+
+        local invincibleMethod = fighter.IsInvincible
+        if type(invincibleMethod) ~= "function" then return nil, nil end
+        local invincibleOk, isInvincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or isInvincible ~= false then return nil, nil end
 
         local _, currentYaw, currentRoll = rootPart.CFrame:ToOrientation()
         if not fakePositionFiniteNumber(currentYaw) or not fakePositionFiniteNumber(currentRoll) then
@@ -72869,29 +73025,26 @@ if isKnife then
     end
     local pending = itemCooldownKey ~= nil and pendingByItem[itemCooldownKey] or nil
     if pending ~= nil then
-        if arg._knifePrimeTarget == hitboxHead then
-            arg._knifePrimePitch = v121
-            arg._knifePrimeYaw = v122
-        end
-
+        -- Prime-angle drift is evaluated once below and may re-arm the wait window.
         local observedCooldown = readMeleeAttackCooldown(arg4)
         local baselineCooldown = pending.CooldownBefore
         local sentTick = tonumber(pending.SentTick) or tick()
         local baselineKnown = type(baselineCooldown) == "number"
             and baselineCooldown == baselineCooldown
             and baselineCooldown ~= math.huge and baselineCooldown ~= -math.huge
-        local idleStateKnown = pending.AttackStateKnown == true
-            and pending.WasAttackingBefore == false
         local cooldownFresh = observedCooldown ~= nil and observedCooldown > sentTick + 0.005
+        -- A nil baseline means the item had no replicated attack cooldown before dispatch.
+        -- A fresh future timestamp is therefore a valid cooldown acknowledgement by itself.
         local cooldownAdvanced = cooldownFresh and (
-            (baselineKnown and observedCooldown > baselineCooldown + 0.005)
-            or (not baselineKnown and idleStateKnown)
+            not baselineKnown or observedCooldown > baselineCooldown + 0.005
         )
 
         if cooldownAdvanced then
             pendingByItem[itemCooldownKey] = nil
             local stillSameTarget = pending.Target == hitboxHead
-            arg:_RecordBackstab(pending.Target, observedCooldown, itemCooldownKey, stillSameTarget)
+            -- This confirms the game entered its melee cooldown (attack accepted), not a damage hit.
+            -- Never label it as HitConfirmed or infer it from health/damage-number visuals.
+            arg:_RecordAttackAccepted(pending.Target, observedCooldown, itemCooldownKey, stillSameTarget)
         elseif now2 >= pending.Deadline then
             pendingByItem[itemCooldownKey] = nil
             arg:_AbortBackstabAttempt(pending.Target, itemCooldownKey)
@@ -72909,9 +73062,18 @@ and arg._hitboxWindowTarget == hitboxHead
 
 if isKnife and arg._knifePrimeTarget == hitboxHead
 and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil then
-
-arg._knifePrimePitch = v121
-arg._knifePrimeYaw = v122
+    local pitchDelta = math.abs(v121 - arg._knifePrimePitch)
+    local yawDelta = math.abs((v122 - arg._knifePrimeYaw + math.pi) % (2 * math.pi) - math.pi)
+    if pitchDelta > math.rad(10) or yawDelta > math.rad(10) then
+        -- Compare against the fixed prime anchor so slow cumulative rotation is detected too.
+        arg._knifePrimePitch = v121
+        arg._knifePrimeYaw = v122
+        arg._knifePrimeUntil = now2 + primeDelay
+    elseif now2 >= (tonumber(arg._knifePrimeUntil) or 0) then
+        -- After the fresh prime interval, keep the attack angle synchronized to the current target.
+        arg._knifePrimePitch = v121
+        arg._knifePrimeYaw = v122
+    end
 end
 
 if isKnife and now2 < (tonumber(arg._knifeRetryNotBefore) or 0) then
@@ -72961,8 +73123,8 @@ if isKnife then
             weaponCooldowns[itemCooldownKey] = replicatedUntil
         end
     end
-    local activeOk, isAttacking = pcall(arg4.IsAttacking, arg4)
-    if now2 < trackedUntil or (activeOk and isAttacking == true) then
+    -- Melee has no IsAttacking method; its authoritative local state is Inner._attack_cooldown.
+    if now2 < trackedUntil then
         return n, fn37(v121, v122), nil
     end
 end
@@ -72998,23 +73160,22 @@ if attackOrigin == nil or attackDirection == nil then
     return
 end
 local cooldownBefore = readMeleeAttackCooldown(arg4)
-local attackStateOk, wasAttackingBefore = pcall(arg4.IsAttacking, arg4)
-if attackStateOk and wasAttackingBefore == true then
-    local activeCooldown = readMeleeAttackCooldown(arg4)
-    if activeCooldown ~= nil and activeCooldown > tick() then
-        local activeUntil = os.clock() + (activeCooldown - tick())
-        weaponCooldowns[itemCooldownKey] = math.max(
-            tonumber(weaponCooldowns[itemCooldownKey]) or 0, activeUntil
-        )
-    end
-    arg._knifeRetryNotBefore = os.clock() + 0.04
+local dispatchTick = tick()
+if cooldownBefore ~= nil and cooldownBefore > dispatchTick + 0.005 then
+    local activeUntil = os.clock() + (cooldownBefore - dispatchTick)
+    weaponCooldowns[itemCooldownKey] = math.max(
+        tonumber(weaponCooldowns[itemCooldownKey]) or 0, activeUntil
+    )
     return
 end
+-- Record the dispatch edge before FireServer so an unusually fast replication update
+-- cannot arrive before the pending request's freshness timestamp.
+local sentAt = os.clock()
+local sentTick = tick()
 local okAttack, dispatchAccepted = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and dispatchAccepted == true then
-    local sentAt = os.clock()
     local ackTimeout = estimateMeleeAttackAckTimeout()
     local pendingByItem = arg._pendingBackstabByItem
     if type(pendingByItem) ~= "table" then
@@ -73025,11 +73186,8 @@ if okAttack and dispatchAccepted == true then
         Target = hitboxHead,
         ItemObjectId = arg4.ObjectId,
         CooldownBefore = cooldownBefore,
-        AttackStateKnown = attackStateOk and type(wasAttackingBefore) == "boolean",
-        WasAttackingBefore = attackStateOk and wasAttackingBefore == true,
         SentAt = sentAt,
-        SentTick = tick(),
-        FreshnessTolerance = math.clamp(ackTimeout * 0.35, 0.08, 0.35),
+        SentTick = sentTick,
         Deadline = sentAt + ackTimeout,
     }
 else
@@ -73061,7 +73219,7 @@ end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox, observedCooldownUntil, itemKey, openHitboxWindow)
+index2._RecordAttackAccepted = function(arg, targetHitbox, observedCooldownUntil, itemKey, openHitboxWindow)
 local now2 = os.clock()
 arg._knifeRetryNotBefore = 0
 
@@ -73077,7 +73235,6 @@ if itemKey ~= nil then
 end
 -- Keep legacy fields populated for older callbacks, but never key gating to a target.
 arg._attackCooldown = now2 + cooldownDuration
-arg._attackCooldownTarget = nil
 
 if openHitboxWindow == true and targetHitbox ~= nil then
     arg._hitboxWindowUntil = now2 + 0.625
@@ -73131,7 +73288,7 @@ arg._knifePrimeYaw = nil
 end
 
 index2.ResetState = function(arg)
--- Reset target/PartGlue state without erasing weapon cooldown or in-flight ack state.
+-- Transient target/PartGlue reset: preserve weapon cooldown and in-flight acknowledgement.
 arg._knifeRetryNotBefore = 0
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
@@ -73147,6 +73304,18 @@ if gluedOurPart ~= nil then
     pcall(arg._partGlue.Free, arg._partGlue, gluedOurPart)
     arg._gluedOurPart = nil
 end
+end
+
+index2.HardReset = function(arg)
+-- Lifecycle reset: clear transient state AND all per-weapon cooldown/ack state.
+arg:ResetState()
+local cooldowns = rawget(arg, "_weaponCooldownUntilByItem")
+if type(cooldowns) == "table" then table.clear(cooldowns) end
+local pending = rawget(arg, "_pendingBackstabByItem")
+if type(pending) == "table" then table.clear(pending) end
+arg._pendingBackstab = nil
+arg._attackCooldown = -1
+arg._knifeRetryNotBefore = 0
 end
 
 return index2
@@ -75905,8 +76074,6 @@ if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") th
                 arg._repRootCounterActionAt = nil
 
                 if knifeCounterResponse then
-                    -- Fix: stationaryUntil phải được SET (không = 0) để knife counter fire.
-                    -- Chỉ set khi là detection mới với target này.
                     local wasKnifeActive = type(arg._repRootCounterTarget) == "table"
                         and arg._repRootCounterTarget == detectedTarget
                         and (tonumber(arg._repRootCounterUntil) or 0) > nowForRepRoot + 0.02
@@ -75927,7 +76094,6 @@ if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") th
                     ragebotPoseRestoreGateSet(arg, false, 0, nil)
                     arg._repRootRestoreRetryAt = nil
                 else
-                    -- rep-root-contact path: set stationaryUntil cho backstab
                     local wasRepRootActive = type(arg._repRootCounterTarget) == "table"
                         and arg._repRootCounterTarget == detectedTarget
                         and (tonumber(arg._repRootCounterUntil) or 0) > nowForRepRoot + 0.02
@@ -76232,35 +76398,83 @@ if arg._repRootCounterRestorePending == true then
             local retryReleaseAt = tonumber(arg._repRootRestoreReleaseRetryAt) or 0
             local releaseOk, releaseResult = false, nil
             if nowRestore >= retryReleaseAt then
-                releaseOk, releaseResult = pcall(
-                    characterController.SetServerCFrame, characterController, nil
-                )
-                local releaseAcceptedNow = releaseOk and releaseResult ~= false
-                if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
-                    releaseAcceptedNow = false
-                end
-                if not releaseAcceptedNow then
-                    local originalController = arg._repRootCounterRestoreController
-                    if type(originalController) == "table" and originalController ~= characterController
-                        and type(originalController.SetServerCFrame) == "function" then
-                        local fallbackOk, fallbackResult = pcall(
-                            originalController.SetServerCFrame, originalController, nil
-                        )
-                        local fallbackAccepted = fallbackOk and fallbackResult ~= false
-                        if type(fallbackResult) == "table" and rawget(fallbackResult, "Ok") == false then
-                            fallbackAccepted = false
+                -- First remove only this owner's pose gate. Otherwise SetServerCFrame(nil)
+                -- can be intercepted and re-write the approved restore pose instead of clearing it.
+                local gateReleased = ragebotPoseRestoreGateSet(arg, false, 0, nil)
+                if gateReleased then
+                    releaseOk, releaseResult = pcall(
+                        characterController.SetServerCFrame, characterController, nil
+                    )
+                    local releaseAcceptedNow = releaseOk and releaseResult ~= false
+                    if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
+                        releaseAcceptedNow = false
+                    end
+                    local function verifyControllerOverrideCleared(controller)
+                        local verifyOk, rootDesync, serverOverride, oldOverride = pcall(function()
+                            local inner = controller and controller._rootDesync or nil
+                            if type(inner) ~= "table" then return nil, nil, nil end
+                            return inner, inner._cframe, inner._oldCFrame
+                        end)
+                        if not verifyOk or type(rootDesync) ~= "table" then
+                            return false, "RootDesync state could not be read back"
                         end
-                        if fallbackAccepted then
-                            releaseOk, releaseResult = fallbackOk, fallbackResult
-                            releaseAcceptedNow = true
-                        elseif not releaseOk then
-                            releaseResult = fallbackResult
+                        if serverOverride ~= nil or oldOverride ~= nil then
+                            return false, "RootDesync still holds a CFrame override"
+                        end
+                        return true
+                    end
+                    if releaseAcceptedNow then
+                        local verifiedRelease, verifyDetail = verifyControllerOverrideCleared(characterController)
+                        if not verifiedRelease then
+                            releaseAcceptedNow = false
+                            releaseOk = false
+                            releaseResult = verifyDetail
                         end
                     end
-                end
-                if releaseAcceptedNow then
-                    arg._repRootRestoreReleaseRetryAt = nil
+                    if not releaseAcceptedNow then
+                        local originalController = arg._repRootCounterRestoreController
+                        if type(originalController) == "table" and originalController ~= characterController
+                            and type(originalController.SetServerCFrame) == "function" then
+                            local fallbackOk, fallbackResult = pcall(
+                                originalController.SetServerCFrame, originalController, nil
+                            )
+                            local fallbackAccepted = fallbackOk and fallbackResult ~= false
+                            if type(fallbackResult) == "table" and rawget(fallbackResult, "Ok") == false then
+                                fallbackAccepted = false
+                            end
+                            if fallbackAccepted then
+                                local fallbackVerified = verifyControllerOverrideCleared(originalController)
+                                if fallbackVerified then
+                                    releaseOk, releaseResult = fallbackOk, fallbackResult
+                                    releaseAcceptedNow = true
+                                else
+                                    fallbackAccepted = false
+                                end
+                            end
+                            if not fallbackAccepted and not releaseOk then
+                                releaseResult = fallbackResult
+                            end
+                        end
+                    end
+                    if releaseAcceptedNow then
+                        arg._repRootRestoreReleaseRetryAt = nil
+                    else
+                        -- Restore the safety gate if controller release did not actually succeed.
+                        local gateRestored = ragebotPoseRestoreGateSet(
+                            arg, true, nil, restoreCFrame, rootPart
+                        )
+                        if gateRestored then
+                            pcall(ragebotPoseRestoreGateZeroMotion, rootPart, arg)
+                        else
+                            releaseResult = tostring(releaseResult or "controller release failed")
+                                .. "; pose safety gate could not be re-established"
+                        end
+                    end
                 else
+                    releaseResult = "pose restore gate is owned by another active controller"
+                end
+                if not (releaseOk and releaseResult ~= false
+                    and not (type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false)) then
                     local retryDelay = math.clamp(0.12 + ping * 0.20, 0.12, 0.35)
                     arg._repRootRestoreReleaseRetryAt = nowRestore + retryDelay
                 end
@@ -76425,7 +76639,6 @@ end
 local knifeCounterKeepsMovement = repRootCounterActive
     and arg._repRootCounterKind == "knife-cooldown-predict"
 
--- Fix: reload không block Translocate. Character tiếp tục né dù đang reload.
 if okAction and mode == "Translocate"
     and (v130 == nil or v130.Type ~= "Reload")
     and (not repRootCounterActive or knifeCounterKeepsMovement)
@@ -76782,19 +76995,43 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     local fighter = target ~= nil and target.FighterState or nil
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, validPart = pcall(function()
-        if anglePart == nil or not anglePart:IsA("BasePart")
+        if fighter == nil or fighter.IsEnemy ~= true or aliveState == nil
+            or anglePart == nil or not anglePart:IsA("BasePart")
             or anglePart.Parent == nil or not anglePart:IsDescendantOf(workspace) then
             return false
         end
-        if aliveState == nil then return false end
-        local fighterCharacter = fighter ~= nil and fighter.Character or nil
+        local fighterCharacter = fighter.Character
         local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
-        local alive = aliveState.Alive == true or (fighterState ~= nil and fighterState.Alive == true)
-        if not alive then return false end
-        local invincibleOk, isInvincible = pcall(function()
-            return fighter ~= nil and fighter:IsInvincible() or false
-        end)
-        if invincibleOk and isInvincible == true then return false end
+        if fighterState == nil or fighterState.Alive ~= true or aliveState.Alive ~= true then
+            return false
+        end
+        if fighterState.RootPart ~= nil and fighterState.RootPart ~= anglePart then
+            return false
+        end
+        local targetHitbox = aliveState.HitboxHead
+        local targetModel = anglePart:FindFirstAncestorOfClass("Model")
+        if targetHitbox == nil or not targetHitbox:IsA("BasePart")
+            or not targetHitbox:IsDescendantOf(workspace)
+            or targetModel == nil or targetHitbox:FindFirstAncestorOfClass("Model") ~= targetModel
+            or (fighterState.HitboxHead ~= nil and fighterState.HitboxHead ~= targetHitbox) then
+            return false
+        end
+        local targetPlayer = fighter.Player or target.Player
+        if targetPlayer ~= nil then
+            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+                or targetPlayer.Parent ~= Players then
+                return false
+            end
+            local currentCharacter = targetPlayer.Character
+            if currentCharacter == nil or not anglePart:IsDescendantOf(currentCharacter)
+                or not targetHitbox:IsDescendantOf(currentCharacter) then
+                return false
+            end
+        end
+        local invincibleMethod = fighter.IsInvincible
+        if type(invincibleMethod) ~= "function" then return false end
+        local invincibleOk, isInvincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or isInvincible ~= false then return false end
         return true
     end)
     if not okPart or not validPart then return nil end
@@ -76977,6 +77214,10 @@ if useAlwaysBackstabKnifeRotation then
     local backstabViewAngles = ragebotBuildBackstabKnifeViewAngles(arg4, arg)
     if backstabViewAngles ~= nil then
         v132 = backstabViewAngles
+    else
+        -- Never dispatch with a stale/previous target's camera direction.
+        v132 = nil
+        v133 = nil
     end
 end
 
@@ -78385,7 +78626,7 @@ if not sameReset then
     ragebotSafeInvokeMethod(arg, "_ApplyForcedCrouch", false)
     local meleeStrategy = rawget(arg, "_meleeStrategy")
     if type(meleeStrategy) == "table" then
-        local reset = meleeStrategy.ResetState
+        local reset = meleeStrategy.HardReset or meleeStrategy.ResetState
         if type(reset) == "function" then pcall(reset, meleeStrategy) end
     end
     local hitscanStrategy = rawget(arg, "_hitscanStrategy")
@@ -80840,21 +81081,54 @@ local v123 = arg:_ResolveStartContext()
 if v123 == nil then
 return false
 end
-if type(arg2) ~= "table" or typeof(arg2.StartCFrame) ~= "CFrame" or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or type(arg2.Positions) ~= "table" then
-fn36("Recording data is invalid")
-return false
+local MAX_RECORDING_KEYPOINTS = 100000
+local MAX_RECORDING_POSITIONS = 250000
+local MAX_RECORDING_SECONDS = 21600
+local MAX_RECORDING_COORDINATE = 10000000
+local function finiteNumber(value)
+    return type(value) == "number" and value == value
+        and value ~= math.huge and value ~= -math.huge
 end
-for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
-fn36("Recording data is invalid")
-return false
+local function finiteVector3(value)
+    if typeof(value) ~= "Vector3" then return false end
+    return finiteNumber(value.X) and finiteNumber(value.Y) and finiteNumber(value.Z)
+        and math.abs(value.X) <= MAX_RECORDING_COORDINATE
+        and math.abs(value.Y) <= MAX_RECORDING_COORDINATE
+        and math.abs(value.Z) <= MAX_RECORDING_COORDINATE
 end
+local function finiteCFrame(value)
+    if typeof(value) ~= "CFrame" then return false end
+    local okComponents, components = pcall(function() return { value:GetComponents() } end)
+    if not okComponents or type(components) ~= "table" or #components ~= 12 then return false end
+    for index = 1, #components do
+        if not finiteNumber(components[index]) then return false end
+    end
+    return finiteVector3(value.Position)
 end
-for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or typeof(sample.Position) ~= "Vector3" then
-fn36("Recording data is invalid")
-return false
+local function denseArrayCount(value, maximum, allowEmpty)
+    if type(value) ~= "table" then return nil end
+    local count = 0
+    for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then return nil end
+        count += 1
+        if count > maximum then return nil end
+    end
+    if count ~= #value or (not allowEmpty and count == 0) then return nil end
+    return count
 end
+if type(arg2) ~= "table"
+    or type(arg2.MapName) ~= "string" or arg2.MapName == "" or #arg2.MapName > 128
+    or not finiteCFrame(arg2.StartCFrame)
+    or type(arg2.Keypoints) ~= "table"
+    or type(arg2.Positions) ~= "table" then
+    fn36("Recording data is invalid")
+    return false
+end
+local keypointCount = denseArrayCount(arg2.Keypoints, MAX_RECORDING_KEYPOINTS, false)
+local positionCount = denseArrayCount(arg2.Positions, MAX_RECORDING_POSITIONS, false)
+if keypointCount == nil or positionCount == nil then
+    fn36("Recording data exceeds safe size limits or contains sparse arrays")
+    return false
 end
 local kind = arg._state.Kind
 
@@ -80881,54 +81155,63 @@ end
 
 local lastKeypointOffset = -math.huge
 for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or keypoint.Offset < 0 or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
-fn36("Recording is invalid or incomplete")
-return false
+if type(keypoint) ~= "table" or not finiteNumber(keypoint.Offset)
+    or keypoint.Offset < 0 or keypoint.Offset > MAX_RECORDING_SECONDS
+    or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
+    fn36("Recording is invalid or incomplete")
+    return false
 end
 lastKeypointOffset = keypoint.Offset
 local action = keypoint.Action
-local kind = action.Kind
-if kind == "Move" then
-if typeof(action.Direction) ~= "Vector3" then
-fn36("Recording is invalid or incomplete")
-return false
+local actionKind = action.Kind
+if type(actionKind) ~= "string" or #actionKind > 32 then
+    fn36("Recording is invalid or incomplete")
+    return false
 end
-elseif kind == "Crouch" then
-if type(action.Crouching) ~= "boolean" then
-fn36("Recording is invalid or incomplete")
-return false
-end
-elseif kind == "Look" then
-if typeof(action.CFrame) ~= "CFrame" then
-fn36("Recording is invalid or incomplete")
-return false
-end
-elseif kind == "ItemInput" then
-if type(action.InputType) ~= "string" or action.InputType == "" then
-fn36("Recording is invalid or incomplete")
-return false
-end
-elseif kind == "QuickAttack" then
-if type(action.AttackType) ~= "string" or action.AttackType == "" then
-fn36("Recording is invalid or incomplete")
-return false
-end
-elseif kind == "Equip" then
-if type(action.Index) ~= "number" then
-fn36("Recording is invalid or incomplete")
-return false
-end
-elseif kind ~= "Jump" and kind ~= "Slide" then
-fn36("Recording is invalid or incomplete")
-return false
+if actionKind == "Move" then
+    if not finiteVector3(action.Direction) then
+        fn36("Recording is invalid or incomplete")
+        return false
+    end
+elseif actionKind == "Crouch" then
+    if type(action.Crouching) ~= "boolean" then
+        fn36("Recording is invalid or incomplete")
+        return false
+    end
+elseif actionKind == "Look" then
+    if not finiteCFrame(action.CFrame) then
+        fn36("Recording is invalid or incomplete")
+        return false
+    end
+elseif actionKind == "ItemInput" then
+    if type(action.InputType) ~= "string" or action.InputType == "" or #action.InputType > 64 then
+        fn36("Recording is invalid or incomplete")
+        return false
+    end
+elseif actionKind == "QuickAttack" then
+    if type(action.AttackType) ~= "string" or action.AttackType == "" or #action.AttackType > 64 then
+        fn36("Recording is invalid or incomplete")
+        return false
+    end
+elseif actionKind == "Equip" then
+    if not finiteNumber(action.Index) or action.Index < 1 or action.Index > 255
+        or action.Index % 1 ~= 0 then
+        fn36("Recording is invalid or incomplete")
+        return false
+    end
+elseif actionKind ~= "Jump" and actionKind ~= "Slide" then
+    fn36("Recording is invalid or incomplete")
+    return false
 end
 end
 
 local lastPositionOffset = -math.huge
 for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or sample.Offset ~= sample.Offset or sample.Offset < 0 or sample.Offset < lastPositionOffset or typeof(sample.Position) ~= "Vector3" then
-fn36("Recording is invalid or incomplete")
-return false
+if type(sample) ~= "table" or not finiteNumber(sample.Offset)
+    or sample.Offset < 0 or sample.Offset > MAX_RECORDING_SECONDS
+    or sample.Offset < lastPositionOffset or not finiteVector3(sample.Position) then
+    fn36("Recording is invalid or incomplete")
+    return false
 end
 lastPositionOffset = sample.Offset
 end
@@ -81712,14 +81995,7 @@ if K.destroyed then return end
 local _ch = _lp.Character
 local _pg0 = _lp:FindFirstChild("PlayerGui")
 local _spawnedOk = _ch ~= nil and _ch:FindFirstChildOfClass("Humanoid") ~= nil
-local _uiOk = false
-if _pg0 then
-local _n = 0
-for _, _c in ipairs(_pg0:GetChildren()) do
-if _c:IsA("ScreenGui") then _n = _n + 1 end
-end
-_uiOk = _n >= 2
-end
+local _uiOk = _pg0 ~= nil
 if _spawnedOk and _uiOk then
 _clientReady = true
 break
@@ -81732,15 +82008,9 @@ local _finalCharacter = _lp.Character
 local _finalPlayerGui = _lp:FindFirstChild("PlayerGui")
 local _finalSpawnedOk = _finalCharacter ~= nil
     and _finalCharacter:FindFirstChildOfClass("Humanoid") ~= nil
-local _finalGuiCount = 0
-if _finalPlayerGui then
-    for _, _gui in ipairs(_finalPlayerGui:GetChildren()) do
-        if _gui:IsA("ScreenGui") then _finalGuiCount = _finalGuiCount + 1 end
-    end
-end
-local _finalUiOk = _finalGuiCount >= 2
+local _finalUiOk = _finalPlayerGui ~= nil
 if not _clientReady or not _finalSpawnedOk or not _finalUiOk then
-    warn("[Crefy Premium] ABORTED: client did not reach the required character/UI ready state within 45s.")
+    warn("[Crefy Premium] ABORTED: client did not reach the required character/PlayerGui ready state within 45s.")
     markCrefyQueuedRerunBootState(false)
     pcall(K.Unload)
     return
