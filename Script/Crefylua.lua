@@ -39,6 +39,14 @@ if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGenera
 
             local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
                 or localPlayer:FindFirstChild("PlayerGui")
+            local screenGuiCount = 0
+            if playerGui ~= nil then
+                for _, child in ipairs(playerGui:GetChildren()) do
+                    if child:IsA("ScreenGui") then
+                        screenGuiCount = screenGuiCount + 1
+                    end
+                end
+            end
 
             local character = localPlayer.Character
             local humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
@@ -54,7 +62,7 @@ if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGenera
 
             return controllers ~= nil
                 and clientReplicatedClasses ~= nil
-                and playerGui ~= nil
+                and screenGuiCount >= 2
                 and humanoid ~= nil
                 and rootPart ~= nil
                 and modules ~= nil
@@ -84,7 +92,7 @@ if type(__crefyQueuedBootGeneration) == "string" or type(__crefyQueuedBootGenera
         local failedRunKey = tostring(__crefyQueuedBootGeneration) .. ":" .. tostring(game.PlaceId)
         pcall(rawset, __crefyQueuedBootEnvironment, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
         pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
-        warn("[Crefy] Re-run After Teleport aborted: the client, character, PlayerGui, or required Rivals modules were not ready. No Crefy modules were loaded.")
+        warn("[Crefy] Re-run After Teleport aborted: the client, character, UI, or required Rivals modules were not ready. No Crefy modules were loaded.")
         return
     end
 
@@ -20556,7 +20564,6 @@ local function __getSetting(name)
     return nil
 end
 if __getSetting("__CrefyAutoExecuteEnabled") == false then return end
-local __autoExecuteOptIn = __getSetting("__CrefyAutoExecuteEnabled") == true
 local __generation = ]] .. generationLiteral .. [[
 local __url = ]] .. urlLiteral .. [[
 local __placeId = tostring(game.PlaceId)
@@ -20588,7 +20595,6 @@ if type(__readFile) == "function" then
         end
         local __savedToggle = __stateData.ReRunAfterTeleport
         if __savedToggle == false then return end
-        if __savedToggle == true then __autoExecuteOptIn = true end
         if __savedToggle ~= nil and __savedToggle ~= true then
             warn("[Crefy] Re-run After Teleport cancelled: saved toggle value is invalid.")
             return
@@ -20660,99 +20666,6 @@ local function __runQueuedSource()
         warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy.")
         return false
     end
-
-    local __trustedUrl = "https://raw.githubusercontent.com/lrexzyq/CreU/refs/heads/main/Script/Sau/Crefylua.lua"
-    if __url ~= __trustedUrl then
-        warn("[Crefy] Re-run After Teleport refused a source URL outside the pinned repository path.")
-        return false
-    end
-    local function __normalizeSha256(value)
-        if type(value) ~= "string" then return nil end
-        value = string.lower(value)
-        if #value ~= 64 or not value:match("^[0-9a-f]+$") then return nil end
-        return value
-    end
-    local function __computeSourceHash(source)
-        local candidates = {}
-        local function add(owner, fn)
-            if type(fn) == "function" then
-                candidates[#candidates + 1] = { owner = owner, fn = fn }
-            end
-        end
-        local cryptTable = __getSetting("crypt")
-        if type(cryptTable) == "table" then add(cryptTable, cryptTable.hash) end
-        local synTable = __getSetting("syn")
-        if type(synTable) == "table" and type(synTable.crypt) == "table" then
-            add(synTable.crypt, synTable.crypt.hash)
-        end
-        add(nil, __getFunction("sha256"))
-        for _, candidate in ipairs(candidates) do
-            local fn, owner = candidate.fn, candidate.owner
-            local attempts = {
-                function() return fn(source, "sha256") end,
-                function() if owner ~= nil then return fn(owner, source, "sha256") end end,
-                function() return fn("sha256", source) end,
-                function() return fn(source) end,
-            }
-            for _, attempt in ipairs(attempts) do
-                local okHash, result = pcall(attempt)
-                local digest = okHash and __normalizeSha256(result) or nil
-                if digest ~= nil then return digest end
-            end
-        end
-        return nil
-    end
-    local __sourceHash = __computeSourceHash(__source)
-    if __sourceHash == nil then
-        warn("[Crefy] Re-run After Teleport blocked: executor SHA-256 support is unavailable.")
-        return false
-    end
-    local __pinPath = "kiciarebuild/rivals/autoexec_source.sha256"
-    local __isfile = __getFunction("isfile")
-    local __readfile = __getFunction("readfile")
-    local __writefile = __getFunction("writefile")
-    if type(__isfile) ~= "function" or type(__readfile) ~= "function" then
-        warn("[Crefy] Re-run After Teleport blocked: source pin cannot be read on this executor.")
-        return false
-    end
-    local __pinExistsOk, __pinExists = pcall(__isfile, __pinPath)
-    if not __pinExistsOk then
-        warn("[Crefy] Re-run After Teleport blocked: source pin state could not be checked.")
-        return false
-    end
-    local __pendingPinText = nil
-    if __pinExists then
-        local __pinReadOk, __pinText = pcall(__readfile, __pinPath)
-        if not __pinReadOk or type(__pinText) ~= "string" then
-            warn("[Crefy] Re-run After Teleport blocked: source pin could not be read.")
-            return false
-        end
-        __pinText = __pinText:gsub("\r", "")
-        local __pinFormat, __pinnedUrl, __pinnedHash = __pinText:match("^(CREFY%-AUTOEXEC%-SHA256)\n([^\n]+)\n([0-9a-fA-F]+)\n?$")
-        __pinnedHash = __normalizeSha256(__pinnedHash)
-        if __pinFormat ~= "CREFY-AUTOEXEC-SHA256" or __pinnedUrl ~= __url or __pinnedHash == nil then
-            warn("[Crefy] Re-run After Teleport blocked: source pin file is invalid or belongs to a different URL.")
-            return false
-        end
-        if __pinnedHash ~= __sourceHash then
-            warn("[Crefy] Re-run After Teleport blocked: downloaded source SHA-256 differs from the trusted pin. Review the source and reset the pin only when intentionally updating.")
-            return false
-        end
-    else
-        if not __autoExecuteOptIn or type(__writefile) ~= "function" then
-            warn("[Crefy] Re-run After Teleport blocked: first-use source pin requires explicit opt-in and file-write support.")
-            return false
-        end
-        local __isfolder = __getFunction("isfolder")
-        local __makefolder = __getFunction("makefolder")
-        if type(__isfolder) == "function" and type(__makefolder) == "function" then
-            for _, __folder in ipairs({ "kiciarebuild", "kiciarebuild/rivals" }) do
-                local __folderOk, __folderExists = pcall(__isfolder, __folder)
-                if __folderOk and not __folderExists then pcall(__makefolder, __folder) end
-            end
-        end
-        __pendingPinText = "CREFY-AUTOEXEC-SHA256\n" .. __url .. "\n" .. __sourceHash .. "\n"
-    end
     local __compiler = __getFunction("loadstring") or __getFunction("load")
     if type(__compiler) ~= "function" then
         warn("[Crefy] Re-run After Teleport: this executor has no loadstring/load compiler.")
@@ -20762,18 +20675,6 @@ local function __runQueuedSource()
     if not __compileCallOk or type(__chunk) ~= "function" then
         warn("[Crefy] Re-run After Teleport compile failed: " .. tostring(__compileError or __chunk))
         return false
-    end
-    if __pendingPinText ~= nil then
-        local __pinWriteOk, __pinWriteError = pcall(__writefile, __pinPath, __pendingPinText)
-        if not __pinWriteOk then
-            warn("[Crefy] Re-run After Teleport blocked: initial source pin could not be written: " .. tostring(__pinWriteError))
-            return false
-        end
-        local __verifyPinOk, __verifyPinText = pcall(__readfile, __pinPath)
-        if not __verifyPinOk or __verifyPinText ~= __pendingPinText then
-            warn("[Crefy] Re-run After Teleport blocked: initial source pin failed read-back verification.")
-            return false
-        end
     end
     local __runOk, __runError = pcall(__chunk)
     if not __runOk then
@@ -29843,26 +29744,8 @@ local function antiAimEnsureDecoderGuard()
         and rawget(priorGuard, "target") == target
         and type(rawget(priorGuard, "original")) == "function"
         and type(rawget(priorGuard, "wrapper")) == "function" then
-        if rawget(priorGuard, "managed") == true then
-            -- A previous runtime may have left a disabled pass-through wrapper.
-            -- Reuse it rather than stacking another hook over the same decoder.
-            pcall(rawset, priorGuard, "active", true)
-            pcall(rawset, priorGuard, "owner", K)
-            antiAimDecoderGuardInstalled = true
-            return true
-        end
-        -- Migrate legacy guards only if the prior wrapper can be identified safely.
-        if type(hookfunction) ~= "function" then return false end
-        local restoreOk, displaced = pcall(hookfunction, target, rawget(priorGuard, "original"))
-        if not restoreOk or displaced ~= rawget(priorGuard, "wrapper") then
-            if restoreOk and type(displaced) == "function" then
-                pcall(hookfunction, target, displaced)
-            end
-            antiAimDecoderGuardInstalled = false
-            return false
-        end
-        pcall(rawset, priorGuard, "installed", false)
-        pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, nil)
+        antiAimDecoderGuardInstalled = true
+        return true
     end
 
     antiAimDecoderGuardInstalled = false
@@ -29870,21 +29753,10 @@ local function antiAimEnsureDecoderGuard()
     antiAimDecoderGuardNextRetryAt = now + 2
     if type(hookfunction) ~= "function" then return false end
 
-    local record = {
-        managed = true,
-        active = true,
-        installed = false,
-        owner = K,
-        utility = utility,
-        target = target,
-        original = nil,
-        wrapper = nil,
-    }
+    local original = nil
     local nextDecodeWarningAt = 0
     local wrapper = function(...)
-        local original = record.original
         if type(original) ~= "function" then return {} end
-        if record.active ~= true then return original(...) end
         local packed = table.pack(...)
         local isExtendedPayload = false
         local budget = { count = 4096 }
@@ -29916,40 +29788,17 @@ local function antiAimEnsureDecoderGuard()
 
     local hookOk, previous = pcall(hookfunction, target, wrapper)
     if not hookOk or type(previous) ~= "function" then return false end
-    record.original = previous
-    record.wrapper = wrapper
-    record.installed = true
-    pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, record)
+    original = previous
     antiAimDecoderGuardInstalled = true
+    pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, {
+        installed = true,
+        utility = utility,
+        target = target,
+        original = previous,
+        wrapper = wrapper,
+    })
     return true
 end
-
-K.onUnload(function()
-    local record = rawget(_G, ANTI_AIM_DECODE_GUARD_KEY)
-    if type(record) ~= "table" or rawget(record, "owner") ~= K then return end
-    -- Stop custom decoding first. If physical unhook is unsupported, the wrapper
-    -- stays installed but becomes a transparent pass-through to the original.
-    pcall(rawset, record, "active", false)
-    local target = rawget(record, "target")
-    local original = rawget(record, "original")
-    local wrapper = rawget(record, "wrapper")
-    if type(hookfunction) == "function" and type(target) == "function"
-        and type(original) == "function" and type(wrapper) == "function" then
-        local restoreOk, displaced = pcall(hookfunction, target, original)
-        if restoreOk and displaced == wrapper then
-            pcall(rawset, record, "installed", false)
-            if rawget(_G, ANTI_AIM_DECODE_GUARD_KEY) == record then
-                pcall(rawset, _G, ANTI_AIM_DECODE_GUARD_KEY, nil)
-            end
-            return
-        end
-        if restoreOk and type(displaced) == "function" then
-            pcall(hookfunction, target, displaced)
-        end
-    end
-    pcall(rawset, record, "unhookPending", true)
-    warn("[AntiAim] Decoder hook could not be physically removed; custom behavior is disabled and the wrapper is pass-through.")
-end)
 
 local function antiAimCodePoint(value)
     local point = math.floor(tonumber(value) or 0)
@@ -30073,47 +29922,43 @@ local function antiAimRagebotIsActive()
     return false
 end
 
-local ANTI_AIM_RAGEBOT_CONTEXT_KEY = "__CrefyAntiAimRagebotContext"
-local function antiAimHasActiveViewAnglePayload()
-    local context = antiAimReadSharedState(ANTI_AIM_RAGEBOT_CONTEXT_KEY)
-    if type(context) ~= "table" then return false end
-    local okRead, payloads = pcall(function()
-        local characterController = context.CharacterController
-        local driver = characterController and characterController._viewAngleDriver or nil
-        return driver and driver._payloadBySlot or nil
-    end)
-    if not okRead or type(payloads) ~= "table" then return false end
-    local okNext, key = pcall(next, payloads)
-    return okNext and key ~= nil
-end
-
 local function antiAimShouldSuppress()
-    -- Ragebot owns camera priority whenever its control state is enabled,
-    -- including frames where it has not published a view-angle payload yet.
-    local stateOk, ragebotActive = pcall(antiAimRagebotIsActive)
-    if not stateOk then return true end
-    if ragebotActive == true then return true end
-
-    local ownerActive, active = pcall(antiAimHasActiveViewAnglePayload)
-    if not ownerActive then return true end
-    if active == true then return true end
-
-    local configReader = type(tbl17) == "table" and rawget(tbl17, "bG") or nil
-    if type(configReader) ~= "function" then return true end
-    local okConfig, config = pcall(configReader)
-    if not okConfig or type(config) ~= "table" then return true end
-    local data = rawget(config, "Data")
-    local ragebotConfig = type(data) == "table" and rawget(data, "Ragebot") or nil
-    if type(ragebotConfig) == "table" and rawget(ragebotConfig, "Enabled") == true then
+    local config = nil
+    local configReader = nil
+    local okReader, reader = pcall(function()
+        return type(tbl17) == "table" and tbl17.bG or nil
+    end)
+    if not okReader or type(reader) ~= "function" then
         return true
     end
-    local modifiers = type(data) == "table" and rawget(data, "ItemModifiers") or nil
-    local backstabMode = type(modifiers) == "table" and rawget(modifiers, "AlwaysBackstabMode") or nil
-    -- Riot drives UpdateCameraRotation through its own remote hook rather than
-    -- this driver's payload table, so preserve its camera priority explicitly.
-    return type(modifiers) == "table"
-        and rawget(modifiers, "AlwaysBackstab") == true
-        and backstabMode == "Riot"
+    configReader = reader
+    local okConfig, configValue = pcall(function()
+        return configReader()
+    end)
+    if not okConfig or type(configValue) ~= "table" then
+        return true
+    end
+    config = configValue
+
+    local data = type(config) == "table" and config.Data or nil
+    local modifiers = type(data) == "table" and data.ItemModifiers or nil
+    local ragebotActive = false
+    local ragebotOk, ragebotValue = pcall(function()
+        return antiAimRagebotIsActive()
+    end)
+    if not ragebotOk or ragebotValue == nil then
+                                                                                            
+        return true
+    end
+    ragebotActive = ragebotValue == true
+
+    local backstabMode = type(modifiers) == "table" and modifiers.AlwaysBackstabMode or nil
+    local alwaysBackstabActive = type(modifiers) == "table"
+        and modifiers.AlwaysBackstab == true
+        and (backstabMode == "Knife" or backstabMode == "Riot")
+
+                                                                                  
+    return ragebotActive or alwaysBackstabActive
 end
 
 local function antiAimReadSettings()
@@ -30311,37 +30156,14 @@ if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
 return v115.err("ViewAngleDriver", "setupvalue", "debug.setupvalue is unavailable")
 end
 local patchedUtility = setmetatable({ EncodeCameraRotation = function(arg2, arg3)
-    local rotation = typeof(arg3) == "Vector2" and arg3
-        or (typeof(arg2) == "Vector2" and arg2 or nil)
-    local payloadBySlot = type(arg._payloadBySlot) == "table" and arg._payloadBySlot or nil
-    local hasExplicitCameraOwner = payloadBySlot ~= nil and next(payloadBySlot) ~= nil
-
-    local function encodeUnmodified()
-        v103(fighterController, "_replication_stopped", false)
-        local lastEncoded = v102(fighterController, "_last_encoded_camera_rotation")
-        if type(lastEncoded) == "string" and cameraPayloadHasTwoCharacters(lastEncoded) then
-            return lastEncoded
-        end
-        if rotation ~= nil then
-            return v117.encodeCameraRotation(rotation)
-        end
-        local originalEncoder = v122.EncodeCameraRotation
-        if type(originalEncoder) == "function" then
-            return originalEncoder(arg2, arg3)
-        end
-        return v117.encodeCameraRotation(get())
-    end
-
-    -- Ragebot/Knife/AlwaysBackstab angle slots outrank Anti Aim. This avoids
-    -- rewriting an explicit combat camera payload while still allowing Anti Aim
-    -- to run whenever Ragebot is enabled but is not currently steering angles.
-    if arg._fullySuppressed or hasExplicitCameraOwner then
-        return encodeUnmodified()
-    end
-    if rotation == nil then
-        return encodeUnmodified()
-    end
-    return antiAimEncodeCameraRotation(rotation)
+                                                                          
+                                                                            
+                                                              
+if arg._fullySuppressed then
+v103(fighterController, "_replication_stopped", false)
+return v102(fighterController, "_last_encoded_camera_rotation") or v117.encodeCameraRotation(arg3)
+end
+return antiAimEncodeCameraRotation(arg3)
 end }, { __index = v122 })
 local okSetup, setupResult = pcall(debug.setupvalue, v120, v121, patchedUtility)
 if not okSetup then
@@ -30699,9 +30521,7 @@ arg._trove:Connect(RunService.Heartbeat, function()
     end
 
     if now < (tonumber(arg._antiAimNextHookCheckAt) or 0) then return end
-    -- Reconcile often enough to recover promptly if another camera owner swaps
-    -- the replication utility, without doing work on every render frame.
-    arg._antiAimNextHookCheckAt = now + 0.10
+    arg._antiAimNextHookCheckAt = now + 0.25
 
     local settings = nil
     local settingsOk = pcall(function()
@@ -35254,7 +35074,7 @@ return
 end
 
 if not track.IsPlaying then
--- Keep the old track reference until _Apply -> _Stop destroys it.
+arg._track = nil
 arg:_Apply()
 return
 end
@@ -35303,9 +35123,9 @@ end
 local track = arg._track
 
 if track ~= nil then
-    arg._track = nil
-    pcall(function() track:Stop() end)
-    pcall(function() track:Destroy() end)
+track:Stop()
+track:Destroy()
+arg._track = nil
 end
 end
 
@@ -40022,32 +39842,8 @@ local simulateInputBegan = v102(v122, "SimulateInputBegan")
 if simulateInputBegan == nil then
 return v115.err("UseEmoteHook", "function_lookup", "MechanicsController.SimulateInputBegan not found")
 end
-local function readUpvalue(func, index)
-    if type(debug) ~= "table" or type(debug.getupvalue) ~= "function" then
-        return false, nil
-    end
-    local okRead, first, second = pcall(debug.getupvalue, func, index)
-    if not okRead then return false, nil end
-    if type(first) == "string" and second ~= nil then return true, second end
-    if first ~= nil then return true, first end
-    return false, nil
-end
-
-local function writeUpvalueVerified(func, index, value)
-    if type(debug) ~= "table" or type(debug.setupvalue) ~= "function" then
-        return false, "debug.setupvalue is unavailable"
-    end
-    local callOk, callResult = pcall(debug.setupvalue, func, index, value)
-    if not callOk then return false, tostring(callResult) end
-    local readOk, actual = readUpvalue(func, index)
-    if not readOk or actual ~= value then
-        return false, "upvalue read-back did not match the requested value"
-    end
-    return true
-end
-
-local originalReadOk, v123 = readUpvalue(v120, 1)
-if not originalReadOk or type(v123) ~= "table" then
+local v123 = debug.getupvalue(v120, 1)
+if v123 == nil then
 return v115.err("UseEmoteHook", "upvalue_scan", "EmoteController upvalue not found at index 1 of PickEmote._PickByKey")
 end
 
@@ -40064,98 +39860,32 @@ arg:_PlayResolvedEmote(v125, v124)
 return nil
 end }, { __index = v123 })
 
-local restoreRecord = {
-    PickByKeyFunc = v120,
-    SimulateInputBeganFunc = simulateInputBegan,
-    EmoteController = v123,
-    PickByKeyApplied = false,
-    SimulateInputApplied = false,
-}
-local firstApplied, firstError = writeUpvalueVerified(v120, 1, obj)
-if not firstApplied then
-    local rollbackOk, rollbackError = writeUpvalueVerified(v120, 1, v123)
-    if not rollbackOk then
-        restoreRecord.PickByKeyApplied = true
-        arg._restore = restoreRecord
-        return v115.err("UseEmoteHook", "rollback", "PickByKey install failed: "
-            .. tostring(firstError) .. "; restoring the original upvalue is still pending: " .. tostring(rollbackError))
-    end
-    return v115.err("UseEmoteHook", "setupvalue", "PickEmote._PickByKey hook failed: " .. tostring(firstError))
-end
-restoreRecord.PickByKeyApplied = true
-
-local secondApplied, secondError = writeUpvalueVerified(simulateInputBegan, 8, obj)
-if not secondApplied then
-    -- Roll back both slots: setupvalue may have changed the second slot even if
-    -- its verification read failed, so never assume a failed write was inert.
-    local secondRollbackOk, secondRollbackError = writeUpvalueVerified(
-        simulateInputBegan, 8, v123
-    )
-    local firstRollbackOk, firstRollbackError = writeUpvalueVerified(v120, 1, v123)
-    restoreRecord.SimulateInputApplied = not secondRollbackOk
-    restoreRecord.PickByKeyApplied = not firstRollbackOk
-    if not secondRollbackOk or not firstRollbackOk then
-        arg._restore = restoreRecord
-        return v115.err("UseEmoteHook", "rollback", "SimulateInputBegan hook failed: "
-            .. tostring(secondError) .. "; rollback pending (SimulateInputBegan: "
-            .. tostring(secondRollbackError) .. "; PickByKey: " .. tostring(firstRollbackError) .. ")")
-    end
-    return v115.err("UseEmoteHook", "setupvalue", "SimulateInputBegan hook failed; both hook slots were rolled back: " .. tostring(secondError))
-end
-restoreRecord.SimulateInputApplied = true
-arg._restore = restoreRecord
+debug.setupvalue(v120, v86[63], obj)
+debug.setupvalue(simulateInputBegan, 8, obj)
+arg._restore = { PickByKeyFunc = v120, SimulateInputBeganFunc = simulateInputBegan, EmoteController = v123 }
 return v115.VoidOk
 end
 
 index2._Restore = function(arg)
 local restore = arg._restore
 if restore == nil then
-return v115.VoidOk
+return
 end
-local failures = {}
-if restore.SimulateInputApplied then
-    local okRestore, detail = writeUpvalueVerified(
-        restore.SimulateInputBeganFunc, 8, restore.EmoteController
-    )
-    if okRestore then restore.SimulateInputApplied = false
-    else failures[#failures + 1] = "SimulateInputBegan: " .. tostring(detail) end
-end
-if restore.PickByKeyApplied then
-    local okRestore, detail = writeUpvalueVerified(
-        restore.PickByKeyFunc, 1, restore.EmoteController
-    )
-    if okRestore then restore.PickByKeyApplied = false
-    else failures[#failures + 1] = "PickByKey: " .. tostring(detail) end
-end
-if #failures == 0 then
-    arg._restore = nil
-    return v115.VoidOk
-end
-return v115.err("UseEmoteHook", "restore", table.concat(failures, "; "))
+arg._restore = nil
+debug.setupvalue(restore.PickByKeyFunc, 1, restore.EmoteController)
+debug.setupvalue(restore.SimulateInputBeganFunc, 8, restore.EmoteController)
 end
 
 index2.SetEnabled = function(arg, arg2)
 if arg2 then
 return arg:_Apply()
 end
-return arg:_Restore()
+arg:_Restore()
+return v115.VoidOk
 end
 
 index2.Destroy = function(arg)
-local result = arg:_Restore()
-if type(result) == "table" and rawget(result, "Ok") == false then
-    warn("[UseEmoteHook] Initial restore failed; retrying the upvalue rollback.")
-    task.spawn(function()
-        for attempt = 1, 5 do
-            task.wait(0.15)
-            local retryResult = arg:_Restore()
-            if type(retryResult) ~= "table" or rawget(retryResult, "Ok") ~= false then
-                return
-            end
-        end
-        warn("[UseEmoteHook] Upvalue restore is still pending after retries; the restore record was retained.")
-    end)
-end
+arg:_Restore()
 end
 
 return index2
@@ -67797,8 +67527,6 @@ local undergroundCachedLocalPosition = nil
 local undergroundCachedEnvironmentId = nil
 local UNDERGROUND_MIN_DEPTH = 1.25
 local UNDERGROUND_MAX_DEPTH = 12.0
--- Ragebot integration uses the configured fixed Underground studs offset.
-local UNDERGROUND_RAGEBOT_STUDS = -4
 local UNDERGROUND_SELF_BUFFER = 0.35
 local UNDERGROUND_PLAYER_SCAN_RADIUS = 80
 local UNDERGROUND_PLAYER_VERTICAL_TOLERANCE = 32
@@ -67822,12 +67550,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
--- Legacy offset-cache fields remain for lifecycle cleanup compatibility.
--- Ragebot integration now applies the requested fixed -4 studs directly.
-local undergroundRagebotOffsetY = nil
-local undergroundRagebotOffsetRoot = nil
-local undergroundRagebotOffsetUpdatedAt = 0
-local undergroundRagebotOffsetWarningAt = 0
+local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -68734,9 +68457,6 @@ stopUnderground = function(skipPositionRestore)
     undergroundCachedEnvironmentId = nil
     undergroundLastServerCFrame = nil
     undergroundLastClientCFrame = nil
-    undergroundRagebotOffsetY = nil
-    undergroundRagebotOffsetRoot = nil
-    undergroundRagebotOffsetUpdatedAt = 0
 
     if undergroundConn then
         undergroundConn:Disconnect()
@@ -68944,9 +68664,6 @@ if shouldIntegrate then
         undergroundDesync = nil
     end
     undergroundLastServerCFrame = nil
-    undergroundRagebotOffsetY = nil
-    undergroundRagebotOffsetRoot = root
-    undergroundRagebotOffsetUpdatedAt = 0
     undergroundRagebotIntegrated = true
     return true
 end
@@ -69095,9 +68812,6 @@ undergroundLastClientCFrame = handoffPose
  
 undergroundRagebotIntegrated = false
 undergroundLastServerCFrame = nil
-undergroundRagebotOffsetY = nil
-undergroundRagebotOffsetRoot = nil
-undergroundRagebotOffsetUpdatedAt = 0
 undergroundAdaptiveScanAt = 0
 undergroundAdaptiveDepthUpdatedAt = 0
 undergroundCachedFloorPart = nil
@@ -69115,42 +68829,14 @@ undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame, weap
 if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
 return cframe
 end
--- A pending restore transaction owns the RootPart pose. Do not stack an
--- Underground transform on top of its approved restore CFrame.
-if ragebotPoseRestoreGateIsActive() then
-return cframe
+if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
+undergroundLastClientCFrame = clientCFrame
 end
 
-local char = undergroundGetCharacter()
-local root = undergroundGetRoot(char)
-if char == nil or root == nil or root.Parent == nil or char ~= undergroundSnapshotCharacter then
-return cframe
-end
-
--- Keep the client pose current for a clean hand-off when Ragebot releases
--- ownership. The Ragebot-side Underground displacement itself is always the
--- requested fixed -4 studs, not a floor-derived/adaptive delta.
-local referenceClientPose = typeof(clientCFrame) == "CFrame" and clientCFrame or nil
-if referenceClientPose == nil then
-    referenceClientPose = undergroundLastClientCFrame
-end
-if referenceClientPose == nil then
-    local okRoot, liveRootPose = pcall(function() return root.CFrame end)
-    if okRoot and typeof(liveRootPose) == "CFrame" then
-        referenceClientPose = liveRootPose
-    end
-end
-if typeof(referenceClientPose) == "CFrame" then
-    local previousClientPose = undergroundLastClientCFrame
-    if typeof(previousClientPose) == "CFrame"
-        and (referenceClientPose.Position - previousClientPose.Position).Magnitude > UNDERGROUND_CLIENT_ESCAPE_DISTANCE then
-        undergroundLastServerCFrame = nil
-        undergroundAdaptiveScanAt = 0
-    end
-    undergroundLastClientCFrame = referenceClientPose
-end
-
-return cframe + Vector3.new(0, UNDERGROUND_RAGEBOT_STUDS, 0)
+local offset = Vector3.new(0, UNDERGROUND_RAGEBOT_Y_OFFSET, 0)
+local adjusted = cframe + offset
+undergroundLastServerCFrame = adjusted
+return adjusted
 end
 _G.__CrefyUndergroundController = undergroundController
 local savedUndergroundEnabled = false
@@ -73199,7 +72885,11 @@ if isKnife then
     end
     local pending = itemCooldownKey ~= nil and pendingByItem[itemCooldownKey] or nil
     if pending ~= nil then
-        -- Prime-angle drift is evaluated once below and may re-arm the wait window.
+        if arg._knifePrimeTarget == hitboxHead then
+            arg._knifePrimePitch = v121
+            arg._knifePrimeYaw = v122
+        end
+
         local observedCooldown = readMeleeAttackCooldown(arg4)
         local baselineCooldown = pending.CooldownBefore
         local sentTick = tonumber(pending.SentTick) or tick()
@@ -73236,18 +72926,9 @@ and arg._hitboxWindowTarget == hitboxHead
 
 if isKnife and arg._knifePrimeTarget == hitboxHead
 and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil then
-    local pitchDelta = math.abs(v121 - arg._knifePrimePitch)
-    local yawDelta = math.abs((v122 - arg._knifePrimeYaw + math.pi) % (2 * math.pi) - math.pi)
-    if pitchDelta > math.rad(10) or yawDelta > math.rad(10) then
-        -- Compare against the fixed prime anchor so slow cumulative rotation is detected too.
-        arg._knifePrimePitch = v121
-        arg._knifePrimeYaw = v122
-        arg._knifePrimeUntil = now2 + primeDelay
-    elseif now2 >= (tonumber(arg._knifePrimeUntil) or 0) then
-        -- After the fresh prime interval, keep the attack angle synchronized to the current target.
-        arg._knifePrimePitch = v121
-        arg._knifePrimeYaw = v122
-    end
+
+arg._knifePrimePitch = v121
+arg._knifePrimeYaw = v122
 end
 
 if isKnife and now2 < (tonumber(arg._knifeRetryNotBefore) or 0) then
@@ -76588,28 +76269,6 @@ if arg._repRootCounterRestorePending == true then
                     if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
                         releaseAcceptedNow = false
                     end
-                    local function verifyControllerOverrideCleared(controller)
-                        local verifyOk, rootDesync, serverOverride, oldOverride = pcall(function()
-                            local inner = controller and controller._rootDesync or nil
-                            if type(inner) ~= "table" then return nil, nil, nil end
-                            return inner, inner._cframe, inner._oldCFrame
-                        end)
-                        if not verifyOk or type(rootDesync) ~= "table" then
-                            return false, "RootDesync state could not be read back"
-                        end
-                        if serverOverride ~= nil or oldOverride ~= nil then
-                            return false, "RootDesync still holds a CFrame override"
-                        end
-                        return true
-                    end
-                    if releaseAcceptedNow then
-                        local verifiedRelease, verifyDetail = verifyControllerOverrideCleared(characterController)
-                        if not verifiedRelease then
-                            releaseAcceptedNow = false
-                            releaseOk = false
-                            releaseResult = verifyDetail
-                        end
-                    end
                     if not releaseAcceptedNow then
                         local originalController = arg._repRootCounterRestoreController
                         if type(originalController) == "table" and originalController ~= characterController
@@ -76622,15 +76281,9 @@ if arg._repRootCounterRestorePending == true then
                                 fallbackAccepted = false
                             end
                             if fallbackAccepted then
-                                local fallbackVerified = verifyControllerOverrideCleared(originalController)
-                                if fallbackVerified then
-                                    releaseOk, releaseResult = fallbackOk, fallbackResult
-                                    releaseAcceptedNow = true
-                                else
-                                    fallbackAccepted = false
-                                end
-                            end
-                            if not fallbackAccepted and not releaseOk then
+                                releaseOk, releaseResult = fallbackOk, fallbackResult
+                                releaseAcceptedNow = true
+                            elseif not releaseOk then
                                 releaseResult = fallbackResult
                             end
                         end
@@ -81261,54 +80914,21 @@ local v123 = arg:_ResolveStartContext()
 if v123 == nil then
 return false
 end
-local MAX_RECORDING_KEYPOINTS = 100000
-local MAX_RECORDING_POSITIONS = 250000
-local MAX_RECORDING_SECONDS = 21600
-local MAX_RECORDING_COORDINATE = 10000000
-local function finiteNumber(value)
-    return type(value) == "number" and value == value
-        and value ~= math.huge and value ~= -math.huge
+if type(arg2) ~= "table" or typeof(arg2.StartCFrame) ~= "CFrame" or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or type(arg2.Positions) ~= "table" then
+fn36("Recording data is invalid")
+return false
 end
-local function finiteVector3(value)
-    if typeof(value) ~= "Vector3" then return false end
-    return finiteNumber(value.X) and finiteNumber(value.Y) and finiteNumber(value.Z)
-        and math.abs(value.X) <= MAX_RECORDING_COORDINATE
-        and math.abs(value.Y) <= MAX_RECORDING_COORDINATE
-        and math.abs(value.Z) <= MAX_RECORDING_COORDINATE
+for _, keypoint in ipairs(arg2.Keypoints) do
+if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
+fn36("Recording data is invalid")
+return false
 end
-local function finiteCFrame(value)
-    if typeof(value) ~= "CFrame" then return false end
-    local okComponents, components = pcall(function() return { value:GetComponents() } end)
-    if not okComponents or type(components) ~= "table" or #components ~= 12 then return false end
-    for index = 1, #components do
-        if not finiteNumber(components[index]) then return false end
-    end
-    return finiteVector3(value.Position)
 end
-local function denseArrayCount(value, maximum, allowEmpty)
-    if type(value) ~= "table" then return nil end
-    local count = 0
-    for key in pairs(value) do
-        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then return nil end
-        count += 1
-        if count > maximum then return nil end
-    end
-    if count ~= #value or (not allowEmpty and count == 0) then return nil end
-    return count
+for _, sample in ipairs(arg2.Positions) do
+if type(sample) ~= "table" or type(sample.Offset) ~= "number" or typeof(sample.Position) ~= "Vector3" then
+fn36("Recording data is invalid")
+return false
 end
-if type(arg2) ~= "table"
-    or type(arg2.MapName) ~= "string" or arg2.MapName == "" or #arg2.MapName > 128
-    or not finiteCFrame(arg2.StartCFrame)
-    or type(arg2.Keypoints) ~= "table"
-    or type(arg2.Positions) ~= "table" then
-    fn36("Recording data is invalid")
-    return false
-end
-local keypointCount = denseArrayCount(arg2.Keypoints, MAX_RECORDING_KEYPOINTS, false)
-local positionCount = denseArrayCount(arg2.Positions, MAX_RECORDING_POSITIONS, false)
-if keypointCount == nil or positionCount == nil then
-    fn36("Recording data exceeds safe size limits or contains sparse arrays")
-    return false
 end
 local kind = arg._state.Kind
 
@@ -81335,63 +80955,54 @@ end
 
 local lastKeypointOffset = -math.huge
 for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or not finiteNumber(keypoint.Offset)
-    or keypoint.Offset < 0 or keypoint.Offset > MAX_RECORDING_SECONDS
-    or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
-    fn36("Recording is invalid or incomplete")
-    return false
+if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or keypoint.Offset < 0 or keypoint.Offset < lastKeypointOffset or type(keypoint.Action) ~= "table" then
+fn36("Recording is invalid or incomplete")
+return false
 end
 lastKeypointOffset = keypoint.Offset
 local action = keypoint.Action
-local actionKind = action.Kind
-if type(actionKind) ~= "string" or #actionKind > 32 then
-    fn36("Recording is invalid or incomplete")
-    return false
+local kind = action.Kind
+if kind == "Move" then
+if typeof(action.Direction) ~= "Vector3" then
+fn36("Recording is invalid or incomplete")
+return false
 end
-if actionKind == "Move" then
-    if not finiteVector3(action.Direction) then
-        fn36("Recording is invalid or incomplete")
-        return false
-    end
-elseif actionKind == "Crouch" then
-    if type(action.Crouching) ~= "boolean" then
-        fn36("Recording is invalid or incomplete")
-        return false
-    end
-elseif actionKind == "Look" then
-    if not finiteCFrame(action.CFrame) then
-        fn36("Recording is invalid or incomplete")
-        return false
-    end
-elseif actionKind == "ItemInput" then
-    if type(action.InputType) ~= "string" or action.InputType == "" or #action.InputType > 64 then
-        fn36("Recording is invalid or incomplete")
-        return false
-    end
-elseif actionKind == "QuickAttack" then
-    if type(action.AttackType) ~= "string" or action.AttackType == "" or #action.AttackType > 64 then
-        fn36("Recording is invalid or incomplete")
-        return false
-    end
-elseif actionKind == "Equip" then
-    if not finiteNumber(action.Index) or action.Index < 1 or action.Index > 255
-        or action.Index % 1 ~= 0 then
-        fn36("Recording is invalid or incomplete")
-        return false
-    end
-elseif actionKind ~= "Jump" and actionKind ~= "Slide" then
-    fn36("Recording is invalid or incomplete")
-    return false
+elseif kind == "Crouch" then
+if type(action.Crouching) ~= "boolean" then
+fn36("Recording is invalid or incomplete")
+return false
+end
+elseif kind == "Look" then
+if typeof(action.CFrame) ~= "CFrame" then
+fn36("Recording is invalid or incomplete")
+return false
+end
+elseif kind == "ItemInput" then
+if type(action.InputType) ~= "string" or action.InputType == "" then
+fn36("Recording is invalid or incomplete")
+return false
+end
+elseif kind == "QuickAttack" then
+if type(action.AttackType) ~= "string" or action.AttackType == "" then
+fn36("Recording is invalid or incomplete")
+return false
+end
+elseif kind == "Equip" then
+if type(action.Index) ~= "number" then
+fn36("Recording is invalid or incomplete")
+return false
+end
+elseif kind ~= "Jump" and kind ~= "Slide" then
+fn36("Recording is invalid or incomplete")
+return false
 end
 end
 
 local lastPositionOffset = -math.huge
 for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or not finiteNumber(sample.Offset)
-    or sample.Offset < 0 or sample.Offset > MAX_RECORDING_SECONDS
-    or sample.Offset < lastPositionOffset or not finiteVector3(sample.Position) then
-    fn36("Recording is invalid or incomplete")
-    return false
+if type(sample) ~= "table" or type(sample.Offset) ~= "number" or sample.Offset ~= sample.Offset or sample.Offset < 0 or sample.Offset < lastPositionOffset or typeof(sample.Position) ~= "Vector3" then
+fn36("Recording is invalid or incomplete")
+return false
 end
 lastPositionOffset = sample.Offset
 end
@@ -82175,8 +81786,14 @@ if K.destroyed then return end
 local _ch = _lp.Character
 local _pg0 = _lp:FindFirstChild("PlayerGui")
 local _spawnedOk = _ch ~= nil and _ch:FindFirstChildOfClass("Humanoid") ~= nil
--- PlayerGui existence is sufficient; game ScreenGuis are not a bootstrap prerequisite.
-local _uiOk = _pg0 ~= nil
+local _uiOk = false
+if _pg0 then
+local _n = 0
+for _, _c in ipairs(_pg0:GetChildren()) do
+if _c:IsA("ScreenGui") then _n = _n + 1 end
+end
+_uiOk = _n >= 2
+end
 if _spawnedOk and _uiOk then
 _clientReady = true
 break
@@ -82189,9 +81806,15 @@ local _finalCharacter = _lp.Character
 local _finalPlayerGui = _lp:FindFirstChild("PlayerGui")
 local _finalSpawnedOk = _finalCharacter ~= nil
     and _finalCharacter:FindFirstChildOfClass("Humanoid") ~= nil
-local _finalUiOk = _finalPlayerGui ~= nil
+local _finalGuiCount = 0
+if _finalPlayerGui then
+    for _, _gui in ipairs(_finalPlayerGui:GetChildren()) do
+        if _gui:IsA("ScreenGui") then _finalGuiCount = _finalGuiCount + 1 end
+    end
+end
+local _finalUiOk = _finalGuiCount >= 2
 if not _clientReady or not _finalSpawnedOk or not _finalUiOk then
-    warn("[Crefy Premium] ABORTED: client did not reach the required character/PlayerGui ready state within 45s.")
+    warn("[Crefy Premium] ABORTED: client did not reach the required character/UI ready state within 45s.")
     markCrefyQueuedRerunBootState(false)
     pcall(K.Unload)
     return
