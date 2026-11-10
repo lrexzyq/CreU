@@ -72791,12 +72791,16 @@ local function buildFreshKnifeAttackPayload()
         local fighter = arg3 ~= nil and arg3.FighterState or nil
         local characterState = fighter ~= nil and fighter.Character or nil
         local liveState = characterState ~= nil and characterState.State or nil
+        local targetPlayer = fighter ~= nil and fighter.Player or (arg3 ~= nil and arg3.Player or nil)
+        local targetModel = rootPart ~= nil and rootPart:FindFirstAncestorOfClass("Model") or nil
 
-        if arg3 == nil or fighter == nil
-            or arg3.AliveState ~= aliveState
-            or aliveState == nil
-            or not (aliveState.Alive == true or (liveState ~= nil and liveState.Alive == true))
+        if arg3 == nil or fighter == nil or fighter.IsEnemy ~= true
+            or characterState == nil or liveState == nil or liveState.Alive ~= true
+            or arg3.AliveState ~= aliveState or aliveState == nil or aliveState.Alive ~= true
             or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead
+            or (liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
+            or (liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
+            or targetModel == nil or hitboxHead:FindFirstAncestorOfClass("Model") ~= targetModel
             or not rootPart:IsA("BasePart") or rootPart.Parent == nil
             or not rootPart:IsDescendantOf(workspace)
             or not hitboxHead:IsA("BasePart") or hitboxHead.Parent == nil
@@ -72804,10 +72808,22 @@ local function buildFreshKnifeAttackPayload()
             return nil, nil
         end
 
-        local invincibleOk, isInvincible = pcall(function()
-            return fighter:IsInvincible()
-        end)
-        if invincibleOk and isInvincible == true then return nil, nil end
+        if targetPlayer ~= nil then
+            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+                or targetPlayer.Parent ~= Players then
+                return nil, nil
+            end
+            local currentCharacter = targetPlayer.Character
+            if currentCharacter == nil or not rootPart:IsDescendantOf(currentCharacter)
+                or not hitboxHead:IsDescendantOf(currentCharacter) then
+                return nil, nil
+            end
+        end
+
+        local invincibleMethod = fighter.IsInvincible
+        if type(invincibleMethod) ~= "function" then return nil, nil end
+        local invincibleOk, isInvincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or isInvincible ~= false then return nil, nil end
 
         local _, currentYaw, currentRoll = rootPart.CFrame:ToOrientation()
         if not fakePositionFiniteNumber(currentYaw) or not fakePositionFiniteNumber(currentRoll) then
@@ -72880,18 +72896,19 @@ if isKnife then
         local baselineKnown = type(baselineCooldown) == "number"
             and baselineCooldown == baselineCooldown
             and baselineCooldown ~= math.huge and baselineCooldown ~= -math.huge
-        local idleStateKnown = pending.AttackStateKnown == true
-            and pending.WasAttackingBefore == false
         local cooldownFresh = observedCooldown ~= nil and observedCooldown > sentTick + 0.005
+        -- A nil baseline means the item had no replicated attack cooldown before dispatch.
+        -- A fresh future timestamp is therefore a valid cooldown acknowledgement by itself.
         local cooldownAdvanced = cooldownFresh and (
-            (baselineKnown and observedCooldown > baselineCooldown + 0.005)
-            or (not baselineKnown and idleStateKnown)
+            not baselineKnown or observedCooldown > baselineCooldown + 0.005
         )
 
         if cooldownAdvanced then
             pendingByItem[itemCooldownKey] = nil
             local stillSameTarget = pending.Target == hitboxHead
-            arg:_RecordBackstab(pending.Target, observedCooldown, itemCooldownKey, stillSameTarget)
+            -- This confirms the game entered its melee cooldown (attack accepted), not a damage hit.
+            -- Never label it as HitConfirmed or infer it from health/damage-number visuals.
+            arg:_RecordAttackAccepted(pending.Target, observedCooldown, itemCooldownKey, stillSameTarget)
         elseif now2 >= pending.Deadline then
             pendingByItem[itemCooldownKey] = nil
             arg:_AbortBackstabAttempt(pending.Target, itemCooldownKey)
@@ -72961,8 +72978,8 @@ if isKnife then
             weaponCooldowns[itemCooldownKey] = replicatedUntil
         end
     end
-    local activeOk, isAttacking = pcall(arg4.IsAttacking, arg4)
-    if now2 < trackedUntil or (activeOk and isAttacking == true) then
+    -- Melee has no IsAttacking method; its authoritative local state is Inner._attack_cooldown.
+    if now2 < trackedUntil then
         return n, fn37(v121, v122), nil
     end
 end
@@ -72998,23 +73015,22 @@ if attackOrigin == nil or attackDirection == nil then
     return
 end
 local cooldownBefore = readMeleeAttackCooldown(arg4)
-local attackStateOk, wasAttackingBefore = pcall(arg4.IsAttacking, arg4)
-if attackStateOk and wasAttackingBefore == true then
-    local activeCooldown = readMeleeAttackCooldown(arg4)
-    if activeCooldown ~= nil and activeCooldown > tick() then
-        local activeUntil = os.clock() + (activeCooldown - tick())
-        weaponCooldowns[itemCooldownKey] = math.max(
-            tonumber(weaponCooldowns[itemCooldownKey]) or 0, activeUntil
-        )
-    end
-    arg._knifeRetryNotBefore = os.clock() + 0.04
+local dispatchTick = tick()
+if cooldownBefore ~= nil and cooldownBefore > dispatchTick + 0.005 then
+    local activeUntil = os.clock() + (cooldownBefore - dispatchTick)
+    weaponCooldowns[itemCooldownKey] = math.max(
+        tonumber(weaponCooldowns[itemCooldownKey]) or 0, activeUntil
+    )
     return
 end
+-- Record the dispatch edge before FireServer so an unusually fast replication update
+-- cannot arrive before the pending request's freshness timestamp.
+local sentAt = os.clock()
+local sentTick = tick()
 local okAttack, dispatchAccepted = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and dispatchAccepted == true then
-    local sentAt = os.clock()
     local ackTimeout = estimateMeleeAttackAckTimeout()
     local pendingByItem = arg._pendingBackstabByItem
     if type(pendingByItem) ~= "table" then
@@ -73025,11 +73041,8 @@ if okAttack and dispatchAccepted == true then
         Target = hitboxHead,
         ItemObjectId = arg4.ObjectId,
         CooldownBefore = cooldownBefore,
-        AttackStateKnown = attackStateOk and type(wasAttackingBefore) == "boolean",
-        WasAttackingBefore = attackStateOk and wasAttackingBefore == true,
         SentAt = sentAt,
-        SentTick = tick(),
-        FreshnessTolerance = math.clamp(ackTimeout * 0.35, 0.08, 0.35),
+        SentTick = sentTick,
         Deadline = sentAt + ackTimeout,
     }
 else
@@ -73061,7 +73074,7 @@ end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox, observedCooldownUntil, itemKey, openHitboxWindow)
+index2._RecordAttackAccepted = function(arg, targetHitbox, observedCooldownUntil, itemKey, openHitboxWindow)
 local now2 = os.clock()
 arg._knifeRetryNotBefore = 0
 
@@ -73131,7 +73144,7 @@ arg._knifePrimeYaw = nil
 end
 
 index2.ResetState = function(arg)
--- Reset target/PartGlue state without erasing weapon cooldown or in-flight ack state.
+-- Transient target/PartGlue reset: preserve weapon cooldown and in-flight acknowledgement.
 arg._knifeRetryNotBefore = 0
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
@@ -73147,6 +73160,19 @@ if gluedOurPart ~= nil then
     pcall(arg._partGlue.Free, arg._partGlue, gluedOurPart)
     arg._gluedOurPart = nil
 end
+end
+
+index2.HardReset = function(arg)
+-- Lifecycle reset: clear transient state AND all per-weapon cooldown/ack state.
+arg:ResetState()
+local cooldowns = rawget(arg, "_weaponCooldownUntilByItem")
+if type(cooldowns) == "table" then table.clear(cooldowns) end
+local pending = rawget(arg, "_pendingBackstabByItem")
+if type(pending) == "table" then table.clear(pending) end
+arg._pendingBackstab = nil
+arg._attackCooldown = -1
+arg._attackCooldownTarget = nil
+arg._knifeRetryNotBefore = 0
 end
 
 return index2
@@ -76232,35 +76258,55 @@ if arg._repRootCounterRestorePending == true then
             local retryReleaseAt = tonumber(arg._repRootRestoreReleaseRetryAt) or 0
             local releaseOk, releaseResult = false, nil
             if nowRestore >= retryReleaseAt then
-                releaseOk, releaseResult = pcall(
-                    characterController.SetServerCFrame, characterController, nil
-                )
-                local releaseAcceptedNow = releaseOk and releaseResult ~= false
-                if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
-                    releaseAcceptedNow = false
-                end
-                if not releaseAcceptedNow then
-                    local originalController = arg._repRootCounterRestoreController
-                    if type(originalController) == "table" and originalController ~= characterController
-                        and type(originalController.SetServerCFrame) == "function" then
-                        local fallbackOk, fallbackResult = pcall(
-                            originalController.SetServerCFrame, originalController, nil
-                        )
-                        local fallbackAccepted = fallbackOk and fallbackResult ~= false
-                        if type(fallbackResult) == "table" and rawget(fallbackResult, "Ok") == false then
-                            fallbackAccepted = false
-                        end
-                        if fallbackAccepted then
-                            releaseOk, releaseResult = fallbackOk, fallbackResult
-                            releaseAcceptedNow = true
-                        elseif not releaseOk then
-                            releaseResult = fallbackResult
+                -- First remove only this owner's pose gate. Otherwise SetServerCFrame(nil)
+                -- can be intercepted and re-write the approved restore pose instead of clearing it.
+                local gateReleased = ragebotPoseRestoreGateSet(arg, false, 0, nil)
+                if gateReleased then
+                    releaseOk, releaseResult = pcall(
+                        characterController.SetServerCFrame, characterController, nil
+                    )
+                    local releaseAcceptedNow = releaseOk and releaseResult ~= false
+                    if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
+                        releaseAcceptedNow = false
+                    end
+                    if not releaseAcceptedNow then
+                        local originalController = arg._repRootCounterRestoreController
+                        if type(originalController) == "table" and originalController ~= characterController
+                            and type(originalController.SetServerCFrame) == "function" then
+                            local fallbackOk, fallbackResult = pcall(
+                                originalController.SetServerCFrame, originalController, nil
+                            )
+                            local fallbackAccepted = fallbackOk and fallbackResult ~= false
+                            if type(fallbackResult) == "table" and rawget(fallbackResult, "Ok") == false then
+                                fallbackAccepted = false
+                            end
+                            if fallbackAccepted then
+                                releaseOk, releaseResult = fallbackOk, fallbackResult
+                                releaseAcceptedNow = true
+                            elseif not releaseOk then
+                                releaseResult = fallbackResult
+                            end
                         end
                     end
-                end
-                if releaseAcceptedNow then
-                    arg._repRootRestoreReleaseRetryAt = nil
+                    if releaseAcceptedNow then
+                        arg._repRootRestoreReleaseRetryAt = nil
+                    else
+                        -- Restore the safety gate if controller release did not actually succeed.
+                        local gateRestored = ragebotPoseRestoreGateSet(
+                            arg, true, nil, restoreCFrame, rootPart
+                        )
+                        if gateRestored then
+                            pcall(ragebotPoseRestoreGateZeroMotion, rootPart, arg)
+                        else
+                            releaseResult = tostring(releaseResult or "controller release failed")
+                                .. "; pose safety gate could not be re-established"
+                        end
+                    end
                 else
+                    releaseResult = "pose restore gate is owned by another active controller"
+                end
+                if not (releaseOk and releaseResult ~= false
+                    and not (type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false)) then
                     local retryDelay = math.clamp(0.12 + ping * 0.20, 0.12, 0.35)
                     arg._repRootRestoreReleaseRetryAt = nowRestore + retryDelay
                 end
@@ -76782,19 +76828,43 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     local fighter = target ~= nil and target.FighterState or nil
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, validPart = pcall(function()
-        if anglePart == nil or not anglePart:IsA("BasePart")
+        if fighter == nil or fighter.IsEnemy ~= true or aliveState == nil
+            or anglePart == nil or not anglePart:IsA("BasePart")
             or anglePart.Parent == nil or not anglePart:IsDescendantOf(workspace) then
             return false
         end
-        if aliveState == nil then return false end
-        local fighterCharacter = fighter ~= nil and fighter.Character or nil
+        local fighterCharacter = fighter.Character
         local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
-        local alive = aliveState.Alive == true or (fighterState ~= nil and fighterState.Alive == true)
-        if not alive then return false end
-        local invincibleOk, isInvincible = pcall(function()
-            return fighter ~= nil and fighter:IsInvincible() or false
-        end)
-        if invincibleOk and isInvincible == true then return false end
+        if fighterState == nil or fighterState.Alive ~= true or aliveState.Alive ~= true then
+            return false
+        end
+        if fighterState.RootPart ~= nil and fighterState.RootPart ~= anglePart then
+            return false
+        end
+        local targetHitbox = aliveState.HitboxHead
+        local targetModel = anglePart:FindFirstAncestorOfClass("Model")
+        if targetHitbox == nil or not targetHitbox:IsA("BasePart")
+            or not targetHitbox:IsDescendantOf(workspace)
+            or targetModel == nil or targetHitbox:FindFirstAncestorOfClass("Model") ~= targetModel
+            or (fighterState.HitboxHead ~= nil and fighterState.HitboxHead ~= targetHitbox) then
+            return false
+        end
+        local targetPlayer = fighter.Player or target.Player
+        if targetPlayer ~= nil then
+            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+                or targetPlayer.Parent ~= Players then
+                return false
+            end
+            local currentCharacter = targetPlayer.Character
+            if currentCharacter == nil or not anglePart:IsDescendantOf(currentCharacter)
+                or not targetHitbox:IsDescendantOf(currentCharacter) then
+                return false
+            end
+        end
+        local invincibleMethod = fighter.IsInvincible
+        if type(invincibleMethod) ~= "function" then return false end
+        local invincibleOk, isInvincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or isInvincible ~= false then return false end
         return true
     end)
     if not okPart or not validPart then return nil end
@@ -76977,6 +77047,10 @@ if useAlwaysBackstabKnifeRotation then
     local backstabViewAngles = ragebotBuildBackstabKnifeViewAngles(arg4, arg)
     if backstabViewAngles ~= nil then
         v132 = backstabViewAngles
+    else
+        -- Never dispatch with a stale/previous target's camera direction.
+        v132 = nil
+        v133 = nil
     end
 end
 
@@ -78385,7 +78459,7 @@ if not sameReset then
     ragebotSafeInvokeMethod(arg, "_ApplyForcedCrouch", false)
     local meleeStrategy = rawget(arg, "_meleeStrategy")
     if type(meleeStrategy) == "table" then
-        local reset = meleeStrategy.ResetState
+        local reset = meleeStrategy.HardReset or meleeStrategy.ResetState
         if type(reset) == "function" then pcall(reset, meleeStrategy) end
     end
     local hitscanStrategy = rawget(arg, "_hitscanStrategy")
