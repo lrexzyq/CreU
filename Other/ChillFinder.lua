@@ -1,6 +1,6 @@
 --deobfuscated by 2zvh
 
-return function()
+(function()
     local n = {};
     pcall(makefolder, "ChilliLibrary");
     local r, E, G = 43, 0, 0;
@@ -23406,8 +23406,15 @@ return function()
                         B7();
                     end;
                     if (not (Ci.ok)) then
-                        -- patched: login fail ignored, keep who/sess alive
-                        return;
+                        -- patched: login fail - silently ignore, don't kill who/sess
+                        Ci.ok = true;
+                        Ci.username = (Ui.who or "patched");
+                        Ci.active = true;
+                        Ci.token = (Ui.sess and Ui.sess.token) or "patched";
+                        Ci.secret = (Ui.sess and Ui.sess.secret) or "patched";
+                        Ci.plan = (Ui.sess and Ui.sess.plan) or "patched";
+                        Ci.delayMs = 0;
+                        Ci.endTs = math.huge;
                     end;
                     Ui.who = Ci.username;
                     if (not (Ci.active)) then
@@ -25278,10 +25285,7 @@ return function()
                         else
                             Di();
                         end;
-                    elseif false then -- patched: booking-ended and relogin removed
-                        do end;
-                    elseif false then
-                    elseif y_ then
+                    elseif y_ then -- patched: booking-ended and relogin removed
                         P = ((E + 2.5) + math.random());
                         local B = G((ci .. "eggtop.js"), li);
                         if (B and (type(B.eggs) == "table")) then
@@ -26223,4 +26227,4 @@ return function()
     pcall(writefile, "ChilliLibrary/SAE_LoadPart.txt", "done");
     pcall(getgenv().ChilliHubLoadStep, 10);
     -- patched: DiscordLink external loader removed
-end;
+end)()
