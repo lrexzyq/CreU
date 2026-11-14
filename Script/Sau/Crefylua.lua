@@ -971,12 +971,20 @@ local function ragebotReadPhysicsRepRootLink(part)
         if type(hiddenGetter) == "function" then
             readOk, value = pcall(hiddenGetter, part, propertyName)
         end
-        if not readOk and cachedProperties ~= nil then
-            value = rawget(cachedProperties, propertyName)
-            readOk = value ~= nil
+        if (not readOk or value == nil) and cachedProperties ~= nil then
+            local cachedValue = rawget(cachedProperties, propertyName)
+            if cachedValue ~= nil then
+                value = cachedValue
+                readOk = true
+            end
         end
-        if not readOk then
-            readOk, value = pcall(function() return part[propertyName] end)
+        if not readOk or value == nil then
+            local directOk, directValue = pcall(function() return part[propertyName] end)
+            if directOk and directValue ~= nil then
+                readOk, value = true, directValue
+            elseif not readOk then
+                readOk, value = directOk, directValue
+            end
         end
         if readOk and typeof(value) == "Instance" then
             if value:IsA("ObjectValue") then
@@ -19149,6 +19157,8 @@ local CREFY_LANGUAGE_TRANSLATIONS = {
     ["Weighted Random"] = "Ngẫu nhiên theo trọng số",
     ["Prioritize Hackers"] = "Tấn công mấy thằng hack trước",
     ["Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work."] = "Ragebot sẽ nhắm và tấn công những người bị Hacker Detector phát hiện dùng hack trước. Nhớ bật Hacker Detector thì mục này mới hoạt động.",
+    ["Detector"] = "Detector",
+    ["Detects abnormal target Reproot behavior. When disabled, Ragebot ignores detector-based countering and keeps normal targeting."] = "Phát hiện Reproot bất thường của mục tiêu. Khi tắt, Ragebot bỏ qua cơ chế phản ứng của detector và vẫn nhắm mục tiêu bình thường.",
     ["Enable Ragebot"] = "Bật Ragebot",
     ["Primary Enabled"] = "Bật vũ khí chính",
     ["Secondary Enabled"] = "Bật vũ khí phụ",
@@ -22783,7 +22793,7 @@ return bd.c
 end
 end
 do
-local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
+local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,Detector={Enabled=true},AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
 local be = tbl17.cache.be
@@ -45954,15 +45964,17 @@ end
 
 if v116 == "Skin" then
 local itemName = v102(v115, "ItemName")
-local skins = tbl18.Skins
-local tbl19 = skins[itemName]
+if type(itemName) == "string" and itemName ~= "" then
+    local skins = tbl18.Skins
+    local tbl19 = skins[itemName]
 
-if tbl19 == nil then
-tbl19 = {}
-skins[itemName] = tbl19
+    if tbl19 == nil then
+        tbl19 = {}
+        skins[itemName] = tbl19
+    end
+
+    table.insert(tbl19, k)
 end
-
-table.insert(tbl19, k)
 elseif v116 == "Charm" then
 table.insert(tbl18.Charms, k)
 elseif v116 == "Wrap" then
@@ -46008,7 +46020,8 @@ local tbl19 = {}
 local function fn36(arg)
 if type(arg) ~= "string" or arg == "" then return end
 local v118 = v116.str(arg)
-if type(v118) ~= "string" or v118 == "" then return end
+if type(v118) ~= "number" or v118 ~= v118
+    or v118 == math.huge or v118 == -math.huge then return end
 tbl18[v118] = arg
 tbl19[arg] = v118
 end
@@ -66728,7 +66741,7 @@ return ie.c
 end
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddToggle({Label="Detector",Tooltip="Detects abnormal target Reproot behavior. When disabled, Ragebot ignores detector-based countering and keeps normal targeting.",Config={"Ragebot","Detector","Enabled"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
     if enabled == false then
@@ -67646,6 +67659,7 @@ local UNDERGROUND_UP_SURFACE_MAX_GAP = 96
 local undergroundRaycastParams = RaycastParams.new()
 undergroundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 undergroundRaycastParams.IgnoreWater = true
+pcall(function() undergroundRaycastParams.RespectCanCollide = true end)
 local undergroundDesync = nil
 local undergroundConn = nil
 local undergroundDeathConn = nil
@@ -67655,7 +67669,6 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
-local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -67966,8 +67979,8 @@ local function undergroundSameEnvironment(localPlayer, localChar, localFloorPart
     end
     local localEnv = undergroundReadEnvironmentId(localPlayer, localChar)
     local otherEnv = undergroundReadEnvironmentId(otherPlayer, otherChar)
-    if localEnv ~= nil and otherEnv ~= nil then
-        return localEnv == otherEnv
+    if localEnv ~= nil or otherEnv ~= nil then
+        return localEnv ~= nil and otherEnv ~= nil and localEnv == otherEnv
     end
     local localFloorEnv = undergroundEnvironmentKey(localFloorPart)
     local otherFloorEnv = undergroundEnvironmentKey(otherFloorPart)
@@ -67975,63 +67988,6 @@ local function undergroundSameEnvironment(localPlayer, localChar, localFloorPart
         return localFloorEnv == otherFloorEnv
     end
     return localFloorPart == otherFloorPart
-end
-
-local function undergroundRaycastIgnoringHumanoidModels(origin, direction, params)
-    local baseFilter = params.FilterDescendantsInstances
-    local filter = {}
-    if type(baseFilter) == "table" then
-        for _, instance in ipairs(baseFilter) do filter[#filter + 1] = instance end
-    end
-    for _ = 1, 32 do
-        params.FilterDescendantsInstances = filter
-        local raycastOk, result = pcall(function()
-            return Workspace:Raycast(origin, direction, params)
-        end)
-        if not raycastOk then return nil end
-        if result == nil then return nil end
-        local current = result.Instance
-        local humanoidModel = nil
-        while current ~= nil and current ~= Workspace do
-            if current:IsA("Model") then
-                local hasCharacterController = false
-                local okController, controller = pcall(function()
-                    return current:FindFirstChildWhichIsA("Humanoid", true)
-                        or current:FindFirstChildWhichIsA("AnimationController", true)
-                end)
-                if okController and controller ~= nil then hasCharacterController = true end
-                if not hasCharacterController then
-                    local okRootSignature, rootSignature = pcall(function()
-                        return current:FindFirstChild("HumanoidRootPart", true)
-                            or current:FindFirstChild("RootPart", true)
-                    end)
-                    local okHeadSignature, headSignature = pcall(function()
-                        return current:FindFirstChild("Head", true)
-                    end)
-                    if okRootSignature and rootSignature ~= nil and okHeadSignature and headSignature ~= nil then
-                        hasCharacterController = true
-                    end
-                end
-                if hasCharacterController then
-                    humanoidModel = current
-                    break
-                end
-            end
-            current = current.Parent
-        end
-        if humanoidModel == nil then return result end
-        local alreadyExcluded = false
-        for _, excluded in ipairs(filter) do
-            if excluded == humanoidModel then
-                alreadyExcluded = true
-                break
-            end
-        end
-        if alreadyExcluded then return nil end
-        filter[#filter + 1] = humanoidModel
-    end
-     
-    return nil
 end
 
 local function undergroundProbeSurface(char, root)
@@ -68089,13 +68045,63 @@ local function undergroundProbeSurface(char, root)
             raycastFilter[#raycastFilter + 1] = playerCharacter
         end
     end
-    params.FilterDescendantsInstances = raycastFilter
+    local function isCharacterModel(model)
+        if model == nil or not model:IsA("Model") then
+            return false
+        end
+        local hasHumanoid = model:FindFirstChildWhichIsA("Humanoid", true) ~= nil
+        local hasAnimatorController = model:FindFirstChildWhichIsA("AnimationController", true) ~= nil
+        local hasRoot = model:FindFirstChild("RootPart", true) ~= nil
+            or model:FindFirstChild("HumanoidRootPart", true) ~= nil
+        local hasRootAndHead = hasRoot and model:FindFirstChild("Head", true) ~= nil
+        return hasHumanoid or hasAnimatorController or hasRootAndHead
+    end
 
-    local down = undergroundRaycastIgnoringHumanoidModels(
-        pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0), params
+    local function findCharacterModel(instance)
+        local current = instance
+        while current ~= nil and current ~= Workspace do
+            if current:IsA("Model") and isCharacterModel(current) then
+                return current
+            end
+            current = current.Parent
+        end
+        return nil
+    end
+
+    local function raycastIgnoringCharacters(origin, direction)
+        local excluded = table.clone(raycastFilter)
+        local excludedSet = {}
+        for _, instance in ipairs(excluded) do
+            excludedSet[instance] = true
+        end
+        params.FilterDescendantsInstances = excluded
+        for _ = 1, 32 do
+            local okRaycast, hit = pcall(Workspace.Raycast, Workspace, origin, direction, params)
+            if not okRaycast then
+                return nil
+            end
+            if hit == nil then
+                return nil
+            end
+            local characterModel = findCharacterModel(hit.Instance)
+            if characterModel == nil then
+                return hit
+            end
+            if excludedSet[characterModel] then
+                return nil
+            end
+            excludedSet[characterModel] = true
+            excluded[#excluded + 1] = characterModel
+            params.FilterDescendantsInstances = excluded
+        end
+        return nil
+    end
+
+    local down = raycastIgnoringCharacters(
+        pos + Vector3.new(0, 4, 0), Vector3.new(0, -128, 0)
     )
-    local up = undergroundRaycastIgnoringHumanoidModels(
-        pos + Vector3.new(0, -0.15, 0), Vector3.new(0, 96, 0), params
+    local up = raycastIgnoringCharacters(
+        pos + Vector3.new(0, -0.15, 0), Vector3.new(0, 96, 0)
     )
 
     local downGap = math.huge
@@ -68107,12 +68113,35 @@ local function undergroundProbeSurface(char, root)
         upGap = up.Position.Y - maxY
     end
 
-    local downValid = down ~= nil
-        and down.Position ~= nil
+    local function isUsableSurfaceHit(hit, expectedNormalY)
+        if hit == nil or hit.Position == nil or hit.Normal == nil then
+            return false
+        end
+        local normalY = hit.Normal.Y
+        if type(normalY) ~= 'number' or normalY ~= normalY then
+            return false
+        end
+        if expectedNormalY == 'up' and normalY < 0.35 then
+            return false
+        end
+        if expectedNormalY == 'down' and normalY > -0.35 then
+            return false
+        end
+        local part = hit.Instance
+        if part == Workspace.Terrain then
+            return true
+        end
+        local okSurface, isCollidable = pcall(function()
+            return part:IsA('BasePart') and part.CanCollide == true
+                and part:IsDescendantOf(Workspace)
+        end)
+        return okSurface and isCollidable == true
+    end
+
+    local downValid = isUsableSurfaceHit(down, 'up')
         and downGap >= -1
         and downGap <= UNDERGROUND_DOWN_FLOOR_MAX_GAP
-    local upValid = up ~= nil
-        and up.Position ~= nil
+    local upValid = isUsableSurfaceHit(up, 'down')
         and upGap >= UNDERGROUND_UP_SURFACE_MIN_GAP
         and upGap <= UNDERGROUND_UP_SURFACE_MAX_GAP
 
@@ -68930,16 +68959,20 @@ if freshServerPose ~= nil then
 end
 return true
 end
+local RAGEBOT_NORMAL_SERVER_OFFSET = Vector3.new(0, -0.02, 0)
+local UNDERGROUND_RAGEBOT_SERVER_OFFSET = Vector3.new(0, -3.8, 0)
 undergroundController.ApplyToRagebotCFrame = function(cframe, clientCFrame, weaponKind)
-if not undergroundEnabled or not undergroundRagebotIntegrated or typeof(cframe) ~= "CFrame" then
+if typeof(cframe) ~= "CFrame" then
 return cframe
+end
+if not undergroundEnabled or not undergroundRagebotIntegrated then
+return cframe + RAGEBOT_NORMAL_SERVER_OFFSET
 end
 if typeof(clientCFrame) == "CFrame" and not ragebotPoseRestoreGateIsActive() then
 undergroundLastClientCFrame = clientCFrame
 end
 
-local offset = Vector3.new(0, UNDERGROUND_RAGEBOT_Y_OFFSET, 0)
-local adjusted = cframe + offset
+local adjusted = cframe + UNDERGROUND_RAGEBOT_SERVER_OFFSET
 undergroundLastServerCFrame = adjusted
 return adjusted
 end
@@ -75931,9 +75964,32 @@ warn("[Ragebot] No weapon action selected; continuing evasion movement and retry
 end
 end
 
+local repRootDetectorEnabled = true
+pcall(function()
+    local detectorConfig = v115.Data.Ragebot.Detector
+    if type(detectorConfig) == "table" and detectorConfig.Enabled == false then
+        repRootDetectorEnabled = false
+    end
+end)
+if not repRootDetectorEnabled and arg._repRootCounterRestorePending ~= true then
+    local activeGate = ragebotPoseRestoreGateRead()
+    if type(activeGate) == "table" and rawget(activeGate, "owner") == arg then
+        ragebotPoseRestoreGateSet(arg, false, 0, nil)
+    end
+    arg._repRootCounterTarget = nil
+    arg._repRootCounterKind = nil
+    arg._repRootCounterUntil = 0
+    arg._repRootCounterActionAt = nil
+    arg._repRootCounterHoldCFrame = nil
+    arg._repRootCounterHoldRootPart = nil
+    arg._repRootCounterRestoreVerifiedAt = nil
+    arg._repRootCounterStationaryUntil = 0
+    arg._repRootTranslocateBlockUntil = 0
+end
+
 local repRootCounterActive = false
 local repRootCounterTarget = nil
-if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") then
+if repRootDetectorEnabled and (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") then
     local nowForRepRoot = os.clock()
     local storedCounterTarget = arg._repRootCounterTarget
     local counterUntil = tonumber(arg._repRootCounterUntil) or 0
@@ -76013,6 +76069,11 @@ if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") th
                 if knifeCounterResponse then
                     detectedKind = "knife-cooldown-predict"
                 end
+                local previousCounterTarget = arg._repRootCounterTarget
+                local previousCounterUntil = tonumber(arg._repRootCounterUntil) or 0
+                local wasSameCounterActive = previousCounterTarget == detectedTarget
+                    and fakePositionFiniteNumber(previousCounterUntil)
+                    and previousCounterUntil > nowForRepRoot + 0.02
                 arg._repRootCounterTarget = detectedTarget
                 arg._repRootCounterKind = detectedKind
 
@@ -76036,11 +76097,7 @@ if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") th
                 arg._repRootCounterActionAt = nil
 
                 if knifeCounterResponse then
-                    -- Fix: stationaryUntil phải được SET (không = 0) để knife counter fire.
-                    -- Chỉ set khi là detection mới với target này.
-                    local wasKnifeActive = type(arg._repRootCounterTarget) == "table"
-                        and arg._repRootCounterTarget == detectedTarget
-                        and (tonumber(arg._repRootCounterUntil) or 0) > nowForRepRoot + 0.02
+                    local wasKnifeActive = wasSameCounterActive
                     if detectedKind == "knife-cooldown-predict" or not wasKnifeActive then
                         arg._repRootCounterStationaryUntil = nowForRepRoot + 0.08
                     end
@@ -76059,9 +76116,7 @@ if (mode == "Translocate" or mode == "Random" or mode == "ProjectileBreaker") th
                     arg._repRootRestoreRetryAt = nil
                 else
                     -- rep-root-contact path: set stationaryUntil cho backstab
-                    local wasRepRootActive = type(arg._repRootCounterTarget) == "table"
-                        and arg._repRootCounterTarget == detectedTarget
-                        and (tonumber(arg._repRootCounterUntil) or 0) > nowForRepRoot + 0.02
+                    local wasRepRootActive = wasSameCounterActive
                     if not wasRepRootActive then
                         arg._repRootCounterStationaryUntil = nowForRepRoot + 0.08
                     end
@@ -76307,7 +76362,11 @@ if arg._repRootCounterRestorePending == true then
         arg._repRootCounterRestoreDeadline = nil
         local responseUntil = nowRestore + 0.75
         local restoringKnifeResponse = arg._repRootCounterKind == "knife-cooldown-predict"
-        if not restoringKnifeResponse then
+        if not repRootDetectorEnabled then
+            ragebotPoseRestoreGateSet(arg, false, 0, nil)
+            arg._repRootTranslocateBlockUntil = 0
+            arg._repRootCounterStationaryUntil = 0
+        elseif not restoringKnifeResponse then
             ragebotPoseRestoreGateSet(arg, true, responseUntil, arg._repRootCounterHoldCFrame or restoreCFrame, rootPart)
             local priorBlockUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
             if not fakePositionFiniteNumber(priorBlockUntil) then priorBlockUntil = 0 end
@@ -76318,7 +76377,7 @@ if arg._repRootCounterRestorePending == true then
         end
         local priorCounterUntil = tonumber(arg._repRootCounterUntil) or 0
         if not fakePositionFiniteNumber(priorCounterUntil) then priorCounterUntil = 0 end
-        if arg._repRootCounterTarget ~= nil then
+        if repRootDetectorEnabled and arg._repRootCounterTarget ~= nil then
             local targetToResume = arg._repRootCounterTarget
             local okCounterTarget, validCounterTarget = pcall(
                 ragebotResolveRepRootTarget, arg, targetToResume
@@ -76340,9 +76399,18 @@ if arg._repRootCounterRestorePending == true then
                 arg._repRootCounterKind = nil
                 arg._repRootCounterUntil = 0
                 arg._repRootCounterActionAt = nil
+                arg._repRootCounterStationaryUntil = 0
                 repRootCounterActive = false
                 repRootCounterTarget = nil
             end
+        else
+            arg._repRootCounterTarget = nil
+            arg._repRootCounterKind = nil
+            arg._repRootCounterUntil = 0
+            arg._repRootCounterActionAt = nil
+            arg._repRootCounterStationaryUntil = 0
+            repRootCounterActive = false
+            repRootCounterTarget = nil
         end
     elseif nowRestore < deadlineRestore then
         if not okSetRestore and nowRestore >= (arg._nextRepRootRestoreWarningAt or 0) then
@@ -76576,7 +76644,6 @@ end
 local knifeCounterKeepsMovement = repRootCounterActive
     and arg._repRootCounterKind == "knife-cooldown-predict"
 
--- Fix: reload không block Translocate. Character tiếp tục né dù đang reload.
 if okAction and mode == "Translocate"
     and (v130 == nil or v130.Type ~= "Reload")
     and (not repRootCounterActive or knifeCounterKeepsMovement)
