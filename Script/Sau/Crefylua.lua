@@ -103,15 +103,8 @@ if getgenv().KiciaRebuild and getgenv().KiciaRebuild.Unload then
     pcall(getgenv().KiciaRebuild.Unload)
 end
 do
-    local cleanup = rawget(_G, "__CrefyUDCleanup") or rawget(_G, "__CrefyUndergroundCleanup")
-    if type(cleanup) == "function" then
-        pcall(cleanup)
-    else
-        local previous = rawget(_G, "__CrefyUDController") or rawget(_G, "__CrefyUndergroundController")
-        if type(previous) == "table" and type(previous.Stop) == "function" then
-            pcall(previous.Stop, true)
-        end
-    end
+    local cleanup = rawget(_G, "__LuaHookUndergroundStandaloneCleanup")
+    if type(cleanup) == "function" then pcall(cleanup) end
 end
 if not game:IsLoaded() then game.Loaded:Wait() end
 print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId))
@@ -20534,7 +20527,7 @@ local function getEnvironmentValue(root, key)
 end
 
 local function resolveReloadSource()
-    return "https://raw.githubusercontent.com/lrexzyq/CreU/refs/heads/main/Script/Sau/Crefylua.lua"
+    return "https://raw.githubusercontent.com/lrexzyq/CreU/refs/heads/main/Script/Crefylua.lua"
 end
 
 local function makeQueuedLoader(sourceUrl, generation)
@@ -31621,7 +31614,7 @@ end
 
 index2.HeavyAttack = function(arg, arg2, arg3, arg4)
 local v120, v121 = v119(arg2, arg4)
-arg:HeavyAttackEncoded(v115.encode(arg2), v115.encode(arg3), v120, v121)
+return arg:HeavyAttackEncoded(v115.encode(arg2), v115.encode(arg3), v120, v121)
 end
 
 index2.HeavyAttackEncoded = function(arg, arg2, arg3, arg4, arg5)
@@ -31630,7 +31623,9 @@ local tbl18 = {
 ["\2"] = v116.encode("HeavyAttackAnimation1") or v116.encode("HeavyAttack1"),
 }
 
-fireServer(useItemRemote, arg.ObjectId, v116.encode("StartAiming"), tbl18, nil)
+local sendResult = fireServer(useItemRemote, arg.ObjectId, v116.encode("StartAiming"), tbl18, nil)
+-- FireServer has no server-acceptance return value. This only acknowledges local dispatch.
+return sendResult ~= false
 end
 
 return index2
@@ -39458,13 +39453,28 @@ arg._typeByName = {}
 arg._namesByType = { Skin = {}, Wrap = {}, Charm = {}, Finisher = {}, Emote = {} }
 arg._nameSetByType = { Skin = {}, Wrap = {}, Charm = {}, Finisher = {}, Emote = {} }
 
-for k, v119 in v102(cosmeticLibrary, "Cosmetics"), nil, nil do
-local v120 = v102(v119, "Type")
+local cosmeticEntries = v102(cosmeticLibrary, "Cosmetics")
+if type(cosmeticEntries) ~= "table" then
+    arg.Built:Fire()
+    return
+end
+if type(arg._typeSet) ~= "table" then arg._typeSet = {} end
+if type(arg._raritySet) ~= "table" then arg._raritySet = {} end
 
-if arg._typeSet[v120] then
-if arg._raritySet[v102(v119, "Rarity")] then
+for k, v119 in next, cosmeticEntries do
+if type(k) ~= "string" or k == "" or type(v119) ~= "table" then
+    continue
+end
+local v120 = v102(v119, "Type")
+local rarity = v102(v119, "Rarity")
+
+if type(v120) == "string" and arg._typeSet[v120] == true
+    and arg._raritySet[rarity] == true then
 if v120 == "Skin" then
 local itemName = v102(v119, "ItemName")
+if type(itemName) ~= "string" or itemName == "" then
+    continue
+end
 
 if arg._namesByType.Skin[itemName] == nil then
 arg._namesByType.Skin[itemName] = {}
@@ -39496,7 +39506,6 @@ arg._inventory[k] = v118
 elseif v120 == "Emote" then
 arg._typeByName[k] = v120
 arg._inventory[k] = true
-end
 end
 end
 end
@@ -39550,18 +39559,27 @@ return v119 == nil or #v119 == 0
 end
 
 index2.IsInCatalog = function(arg, arg2)
+if type(arg2) ~= "table" or type(arg2.CosmeticName) ~= "string"
+    or type(arg2.CosmeticType) ~= "string" then
+    return false
+end
 if arg2.CosmeticName:match("^" .. noneCosmetic) or arg2.CosmeticName == randomCosmetic then
 return true
 end
 
 if arg2.CosmeticType == "Skin" then
-local v119 = arg._nameSetByType.Skin[arg2.ItemName]
-return v119 ~= nil and v119[arg2.CosmeticName] == true
+if type(arg2.ItemName) ~= "string" then return false end
+local skinNames = type(arg._nameSetByType) == "table"
+    and type(arg._nameSetByType.Skin) == "table" and arg._nameSetByType.Skin[arg2.ItemName] or nil
+return type(skinNames) == "table" and skinNames[arg2.CosmeticName] == true
 end
-return arg._nameSetByType[arg2.CosmeticType][arg2.CosmeticName] == true
+local namesByType = type(arg._nameSetByType) == "table"
+    and arg._nameSetByType[arg2.CosmeticType] or nil
+return type(namesByType) == "table" and namesByType[arg2.CosmeticName] == true
 end
 
 index2.IsCosmeticInCatalog = function(arg, arg2, arg3)
+if type(arg2) ~= "string" or type(arg3) ~= "string" then return false end
 if arg3:match("^" .. noneCosmetic) then
 return true
 end
@@ -42279,11 +42297,11 @@ if cosmetics == nil then
 return
 end
 local v117 = cosmetics[arg2]
-if v117 == nil then
+if type(v117) ~= "table" then
 return
 end
 local wrapGroups = v102(v117, "WrapGroups")
-if wrapGroups == nil then
+if type(wrapGroups) ~= "table" then
 return
 end
 
@@ -42298,7 +42316,11 @@ wrapGroup = v86[63]
 end
 end
 
-local tbl19 = wrapGroups[wrapGroup] or {}
+if type(wrapGroup) ~= "number" then
+    continue
+end
+local tbl19 = wrapGroups[wrapGroup]
+if type(tbl19) ~= "table" then tbl19 = {} end
 local ignoreTransparency = v118.IgnoreTransparency
 local ignoreMaterial = v118.IgnoreMaterial
 
@@ -43572,13 +43594,82 @@ return
 end
 v103(arg2, "Info", arg4)
 setmetatable(arg2, v125)
-local v126 = debug.getstack(2, v86[63])
-
-if type(v126) ~= "table" then
-v126 = debug.getstack(v86[56], 2)
+local function cosmeticDebugDescribe(value)
+    local valueType = type(value)
+    local ok, rendered = pcall(tostring, value)
+    if not ok then rendered = "<tostring failed>" end
+    if #rendered > 180 then rendered = string.sub(rendered, 1, 180) .. "..." end
+    return valueType .. "=" .. rendered
 end
 
-local viewModel = v102(v126[1], "ViewModel")
+local viewModel = nil
+local viewModelSource = nil
+local diagnostic = {
+    "[Crefy Cosmetic ViewModelHook DEBUG v2]",
+    "The previous stack lookup selected a numeric local instead of the ViewModel owner.",
+    "arg2: " .. cosmeticDebugDescribe(arg2),
+    "arg2.Name: " .. cosmeticDebugDescribe(v102(arg2, "Name")),
+    "arg2.ClientFighter: " .. cosmeticDebugDescribe(v102(arg2, "ClientFighter")),
+}
+
+local function describeTableKeys(value)
+    local keys = {}
+    local count = 0
+    for key, item in next, value do
+        count += 1
+        if #keys < 24 then
+            keys[#keys + 1] = tostring(key) .. "(" .. type(item) .. ")"
+        end
+    end
+    return "keys=" .. table.concat(keys, ", ") .. (count > #keys and ", ..." or "")
+end
+
+for level = 1, 12 do
+    for slot = 1, 12 do
+        local ok, value = pcall(debug.getstack, level, slot)
+        if ok and type(value) == "table" then
+            local directViewModel = rawget(value, "ViewModel")
+            local encodedDataKey = v116.encode("Data")
+            if type(directViewModel) == "table" and type(rawget(directViewModel, encodedDataKey)) == "table" then
+                viewModel = directViewModel
+                viewModelSource = string.format("stack[%d][%d]", level, slot)
+                break
+            end
+            diagnostic[#diagnostic + 1] = string.format(
+                "stack[%d][%d]: %s; %s; ViewModel=%s",
+                level, slot, cosmeticDebugDescribe(value), describeTableKeys(value),
+                cosmeticDebugDescribe(directViewModel)
+            )
+            for nestedKey, nestedValue in next, value do
+                if type(nestedValue) == "table" then
+                    local nestedViewModel = rawget(nestedValue, "ViewModel")
+                    if type(nestedViewModel) == "table" and type(rawget(nestedViewModel, encodedDataKey)) == "table" then
+                        viewModel = nestedViewModel
+                        viewModelSource = string.format("stack[%d][%d][%s]", level, slot, tostring(nestedKey))
+                        break
+                    end
+                end
+            end
+            if viewModel ~= nil then break end
+        end
+    end
+    if viewModel ~= nil then break end
+end
+
+if viewModel == nil then
+    diagnostic[#diagnostic + 1] = "RESULT: no stack table or immediate nested table exposed a ViewModel field."
+    diagnostic[#diagnostic + 1] = "traceback: " .. debug.traceback("Cosmetic ViewModelHook stack scan", 2)
+    local report = table.concat(diagnostic, "\n")
+    warn(report)
+    if type(setclipboard) == "function" then
+        pcall(setclipboard, report)
+    elseif type(toclipboard) == "function" then
+        pcall(toclipboard, report)
+    end
+    return
+end
+
+
 local player = v102(v102(arg2, "ClientFighter"), "Player")
 local name = v102(arg2, "Name")
 
@@ -45846,11 +45937,18 @@ local function fn35()
 tbl17.aL()
 local tbl18 = { Skins = {}, Wraps = {}, Charms = {}, Finishers = {}, Emotes = {}, Images = {} }
 
-for k, v115 in next, v102(tbl17.aS().CosmeticLibrary, "Cosmetics"), nil do
+local cosmeticEntries = v102(tbl17.aS().CosmeticLibrary, "Cosmetics")
+if type(cosmeticEntries) ~= "table" then
+    return table.freeze(tbl18)
+end
+for k, v115 in next, cosmeticEntries do
+if type(k) ~= "string" or k == "" or type(v115) ~= "table" then
+    continue
+end
 local v116 = v102(v115, "Type")
 local image = v102(v115, "Image")
 
-if image and image ~= "" then
+if type(image) == "string" and image ~= "" then
 tbl18.Images[k] = image
 end
 
@@ -45908,7 +46006,9 @@ local tbl18 = {}
 local tbl19 = {}
 
 local function fn36(arg)
+if type(arg) ~= "string" or arg == "" then return end
 local v118 = v116.str(arg)
+if type(v118) ~= "string" or v118 == "" then return end
 tbl18[v118] = arg
 tbl19[arg] = v118
 end
@@ -58979,7 +59079,7 @@ end
 index2.new = function(arg, arg2, arg3)
 local PlayerHit = v121.new("combat_feedback.PlayerHit")
 local v124 = v117.new()
-local v125 = arg:Reserve({ "DamageNumberEffect" })
+local v125 = arg:Reserve({ "DamageNumberEffect", "EliminationEffect" })
 
 local tbl18 = {
 _trove = PlayerHit,
@@ -58991,9 +59091,9 @@ _noGameHitsound = PlayerHit:Add(v118.new()),
 _hitFlash = PlayerHit:Add(v120.new()),
 _chams = {},
 _damageNumbers = {},
+_damageNumberTargetConnections = setmetatable({}, { __mode = "k" }),
 _damageEffectObjects = {},
 _damageEffectStacks = setmetatable({}, { __mode = "k" }),
-_damageEffectTargets = setmetatable({}, { __mode = "k" }),
 _damageEffectColorIndex = 0,
 _damageGui = createDamageNumbersGui(),
 _damageGuiRetryAt = 0,
@@ -59074,70 +59174,28 @@ local enabled = type(playerHit) == "table" and playerHit.Enabled == true
     or type(damageNumbers) == "table" and (damageNumbers.Enabled == true or damageNumbers.RemoveGameNumbers == true)
     or type(damageEffects) == "table" and damageEffects.Enabled == true
 arg._replicateBinding:SetEnabled(enabled == true)
-
-    local numbersEnabled = type(damageNumbers) == "table" and damageNumbers.Enabled == true
-    if not numbersEnabled then
-        for index = #arg._damageNumbers, 1, -1 do
-            local record = arg._damageNumbers[index]
-            if record ~= nil then
-                for _, connection in ipairs(record.Connections or {}) do
-                    pcall(function() connection:Disconnect() end)
-                end
-                for _, tween in ipairs(record.Tweens or {}) do
-                    pcall(function() tween:Cancel() end)
-                end
-                for _, object in ipairs(record.Objects or {}) do
-                    pcall(function() object:Destroy() end)
-                end
-            end
-            arg._damageNumbers[index] = nil
-        end
-    end
-
-    local effectsEnabled = type(damageEffects) == "table" and damageEffects.Enabled == true
-    if not effectsEnabled then
-        for _, targetRecord in next, arg._damageEffectTargets do
-            targetRecord.Cleaning = true
-            for _, connection in ipairs(targetRecord.Connections or {}) do
-                pcall(function() connection:Disconnect() end)
-            end
-            for _, object in ipairs(targetRecord.Objects or {}) do
-                pcall(function()
-                    if typeof(object) == "Instance" then object:Destroy() else object:Cancel() end
-                end)
-            end
-            table.clear(targetRecord.Connections or {})
-            table.clear(targetRecord.Objects or {})
-        end
-        table.clear(arg._damageEffectTargets)
-        for index = #arg._damageEffectObjects, 1, -1 do
-            local object = arg._damageEffectObjects[index]
-            pcall(function()
-                if typeof(object) == "Instance" then object:Destroy() else object:Cancel() end
-            end)
-            arg._damageEffectObjects[index] = nil
-        end
-        for root, stacked in next, arg._damageEffectStacks do
-            for _, tween in ipairs(stacked.Tweens or {}) do
-                pcall(function() tween:Cancel() end)
-            end
-            arg._damageEffectStacks[root] = nil
-        end
-    end
 end
 
 index2._HandleReplicate = function(arg, arg2)
-if type(arg2) ~= "table" or arg2.EnumName ~= "DamageNumberEffect" then
-return
-end
+if type(arg2) ~= "table" then return end
+local enumName = arg2.EnumName
 local inner = arg._playerContext ~= nil and arg._playerContext.Inner or nil
 local fighterState = inner ~= nil and inner.FighterState or nil
-if fighterState == nil or arg2.ObjectId ~= fighterState.ObjectId then
-return
-end
+if fighterState == nil or arg2.ObjectId ~= fighterState.ObjectId then return end
 
 local args = arg2.Args
 if type(args) ~= "table" then return end
+
+-- EliminationEffect is the framework's authoritative kill signal. Remove every
+-- screen-space damage number anchored anywhere inside the eliminated character.
+if enumName == "EliminationEffect" then
+    local victimPlayer = args[v86[63]]
+    if typeof(victimPlayer) == "Instance" and victimPlayer:IsA("Player") then
+        arg:_CleanupDamageNumbersForPlayer(victimPlayer)
+    end
+    return
+end
+if enumName ~= "DamageNumberEffect" then return end
 local hitRoot = args[1]
 local hitDamage = args[2]
 if hitRoot == nil or type(hitDamage) ~= "number" then return end
@@ -59174,13 +59232,7 @@ if customOverlayReady then
     end)
     if okPosition and worldPosition ~= nil then
         local okSpawn, spawnResult = pcall(function()
-            return arg:_SpawnDamageNumber(
-                hitDamage,
-                worldPosition,
-                isHeadshot,
-                hitRoot,
-                hitRoot:FindFirstAncestorOfClass("Model")
-            )
+            return arg:_SpawnDamageNumber(hitDamage, worldPosition, isHeadshot, hitRoot)
         end)
         customNumberShown = okSpawn and spawnResult == true
         if not okSpawn then
@@ -59215,11 +59267,213 @@ if type(playerHit) == "table" and playerHit.Enabled == true then
 end
 end
 
-index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, targetRoot, targetModel)
+index2._DestroyDamageNumberRecord = function(arg, record)
+    if type(record) ~= "table" or record.Cleared == true then return end
+    record.Cleared = true
+    for _, activeTween in next, record.Tweens or {} do
+        pcall(function() activeTween:Cancel() end)
+    end
+    for _, object in next, record.Objects or {} do
+        pcall(function() object:Destroy() end)
+    end
+    local records = arg._damageNumbers
+    if type(records) == "table" then
+        for index = #records, 1, -1 do
+            if records[index] == record then
+                table.remove(records, index)
+                break
+            end
+        end
+    end
+end
+
+index2._ReleaseDamageNumberTarget = function(arg, targetModel)
+    if targetModel == nil then return end
+    for _, record in next, arg._damageNumbers or {} do
+        if type(record) == "table" and record.TargetModel == targetModel and record.Cleared ~= true then
+            return
+        end
+    end
+    local bindings = arg._damageNumberTargetConnections
+    local connections = type(bindings) == "table" and bindings[targetModel] or nil
+    if type(bindings) == "table" then bindings[targetModel] = nil end
+    for _, connection in next, type(connections) == "table" and connections or {} do
+        pcall(function() connection:Disconnect() end)
+    end
+end
+
+index2._CleanupDamageNumbersForTarget = function(arg, targetModel)
+    if targetModel == nil then return end
+    for index = #(arg._damageNumbers or {}), 1, -1 do
+        local record = arg._damageNumbers[index]
+        if type(record) == "table" and record.TargetModel == targetModel then
+            arg:_DestroyDamageNumberRecord(record)
+        end
+    end
+    local bindings = arg._damageNumberTargetConnections
+    local connections = type(bindings) == "table" and bindings[targetModel] or nil
+    if type(bindings) == "table" then bindings[targetModel] = nil end
+    for _, connection in next, type(connections) == "table" and connections or {} do
+        pcall(function() connection:Disconnect() end)
+    end
+end
+
+index2._CleanupDamageNumbersForCharacter = function(arg, characterModel)
+    if typeof(characterModel) ~= "Instance" then return end
+    local targets = {}
+    for _, record in next, arg._damageNumbers or {} do
+        local targetModel = type(record) == "table" and record.TargetModel or nil
+        if targetModel ~= nil then
+            local okNested, isNested = pcall(function()
+                return targetModel == characterModel or targetModel:IsDescendantOf(characterModel)
+            end)
+            if okNested and isNested then targets[targetModel] = true end
+        end
+    end
+    for targetModel in next, targets do
+        arg:_CleanupDamageNumbersForTarget(targetModel)
+    end
+end
+
+index2._FindDamageNumberPlayer = function(arg, targetModel)
+    if typeof(targetModel) ~= "Instance" then return nil end
+    local players = game:GetService("Players")
+    local cursor = targetModel
+    while cursor ~= nil and cursor ~= workspace do
+        local isModel = false
+        pcall(function() isModel = cursor:IsA("Model") end)
+        if isModel then
+            local okPlayer, player = pcall(players.GetPlayerFromCharacter, players, cursor)
+            if okPlayer and player ~= nil then return player end
+        end
+        local okParent, parent = pcall(function() return cursor.Parent end)
+        if not okParent then break end
+        cursor = parent
+    end
+    return nil
+end
+
+index2._CleanupDamageNumbersForPlayer = function(arg, player)
+    if typeof(player) ~= "Instance" or not player:IsA("Player") then return end
+    local targets = {}
+    local character = nil
+    pcall(function() character = player.Character end)
+    for _, record in next, arg._damageNumbers or {} do
+        if type(record) == "table" then
+            local targetModel = record.TargetModel
+            local belongsToPlayer = record.TargetPlayer == player
+            if not belongsToPlayer and character ~= nil and targetModel ~= nil then
+                local okNested, isNested = pcall(function()
+                    return targetModel == character or targetModel:IsDescendantOf(character)
+                end)
+                belongsToPlayer = okNested and isNested
+            end
+            if belongsToPlayer and targetModel ~= nil then targets[targetModel] = true end
+        end
+    end
+    for targetModel in next, targets do
+        arg:_CleanupDamageNumbersForTarget(targetModel)
+    end
+    if character ~= nil then
+        arg:_CleanupDamageNumbersForCharacter(character)
+    end
+end
+
+index2._BindDamageNumberTarget = function(arg, targetModel)
+    if typeof(targetModel) ~= "Instance" then return false end
+    local validModel, isModel = pcall(function()
+        return targetModel:IsA("Model") and targetModel.Parent ~= nil
+    end)
+    if not validModel or not isModel then return false end
+
+    local bindings = arg._damageNumberTargetConnections
+    if type(bindings) ~= "table" then
+        bindings = setmetatable({}, { __mode = "k" })
+        arg._damageNumberTargetConnections = bindings
+    end
+    if bindings[targetModel] ~= nil then return true end
+
+    local connections = {}
+    bindings[targetModel] = connections
+    local function connect(signal, callback)
+        local ok, connection = pcall(function() return signal:Connect(callback) end)
+        if ok and connection ~= nil then
+            connections[#connections + 1] = connection
+            return true
+        end
+        return false
+    end
+    local function onTargetEnded()
+        if bindings[targetModel] ~= connections then return end
+        arg:_CleanupDamageNumbersForTarget(targetModel)
+    end
+
+    local humanoid = nil
+    pcall(function() humanoid = targetModel:FindFirstChildWhichIsA("Humanoid", true) end)
+    if humanoid ~= nil then
+        local health = nil
+        pcall(function() health = humanoid.Health end)
+        if type(health) == "number" and health <= 0 then
+            onTargetEnded()
+            return true
+        end
+        pcall(function() connect(humanoid.Died, onTargetEnded) end)
+        pcall(function() connect(humanoid.Destroying, onTargetEnded) end)
+        pcall(function()
+            connect(humanoid.HealthChanged, function(currentHealth)
+                if type(currentHealth) == "number" and currentHealth <= 0 then
+                    onTargetEnded()
+                end
+            end)
+        end)
+    end
+
+    -- Track the owning Player even for nested/custom rigs without a Humanoid.
+    -- This also lets an EliminationEffect clear numbers if Player.Character is already nil.
+    local targetPlayer = arg:_FindDamageNumberPlayer(targetModel)
+    if targetPlayer ~= nil then
+        pcall(function()
+            connect(targetPlayer.CharacterRemoving, function(character)
+                local belongsToEndingCharacter = false
+                pcall(function()
+                    belongsToEndingCharacter = character == targetModel
+                        or (targetModel:IsDescendantOf(character))
+                end)
+                if belongsToEndingCharacter then onTargetEnded() end
+            end)
+            connect(targetPlayer.CharacterAdded, function(character)
+                if character ~= targetModel then onTargetEnded() end
+            end)
+            connect(game:GetService("Players").PlayerRemoving, function(leavingPlayer)
+                if leavingPlayer == targetPlayer then onTargetEnded() end
+            end)
+        end)
+    end
+    pcall(function() connect(targetModel.Destroying, onTargetEnded) end)
+    pcall(function()
+        connect(targetModel.AncestryChanged, function(_, newParent)
+            if newParent == nil then onTargetEnded() end
+        end)
+    end)
+    return true
+end
+
+index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, hitRoot)
     local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
     local cfg = type(playerHit) == "table" and playerHit.DamageNumbers or nil
     if type(cfg) ~= "table" or cfg.Enabled ~= true or typeof(worldPosition) ~= "Vector3" then
         return false
+    end
+
+    local targetModel = nil
+    if typeof(hitRoot) == "Instance" then
+        pcall(function()
+            if hitRoot:IsA("BasePart") then
+                targetModel = hitRoot:FindFirstAncestorOfClass("Model")
+            elseif hitRoot:IsA("Model") then
+                targetModel = hitRoot
+            end
+        end)
     end
 
     local camera = workspace.CurrentCamera
@@ -59232,24 +59486,6 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, tar
     end)
     if not okProjection or not onScreen or screenPoint == nil or screenPoint.Z <= 0 then
         return false
-    end
-
-    if targetRoot ~= nil then
-        local rootOk, rootAlive = pcall(function()
-            return typeof(targetRoot) == "Instance"
-                and targetRoot:IsA("BasePart")
-                and targetRoot:IsDescendantOf(workspace)
-        end)
-        if not rootOk or not rootAlive then return false end
-    end
-    if targetModel ~= nil then
-        local modelOk, modelAlive = pcall(function()
-            if typeof(targetModel) ~= "Instance" or not targetModel:IsA("Model")
-                or not targetModel:IsDescendantOf(workspace) then return false end
-            local humanoid = targetModel:FindFirstChildWhichIsA("Humanoid", true)
-            return humanoid == nil or humanoid.Health > 0
-        end)
-        if not modelOk or not modelAlive then return false end
     end
 
     local amount = tonumber(damage)
@@ -59669,88 +59905,36 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, tar
     while #arg._damageNumbers >= 20 do
         local oldest = table.remove(arg._damageNumbers, 1)
         if oldest ~= nil then
-            for _, connection in ipairs(oldest.Connections or {}) do
-                pcall(function() connection:Disconnect() end)
-            end
-            for _, tween in next, oldest.Tweens or {} do
-                pcall(function() tween:Cancel() end)
-            end
-            for _, object in next, oldest.Objects or {} do
-                pcall(function() object:Destroy() end)
+            local oldestTarget = oldest.TargetModel
+            arg:_DestroyDamageNumberRecord(oldest)
+            if oldestTarget ~= nil then
+                arg:_ReleaseDamageNumberTarget(oldestTarget)
             end
         end
     end
 
-    local numberRecord = {
+    local targetPlayer = targetModel ~= nil and arg:_FindDamageNumberPlayer(targetModel) or nil
+    local record = {
         Objects = objects,
         Tweens = tweens,
         TargetModel = targetModel,
-        TargetRoot = targetRoot,
-        Connections = {},
-        Cleaning = false,
+        TargetPlayer = targetPlayer,
+        Cleared = false,
     }
-    table.insert(arg._damageNumbers, numberRecord)
-
-    local function cleanupNumberForTarget()
-        if numberRecord.Cleaning then return end
-        numberRecord.Cleaning = true
-        for _, connection in ipairs(numberRecord.Connections) do
-            pcall(function() connection:Disconnect() end)
-        end
-        table.clear(numberRecord.Connections)
-        for _, tween in ipairs(numberRecord.Tweens or {}) do
-            pcall(function() tween:Cancel() end)
-        end
-        for _, object in ipairs(numberRecord.Objects or {}) do
-            pcall(function() object:Destroy() end)
-        end
-        table.clear(numberRecord.Tweens)
-        table.clear(numberRecord.Objects)
-        for index = #arg._damageNumbers, 1, -1 do
-            if arg._damageNumbers[index] == numberRecord then
-                table.remove(arg._damageNumbers, index)
-                break
-            end
-        end
-    end
-
-    local function bindTargetSignal(instance, signalName, callback)
-        if instance == nil then return end
-        pcall(function()
-            local signal = instance[signalName]
-            if signal ~= nil then
-                table.insert(numberRecord.Connections, signal:Connect(callback))
-            end
-        end)
-    end
-
+    table.insert(arg._damageNumbers, record)
     if targetModel ~= nil then
-        local humanoid
-        pcall(function() humanoid = targetModel:FindFirstChildWhichIsA("Humanoid", true) end)
-        if humanoid ~= nil then
-            bindTargetSignal(humanoid, "Died", cleanupNumberForTarget)
-            bindTargetSignal(humanoid, "Destroying", cleanupNumberForTarget)
-            bindTargetSignal(humanoid, "HealthChanged", function(health)
-                health = tonumber(health)
-                if health == nil or health <= 0 then cleanupNumberForTarget() end
-            end)
-        end
-        bindTargetSignal(targetModel, "Destroying", cleanupNumberForTarget)
-        bindTargetSignal(targetModel, "AncestryChanged", function(_, parent)
-            if parent == nil then cleanupNumberForTarget() end
-        end)
+        arg:_BindDamageNumberTarget(targetModel)
     end
-    bindTargetSignal(targetRoot, "Destroying", cleanupNumberForTarget)
 
-    -- Recheck after binding to close the death-between-check-and-connect race.
-    if targetModel ~= nil then
-        local aliveOk, alive = pcall(function()
-            if targetModel.Parent == nil then return false end
-            local humanoid = targetModel:FindFirstChildWhichIsA("Humanoid", true)
-            return humanoid == nil or humanoid.Health > 0
-        end)
-        if not aliveOk or alive ~= true then cleanupNumberForTarget() end
-    end
+    -- Debris is the primary timeout; this explicit cleanup also handles failed Debris scheduling.
+    task.delay(duration + 0.55, function()
+        if record.Cleared == true then return end
+        local recordTarget = record.TargetModel
+        arg:_DestroyDamageNumberRecord(record)
+        if recordTarget ~= nil then
+            arg:_ReleaseDamageNumberTarget(recordTarget)
+        end
+    end)
     return true
 end
 index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel)
@@ -59768,101 +59952,6 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
 
     local model = typeof(hitModel) == "Instance" and hitModel:IsA("Model") and hitModel
         or hitRoot:FindFirstAncestorOfClass("Model")
-    local targetRecord = nil
-
-    if model ~= nil then
-        targetRecord = arg._damageEffectTargets[model]
-        if targetRecord == nil then
-            targetRecord = {
-                Objects = {},
-                Roots = setmetatable({}, { __mode = "k" }),
-                Connections = {},
-                Cleaning = false,
-            }
-            arg._damageEffectTargets[model] = targetRecord
-
-            local function cleanupTargetEffects()
-                if targetRecord.Cleaning then return end
-                targetRecord.Cleaning = true
-
-                for _, connection in ipairs(targetRecord.Connections) do
-                    pcall(function() connection:Disconnect() end)
-                end
-                table.clear(targetRecord.Connections)
-
-                for root in next, targetRecord.Roots do
-                    local stacked = arg._damageEffectStacks[root]
-                    if type(stacked) == "table" then
-                        for _, oldTween in next, stacked.Tweens or {} do
-                            pcall(function() oldTween:Cancel() end)
-                        end
-                        arg._damageEffectStacks[root] = nil
-                    end
-                end
-                table.clear(targetRecord.Roots)
-
-                local objects = targetRecord.Objects
-                targetRecord.Objects = {}
-                for _, object in ipairs(objects) do
-                    for index = #arg._damageEffectObjects, 1, -1 do
-                        if arg._damageEffectObjects[index] == object then
-                            table.remove(arg._damageEffectObjects, index)
-                        end
-                    end
-                    pcall(function()
-                        if typeof(object) == "Instance" then
-                            object:Destroy()
-                        else
-                            object:Cancel()
-                        end
-                    end)
-                end
-
-                if arg._damageEffectTargets[model] == targetRecord then
-                    arg._damageEffectTargets[model] = nil
-                end
-            end
-
-            local okHumanoid, humanoid = pcall(function()
-                return model:FindFirstChildWhichIsA("Humanoid", true)
-            end)
-            if okHumanoid and humanoid ~= nil then
-                local okHealth, health = pcall(function() return humanoid.Health end)
-                if okHealth and tonumber(health) ~= nil and health <= 0 then
-                    cleanupTargetEffects()
-                    return false
-                end
-
-                pcall(function()
-                    table.insert(targetRecord.Connections, humanoid.Died:Connect(cleanupTargetEffects))
-                end)
-                pcall(function()
-                    table.insert(targetRecord.Connections, humanoid.Destroying:Connect(cleanupTargetEffects))
-                end)
-                pcall(function()
-                    table.insert(targetRecord.Connections, humanoid.HealthChanged:Connect(function(newHealth)
-                        newHealth = tonumber(newHealth)
-                        if newHealth == nil or newHealth <= 0 then cleanupTargetEffects() end
-                    end))
-                end)
-            end
-
-            pcall(function()
-                table.insert(targetRecord.Connections, model.Destroying:Connect(cleanupTargetEffects))
-            end)
-            pcall(function()
-                table.insert(targetRecord.Connections, model.AncestryChanged:Connect(function(_, parent)
-                    if parent == nil then cleanupTargetEffects() end
-                end))
-            end)
-            pcall(function()
-                table.insert(targetRecord.Connections, hitRoot.Destroying:Connect(cleanupTargetEffects))
-            end)
-        end
-
-        if targetRecord.Cleaning then return false end
-        targetRecord.Roots[hitRoot] = true
-    end
     local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
     local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 190, 70)
     local color3 = typeof(cfg.Color3) == "Color3" and cfg.Color3 or Color3.fromRGB(120, 210, 255)
@@ -59888,12 +59977,6 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
     local face = CFrame.lookAt(origin, origin + look)
     local damageText = "-" .. tostring(math.floor(amount + 0.5))
 
-    local function associateWithTarget(object)
-        if object ~= nil and targetRecord ~= nil and not targetRecord.Cleaning then
-            table.insert(targetRecord.Objects, object)
-        end
-    end
-
     local function untrack(object)
         for index = #arg._damageEffectObjects, 1, -1 do
             if arg._damageEffectObjects[index] == object then
@@ -59901,20 +59984,11 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
                 break
             end
         end
-        if targetRecord ~= nil then
-            for index = #targetRecord.Objects, 1, -1 do
-                if targetRecord.Objects[index] == object then
-                    table.remove(targetRecord.Objects, index)
-                    break
-                end
-            end
-        end
     end
 
     local function track(object, lifetime)
         if object == nil then return nil end
         table.insert(arg._damageEffectObjects, object)
-        associateWithTarget(object)
         local ttl = lifetime or (duration + 0.35)
         pcall(function() Debris:AddItem(object, ttl) end)
         task.delay(ttl + 0.75, function() untrack(object) end)
@@ -59924,7 +59998,6 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
     local function trackPersistent(object)
         if object ~= nil then
             table.insert(arg._damageEffectObjects, object)
-            associateWithTarget(object)
         end
         return object
     end
@@ -59964,7 +60037,6 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
         end)
         if ok and value then
             arg._damageEffectObjects[#arg._damageEffectObjects + 1] = value
-            associateWithTarget(value)
             value.Completed:Connect(function() untrack(value) end)
             task.delay(math.max(0.05, time) + 0.75, function() untrack(value) end)
             return value
@@ -60172,6 +60244,12 @@ end
 end
 
 index2.Destroy = function(arg)
+for targetModel, connections in next, arg._damageNumberTargetConnections or {} do
+    arg._damageNumberTargetConnections[targetModel] = nil
+    for _, connection in next, connections or {} do
+        pcall(function() connection:Disconnect() end)
+    end
+end
 for _, v124 in arg._chams, nil, nil do
 v124:Destroy()
 end
@@ -60179,27 +60257,12 @@ end
 for index = #arg._damageNumbers, 1, -1 do
     local record = arg._damageNumbers[index]
     if record ~= nil then
-        for _, connection in ipairs(record.Connections or {}) do
-            pcall(function() connection:Disconnect() end)
-        end
-        for _, tween in next, record.Tweens or {} do
-            pcall(function() tween:Cancel() end)
-        end
-        for _, object in next, record.Objects or {} do
-            pcall(function() object:Destroy() end)
-        end
+        arg:_DestroyDamageNumberRecord(record)
+    else
+        arg._damageNumbers[index] = nil
     end
-    arg._damageNumbers[index] = nil
 end
 if arg._damageGui ~= nil then pcall(function() arg._damageGui:Destroy() end) end
-for _, targetRecord in next, arg._damageEffectTargets do
-    targetRecord.Cleaning = true
-    for _, connection in ipairs(targetRecord.Connections or {}) do
-        pcall(function() connection:Disconnect() end)
-    end
-    table.clear(targetRecord.Connections or {})
-end
-table.clear(arg._damageEffectTargets)
 for index = #arg._damageEffectObjects, 1, -1 do
     local object = arg._damageEffectObjects[index]
     if object ~= nil then pcall(function()
@@ -66696,7 +66759,7 @@ end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUDController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
 local activation=W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
@@ -66729,7 +66792,7 @@ return ii.c
 end
 end
 do
-local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});if W.IsArcadeServer then  tbl17 .ie()(k);else  tbl17 .ih()(k);end;D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
+local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});tbl17 .ih()(k);D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
 
 tbl17.ij = function()
 local ij = tbl17.cache.ij
@@ -67550,11 +67613,11 @@ return is.c
 end
 end
 do
-local previousStandaloneCleanup = rawget(_G, "__CrefyUDCleanup")
+local previousStandaloneCleanup = rawget(_G, "__LuaHookUndergroundStandaloneCleanup")
 if type(previousStandaloneCleanup) == "function" then
 pcall(previousStandaloneCleanup)
 end
-local previousController = rawget(_G, "__CrefyUDController")
+local previousController = rawget(_G, "__CrefyUndergroundController")
 if type(previousController) == "table" and type(previousController.Stop) == "function" then
 pcall(previousController.Stop, true)
 end
@@ -67592,7 +67655,7 @@ local undergroundSnapshot = nil
 local undergroundSnapshotCharacter = nil
 local undergroundLastServerCFrame = nil
 local undergroundLastClientCFrame = nil
-local UNDERGROUND_RAGEBOT_Y_OFFSET = -4
+local UNDERGROUND_RAGEBOT_Y_OFFSET = -3.8
 local undergroundEnabled = false
 local undergroundRagebotRequested = false
 local undergroundRagebotIntegrated = false
@@ -67615,7 +67678,7 @@ UndergroundRootDesync.__index = UndergroundRootDesync
 function UndergroundRootDesync.new(rootPart)
     local self = setmetatable({
         _rootPart = rootPart,
-        _boundId = 'CrefyUD_' .. tostring({}),
+        _boundId = 'LuaHook_Underground_' .. tostring({}),
         _oldCFrame = rootPart.CFrame,
         _cframe = nil,
     }, UndergroundRootDesync)
@@ -68529,13 +68592,10 @@ while undergroundRequested and undergroundConn == nil do
     local ok, result = pcall(startUnderground)
     if ok and result == true then
         if undergroundRagebotRequested then
-            local controller = rawget(_G, "__CrefyUDController")
+            local controller = rawget(_G, "__CrefyUndergroundController")
             local integrate = type(controller) == "table" and controller.SetRagebotIntegration or nil
             if type(integrate) == "function" then
-                local integrationOk, integrationResult = pcall(integrate, true)
-                if not integrationOk or integrationResult == false then
-                    scheduleUndergroundRagebotEnableRetry()
-                end
+                pcall(integrate, true)
             end
         end
         break
@@ -68570,33 +68630,6 @@ end)
 end)
 end
 local undergroundController = {}
-local undergroundRagebotEnableRetryActive = false
-local function scheduleUndergroundRagebotEnableRetry()
-    if undergroundRagebotEnableRetryActive or not undergroundRequested
-        or not undergroundRagebotRequested or not undergroundEnabled
-        or undergroundRagebotIntegrated then return end
-    if type(task) ~= "table" or type(task.spawn) ~= "function"
-        or type(task.wait) ~= "function" then return end
-    undergroundRagebotEnableRetryActive = true
-    task.spawn(function()
-        local nextWarningAt = 0
-        while undergroundRequested and undergroundRagebotRequested
-            and undergroundEnabled and not undergroundRagebotIntegrated do
-            task.wait(0.1)
-            local controller = rawget(_G, "__CrefyUDController")
-            if controller ~= undergroundController then break end
-            local retry = type(controller) == "table" and rawget(controller, "SetRagebotIntegration") or nil
-            if type(retry) ~= "function" then break end
-            local ok, result = pcall(retry, true)
-            if ok and result == true and undergroundRagebotIntegrated then break end
-            if os.clock() >= nextWarningAt then
-                nextWarningAt = os.clock() + 5
-                warn("[Underground] Ragebot hand-off pending; retrying integration.")
-            end
-        end
-        undergroundRagebotEnableRetryActive = false
-    end)
-end
 local undergroundRagebotDisableRetryActive = false
 local function scheduleUndergroundRagebotDisableRetry()
     if undergroundRagebotDisableRetryActive or not undergroundEnabled
@@ -68611,7 +68644,7 @@ local function scheduleUndergroundRagebotDisableRetry()
     task.spawn(function()
         while undergroundEnabled and not undergroundRagebotRequested and undergroundRagebotIntegrated do
             task.wait(0.1)
-            local controller = rawget(_G, "__CrefyUDController")
+            local controller = rawget(_G, "__CrefyUndergroundController")
             local retry = type(controller) == "table" and controller.SetRagebotIntegration or nil
             if type(retry) == "function" then
                 local retryOk, retryResult = pcall(retry, false)
@@ -68635,7 +68668,6 @@ end
 if undergroundRagebotRequested and type(undergroundController.SetRagebotIntegration) == "function" then
     local integrationOk, integrationResult = pcall(undergroundController.SetRagebotIntegration, true)
     if not integrationOk or integrationResult == false then
-        scheduleUndergroundRagebotEnableRetry()
         return true
     end
 end
@@ -68652,7 +68684,6 @@ end
 undergroundController.IsRagebotIntegrated = function()
 return undergroundEnabled == true and undergroundRagebotIntegrated == true
 end
-undergroundController.RetryRagebotIntegration = scheduleUndergroundRagebotEnableRetry
 undergroundController.SetRagebotIntegration = function(active, preferredClientPose)
 undergroundRagebotRequested = active == true
 local shouldIntegrate = undergroundEnabled and undergroundRagebotRequested
@@ -68912,8 +68943,7 @@ local adjusted = cframe + offset
 undergroundLastServerCFrame = adjusted
 return adjusted
 end
-_G.__CrefyUDController = undergroundController
-_G.__CrefyUndergroundController = undergroundController -- legacy reload alias
+_G.__CrefyUndergroundController = undergroundController
 local savedUndergroundEnabled = false
 pcall(function()
     local undergroundConfig = type(v115) == "table" and v115.Data and v115.Data.Underground or nil
@@ -68921,7 +68951,7 @@ pcall(function()
 end)
 if savedUndergroundEnabled then
     local function startSavedUnderground()
-        if rawget(_G, "__CrefyUDController") ~= undergroundController then return end
+        if rawget(_G, "__CrefyUndergroundController") ~= undergroundController then return end
         undergroundController.Start()
     end
     if type(task) == "table" and type(task.defer) == "function" then
@@ -68934,8 +68964,7 @@ local undergroundCleanup = function()
  
 undergroundController.Stop(true)
 end
-_G.__CrefyUDCleanup = undergroundCleanup
-_G.__CrefyUndergroundCleanup = undergroundCleanup -- legacy reload alias
+_G.__LuaHookUndergroundStandaloneCleanup = undergroundCleanup
 if type(K) == "table" and type(K.onUnload) == "function" then
 K.onUnload(function()
 
@@ -68980,17 +69009,11 @@ if undergroundRespawnConnection then
 pcall(function() undergroundRespawnConnection:Disconnect() end)
 undergroundRespawnConnection = nil
 end
-if rawget(_G, "__CrefyUDController") == undergroundController then
-rawset(_G, "__CrefyUDController", nil)
-end
-if rawget(_G, "__CrefyUDCleanup") == undergroundCleanup then
-rawset(_G, "__CrefyUDCleanup", nil)
-end
 if rawget(_G, "__CrefyUndergroundController") == undergroundController then
 rawset(_G, "__CrefyUndergroundController", nil)
 end
-if rawget(_G, "__CrefyUndergroundCleanup") == undergroundCleanup then
-rawset(_G, "__CrefyUndergroundCleanup", nil)
+if rawget(_G, "__LuaHookUndergroundStandaloneCleanup") == undergroundCleanup then
+rawset(_G, "__LuaHookUndergroundStandaloneCleanup", nil)
 end
 end)
 end
@@ -72634,6 +72657,7 @@ local v116 = tbl17.jA()
 tbl17.jB()
 local v117 = tbl17.jy()
 local v118 = tbl17.jC()
+local meleeNetworkTiming = tbl17.cG()
 local vector = Vector3.new(0, -v86[195], 0.05)
 local vector2 = Vector3.new(v86[186], -3.85, 0.05)
 
@@ -72695,6 +72719,83 @@ return {
 }
 end
 
+local function readMeleeAttackCooldown(item)
+    local ok, value = pcall(function()
+        local inner = item ~= nil and item.Inner or nil
+        if type(inner) ~= "table" then return nil end
+        return v102(inner, "_attack_cooldown")
+    end)
+    if not ok or type(value) ~= "number" or value ~= value
+        or value == math.huge or value == -math.huge then
+        return nil
+    end
+    return value
+end
+
+local function estimateMeleeAttackAckTimeout()
+    local remoteDelay, replicationDelay = 0, 0
+    local remoteOk, remoteValue = pcall(meleeNetworkTiming.getEstimatedRemoteDelay)
+    local replicationOk, replicationValue = pcall(meleeNetworkTiming.getEstimatedReplicationDelay)
+    if remoteOk and type(remoteValue) == "number" and remoteValue == remoteValue
+        and remoteValue >= 0 and remoteValue < 5 then
+        remoteDelay = remoteValue
+    end
+    if replicationOk and type(replicationValue) == "number" and replicationValue == replicationValue
+        and replicationValue >= 0 and replicationValue < 5 then
+        replicationDelay = replicationValue
+    end
+    if remoteDelay > 0 or replicationDelay > 0 then
+        -- Match the game's estimated request + replication path, with a small scheduling margin.
+        return math.clamp(remoteDelay + replicationDelay + 0.12, 0.35, 1.45)
+    end
+
+    local ping = 0
+    local okPing, value = pcall(function()
+        local localPlayer = game:GetService("Players").LocalPlayer
+        return localPlayer ~= nil and localPlayer:GetNetworkPing() or 0
+    end)
+    if okPing and type(value) == "number" and value == value
+        and value >= 0 and value < 5 then
+        ping = value
+    end
+    return math.clamp(0.22 + ping * 1.6, 0.35, 1.45)
+end
+
+local function meleeItemCooldownKey(item)
+    if type(item) ~= "table" then return nil end
+    local objectId = rawget(item, "ObjectId")
+    return objectId ~= nil and objectId or item
+end
+
+local function meleeCooldownMap(arg)
+    local map = rawget(arg, "_weaponCooldownUntilByItem")
+    if type(map) ~= "table" then
+        map = {}
+        rawset(arg, "_weaponCooldownUntilByItem", map)
+    end
+    return map
+end
+
+local function pruneMeleeState(arg, now)
+    local cooldowns = meleeCooldownMap(arg)
+    for key, expiresAt in next, cooldowns do
+        if type(expiresAt) ~= "number" or expiresAt ~= expiresAt
+            or expiresAt == math.huge or expiresAt == -math.huge or expiresAt < now - 2 then
+            cooldowns[key] = nil
+        end
+    end
+    local pendingByItem = rawget(arg, "_pendingBackstabByItem")
+    if type(pendingByItem) == "table" then
+        for key, pending in next, pendingByItem do
+            local deadline = type(pending) == "table" and tonumber(pending.Deadline) or nil
+            if deadline == nil or deadline ~= deadline or deadline == math.huge
+                or deadline == -math.huge or now > deadline + 5 then
+                pendingByItem[key] = nil
+            end
+        end
+    end
+end
+
 local index2 = {}
 index2.__index = index2
 
@@ -72704,17 +72805,18 @@ _partGlue = arg,
 _shootLock = v116.new(),
 _hitboxWindowUntil = -1,
 _hitboxWindowTarget = nil,
-_hitboxWindowAliveState = nil,
-_hitboxWindowInitialHealth = nil,
-_hitboxWindowConfirmed = false,
 _attackCooldown = -1,
-_attackCooldownTarget = nil,
+_attackCooldownTarget = nil, -- legacy compatibility; cooldown ownership is per item below
+_weaponCooldownUntilByItem = {},
+_pendingBackstabByItem = {},
 _lastKnifeTarget = nil,
 _knifePrimeTarget = nil,
 _knifePrimeUntil = 0,
 _knifePrimePitch = nil,
 _knifePrimeYaw = nil,
 _nextKnifeWindowAttackAt = 0,
+_pendingBackstab = nil,
+_knifeRetryNotBefore = 0,
 }, index2)
 end
 
@@ -72794,32 +72896,44 @@ local function buildFreshKnifeAttackPayload()
         local fighter = arg3 ~= nil and arg3.FighterState or nil
         local characterState = fighter ~= nil and fighter.Character or nil
         local liveState = characterState ~= nil and characterState.State or nil
-        local currentModel = hitboxHead ~= nil and hitboxHead:FindFirstAncestorOfClass("Model") or nil
-        local player = fighter ~= nil and fighter.Player or nil
+        local targetPlayer = fighter ~= nil and fighter.Player or (arg3 ~= nil and arg3.Player or nil)
+        local targetModel = rootPart ~= nil and rootPart:FindFirstAncestorOfClass("Model") or nil
+
         if arg3 == nil or fighter == nil or fighter.IsEnemy ~= true
-            or arg3.AliveState ~= aliveState
-            or aliveState == nil or aliveState.Alive ~= true
-            or liveState == nil or liveState.Alive ~= true
-            or currentModel == nil
-            or player == nil or player.Parent == nil or player.Character ~= currentModel
-            or (liveState.Model ~= nil and liveState.Model ~= currentModel)
+            or characterState == nil or liveState == nil or liveState.Alive ~= true
+            or arg3.AliveState ~= aliveState or aliveState == nil or aliveState.Alive ~= true
             or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead
-            or not rootPart:IsA("BasePart") or not rootPart:IsDescendantOf(workspace)
-            or not rootPart:IsDescendantOf(currentModel)
-            or not hitboxHead:IsA("BasePart") or not hitboxHead:IsDescendantOf(workspace)
-            or not hitboxHead:IsDescendantOf(currentModel) then
+            or (liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
+            or (liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
+            or targetModel == nil or hitboxHead:FindFirstAncestorOfClass("Model") ~= targetModel
+            or not rootPart:IsA("BasePart") or rootPart.Parent == nil
+            or not rootPart:IsDescendantOf(workspace)
+            or not hitboxHead:IsA("BasePart") or hitboxHead.Parent == nil
+            or not hitboxHead:IsDescendantOf(workspace) then
             return nil, nil
         end
-        local targetHumanoid = currentModel:FindFirstChildWhichIsA("Humanoid", true)
-        if targetHumanoid == nil or type(targetHumanoid.Health) ~= "number"
-            or targetHumanoid.Health ~= targetHumanoid.Health
-            or targetHumanoid.Health == math.huge or targetHumanoid.Health == -math.huge
-            or targetHumanoid.Health <= 0 then
-            return nil, nil
+
+        if targetPlayer ~= nil then
+            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+                or targetPlayer.Parent ~= Players then
+                return nil, nil
+            end
+            local currentCharacter = targetPlayer.Character
+            if currentCharacter == nil or not rootPart:IsDescendantOf(currentCharacter)
+                or not hitboxHead:IsDescendantOf(currentCharacter) then
+                return nil, nil
+            end
         end
-        local invincibleOk, isInvincible = pcall(function() return fighter:IsInvincible() end)
-        if not invincibleOk or isInvincible == true then return nil, nil end
+
+        local invincibleMethod = fighter.IsInvincible
+        if type(invincibleMethod) ~= "function" then return nil, nil end
+        local invincibleOk, isInvincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or isInvincible ~= false then return nil, nil end
+
         local _, currentYaw, currentRoll = rootPart.CFrame:ToOrientation()
+        if not fakePositionFiniteNumber(currentYaw) or not fakePositionFiniteNumber(currentRoll) then
+            return nil, nil
+        end
         return fn38(v124, n33, currentYaw, currentRoll),
             fn38(v125, n33, currentYaw, currentRoll)
     end)
@@ -72841,59 +72955,18 @@ if okPing and type(ping) == "number" and ping == ping and ping >= 0 and ping < 1
 primeDelay = math.clamp(0.05 + ping * 0.5, 0.075, 0.18)
 end
 
-local function finiteKnifeHealth(state)
-    local okHealth, healthValue = pcall(function()
-        return state ~= nil and state.Health or nil
-    end)
-    local health = okHealth and tonumber(healthValue) or nil
-    if type(health) ~= "number" or health ~= health or health == math.huge or health == -math.huge or health < 0 then
-        return nil
-    end
-    return health
-end
-
-local function refreshBackstabConfirmation(expectedTarget)
-    local trackedTarget = expectedTarget or hitboxHead
-    if arg._hitboxWindowTarget ~= trackedTarget or arg._hitboxWindowConfirmed == true then
-        return
-    end
-    local baseline = tonumber(arg._hitboxWindowInitialHealth)
-    local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
-    if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
-        and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
-
-        arg._hitboxWindowConfirmed = true
-        arg._hitboxWindowUntil = -1
-        arg._nextKnifeWindowAttackAt = 0
-    end
-end
-
 if isKnife then
 if arg._lastKnifeTarget ~= hitboxHead then
-    local previousWindowTarget = arg._hitboxWindowTarget
-    if previousWindowTarget ~= nil and previousWindowTarget ~= hitboxHead then
-        refreshBackstabConfirmation(previousWindowTarget)
-
-        if arg._hitboxWindowConfirmed ~= true and arg._attackCooldownTarget == previousWindowTarget then
-            arg._attackCooldown = -1
-            arg._attackCooldownTarget = nil
-        end
-        arg._hitboxWindowUntil = -1
-        arg._hitboxWindowTarget = nil
-        arg._hitboxWindowAliveState = nil
-        arg._hitboxWindowInitialHealth = nil
-        arg._hitboxWindowConfirmed = false
-    end
-arg._hitboxWindowUntil = -1
-arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
-arg._knifePrimeTarget = nil
-arg._knifePrimeUntil = 0
-arg._knifePrimePitch = nil
-arg._knifePrimeYaw = nil
-arg._lastKnifeTarget = hitboxHead
+    -- A target switch invalidates only target-bound aim/window state.
+    -- The in-flight acknowledgement and the weapon's cooldown must survive it.
+    arg._hitboxWindowUntil = -1
+    arg._hitboxWindowTarget = nil
+    arg._nextKnifeWindowAttackAt = 0
+    arg._knifePrimeTarget = nil
+    arg._knifePrimeUntil = 0
+    arg._knifePrimePitch = nil
+    arg._knifePrimeYaw = nil
+    arg._lastKnifeTarget = hitboxHead
 end
 else
 arg._lastKnifeTarget = nil
@@ -72903,8 +72976,56 @@ if not isKnife then
 arg:InvalidateKnifeState()
 end
 
+local itemCooldownKey = meleeItemCooldownKey(arg4)
+local weaponCooldowns = meleeCooldownMap(arg)
+pruneMeleeState(arg, now2)
+
+-- FireServer has no server-acceptance return. Track each in-flight Knife request
+-- by the weapon ObjectId and acknowledge it only when the replicated cooldown advances.
+if isKnife then
+    local pendingByItem = arg._pendingBackstabByItem
+    if type(pendingByItem) ~= "table" then
+        pendingByItem = {}
+        arg._pendingBackstabByItem = pendingByItem
+    end
+    local pending = itemCooldownKey ~= nil and pendingByItem[itemCooldownKey] or nil
+    if pending ~= nil then
+        if arg._knifePrimeTarget == hitboxHead then
+            arg._knifePrimePitch = v121
+            arg._knifePrimeYaw = v122
+        end
+
+        local observedCooldown = readMeleeAttackCooldown(arg4)
+        local baselineCooldown = pending.CooldownBefore
+        local sentTick = tonumber(pending.SentTick) or tick()
+        local baselineKnown = type(baselineCooldown) == "number"
+            and baselineCooldown == baselineCooldown
+            and baselineCooldown ~= math.huge and baselineCooldown ~= -math.huge
+        local cooldownFresh = observedCooldown ~= nil and observedCooldown > sentTick + 0.005
+        -- A nil baseline means the item had no replicated attack cooldown before dispatch.
+        -- A fresh future timestamp is therefore a valid cooldown acknowledgement by itself.
+        local cooldownAdvanced = cooldownFresh and (
+            not baselineKnown or observedCooldown > baselineCooldown + 0.005
+        )
+
+        if cooldownAdvanced then
+            pendingByItem[itemCooldownKey] = nil
+            local stillSameTarget = pending.Target == hitboxHead
+            -- This confirms the game entered its melee cooldown (attack accepted), not a damage hit.
+            -- Never label it as HitConfirmed or infer it from health/damage-number visuals.
+            arg:_RecordAttackAccepted(pending.Target, observedCooldown, itemCooldownKey, stillSameTarget)
+        elseif now2 >= pending.Deadline then
+            pendingByItem[itemCooldownKey] = nil
+            arg:_AbortBackstabAttempt(pending.Target, itemCooldownKey)
+            arg._knifeRetryNotBefore = now2 + 0.08
+        else
+            -- Keep tracking the old request if the target selector briefly switches targets.
+            return n, fn37(v121, v122), nil
+        end
+    end
+end
+
 local hasHitboxWindow = isKnife
-and arg._hitboxWindowConfirmed ~= true
 and now2 < arg._hitboxWindowUntil
 and arg._hitboxWindowTarget == hitboxHead
 
@@ -72913,6 +73034,10 @@ and arg._knifePrimePitch ~= nil and arg._knifePrimeYaw ~= nil then
 
 arg._knifePrimePitch = v121
 arg._knifePrimeYaw = v122
+end
+
+if isKnife and now2 < (tonumber(arg._knifeRetryNotBefore) or 0) then
+    return n, fn37(v121, v122), nil
 end
 
 if isKnife and arg._knifePrimeTarget == hitboxHead and now2 < arg._knifePrimeUntil then
@@ -72943,21 +73068,24 @@ arg:_AbortBackstabAttempt(hitboxHead)
 end
 end
 elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitboxWindowUntil then
+    arg._hitboxWindowUntil = -1
+    arg._hitboxWindowTarget = nil
+    arg._nextKnifeWindowAttackAt = 0
+end
 
-    refreshBackstabConfirmation(hitboxHead)
-    if arg._hitboxWindowConfirmed == true then
-
-        arg._nextKnifeWindowAttackAt = 0
-    else
-                                                                             
-                                                                               
-                                                                               
-        arg._hitboxWindowUntil = -1
-        arg._hitboxWindowTarget = nil
-        arg._hitboxWindowAliveState = nil
-        arg._hitboxWindowInitialHealth = nil
-        arg._hitboxWindowConfirmed = false
-        arg._nextKnifeWindowAttackAt = 0
+if isKnife then
+    local trackedUntil = tonumber(weaponCooldowns[itemCooldownKey]) or 0
+    local observedCooldown = readMeleeAttackCooldown(arg4)
+    if observedCooldown ~= nil and observedCooldown > tick() then
+        local replicatedUntil = now2 + (observedCooldown - tick())
+        if replicatedUntil > trackedUntil then
+            trackedUntil = replicatedUntil
+            weaponCooldowns[itemCooldownKey] = replicatedUntil
+        end
+    end
+    -- Melee has no IsAttacking method; its authoritative local state is Inner._attack_cooldown.
+    if now2 < trackedUntil then
+        return n, fn37(v121, v122), nil
     end
 end
 
@@ -72971,10 +73099,6 @@ if meleeShootFrames ~= meleeShootFrames or meleeShootFrames == math.huge or mele
 end
 meleeShootFrames = math.clamp(meleeShootFrames, 1, 5)
 if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
-    return fn36(), nil, nil
-end
-
-if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
     return fn36(), nil, nil
 end
 
@@ -72995,14 +73119,45 @@ if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
     return
 end
-local healthBeforeAttack = finiteKnifeHealth(aliveState)
-local okAttack, attackResult = pcall(function()
+local cooldownBefore = readMeleeAttackCooldown(arg4)
+local dispatchTick = tick()
+if cooldownBefore ~= nil and cooldownBefore > dispatchTick + 0.005 then
+    local activeUntil = os.clock() + (cooldownBefore - dispatchTick)
+    weaponCooldowns[itemCooldownKey] = math.max(
+        tonumber(weaponCooldowns[itemCooldownKey]) or 0, activeUntil
+    )
+    return
+end
+-- Record the dispatch edge before FireServer so an unusually fast replication update
+-- cannot arrive before the pending request's freshness timestamp.
+local sentAt = os.clock()
+local sentTick = tick()
+local okAttack, dispatchAccepted = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
-if okAttack and attackResult ~= false then
-arg:_RecordBackstab(hitboxHead, aliveState, healthBeforeAttack)
+if okAttack and dispatchAccepted == true then
+    local ackTimeout = estimateMeleeAttackAckTimeout()
+    local pendingByItem = arg._pendingBackstabByItem
+    if type(pendingByItem) ~= "table" then
+        pendingByItem = {}
+        arg._pendingBackstabByItem = pendingByItem
+    end
+    pendingByItem[itemCooldownKey] = {
+        Target = hitboxHead,
+        ItemObjectId = arg4.ObjectId,
+        CooldownBefore = cooldownBefore,
+        SentAt = sentAt,
+        SentTick = sentTick,
+        Deadline = sentAt + ackTimeout,
+    }
 else
-arg:_AbortBackstabAttempt(hitboxHead)
+    arg:_AbortBackstabAttempt(hitboxHead, itemCooldownKey)
+    arg._knifeRetryNotBefore = os.clock() + 0.08
+    local warningNow = os.clock()
+    if warningNow >= (arg._nextKnifeDispatchWarningAt or 0) then
+        arg._nextKnifeDispatchWarningAt = warningNow + 5
+        warn("[AlwaysBackstab.Knife] Heavy attack dispatch failed: " .. tostring(okAttack and "dispatch was not accepted locally" or dispatchAccepted))
+    end
 end
 end
 end
@@ -73024,54 +73179,68 @@ end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
+index2._RecordAttackAccepted = function(arg, targetHitbox, observedCooldownUntil, itemKey, openHitboxWindow)
 local now2 = os.clock()
+arg._knifeRetryNotBefore = 0
 
-arg._hitboxWindowUntil = now2 + 0.625
-arg._hitboxWindowTarget = targetHitbox
-arg._hitboxWindowAliveState = targetAliveState
-local baselineHealth = tonumber(healthBeforeAttack)
-if type(baselineHealth) ~= "number" or baselineHealth ~= baselineHealth
-    or baselineHealth == math.huge or baselineHealth == -math.huge or baselineHealth < 0 then
-    baselineHealth = nil
+local cooldownDuration = 1.25
+if type(observedCooldownUntil) == "number" and observedCooldownUntil == observedCooldownUntil
+    and observedCooldownUntil ~= math.huge and observedCooldownUntil ~= -math.huge then
+    cooldownDuration = math.max(cooldownDuration, observedCooldownUntil - tick())
 end
-arg._hitboxWindowInitialHealth = baselineHealth
-arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = now2 + 0.08
-arg._attackCooldown = now2 + 1.25
-arg._attackCooldownTarget = targetHitbox
+local cooldownMap = meleeCooldownMap(arg)
+if itemKey ~= nil then
+    local expiry = now2 + cooldownDuration
+    cooldownMap[itemKey] = math.max(tonumber(cooldownMap[itemKey]) or 0, expiry)
 end
-
-index2._AbortBackstabAttempt = function(arg, targetHitbox)
-if targetHitbox == nil or arg._hitboxWindowTarget == targetHitbox then
-arg._hitboxWindowUntil = -1
-arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = 0
-end
-if targetHitbox == nil or arg._attackCooldownTarget == targetHitbox then
-arg._attackCooldown = -1
+-- Keep legacy fields populated for older callbacks, but never key gating to a target.
+arg._attackCooldown = now2 + cooldownDuration
 arg._attackCooldownTarget = nil
+
+if openHitboxWindow == true and targetHitbox ~= nil then
+    arg._hitboxWindowUntil = now2 + 0.625
+    arg._hitboxWindowTarget = targetHitbox
+    arg._nextKnifeWindowAttackAt = now2 + 0.08
 end
+end
+
+index2._AbortBackstabAttempt = function(arg, targetHitbox, itemKey)
+local pendingByItem = arg._pendingBackstabByItem
+if type(pendingByItem) == "table" then
+    if itemKey ~= nil then
+        local pending = pendingByItem[itemKey]
+        if targetHitbox == nil or (type(pending) == "table" and pending.Target == targetHitbox) then
+            pendingByItem[itemKey] = nil
+        end
+    else
+        for key, pending in next, pendingByItem do
+            if targetHitbox == nil or (type(pending) == "table" and pending.Target == targetHitbox) then
+                pendingByItem[key] = nil
+            end
+        end
+    end
+end
+if targetHitbox == nil or arg._hitboxWindowTarget == targetHitbox then
+    arg._hitboxWindowUntil = -1
+    arg._hitboxWindowTarget = nil
+    arg._nextKnifeWindowAttackAt = 0
+end
+-- An aborted target attempt must never erase a still-valid weapon cooldown.
 if targetHitbox == nil or arg._knifePrimeTarget == targetHitbox then
-arg._knifePrimeTarget = nil
-arg._knifePrimeUntil = 0
-arg._knifePrimePitch = nil
-arg._knifePrimeYaw = nil
+    arg._knifePrimeTarget = nil
+    arg._knifePrimeUntil = 0
+    arg._knifePrimePitch = nil
+    arg._knifePrimeYaw = nil
 end
 end
 
 index2.InvalidateKnifeState = function(arg)
+-- Called when the active item is not Knife: clear target-bound presentation only.
+-- Pending acknowledgements and per-item cooldowns survive a temporary item switch.
+arg._knifeRetryNotBefore = 0
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
-arg._attackCooldown = -1
-arg._attackCooldownTarget = nil
 arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
@@ -73080,26 +73249,35 @@ arg._knifePrimeYaw = nil
 end
 
 index2.ResetState = function(arg)
+-- Transient target/PartGlue reset: preserve weapon cooldown and in-flight acknowledgement.
+arg._knifeRetryNotBefore = 0
 arg._hitboxWindowUntil = -1
 arg._hitboxWindowTarget = nil
-arg._hitboxWindowAliveState = nil
-arg._hitboxWindowInitialHealth = nil
-arg._hitboxWindowConfirmed = false
 arg._nextKnifeWindowAttackAt = 0
-arg._attackCooldown = -1
-arg._attackCooldownTarget = nil
 arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 arg._knifePrimePitch = nil
 arg._knifePrimeYaw = nil
-arg._shootLock:Reset()
+if arg._shootLock ~= nil then pcall(arg._shootLock.Reset, arg._shootLock) end
 local gluedOurPart = arg._gluedOurPart
-
 if gluedOurPart ~= nil then
-arg._partGlue:Free(gluedOurPart)
-arg._gluedOurPart = nil
+    pcall(arg._partGlue.Free, arg._partGlue, gluedOurPart)
+    arg._gluedOurPart = nil
 end
+end
+
+index2.HardReset = function(arg)
+-- Lifecycle reset: clear transient state AND all per-weapon cooldown/ack state.
+arg:ResetState()
+local cooldowns = rawget(arg, "_weaponCooldownUntilByItem")
+if type(cooldowns) == "table" then table.clear(cooldowns) end
+local pending = rawget(arg, "_pendingBackstabByItem")
+if type(pending) == "table" then table.clear(pending) end
+arg._pendingBackstab = nil
+arg._attackCooldown = -1
+arg._attackCooldownTarget = nil
+arg._knifeRetryNotBefore = 0
 end
 
 return index2
@@ -74028,95 +74206,110 @@ return { getAction = function(arg)
 local weapons = v115.Data.Ragebot.Weapons
 local onEmpty = weapons.OnEmpty
 if onEmpty ~= "Reload" and onEmpty ~= "Swap" and onEmpty ~= "SwapOrReload" then
-onEmpty = "SwapOrReload"
+    onEmpty = "SwapOrReload"
 end
 local priority = type(weapons.Priority) == "table" and weapons.Priority or nil
 if priority == nil or #priority == 0 then
-priority = { "Primary", "Secondary", "Melee" }
-end
-local huge = math.huge
-local huge2 = math.huge
-local flag19 = false
-local v116 = nil
-local v117 = nil
-
-for _, v118 in arg.ItemBehaviors:GetItems(), nil, nil do
-local v119 = fn36(v118)
-
-if not (v119 == nil or not fn37(v119)) then
-flag19 = v86[34]
-local huge3 = table.find(priority, v119) or math.huge
-
-local ammoValue = nil
-local ammoBased = false
-if v118.__type == "Gun" then
-local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
-if not okAmmoState then
-continue
-end
-ammoBased = readAmmoBased
-ammoValue = readAmmo
-end
-if v118.__type == "Gun" and ammoBased and ammoValue == 0 then
-local okReserve, reserve = pcall(v118.GetAmmoReserve, v118)
-if not okReserve or type(reserve) ~= "number" or reserve ~= reserve or reserve == -math.huge or reserve < 0 then
-continue
-end
-if reserve > 0 then
-if onEmpty == "Reload" then
-if v116 == nil or huge3 < huge then
-v116 = v118
-huge = huge3
-end
-elseif huge3 < huge2 then
-huge2 = huge3
-v117 = v118
-end
-end
-elseif v116 == nil or huge3 < huge then
-v116 = v118
-huge = huge3
-end
-end
+    priority = { "Primary", "Secondary", "Melee" }
 end
 
-if not flag19 then
-return nil
+local hasEnabledItem = false
+local hasTransientItemState = false
+local bestCandidate, bestPriority = nil, math.huge
+local emptyFallback, emptyFallbackPriority = nil, math.huge
+local enumerationOk, enumerationError = pcall(function()
+    for _, item in arg.ItemBehaviors:GetItems(), nil, nil do
+        local inspectOk, candidate, enabled, itemTransient = pcall(function()
+            local role = fn36(item)
+            if role == nil or not fn37(role) then return nil, false end
+
+            local order = table.find(priority, role) or math.huge
+            local equippedOk, equipped = pcall(item.IsEquipped, item)
+            if not equippedOk then
+                error("IsEquipped failed: " .. tostring(equipped))
+            end
+            if item.__type == "Gun" then
+                local ammoOk, ammoBased, ammo = readAmmoState(item)
+                if not ammoOk then return nil, true, true end
+                if ammoBased and ammo == 0 then
+                    local reserveOk, reserve = pcall(item.GetAmmoReserve, item)
+                    if not reserveOk or type(reserve) ~= "number" or reserve ~= reserve
+                        or reserve == -math.huge or reserve == math.huge or reserve < 0 then
+                        return nil, true, true
+                    end
+                    if reserve <= 0 then return nil, true end
+                    return { Item = item, Priority = order, Kind = "EmptyWithReserve", Equipped = equipped }, true
+                end
+            end
+            return { Item = item, Priority = order, Kind = "Ready", Equipped = equipped }, true
+        end)
+
+        if not inspectOk then
+            hasTransientItemState = true
+            local warningNow = os.clock()
+            if warningNow >= (arg._nextItemInspectWarningAt or 0) then
+                arg._nextItemInspectWarningAt = warningNow + 5
+                warn("[Ragebot] Skipped an item whose state could not be inspected: " .. tostring(candidate))
+            end
+        else
+            if enabled == true then hasEnabledItem = true end
+            if itemTransient == true then hasTransientItemState = true end
+            if type(candidate) == "table" and candidate.Item ~= nil then
+                if candidate.Kind == "EmptyWithReserve" and onEmpty ~= "Reload" then
+                    if emptyFallback == nil or candidate.Priority < emptyFallbackPriority then
+                        emptyFallback = candidate
+                        emptyFallbackPriority = candidate.Priority
+                    end
+                else
+                    if bestCandidate == nil or candidate.Priority < bestPriority then
+                        bestCandidate = candidate
+                        bestPriority = candidate.Priority
+                    end
+                end
+            end
+        end
+    end
+end)
+
+if not enumerationOk then
+    local warningNow = os.clock()
+    if warningNow >= (arg._nextItemEnumerationWarningAt or 0) then
+        arg._nextItemEnumerationWarningAt = warningNow + 5
+        warn("[Ragebot] Weapon enumeration failed; retrying without resetting combat state: " .. tostring(enumerationError))
+    end
+    return nil, "Transient"
+end
+if not hasEnabledItem then
+    if hasTransientItemState then return nil, "Transient" end
+    return nil
 end
 
-if v116 ~= nil then
-local flag20 = false
-if v116.__type == "Gun" then
-local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
-if not okAmmoState then
-return nil
-end
-if ammoBased then
-flag20 = currentAmmo == v86[186]
-end
+local function actionFor(candidate)
+    if type(candidate) ~= "table" or candidate.Item == nil then return nil end
+    local item = candidate.Item
+    local equipped = candidate.Equipped == true
+    local empty = false
+    if item.__type == "Gun" then
+        local ammoOk, ammoBased, currentAmmo = readAmmoState(item)
+        if not ammoOk then return nil, true end
+        empty = ammoBased and currentAmmo == 0
+    end
+
+    if equipped then
+        return { Type = empty and "Reload" or "Attack", Item = item }
+    end
+    return { Type = "Swap", Item = item }
 end
 
-if v116:IsEquipped() then
-if flag20 then
-return { Type = "Reload", Item = v116 }
+local selectedAction, selectedTransient = actionFor(bestCandidate)
+if selectedAction ~= nil then return selectedAction end
+if selectedTransient == true then hasTransientItemState = true end
+if onEmpty ~= "Swap" and emptyFallback ~= bestCandidate then
+    local fallbackAction, fallbackTransient = actionFor(emptyFallback)
+    if fallbackAction ~= nil then return fallbackAction end
+    if fallbackTransient == true then hasTransientItemState = true end
 end
-return { Type = "Attack", Item = v116 }
-end
-
-return { Type = "Swap", Item = v116 }
-end
-
-if onEmpty == "Swap" then
-return nil
-end
-
-if v117 ~= nil then
-if v117:IsEquipped() then
-return { Type = "Reload", Item = v117 }
-end
-return { Type = "Swap", Item = v117 }
-end
-
+if hasTransientItemState then return nil, "Transient" end
 return nil
 end }
 end
@@ -74645,7 +74838,7 @@ local function ragebotUndergroundHandoffIsPending(owner)
     if type(owner) ~= "table" or owner._undergroundHandoffPending ~= true then
         return false
     end
-    local controller = rawget(_G, "__CrefyUDController")
+    local controller = rawget(_G, "__CrefyUndergroundController")
     if type(controller) ~= "table" then
         owner._undergroundHandoffPending = false
         return false
@@ -75132,7 +75325,7 @@ else
     ragebotRequestVoidSpamTransformRestore()
 
     local undergroundHandoffPending = false
-    local undergroundController = rawget(_G, "__CrefyUDController")
+    local undergroundController = rawget(_G, "__CrefyUndergroundController")
     if type(undergroundController) == "table"
         and type(undergroundController.SetRagebotIntegration) == "function" then
         local transitionOk, transitionResult = pcall(
@@ -75263,6 +75456,7 @@ local function ragebotClearPendingRestoreTransaction(owner)
     owner._repRootCounterRestoreController = nil
     owner._repRootCounterRestoreStartedAt = nil
     owner._repRootCounterRestoreDeadline = nil
+    owner._repRootRestoreReleaseRetryAt = nil
     owner._repRootCounterRestoreVerifiedAt = nil
     owner._repRootCounterRestoreStableFrames = 0
     owner._repRootCounterRestoreLastSampleAt = nil
@@ -75474,17 +75668,9 @@ if arg._enabled ~= true and arg._destroyHeightRestorePending == true then
     end
 end
 ragebotPublishControlState(arg._enabled == true)
-local undergroundController = rawget(_G, "__CrefyUDController")
+local undergroundController = rawget(_G, "__CrefyUndergroundController")
 if type(undergroundController) == "table" and type(undergroundController.SetRagebotIntegration) == "function" then
-    local transitionOk, transitionResult = pcall(
-        undergroundController.SetRagebotIntegration,
-        arg._enabled == true and arg._innerContext ~= nil
-    )
-    if (not transitionOk or transitionResult == false)
-        and arg._enabled == true and arg._innerContext ~= nil then
-        local retry = rawget(undergroundController, "RetryRagebotIntegration")
-        if type(retry) == "function" then pcall(retry) end
-    end
+pcall(undergroundController.SetRagebotIntegration, arg._enabled == true and arg._innerContext ~= nil)
 end
 if arg._undergroundHandoffPending == true then
     ragebotUndergroundHandoffIsPending(arg)
@@ -75699,7 +75885,8 @@ if previousEvasionMode ~= mode then
     end
 end
 arg._lastEvasionMode = mode
-local okAction, actionResult = pcall(v128.getAction, innerContext)
+local okAction, actionResult, actionMeta = pcall(v128.getAction, innerContext)
+local transientWeaponSelection = okAction and actionResult == nil and actionMeta == "Transient"
 if okAction and actionResult ~= nil then
     if type(actionResult) ~= "table" then
 
@@ -76165,19 +76352,105 @@ if arg._repRootCounterRestorePending == true then
         ragebotMarkActiveLifecycle(arg)
         return
     else
+        local restoreStartedAt = tonumber(arg._repRootCounterRestoreStartedAt) or nowRestore
+        local restoreElapsed = math.max(0, nowRestore - restoreStartedAt)
+        local ping = ragebotKnifeNetworkTiming()
+        local hardRestoreLimit = math.clamp(0.90 + ping * 1.05, 0.95, 1.75)
 
-        local priorBlockUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
-        if not fakePositionFiniteNumber(priorBlockUntil) then priorBlockUntil = 0 end
-        arg._repRootTranslocateBlockUntil = math.max(priorBlockUntil, nowRestore + 0.75)
-        ragebotPoseRestoreGateSet(arg, true, nil, restoreCFrame, rootPart)
-        local priorCounterUntil = tonumber(arg._repRootCounterUntil) or 0
-        if not fakePositionFiniteNumber(priorCounterUntil) then priorCounterUntil = 0 end
-        if arg._repRootCounterTarget ~= nil then
-            arg._repRootCounterUntil = math.max(priorCounterUntil, nowRestore + 0.75)
-        end
-        if nowRestore >= (arg._nextRepRootRestoreWarningAt or 0) then
-            arg._nextRepRootRestoreWarningAt = nowRestore + 5
-            warn("[Ragebot] Restore exceeded 0.10-0.25s; retrying and keeping planner/weapon callbacks gated until controller and RootPart read-back are stable: " .. tostring(setRestoreError or (restoreReadbackMatches and "awaiting a second stable sample" or "pose mismatch")))
+        if restoreElapsed >= hardRestoreLimit then
+            -- A controller that cannot confirm the saved pose must not hold combat forever.
+            -- Clear the server-side override so normal character replication can take ownership.
+            local retryReleaseAt = tonumber(arg._repRootRestoreReleaseRetryAt) or 0
+            local releaseOk, releaseResult = false, nil
+            if nowRestore >= retryReleaseAt then
+                -- First remove only this owner's pose gate. Otherwise SetServerCFrame(nil)
+                -- can be intercepted and re-write the approved restore pose instead of clearing it.
+                local gateReleased = ragebotPoseRestoreGateSet(arg, false, 0, nil)
+                if gateReleased then
+                    releaseOk, releaseResult = pcall(
+                        characterController.SetServerCFrame, characterController, nil
+                    )
+                    local releaseAcceptedNow = releaseOk and releaseResult ~= false
+                    if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
+                        releaseAcceptedNow = false
+                    end
+                    if not releaseAcceptedNow then
+                        local originalController = arg._repRootCounterRestoreController
+                        if type(originalController) == "table" and originalController ~= characterController
+                            and type(originalController.SetServerCFrame) == "function" then
+                            local fallbackOk, fallbackResult = pcall(
+                                originalController.SetServerCFrame, originalController, nil
+                            )
+                            local fallbackAccepted = fallbackOk and fallbackResult ~= false
+                            if type(fallbackResult) == "table" and rawget(fallbackResult, "Ok") == false then
+                                fallbackAccepted = false
+                            end
+                            if fallbackAccepted then
+                                releaseOk, releaseResult = fallbackOk, fallbackResult
+                                releaseAcceptedNow = true
+                            elseif not releaseOk then
+                                releaseResult = fallbackResult
+                            end
+                        end
+                    end
+                    if releaseAcceptedNow then
+                        arg._repRootRestoreReleaseRetryAt = nil
+                    else
+                        -- Restore the safety gate if controller release did not actually succeed.
+                        local gateRestored = ragebotPoseRestoreGateSet(
+                            arg, true, nil, restoreCFrame, rootPart
+                        )
+                        if gateRestored then
+                            pcall(ragebotPoseRestoreGateZeroMotion, rootPart, arg)
+                        else
+                            releaseResult = tostring(releaseResult or "controller release failed")
+                                .. "; pose safety gate could not be re-established"
+                        end
+                    end
+                else
+                    releaseResult = "pose restore gate is owned by another active controller"
+                end
+                if not (releaseOk and releaseResult ~= false
+                    and not (type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false)) then
+                    local retryDelay = math.clamp(0.12 + ping * 0.20, 0.12, 0.35)
+                    arg._repRootRestoreReleaseRetryAt = nowRestore + retryDelay
+                end
+            end
+            local releaseAccepted = releaseOk and releaseResult ~= false
+            if type(releaseResult) == "table" and rawget(releaseResult, "Ok") == false then
+                releaseAccepted = false
+            end
+            if nowRestore < retryReleaseAt then releaseAccepted = false end
+            if releaseAccepted then
+                ragebotClearPendingRestoreTransaction(arg)
+                arg._repRootCounterTarget = nil
+                arg._repRootCounterKind = nil
+                arg._repRootCounterUntil = 0
+                arg._repRootCounterActionAt = nil
+                arg._repRootCounterStationaryUntil = 0
+                arg._repRootTranslocateBlockUntil = 0
+                arg._repRootRestoreRetryAt = nowRestore + math.clamp(0.12 + ping * 0.20, 0.12, 0.28)
+                if nowRestore >= (arg._nextRepRootRestoreHardAbortWarningAt or 0) then
+                    arg._nextRepRootRestoreHardAbortWarningAt = nowRestore + 5
+                    warn("[Ragebot] Restore confirmation timed out; released the server CFrame override and returned to normal replication.")
+                end
+                ragebotMarkActiveLifecycle(arg)
+                return
+            end
+
+            if nowRestore >= (arg._nextRepRootRestoreWarningAt or 0) then
+                arg._nextRepRootRestoreWarningAt = nowRestore + 5
+                warn("[Ragebot] Restore timed out but server CFrame override could not be released; keeping the safety gate active: " .. tostring(releaseOk and releaseResult or releaseResult))
+            end
+        else
+            local priorBlockUntil = tonumber(arg._repRootTranslocateBlockUntil) or 0
+            if not fakePositionFiniteNumber(priorBlockUntil) then priorBlockUntil = 0 end
+            arg._repRootTranslocateBlockUntil = math.max(priorBlockUntil, nowRestore + 0.25)
+            ragebotPoseRestoreGateSet(arg, true, nil, restoreCFrame, rootPart)
+            if nowRestore >= (arg._nextRepRootRestoreWarningAt or 0) then
+                arg._nextRepRootRestoreWarningAt = nowRestore + 5
+                warn("[Ragebot] Restore is retrying before the bounded recovery deadline: " .. tostring(setRestoreError or (restoreReadbackMatches and "awaiting a second stable sample" or "pose mismatch")))
+            end
         end
         ragebotMarkActiveLifecycle(arg)
         return
@@ -76489,7 +76762,7 @@ if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0
 safeDt = 0
 end
 
-local okPlan, v131 = pcall(arg._Plan, arg, safeDt, v130, target, rootPart, clientCFrame, mode, targetWasRejected)
+local okPlan, v131 = pcall(arg._Plan, arg, safeDt, v130, target, rootPart, clientCFrame, mode, targetWasRejected, transientWeaponSelection)
 if not okPlan or type(v131) ~= "table" then
 local warningNow = os.clock()
 if warningNow >= (arg._nextPlanWarningAt or 0) then
@@ -76629,8 +76902,8 @@ local function ragebotShouldUseAlwaysBackstabKnifeRotation(item, innerContext, t
     local data = type(v115) == "table" and v115.Data or nil
     local modifiers = type(data) == "table" and data.ItemModifiers or nil
     if type(modifiers) ~= "table" or modifiers.AlwaysBackstab ~= true then return false end
-    -- Ragebot owns only the dedicated Knife mode. Riot remains independent.
-    return modifiers.AlwaysBackstabMode == "Knife"
+    local mode = modifiers.AlwaysBackstabMode
+    return mode ~= "Riot"
 end
 
 local function ragebotFiniteNumber(value)
@@ -76639,39 +76912,20 @@ local function ragebotFiniteNumber(value)
 end
 
 local function ragebotGetKnifeAimPart(target)
-    local okResolve, resolvedPart = pcall(function()
-        local aliveState = target ~= nil and target.AliveState or nil
-        local fighter = target ~= nil and target.FighterState or nil
-        local player = fighter ~= nil and fighter.Player or nil
-        local fighterCharacter = fighter ~= nil and fighter.Character or nil
-        local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
-        local model = player ~= nil and player.Character
-            or (aliveState ~= nil and aliveState.Model)
-            or (fighterState ~= nil and fighterState.Model)
-        if model == nil or not model:IsA("Model") or not model:IsDescendantOf(workspace) then
-            return nil
-        end
+    local aliveState = target ~= nil and target.AliveState or nil
+    if aliveState == nil then return nil end
 
-        local candidates = {}
-        local function addCandidate(part)
-            if part ~= nil then table.insert(candidates, part) end
-        end
-        addCandidate(aliveState ~= nil and aliveState.HitboxHead or nil)
-        addCandidate(fighterState ~= nil and fighterState.HitboxHead or nil)
-        addCandidate(model:FindFirstChild("Head"))
-        addCandidate(aliveState ~= nil and aliveState.RootPart or nil)
-        addCandidate(model:FindFirstChild("HumanoidRootPart"))
-        addCandidate(model.PrimaryPart)
-
-        for _, part in ipairs(candidates) do
-            local validPart = part:IsA("BasePart")
+    local candidates = { aliveState.HitboxHead, aliveState.RootPart }
+    for _, part in ipairs(candidates) do
+        local okPart, validPart = pcall(function()
+            return part ~= nil
+                and part:IsA("BasePart")
+                and part.Parent ~= nil
                 and part:IsDescendantOf(workspace)
-                and part:IsDescendantOf(model)
-            if validPart then return part end
-        end
-        return nil
-    end)
-    return okResolve and resolvedPart or nil
+        end)
+        if okPart and validPart then return part end
+    end
+    return nil
 end
 
 local function ragebotBuildBackstabKnifeViewAngles(target, owner)
@@ -76679,25 +76933,43 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     local fighter = target ~= nil and target.FighterState or nil
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
     local okPart, validPart = pcall(function()
-        if anglePart == nil or not anglePart:IsA("BasePart")
-            or not anglePart:IsDescendantOf(workspace) then
+        if fighter == nil or fighter.IsEnemy ~= true or aliveState == nil
+            or anglePart == nil or not anglePart:IsA("BasePart")
+            or anglePart.Parent == nil or not anglePart:IsDescendantOf(workspace) then
             return false
         end
-        local player = fighter ~= nil and fighter.Player or nil
-        local model = player ~= nil and player.Character
-            or (aliveState ~= nil and aliveState.Model or nil)
-        if model == nil or not model:IsA("Model") or not model:IsDescendantOf(workspace)
-            or not anglePart:IsDescendantOf(model) then
+        local fighterCharacter = fighter.Character
+        local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
+        if fighterState == nil or fighterState.Alive ~= true or aliveState.Alive ~= true then
             return false
         end
-        if fighter == nil or fighter.IsEnemy ~= true or aliveState.Alive ~= true then return false end
-        if player ~= nil and (player.Parent ~= Players or player.Character ~= model) then return false end
-        local humanoid = model:FindFirstChildWhichIsA("Humanoid", true)
-        if humanoid == nil or not ragebotFiniteNumber(humanoid.Health) or humanoid.Health <= 0 then
+        if fighterState.RootPart ~= nil and fighterState.RootPart ~= anglePart then
             return false
         end
-        local invincibleOk, isInvincible = pcall(function() return fighter:IsInvincible() end)
-        if not invincibleOk or isInvincible == true then return false end
+        local targetHitbox = aliveState.HitboxHead
+        local targetModel = anglePart:FindFirstAncestorOfClass("Model")
+        if targetHitbox == nil or not targetHitbox:IsA("BasePart")
+            or not targetHitbox:IsDescendantOf(workspace)
+            or targetModel == nil or targetHitbox:FindFirstAncestorOfClass("Model") ~= targetModel
+            or (fighterState.HitboxHead ~= nil and fighterState.HitboxHead ~= targetHitbox) then
+            return false
+        end
+        local targetPlayer = fighter.Player or target.Player
+        if targetPlayer ~= nil then
+            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+                or targetPlayer.Parent ~= Players then
+                return false
+            end
+            local currentCharacter = targetPlayer.Character
+            if currentCharacter == nil or not anglePart:IsDescendantOf(currentCharacter)
+                or not targetHitbox:IsDescendantOf(currentCharacter) then
+                return false
+            end
+        end
+        local invincibleMethod = fighter.IsInvincible
+        if type(invincibleMethod) ~= "function" then return false end
+        local invincibleOk, isInvincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or isInvincible ~= false then return false end
         return true
     end)
     if not okPart or not validPart then return nil end
@@ -76715,7 +76987,7 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     }, anglePart, pitch, yaw
 end
 
-index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 local function buildMovementPlan(clientPose, movementMode)
     if movementMode == "Off" then return {} end
     if movementMode == "Translocate" then
@@ -76781,8 +77053,10 @@ return v130
 end
 
 if arg3 == nil then
-arg._hitscanStrategy:ResetState()
-arg._meleeStrategy:ResetState()
+if arg9 ~= true then
+    arg._hitscanStrategy:ResetState()
+    arg._meleeStrategy:ResetState()
+end
 if stationaryCounterResponse and typeof(arg6) == "CFrame" then
     return { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
 end
@@ -76818,8 +77092,10 @@ return buildMovementPlan(arg6, arg7)
 end
 
 if arg4 == nil then
-arg._hitscanStrategy:ResetState()
-arg._meleeStrategy:ResetState()
+if arg8 ~= true and arg9 ~= true then
+    arg._hitscanStrategy:ResetState()
+    arg._meleeStrategy:ResetState()
+end
 
 if arg8 == true and (arg3.Type == "Attack" or arg3.Type == "Melee")
     and typeof(arg6) == "CFrame" then
@@ -76873,10 +77149,11 @@ arg._hitscanStrategy:ResetState()
 local v131, v132, v133 = arg._meleeStrategy:Plan(arg2, arg4, item, arg5, flag19)
 
 if useAlwaysBackstabKnifeRotation then
-    local backstabViewAngles, backstabAnglePart = ragebotBuildBackstabKnifeViewAngles(arg4, arg)
-    if backstabViewAngles ~= nil and backstabAnglePart ~= nil then
+    local backstabViewAngles = ragebotBuildBackstabKnifeViewAngles(arg4, arg)
+    if backstabViewAngles ~= nil then
         v132 = backstabViewAngles
     else
+        -- Never dispatch with a stale/previous target's camera direction.
         v132 = nil
         v133 = nil
     end
@@ -77506,7 +77783,7 @@ if not arg._enabled or typeof(cframe) ~= "CFrame" then
 return cframe
 end
 
-local controller = rawget(_G, "__CrefyUDController")
+local controller = rawget(_G, "__CrefyUndergroundController")
 local undergroundIntegrated = false
 if type(controller) == "table" and type(controller.IsRagebotIntegrated) == "function" then
     local okIntegrated, integrated = pcall(controller.IsRagebotIntegrated)
@@ -77873,25 +78150,11 @@ local function ragebotFlushKnifeViewAngles(owner, characterController, payload, 
     end
     owner._knifeCameraSlotActive = true
 
-    local baseline = owner._knifeCameraPrimeAngles
     local primeAt = tonumber(owner._knifeCameraPrimeAt)
     local primeAtValid = type(primeAt) == "number" and primeAt == primeAt
         and primeAt ~= math.huge and primeAt ~= -math.huge
-    local now = os.clock()
-    if baseline == nil or not primeAtValid then
-        owner._knifeCameraPrimeAt = now
-    else
-        local baselinePitch = tonumber(baseline.Pitch)
-        local baselineYaw = tonumber(baseline.Yaw)
-        if not ragebotFiniteNumber(baselinePitch) or not ragebotFiniteNumber(baselineYaw) then
-            owner._knifeCameraPrimeAt = now
-        else
-            local pitchDelta = math.abs(pitch - baselinePitch)
-            local yawDelta = math.abs((yaw - baselineYaw + 180) % 360 - 180)
-            if pitchDelta > 12 or yawDelta > 12 then
-                owner._knifeCameraPrimeAt = now
-            end
-        end
+    if owner._knifeCameraPrimeAngles == nil or not primeAtValid then
+        owner._knifeCameraPrimeAt = os.clock()
     end
     owner._knifeCameraPrimeAngles = { Pitch = pitch, Yaw = yaw }
     return true
@@ -77965,7 +78228,7 @@ if holdPosition and typeof(cFrame) == "CFrame" and not shouldSkipDefense then
     local heldServerCFrame = useVerifiedCounterHold and holdCFrame or cFrame
     if not useVerifiedCounterHold then
 
-        local undergroundController = rawget(_G, "__CrefyUDController")
+        local undergroundController = rawget(_G, "__CrefyUndergroundController")
         if type(undergroundController) == "table"
             and type(undergroundController.ApplyToRagebotCFrame) == "function" then
             local holdWeaponKind = "Other"
@@ -78301,7 +78564,7 @@ if not sameReset then
     ragebotSafeInvokeMethod(arg, "_ApplyForcedCrouch", false)
     local meleeStrategy = rawget(arg, "_meleeStrategy")
     if type(meleeStrategy) == "table" then
-        local reset = meleeStrategy.ResetState
+        local reset = meleeStrategy.HardReset or meleeStrategy.ResetState
         if type(reset) == "function" then pcall(reset, meleeStrategy) end
     end
     local hitscanStrategy = rawget(arg, "_hitscanStrategy")
