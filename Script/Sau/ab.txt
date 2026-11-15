@@ -10236,32 +10236,33 @@ do
                         end
                     end
 
-                    -- update billboard adornee when char respawns (BUG-10)
-                    scope:connect(Players.PlayerAdded, function(player)
-                        scope:connect(player.CharacterAdded, function()
+                    -- bind ESP to context.scope (not Feature.always scope — ESP runs directly in start())
+                    local cscope = context.scope
+
+                    cscope:connect(Players.PlayerAdded, function(player)
+                        cscope:connect(player.CharacterAdded, function()
                             removeEsp(player)
                         end)
-                        scope:connect(player.CharacterRemoving, function()
+                        cscope:connect(player.CharacterRemoving, function()
                             removeEsp(player)
                         end)
                     end)
-                    for _, player in Players:GetPlayers() do
+                    for _, player in ipairs(Players:GetPlayers()) do
                         if player ~= LocalPlayer then
-                            scope:connect(player.CharacterAdded, function()
+                            cscope:connect(player.CharacterAdded, function()
                                 removeEsp(player)
                             end)
-                            scope:connect(player.CharacterRemoving, function()
+                            cscope:connect(player.CharacterRemoving, function()
                                 removeEsp(player)
                             end)
                         end
                     end
 
-                    scope:connect(Players.PlayerRemoving, removeEsp)
+                    cscope:connect(Players.PlayerRemoving, removeEsp)
+                    cscope:connect(RunService3.Heartbeat, updateEsp)
 
-                    scope:connect(RunService3.Heartbeat, updateEsp)
-
-                    scope:add(function()
-                        for player in highlights do removeEsp(player) end
+                    cscope:add(function()
+                        for player in next, highlights do removeEsp(player) end
                         espGui:Destroy()
                         espFolder:Destroy()
                     end)
