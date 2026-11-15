@@ -2795,11 +2795,14 @@ do
                 local charTab = ui.tab('character')
 
                 -- Movement (Crefy)
+                -- slider is called on groupbox or dependent(), never on toggle directly
                 local movBox = charTab:groupbox('Left', 'movement')
                 local walkSpeed = movBox:toggle(ui.id('mov-walkspeed'), {
                     text = 'walk speed', default = false,
                 })
-                local walkSpeedVal = walkSpeed:slider(ui.id('mov-walkspeed-val'), {
+                local walkSpeedVal = movBox:dependent(function()
+                    return walkSpeed.value
+                end):slider(ui.id('mov-walkspeed-val'), {
                     text = 'multiplier', default = 2, min = 1, max = 10, rounding = 2, increment = 0.01,
                 })
                 local noclip = movBox:toggle(ui.id('mov-noclip'), {
@@ -2808,13 +2811,17 @@ do
                 local flight = movBox:toggle(ui.id('mov-flight'), {
                     text = 'flight', default = false,
                 })
-                local flightSpeed = flight:slider(ui.id('mov-flight-speed'), {
+                local flightSpeed = movBox:dependent(function()
+                    return flight.value
+                end):slider(ui.id('mov-flight-speed'), {
                     text = 'speed', default = 100, min = 25, max = 500, rounding = 0, increment = 5,
                 })
                 local jumpPower = movBox:toggle(ui.id('mov-jumppower'), {
                     text = 'jump power', default = false,
                 })
-                local jumpPowerVal = jumpPower:slider(ui.id('mov-jumppower-val'), {
+                local jumpPowerVal = movBox:dependent(function()
+                    return jumpPower.value
+                end):slider(ui.id('mov-jumppower-val'), {
                     text = 'multiplier', default = 2, min = 0.1, max = 10, rounding = 2, increment = 0.01,
                 })
                 local autoSlide = movBox:toggle(ui.id('mov-autoslide'), {
@@ -2823,14 +2830,18 @@ do
                 local longJump = movBox:toggle(ui.id('mov-longjump'), {
                     text = 'long jump', default = false,
                 })
-                local longJumpForce = longJump:slider(ui.id('mov-longjump-force'), {
+                local longJumpForce = movBox:dependent(function()
+                    return longJump.value
+                end):slider(ui.id('mov-longjump-force'), {
                     text = 'force', default = 60, min = 0, max = 300, rounding = 0, increment = 5,
                 })
                 local autoStrafe = movBox:toggle(ui.id('mov-autostrafe'), {
                     text = 'auto strafe', default = false,
                     tooltip = 'strafes automatically while jumping',
                 })
-                local autoStrafeSpeed = autoStrafe:slider(ui.id('mov-autostrafe-speed'), {
+                local autoStrafeSpeed = movBox:dependent(function()
+                    return autoStrafe.value
+                end):slider(ui.id('mov-autostrafe-speed'), {
                     text = 'speed', default = 50, min = 1, max = 200, rounding = 0, increment = 1,
                 })
 
@@ -2844,13 +2855,14 @@ do
                     text = 'auto collect', default = false,
                     tooltip = 'picks up health and ammo drops automatically',
                 })
-                local collectDepBox = autoCollect:dependent(function()
+                local collectAmmo = autoBox:dependent(function()
                     return autoCollect.value
-                end)
-                local collectAmmo = collectDepBox:toggle(ui.id('auto-collect-ammo'), {
+                end):toggle(ui.id('auto-collect-ammo'), {
                     text = 'ammo', default = true,
                 })
-                local collectHealth = collectDepBox:toggle(ui.id('auto-collect-health'), {
+                local collectHealth = autoBox:dependent(function()
+                    return autoCollect.value
+                end):toggle(ui.id('auto-collect-health'), {
                     text = 'health', default = true,
                 })
 
