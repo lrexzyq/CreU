@@ -47,22 +47,22 @@ local function __crefyCheckBootstrapReady()
 
     local replicatedStorage = game:GetService("ReplicatedStorage")
     local modules = replicatedStorage:FindFirstChild("Modules")
-    if controllers == nil or modules == nil then
-        return false, "Rivals controller/module containers have not replicated"
-    end
-    if playerModules == nil or clientReplicatedClasses == nil then
-        return false, "PlayerScripts module containers have not replicated"
-    end
-
-    local userInterface = playerModules:FindFirstChild("UserInterface")
     local remotes = replicatedStorage:FindFirstChild("Remotes")
     local replication = remotes and remotes:FindFirstChild("Replication") or nil
     local fighterRemotes = replication and replication:FindFirstChild("Fighter") or nil
     local duelsRemotes = remotes and remotes:FindFirstChild("Duels") or nil
     local miscRemotes = remotes and remotes:FindFirstChild("Misc") or nil
 
+    if playerScripts == nil or controllers == nil or playerModules == nil
+        or clientReplicatedClasses == nil or modules == nil or remotes == nil
+        or replication == nil then
+        return false, "Core Rivals module/controller/remote containers have not replicated"
+    end
+
+    local userInterface = playerModules:FindFirstChild("UserInterface")
     local roots = {
         RSModules = modules,
+        PlayerScripts = playerScripts,
         PlayerModules = playerModules,
         Controllers = controllers,
         ClientClasses = clientReplicatedClasses,
@@ -72,6 +72,9 @@ local function __crefyCheckBootstrapReady()
         MiscRemotes = miscRemotes,
     }
 
+    -- Keep this list aligned with the exact paths loaded by tbl17.j1()/fn35 below.
+    -- In particular, EquipEmote/PickEmote/ViewProfile live under PlayerScripts.Modules.Pages,
+    -- not under PlayerScripts.Modules.UserInterface.Pages.
     local requiredModulePaths = {
         { "RSModules", { "CONSTANTS" } },
         { "RSModules", { "EnumLibrary" } },
@@ -85,37 +88,45 @@ local function __crefyCheckBootstrapReady()
         { "RSModules", { "TaskLibrary" } },
         { "RSModules", { "ReplicatedClass" } },
         { "RSModules", { "OutOfBoundsMachine" } },
+        { "RSModules", { "ServerOsTime" } },
+
+        { "PlayerScripts", { "PlayerModule" } },
         { "PlayerModules", { "ReplicatedController" } },
+        { "PlayerModules", { "UserInterface", "Equipment" } },
+        { "PlayerModules", { "UserInterface", "Lobby" } },
+        { "PlayerModules", { "UserInterface", "Lobby", "Matchmaking" } },
+        { "PlayerModules", { "UserInterface", "Pages" } },
         { "PlayerModules", { "CosmeticSlot" } },
         { "PlayerModules", { "Crosshair" } },
         { "PlayerModules", { "CosmeticViewportFrame" } },
         { "PlayerModules", { "ItemTypes", "Gun" } },
+        { "PlayerModules", { "ItemTypes", "Throwable" } },
         { "PlayerModules", { "Pages", "EquipEmote" } },
         { "PlayerModules", { "Pages", "PickEmote" } },
         { "PlayerModules", { "Pages", "ViewProfile" } },
+
         { "Controllers", { "ControlsController" } },
         { "Controllers", { "FighterController" } },
         { "Controllers", { "MechanicsController" } },
         { "Controllers", { "EnemyController" } },
         { "Controllers", { "ShootingRangeController" } },
+        { "Controllers", { "ArcadeController" } },
         { "Controllers", { "CameraController" } },
         { "Controllers", { "DuelController" } },
         { "Controllers", { "ComplianceController" } },
         { "Controllers", { "PlayerDataController" } },
         { "Controllers", { "MatchmakingController" } },
-        { "UserInterface", { "Lobby" } },
-        { "UserInterface", { "Lobby", "Matchmaking" } },
-        { "UserInterface", { "Pages" } },
-        { "UserInterface", { "Pages", "EquipEmote" } },
-        { "UserInterface", { "Pages", "PickEmote" } },
-        { "UserInterface", { "Pages", "ViewProfile" } },
+        { "Controllers", { "LeaderboardController" } },
+
         { "ClientClasses", { "ClientEntity" } },
         { "ClientClasses", { "ClientDueler" } },
         { "ClientClasses", { "ClientFighter", "ClientFighterCharacter" } },
         { "ClientClasses", { "ClientFighter", "ClientFighterCharacter", "Joints" } },
         { "ClientClasses", { "ClientFighter", "ClientFighterCharacter", "Visibility" } },
+        { "ClientClasses", { "ClientFighter", "ClientItem" } },
         { "ClientClasses", { "ClientFighter", "ClientItem", "ClientViewModel" } },
         { "ClientClasses", { "ClientFighter", "ClientItem", "ClientViewModel", "ViewModelAnimator" } },
+        { "ClientClasses", { "ClientFighter", "ClientItem", "ItemInterface", "Other" } },
         { "ClientClasses", { "ClientFighter", "ClientItem", "ItemInterface", "Mouse", "Scope" } },
     }
 
@@ -149,9 +160,6 @@ local function __crefyCheckBootstrapReady()
     local requiredInstancePaths = {
         { "RSModules", { "Emotes" } },
         { "RSModules", { "Finishers" } },
-        { "PlayerModules", { "ClientReplicatedClasses", "ClientFighter", "ClientItem" } },
-        { "PlayerModules", { "UserInterface" } },
-        { "PlayerModules", { "Pages" } },
         { "FighterRemotes", { "UseItem" } },
         { "FighterRemotes", { "RegisterQuickAttack" } },
         { "FighterRemotes", { "UpdateState" } },
@@ -161,6 +169,7 @@ local function __crefyCheckBootstrapReady()
         { "DuelsRemotes", { "Vote" } },
         { "MiscRemotes", { "RequestProfile" } },
         { "MiscRemotes", { "ShootingRangeTrashItems" } },
+        { "PlayerModules", { "Pages" } },
     }
     for _, entry in ipairs(requiredInstancePaths) do
         local instance = __crefyFindReadyPath(roots[entry[1]], entry[2])
@@ -170,34 +179,18 @@ local function __crefyCheckBootstrapReady()
         signature[#signature + 1] = instance
     end
 
+    -- PlayerGui must exist for the UI, but the number of ScreenGuis and the
+    -- current character are not module-readiness requirements.
     local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
         or localPlayer:FindFirstChild("PlayerGui")
     if playerGui == nil then return false, "PlayerGui is unavailable" end
-    local screenGuiCount = 0
-    for _, child in ipairs(playerGui:GetChildren()) do
-        if child:IsA("ScreenGui") then screenGuiCount += 1 end
-    end
-    if screenGuiCount < 2 then return false, "Rivals UI has not finished initializing" end
-
-    local character = localPlayer.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid") or nil
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart") or nil
-    if humanoid == nil or rootPart == nil then
-        return false, "Local character has not finished spawning"
-    end
-    local okRootType, isBasePart = pcall(function() return rootPart:IsA("BasePart") end)
-    if not okRootType or not isBasePart then return false, "HumanoidRootPart is not ready" end
-
     signature[#signature + 1] = playerGui
-    signature[#signature + 1] = screenGuiCount
-    signature[#signature + 1] = character
-    signature[#signature + 1] = humanoid
-    signature[#signature + 1] = rootPart
+
     return true, signature
 end
 
 local __crefyReadyStartedAt = os.clock()
-local __crefyReadyDeadline = __crefyReadyStartedAt + 150
+local __crefyReadyDeadline = __crefyReadyStartedAt + 90
 local __crefyCoreContainerDeadline = __crefyReadyStartedAt + 45
 local __crefyClientReady = false
 local __crefyReadyStableSince = nil
@@ -205,7 +198,8 @@ local __crefyReadySignature = nil
 local __crefyLastReadyReason = "Bootstrap readiness has not been checked"
 local __crefyHasRivalsCoreContainers = false
 
-print("[Crefy] Startup guard: waiting for the Rivals client modules and controllers...")
+print("[Crefy] Startup guard: checking required Rivals modules and controllers...")
+local __crefyNextReadyDiagnostic = __crefyReadyStartedAt + 8
 while os.clock() < __crefyReadyDeadline do
     local __checkOk, __isReady, __readyInfo = pcall(__crefyCheckBootstrapReady)
     if __checkOk and __isReady == true then
@@ -213,7 +207,8 @@ while os.clock() < __crefyReadyDeadline do
             or not __crefySameReadySignature(__crefyReadySignature, __readyInfo) then
             __crefyReadyStableSince = os.clock()
             __crefyReadySignature = __readyInfo
-        elseif os.clock() - __crefyReadyStableSince >= 4 then
+            __crefyLastReadyReason = "required dependency tree is still stabilizing"
+        elseif os.clock() - __crefyReadyStableSince >= 1.5 then
             __crefyClientReady = true
             break
         end
@@ -223,6 +218,11 @@ while os.clock() < __crefyReadyDeadline do
         __crefyLastReadyReason = __checkOk and tostring(__readyInfo) or tostring(__isReady)
     end
 
+    if os.clock() >= __crefyNextReadyDiagnostic and not __crefyClientReady then
+        warn("[Crefy] Still waiting for dependency: " .. __crefyLastReadyReason)
+        __crefyNextReadyDiagnostic = os.clock() + 8
+    end
+
     pcall(function()
         local players = game:GetService("Players")
         local localPlayer = players.LocalPlayer
@@ -230,7 +230,10 @@ while os.clock() < __crefyReadyDeadline do
         local controllers = playerScripts and playerScripts:FindFirstChild("Controllers") or nil
         local replicatedStorage = game:GetService("ReplicatedStorage")
         local modules = replicatedStorage:FindFirstChild("Modules")
+        local playerModules = playerScripts and playerScripts:FindFirstChild("Modules") or nil
+        local remotes = replicatedStorage:FindFirstChild("Remotes")
         __crefyHasRivalsCoreContainers = controllers ~= nil and modules ~= nil
+            and playerModules ~= nil and remotes ~= nil
     end)
     if not __crefyHasRivalsCoreContainers and os.clock() >= __crefyCoreContainerDeadline then
         break
@@ -245,7 +248,7 @@ if not __crefyClientReady then
         pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
     end
     warn("[Crefy] Startup aborted before module initialization: " .. __crefyLastReadyReason
-        .. ". Required game modules, controllers, remotes, UI, and character must exist and remain stable.")
+        .. ". Check the exact missing module path above; character spawn and ScreenGui count are not startup gates.")
     return
 end
 
@@ -82628,7 +82631,7 @@ task.spawn(function()
                 or not __crefySameReadySignature(_bootReadySignature, _readyInfo) then
                 _bootReadyStableSince = os.clock()
                 _bootReadySignature = _readyInfo
-            elseif os.clock() - _bootReadyStableSince >= 2 then
+            elseif os.clock() - _bootReadyStableSince >= 1 then
                 _bootReady = true
                 break
             end
