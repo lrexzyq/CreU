@@ -5486,9 +5486,9 @@ rows[i] = nil
 end
 
 fn47(panel, visibleCount)
-panel.RepositionTrove:Clean()
+panel.RefreshTrove:Clean()
 
-panel.RepositionTrove:Add(task.defer(function()
+panel.RefreshTrove:Add(task.defer(function()
 local desiredTextWidth = 0
 for _, row in panel.Rows, nil, nil do
 if row.Button.Visible then
@@ -5661,6 +5661,7 @@ SearchText = "",
 SearchInput = nil,
 Rows = {},
 RepositionTrove = v123.Trove:Extend(),
+RefreshTrove = v123.Trove:Extend(),
 FocusTrove = v123.Trove:Extend(),
 }
 
@@ -59463,6 +59464,9 @@ _damageNumbers = {},
 _damageNumberTargetConnections = setmetatable({}, { __mode = "k" }),
 _damageEffectObjects = {},
 _damageEffectStacks = setmetatable({}, { __mode = "k" }),
+_damageEffectTargetObjects = setmetatable({}, { __mode = "k" }),
+_damageEffectTargetConnections = setmetatable({}, { __mode = "k" }),
+_damageEffectTargetPlayers = setmetatable({}, { __mode = "k" }),
 _damageEffectColorIndex = 0,
 _damageGui = createDamageNumbersGui(),
 _damageGuiRetryAt = 0,
@@ -59561,6 +59565,7 @@ if enumName == "EliminationEffect" then
     local victimPlayer = args[v86[63]]
     if typeof(victimPlayer) == "Instance" and victimPlayer:IsA("Player") then
         arg:_CleanupDamageNumbersForPlayer(victimPlayer)
+        arg:_CleanupDamageEffectsForPlayer(victimPlayer)
     end
     return
 end
@@ -60306,6 +60311,218 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, hit
     end)
     return true
 end
+index2._ReleaseDamageEffectTarget = function(arg, targetModel)
+    if targetModel == nil then return end
+    local objectsByTarget = arg._damageEffectTargetObjects
+    local objects = type(objectsByTarget) == "table" and objectsByTarget[targetModel] or nil
+    if type(objects) == "table" and #objects > 0 then return end
+
+    local connectionsByTarget = arg._damageEffectTargetConnections
+    local connections = type(connectionsByTarget) == "table" and connectionsByTarget[targetModel] or nil
+    if type(connectionsByTarget) == "table" then connectionsByTarget[targetModel] = nil end
+    if type(objectsByTarget) == "table" then objectsByTarget[targetModel] = nil end
+    if type(arg._damageEffectTargetPlayers) == "table" then
+        arg._damageEffectTargetPlayers[targetModel] = nil
+    end
+    for _, connection in next, type(connections) == "table" and connections or {} do
+        pcall(function() connection:Disconnect() end)
+    end
+end
+
+index2._CleanupDamageEffectsForTarget = function(arg, targetModel)
+    if targetModel == nil then return end
+    local objectsByTarget = arg._damageEffectTargetObjects
+    local objects = type(objectsByTarget) == "table" and objectsByTarget[targetModel] or nil
+    local removeSet = {}
+    local objectSnapshot = {}
+    if type(objects) == "table" then
+        -- Tween cancellation can fire Completed immediately; its callback calls
+        -- untrack(), which mutates the live target list. Iterate a snapshot so
+        -- that callback-driven removals cannot skip adjacent Parts or Tweens.
+        for _, object in next, objects do
+            if object ~= nil then objectSnapshot[#objectSnapshot + 1] = object end
+        end
+    end
+    for _, object in ipairs(objectSnapshot) do
+        removeSet[object] = true
+        pcall(function() object:Cancel() end)
+        pcall(function() object:Destroy() end)
+    end
+
+    -- Clear stack entries even if an object was removed externally before its tracker ran.
+    for hitRoot, stacked in next, arg._damageEffectStacks or {} do
+        local belongsToTarget = false
+        pcall(function()
+            belongsToTarget = hitRoot == targetModel or hitRoot:IsDescendantOf(targetModel)
+        end)
+        if belongsToTarget then
+            arg._damageEffectStacks[hitRoot] = nil
+            local billboard = type(stacked) == "table" and stacked.Billboard or nil
+            if billboard ~= nil then
+                removeSet[billboard] = true
+                pcall(function() billboard:Destroy() end)
+            end
+            for _, activeTween in next, type(stacked) == "table" and stacked.Tweens or {} do
+                if activeTween ~= nil then
+                    removeSet[activeTween] = true
+                    pcall(function() activeTween:Cancel() end)
+                    pcall(function() activeTween:Destroy() end)
+                end
+            end
+        end
+    end
+
+    for index = #(arg._damageEffectObjects or {}), 1, -1 do
+        local object = arg._damageEffectObjects[index]
+        if removeSet[object] then
+            table.remove(arg._damageEffectObjects, index)
+        end
+    end
+    if type(objects) == "table" then table.clear(objects) end
+    arg:_ReleaseDamageEffectTarget(targetModel)
+end
+
+index2._CleanupDamageEffectsForCharacter = function(arg, characterModel)
+    if typeof(characterModel) ~= "Instance" then return end
+    local targets = {}
+    for targetModel in next, arg._damageEffectTargetObjects or {} do
+        local okNested, isNested = pcall(function()
+            return targetModel == characterModel or targetModel:IsDescendantOf(characterModel)
+        end)
+        if okNested and isNested then targets[#targets + 1] = targetModel end
+    end
+    for _, targetModel in ipairs(targets) do
+        arg:_CleanupDamageEffectsForTarget(targetModel)
+    end
+end
+
+index2._CleanupDamageEffectsForPlayer = function(arg, player)
+    if typeof(player) ~= "Instance" or not player:IsA("Player") then return end
+    local targets = {}
+    for targetModel, targetPlayer in next, arg._damageEffectTargetPlayers or {} do
+        if targetPlayer == player then targets[#targets + 1] = targetModel end
+    end
+    local character
+    pcall(function() character = player.Character end)
+    if character ~= nil then
+        for targetModel in next, arg._damageEffectTargetObjects or {} do
+            local okNested, isNested = pcall(function()
+                return targetModel == character or targetModel:IsDescendantOf(character)
+            end)
+            if okNested and isNested then targets[#targets + 1] = targetModel end
+        end
+    end
+    local seen = {}
+    for _, targetModel in ipairs(targets) do
+        if not seen[targetModel] then
+            seen[targetModel] = true
+            arg:_CleanupDamageEffectsForTarget(targetModel)
+        end
+    end
+end
+
+index2._BindDamageEffectTarget = function(arg, targetModel)
+    if typeof(targetModel) ~= "Instance" then return false end
+    local validModel, isModel = pcall(function()
+        return targetModel:IsA("Model") and targetModel.Parent ~= nil
+    end)
+    if not validModel or not isModel then return false end
+
+    local connectionsByTarget = arg._damageEffectTargetConnections
+    if type(connectionsByTarget) ~= "table" then
+        connectionsByTarget = setmetatable({}, { __mode = "k" })
+        arg._damageEffectTargetConnections = connectionsByTarget
+    end
+    if connectionsByTarget[targetModel] ~= nil then return true end
+
+    local objectsByTarget = arg._damageEffectTargetObjects
+    if type(objectsByTarget) ~= "table" then
+        objectsByTarget = setmetatable({}, { __mode = "k" })
+        arg._damageEffectTargetObjects = objectsByTarget
+    end
+    local playersByTarget = arg._damageEffectTargetPlayers
+    if type(playersByTarget) ~= "table" then
+        playersByTarget = setmetatable({}, { __mode = "k" })
+        arg._damageEffectTargetPlayers = playersByTarget
+    end
+
+    local connections = {}
+    connectionsByTarget[targetModel] = connections
+    local targetPlayer = arg:_FindDamageNumberPlayer(targetModel)
+    if targetPlayer ~= nil then playersByTarget[targetModel] = targetPlayer end
+
+    local deathModel = targetModel
+    if targetPlayer ~= nil then
+        pcall(function()
+            local character = targetPlayer.Character
+            if character ~= nil and (targetModel == character or targetModel:IsDescendantOf(character)) then
+                deathModel = character
+            end
+        end)
+    end
+
+    local function connect(signal, callback)
+        local ok, connection = pcall(function() return signal:Connect(callback) end)
+        if ok and connection ~= nil then
+            connections[#connections + 1] = connection
+            return true
+        end
+        return false
+    end
+    local function onTargetEnded()
+        if connectionsByTarget[targetModel] ~= connections then return end
+        if deathModel ~= targetModel then
+            arg:_CleanupDamageEffectsForCharacter(deathModel)
+        else
+            arg:_CleanupDamageEffectsForTarget(targetModel)
+        end
+    end
+
+    local humanoid
+    pcall(function() humanoid = deathModel:FindFirstChildWhichIsA("Humanoid", true) end)
+    if humanoid ~= nil then
+        local health
+        pcall(function() health = humanoid.Health end)
+        if type(health) == "number" and health <= 0 then
+            onTargetEnded()
+            return false
+        end
+        pcall(function() connect(humanoid.Died, onTargetEnded) end)
+        pcall(function() connect(humanoid.Destroying, onTargetEnded) end)
+        pcall(function()
+            connect(humanoid.HealthChanged, function(currentHealth)
+                if type(currentHealth) == "number" and currentHealth <= 0 then
+                    onTargetEnded()
+                end
+            end)
+        end)
+    end
+
+    if targetPlayer ~= nil then
+        pcall(function()
+            connect(targetPlayer.CharacterRemoving, function(character)
+                if character == deathModel then onTargetEnded() end
+            end)
+            connect(targetPlayer.CharacterAdded, function(character)
+                if character ~= deathModel then onTargetEnded() end
+            end)
+            connect(game:GetService("Players").PlayerRemoving, function(leavingPlayer)
+                if leavingPlayer == targetPlayer then onTargetEnded() end
+            end)
+        end)
+    end
+    pcall(function() connect(targetModel.Destroying, onTargetEnded) end)
+    pcall(function()
+        connect(targetModel.AncestryChanged, function(_, newParent)
+            if newParent == nil then onTargetEnded() end
+        end)
+    end)
+    if deathModel ~= targetModel then
+        pcall(function() connect(deathModel.Destroying, onTargetEnded) end)
+    end
+    return true
+end
+
 index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel)
     local playerHit = type(v116.Data.PlayerHit) == "table" and v116.Data.PlayerHit or nil
     local cfg = type(playerHit) == "table" and playerHit.DamageEffects or nil
@@ -60321,6 +60538,7 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
 
     local model = typeof(hitModel) == "Instance" and hitModel:IsA("Model") and hitModel
         or hitRoot:FindFirstAncestorOfClass("Model")
+    if model ~= nil and not arg:_BindDamageEffectTarget(model) then return false end
     local color1 = typeof(cfg.Color1) == "Color3" and cfg.Color1 or Color3.fromRGB(255, 80, 80)
     local color2 = typeof(cfg.Color2) == "Color3" and cfg.Color2 or Color3.fromRGB(255, 190, 70)
     local color3 = typeof(cfg.Color3) == "Color3" and cfg.Color3 or Color3.fromRGB(120, 210, 255)
@@ -60346,6 +60564,17 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
     local face = CFrame.lookAt(origin, origin + look)
     local damageText = "-" .. tostring(math.floor(amount + 0.5))
 
+    local function registerTargetObject(object)
+        if object == nil or model == nil then return end
+        local objectsByTarget = arg._damageEffectTargetObjects
+        local targetObjects = type(objectsByTarget) == "table" and objectsByTarget[model] or nil
+        if type(targetObjects) ~= "table" then
+            targetObjects = {}
+            objectsByTarget[model] = targetObjects
+        end
+        targetObjects[#targetObjects + 1] = object
+    end
+
     local function untrack(object)
         for index = #arg._damageEffectObjects, 1, -1 do
             if arg._damageEffectObjects[index] == object then
@@ -60353,11 +60582,25 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
                 break
             end
         end
+        if model ~= nil then
+            local objectsByTarget = arg._damageEffectTargetObjects
+            local targetObjects = type(objectsByTarget) == "table" and objectsByTarget[model] or nil
+            if type(targetObjects) == "table" then
+                for index = #targetObjects, 1, -1 do
+                    if targetObjects[index] == object then
+                        table.remove(targetObjects, index)
+                        break
+                    end
+                end
+                if #targetObjects == 0 then arg:_ReleaseDamageEffectTarget(model) end
+            end
+        end
     end
 
     local function track(object, lifetime)
         if object == nil then return nil end
         table.insert(arg._damageEffectObjects, object)
+        registerTargetObject(object)
         local ttl = lifetime or (duration + 0.35)
         pcall(function() Debris:AddItem(object, ttl) end)
         task.delay(ttl + 0.75, function() untrack(object) end)
@@ -60367,6 +60610,7 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
     local function trackPersistent(object)
         if object ~= nil then
             table.insert(arg._damageEffectObjects, object)
+            registerTargetObject(object)
         end
         return object
     end
@@ -60406,6 +60650,7 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
         end)
         if ok and value then
             arg._damageEffectObjects[#arg._damageEffectObjects + 1] = value
+            registerTargetObject(value)
             value.Completed:Connect(function() untrack(value) end)
             task.delay(math.max(0.05, time) + 0.75, function() untrack(value) end)
             return value
@@ -60561,6 +60806,7 @@ index2._SpawnDamageEffects = function(arg, damage, hitRoot, isHeadshot, hitModel
         tween(phantom, duration, { FillTransparency = 1, OutlineTransparency = 1 }, Enum.EasingStyle.Quad)
     end
 
+    if model ~= nil then arg:_ReleaseDamageEffectTarget(model) end
     return true
 end
 
@@ -60613,6 +60859,13 @@ end
 end
 
 index2.Destroy = function(arg)
+local damageEffectTargets = {}
+for targetModel in next, arg._damageEffectTargetConnections or {} do
+    damageEffectTargets[#damageEffectTargets + 1] = targetModel
+end
+for _, targetModel in ipairs(damageEffectTargets) do
+    arg:_CleanupDamageEffectsForTarget(targetModel)
+end
 for targetModel, connections in next, arg._damageNumberTargetConnections or {} do
     arg._damageNumberTargetConnections[targetModel] = nil
     for _, connection in next, connections or {} do
@@ -60640,6 +60893,9 @@ for index = #arg._damageEffectObjects, 1, -1 do
     arg._damageEffectObjects[index] = nil
 end
 table.clear(arg._damageEffectStacks)
+table.clear(arg._damageEffectTargetObjects)
+table.clear(arg._damageEffectTargetConnections)
+table.clear(arg._damageEffectTargetPlayers)
 
 table.clear(arg._chams)
 arg._errorReporter:Destroy()
@@ -77382,6 +77638,7 @@ end
 end
 end
 
+end
 local function ragebotShouldUseAlwaysBackstabKnifeRotation(item, innerContext, target)
     if item == nil or item.Name ~= "Knife" then return false end
     local data = type(v115) == "table" and v115.Data or nil
