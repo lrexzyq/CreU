@@ -31732,6 +31732,38 @@ arg:_RecordPendingShot()
 end
 end
 
+index2.FinishShooting = function(arg)
+local inner = arg.Inner
+if inner == nil then return false end
+local inputMethod, finishMethod
+local methodsOk = pcall(function()
+    inputMethod = v102(inner, "Input")
+    finishMethod = v102(inner, "FinishShooting")
+end)
+if not methodsOk or type(inputMethod) ~= "function" or type(finishMethod) ~= "function" then
+    return false
+end
+
+-- Match the game's existing Throwable.Throw sequence and native payload:
+-- Input returns the local state result; FinishShooting returns success, event,
+-- and three arguments. Do not invent a remote event or argument layout.
+local inputResults = table.pack(pcall(v121, inputMethod, inner, "StartShooting"))
+if inputResults[1] ~= true then return false end
+local finishResults = table.pack(pcall(v121, finishMethod, inner, false))
+if finishResults[1] ~= true or finishResults[2] == false then return false end
+local eventName = finishResults[3]
+if type(eventName) ~= "string" or eventName == "" then return false end
+local encodeOk, encodedEvent = pcall(v116.encode, eventName)
+if not encodeOk or encodedEvent == nil then return false end
+local args = {
+    ["\0"] = finishResults[4],
+    ["\1"] = finishResults[5],
+    ["\2"] = finishResults[6],
+}
+local fireOk, fireResult = pcall(fireServer, useItemRemote, arg.ObjectId, encodedEvent, args, nil)
+return fireOk and fireResult ~= false
+end
+
 index2.IsFullyAiming = function(arg)
 local isAiming = v102(arg._data, "IsAiming")
 local aimScopePercent = arg._aimScopePercent
@@ -72252,67 +72284,41 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.bM()
 
-local function fn36(arg, player, localEnvironmentId)
-if arg == nil or not arg.IsEnemy or localEnvironmentId == nil then
-return false
+local function fn37(fighter, player, selection)
+if fighter == nil or player == nil or type(selection) ~= "table" then return nil end
+local fighters = selection._fighters
+local localState = type(fighters) == "table" and fighters.LocalState or nil
+local resolverController = {
+    _targetSelection = selection,
+    _innerContext = { FighterState = localState },
+}
+local target = { FighterState = fighter, Player = player }
+local okResolved, resolved = pcall(ragebotResolveRepRootTarget, resolverController, target)
+if okResolved and resolved == true and target.AliveState ~= nil then
+    return target
 end
-local environmentOk, targetEnvironmentId = pcall(function() return arg.EnvironmentId end)
-if not environmentOk or targetEnvironmentId ~= localEnvironmentId then
-    return false
-end
-local okInvincible, isInvincible = pcall(function() return arg:IsInvincible() end)
-if not okInvincible or isInvincible then
-return false
-end
-local okState, characterState = pcall(function()
-local character = arg.Character
-return character ~= nil and character.State or nil
-end)
-if not okState or characterState == nil or characterState.Alive ~= true then
-return false
-end
-local okParts, rootPart, hitboxHead = pcall(function()
-return characterState.RootPart, characterState.HitboxHead
-end)
-if not okParts or rootPart == nil or hitboxHead == nil then
-return false
-end
-local okPartState, partsValid = pcall(function()
-if not rootPart:IsA("BasePart") or not hitboxHead:IsA("BasePart") then
-return false
-end
-if not rootPart:IsDescendantOf(workspace) or not hitboxHead:IsDescendantOf(workspace) then
-return false
-end
-if player ~= nil then
-local currentCharacter = player.Character
-if currentCharacter == nil then return false end
-return rootPart:IsDescendantOf(currentCharacter) and hitboxHead:IsDescendantOf(currentCharacter)
-end
-return rootPart.Parent ~= nil and hitboxHead.Parent ~= nil
-end)
-if not okPartState or not partsValid then
-return false
-end
-local okObserver, itemObserver = pcall(function() return arg.ItemObserver end)
-if not okObserver or itemObserver == nil then return false end
-local okItem, melee = pcall(function() return itemObserver:EquippedItemAsMelee() end)
-if not okItem then return false end
-if melee ~= nil then
-local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-if not okDeflecting or isDeflecting then return false end
-end
-return true
+return nil
 end
 
-local function fn37(arg)
-local ok, target = pcall(function()
-local character = arg and arg.Character or nil
-local state = character and character.State or nil
-if state == nil or state.Alive ~= true then return nil end
-return { FighterState = arg, AliveState = state }
-end)
-return ok and target or nil
+local function fn36(fighter, player, localEnvironmentId, selection)
+if fighter == nil or player == nil or localEnvironmentId == nil then return false end
+local okEnemy, isEnemy = pcall(function() return fighter.IsEnemy end)
+if not okEnemy or isEnemy == false then return false end
+local okEnvironment, targetEnvironmentId = pcall(function() return fighter.EnvironmentId end)
+if not okEnvironment then return false end
+if targetEnvironmentId == nil then
+    pcall(function()
+        targetEnvironmentId = player:GetAttribute("EnvironmentID")
+            or player:GetAttribute("EnvironmentId")
+    end)
+end
+if targetEnvironmentId == nil or targetEnvironmentId ~= localEnvironmentId then
+    return false
+end
+-- Use the detector's shared resolver so normal targeting also supports a
+-- live Humanoid/root/hitbox when the framework's State or ItemObserver is
+-- temporarily unavailable. Explicitly invincible/deflecting targets remain rejected.
+return fn37(fighter, player, selection) ~= nil
 end
 
 local function getLocalEnvironmentId(fighters)
@@ -72320,7 +72326,16 @@ local function getLocalEnvironmentId(fighters)
         local localState = fighters and fighters.LocalState or nil
         return localState and localState.EnvironmentId or nil
     end)
-    if ok then return environmentId end
+    if ok and environmentId ~= nil then return environmentId end
+
+    -- FighterState can briefly lag behind Player attributes during a context
+    -- refresh. Reuse the detector resolver's fallback for ordinary targeting.
+    local playerOk, playerEnvironmentId = pcall(function()
+        local localPlayer = game:GetService("Players").LocalPlayer
+        return localPlayer and (localPlayer:GetAttribute("EnvironmentID")
+            or localPlayer:GetAttribute("EnvironmentId")) or nil
+    end)
+    if playerOk then return playerEnvironmentId end
     return nil
 end
 
@@ -72357,12 +72372,12 @@ local function isHacker(player)
     return okTag and tagged == true
 end
 
-local function distanceTo(fighter)
+local function distanceTo(fighter, player)
     if localPosition == nil then return nil end
+    local resolvedTarget = fn37(fighter, player, arg)
+    if resolvedTarget == nil then return nil end
     local okDistance, distance = pcall(function()
-        local character = fighter.Character
-        local state = character and character.State or nil
-        local root = state and state.RootPart or nil
+        local root = resolvedTarget.AliveState and resolvedTarget.AliveState.RootPart or nil
         if root == nil or not root:IsA("BasePart") or not root:IsDescendantOf(workspace) then
             return nil
         end
@@ -72386,7 +72401,7 @@ local function isExplicitlyProtected(fighter)
     local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
     if not okMelee or melee == nil then return false end
     local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-    return not okDeflecting or isDeflecting == true
+    return okDeflecting and isDeflecting == true
 end
 
                                                                                
@@ -72432,7 +72447,7 @@ local function rememberTarget(fighter, player)
     arg._lockedPlayer = player
     arg._lockedTargetAt = os.clock()
     resetLockedTargetTimers()
-    return fn37(fighter)
+    return fn37(fighter, player, arg)
 end
 
 local prioritizedHacker, prioritizedHackerDistance, prioritizedHackerPlayer = nil, math.huge, nil
@@ -72443,8 +72458,8 @@ if prioritizeHackers then
     if okPlayers and type(hackerPlayers) == "table" then
         for _, player in ipairs(hackerPlayers) do
             local fighter = arg._fighters.StateByPlayer[player]
-            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
-                local distance = distanceTo(fighter)
+            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId, arg) then
+                local distance = distanceTo(fighter, player)
                 if distance ~= nil and distance < prioritizedHackerDistance then
                     prioritizedHacker = fighter
                     prioritizedHackerDistance = distance
@@ -72458,7 +72473,7 @@ end
 local prioritizedVoided, prioritizedVoidedDistance, prioritizedVoidedPlayer = nil, math.huge, nil
 if prioritizeVoided then
     for player, fighter in arg._fighters.EnemyByPlayer do
-        if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
+        if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId, arg) then
             local okVoid, isVoided = pcall(function()
                 local character = fighter.Character
                 local state = character and character.State or nil
@@ -72467,7 +72482,7 @@ if prioritizeVoided then
                     and root.Position.Magnitude > 1000000
             end)
             if okVoid and isVoided then
-                local distance = distanceTo(fighter)
+                local distance = distanceTo(fighter, player)
                 if distance ~= nil and distance < prioritizedVoidedDistance then
                     prioritizedVoided = fighter
                     prioritizedVoidedDistance = distance
@@ -72496,47 +72511,38 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         if lockedPlayer.Parent ~= Players then
             return "release", nil, nil
         end
-        local character = lockedFighter.Character
-        if character == nil then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
-        local state = character.State
-        if state == nil then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
-        if state.Alive == false then
-            return "release", nil, nil
-        end
-        if state.Alive ~= true then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
-        arg._lockedUnavailableSince = nil
-
-        if lockedFighter.IsEnemy ~= true then
+        if lockedFighter.IsEnemy == false then
             arg._lockedUnattackableSince = nil
             return lockTimeoutStatus("_lockedEnemyMismatchSince", LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT)
         end
         arg._lockedEnemyMismatchSince = nil
-        if localEnvironmentId ~= nil and lockedFighter.EnvironmentId ~= localEnvironmentId then
+        local lockedEnvironmentId = nil
+        pcall(function() lockedEnvironmentId = lockedFighter.EnvironmentId end)
+        if localEnvironmentId ~= nil and lockedEnvironmentId ~= nil
+            and lockedEnvironmentId ~= localEnvironmentId then
             return "release", nil, nil
         end
 
-        local distance = distanceTo(lockedFighter)
+        -- Resolve through the same live-character/Humanoid fallback as fresh
+        -- targets. Requiring Character.State here dropped valid targets while
+        -- framework State / ItemObserver was temporarily unavailable.
+        local target = fn37(lockedFighter, lockedPlayer, arg)
+        if target == nil then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        arg._lockedUnavailableSince = nil
+
+        local distance = distanceTo(lockedFighter, lockedPlayer)
         if distance == nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
         end
         if isExplicitlyProtected(lockedFighter) then
             return "release", nil, nil
         end
-        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId) then
+        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId, arg) then
             return lockTimeoutStatus("_lockedUnattackableSince", LOCKED_TARGET_UNATTACKABLE_TIMEOUT)
         end
         arg._lockedUnattackableSince = nil
-
-        local target = fn37(lockedFighter)
-        if target == nil then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
         arg._lockedUnavailableSince = nil
         arg._lockedReadFailureSince = nil
         return "locked", target, distance
@@ -72572,8 +72578,8 @@ end
 
 local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
 for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
-    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
-        local distance = distanceTo(fighter)
+    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId, arg) then
+        local distance = distanceTo(fighter, player)
         if distance ~= nil and distance < bestTargetDistance then
             bestTarget, bestTargetDistance, bestTargetPlayer = fighter, distance, player
         end
@@ -72602,7 +72608,7 @@ if localEnvironmentId == nil then
     return false
 end
 for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116, player, localEnvironmentId) then
+if fn36(v116, player, localEnvironmentId, arg) then
 return true
 end
 end
@@ -72818,6 +72824,7 @@ local function ragebotVoidSpamState()
             reloadHold = false, reloadTransportPending = false,
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil, pendingShotRequestCount = nil, pendingShotDeadline = 0,
+            activeShootingItem = nil,
         }
         pcall(rawset, _G, RAGEBOT_VOID_SPAM_STATE_KEY, state)
     end
@@ -72882,8 +72889,28 @@ local function ragebotVoidSpamClearPendingAck(state)
     state.pendingShotDeadline = 0
 end
 
+local function ragebotVoidSpamReleaseActiveShot(state)
+    if type(state) ~= "table" then return false end
+    local item = state.activeShootingItem
+    if item == nil then return true end
+    local release = nil
+    local okMethod = pcall(function() release = item.FinishShooting end)
+    if not okMethod or type(release) ~= "function" then return false end
+    local okRelease, released = pcall(release, item)
+    if okRelease and released == true then
+        state.activeShootingItem = nil
+        state.activeShootingReleaseFailures = 0
+        return true
+    end
+    state.activeShootingReleaseFailures = math.min(
+        (tonumber(state.activeShootingReleaseFailures) or 0) + 1, 1000000
+    )
+    return false
+end
+
 local function ragebotVoidSpamReset(state)
     if type(state) ~= "table" then state = ragebotVoidSpamState() end
+    ragebotVoidSpamReleaseActiveShot(state)
     state.activeUntil = 0
     state.nextAttackAt = 0
     state.lastShotAt = 0
@@ -72946,6 +72973,7 @@ local function ragebotVoidSpamSetReloadHold(state, now, attack, hide, reloading)
 
     if reloading == true or state.reloadTransportPending == true then
         local enteringHold = state.reloadHold ~= true
+        ragebotVoidSpamReleaseActiveShot(state)
         state.reloadHold = true
         state.cycleModelVersion = 2
         state.cycleInitialized = true
@@ -72993,7 +73021,23 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     attack = math.clamp(attack, 0.01, 1)
     hide = math.clamp(hide, 0.01, 1)
 
+    if state.activeShootingItem ~= nil
+        and (state.cycleInitialized ~= true or state.cycleModelVersion ~= 2) then
+        local released = ragebotVoidSpamReleaseActiveShot(state)
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        state.phaseStartedAt = now
+        state.activeUntil = now + (released and hide or math.clamp(hide, 0.01, 0.05))
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
+
     if state.reloadHold == true then
+        ragebotVoidSpamReleaseActiveShot(state)
         state.phase = "hide"
         state.cycleInitialized = true
         state.cycleModelVersion = 2
@@ -73006,6 +73050,10 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
         return "hide"
+    end
+
+    if state.phase == "hide" and state.activeShootingItem ~= nil then
+        ragebotVoidSpamReleaseActiveShot(state)
     end
 
     if state.cycleModelVersion ~= 2 then
@@ -73041,6 +73089,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
 
         state.phaseStartedAt = now
         if state.phase == "attack" then
+            ragebotVoidSpamReleaseActiveShot(state)
             state.phase = "hide"
             state.activeUntil = now + hide
             state.fakePositionActive = true
@@ -73050,6 +73099,17 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.fakePositionTargetZ = nil
             state.fakePositionTargetReady = false
         else
+            if state.activeShootingItem ~= nil then
+                local released = ragebotVoidSpamReleaseActiveShot(state)
+                if not released then
+                    -- A failed native release must never be followed by a new
+                    -- Attack window; retry during short Hide extensions.
+                    state.activeUntil = now + math.clamp(hide, 0.01, 0.05)
+                    state.phase = "hide"
+                    state.fakePositionActive = true
+                    return state.phase
+                end
+            end
             state.phase = "attack"
             state.activeUntil = now + attack
             state.fakePositionActive = false
@@ -73091,6 +73151,7 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfte
 
     state.awaitingShotAck = true
     state.pendingShotItem = item
+    state.activeShootingItem = item
     state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
     state.pendingShotRequestCount = ragebotFiniteNumber(requestCountAfter) and requestCountAfter or nil
     state.pendingShotDeadline = now + 0.8
@@ -73114,6 +73175,7 @@ local function ragebotVoidSpamReleasePendingForUnavailableTarget()
         ragebotVoidSpamReset(state)
         return
     end
+    ragebotVoidSpamReleaseActiveShot(state)
     if state.awaitingShotAck == true then
         ragebotVoidSpamResolveUnconfirmedShot(state, os.clock(), attack, "failed")
     end
@@ -73157,6 +73219,7 @@ end
 local function ragebotVoidSpamCancelShot()
     local enabled = ragebotVoidSpamConfig()
     local state = ragebotVoidSpamState()
+    ragebotVoidSpamReleaseActiveShot(state)
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
@@ -73350,15 +73413,11 @@ local targetReadOk = pcall(function()
     end
     if targetStillValid then
         local okObserver, itemObserver = pcall(function() return fighterState.ItemObserver end)
-        if not okObserver or itemObserver == nil then
-            targetStillValid = false
-        else
+        if okObserver and itemObserver ~= nil then
             local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
-            if not okMelee then
-                targetStillValid = false
-            elseif melee ~= nil then
+            if okMelee and melee ~= nil then
                 local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-                if not okDeflecting or isDeflecting then
+                if okDeflecting and isDeflecting == true then
                     targetStillValid = false
                 end
             end
@@ -73508,12 +73567,13 @@ end
 end
 
 local voidSpamApi = {
-    ApiVersion = 5,
+    ApiVersion = 6,
     State = ragebotVoidSpamState,
     Config = ragebotVoidSpamConfig,
     PollShotAck = ragebotVoidSpamPollShotAck,
     ResolveUnconfirmedShot = ragebotVoidSpamResolveUnconfirmedShot,
     SetReloadHold = ragebotVoidSpamSetReloadHold,
+    ReleaseActiveShot = ragebotVoidSpamReleaseActiveShot,
     AdvancePhase = ragebotVoidSpamAdvancePhase,
     FiniteNumber = ragebotFiniteNumber,
 }
@@ -75103,10 +75163,43 @@ if preferredWeapon ~= "secondary" then preferredWeapon = "primary" end
 local swapWhenEmpty = simple.SwapWeaponsWhenEmpty ~= false
 local preferProjectile = simple.PreferProjectileWeapon == true
 
+-- ItemBehaviors appends newly-added wrappers to the end of _items. After an
+-- item is removed and replaced, enumeration order can differ from loadout
+-- slot order. The wrapper's Index is refreshed from LocalFighterState, and is
+-- also the index used by Item:Equip(), so use it as the authoritative order.
 local itemsOk, itemsOrError = pcall(function()
+    local entries = {}
+    local behaviors = context ~= nil and context.ItemBehaviors or nil
+    if behaviors == nil then error("ItemBehaviors is unavailable") end
+    local sourceItems = behaviors:GetItems()
+    if type(sourceItems) ~= "table" then error("ItemBehaviors:GetItems() did not return a table") end
+
+    for order, item in ipairs(sourceItems) do
+        if item ~= nil then
+            local slotIndex = nil
+            local okIndex, value = pcall(function() return item.Index end)
+            if okIndex and type(value) == "number" and value == value
+                and value ~= math.huge and value ~= -math.huge and value >= 1 then
+                slotIndex = value
+            end
+            entries[#entries + 1] = {
+                Item = item,
+                SlotIndex = slotIndex or math.huge,
+                Order = order,
+            }
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        if a.SlotIndex ~= b.SlotIndex then
+            return a.SlotIndex < b.SlotIndex
+        end
+        return a.Order < b.Order
+    end)
+
     local result = {}
-    for _, item in context.ItemBehaviors:GetItems() do
-        table.insert(result, item)
+    for _, entry in ipairs(entries) do
+        result[#result + 1] = entry.Item
     end
     return result
 end)
@@ -75120,74 +75213,81 @@ if not itemsOk then
 end
 local items = itemsOrError
 
+-- Match UE's mode dispatch: Knife selects the named Knife, Melee selects the
+-- first item whose type is Melee (including Knife), and either mode falls back
+-- to the gun worker when the requested melee item is absent.
 if mode == "knife" or mode == "melee" then
     local selected = nil
     for _, item in ipairs(items) do
-        local isMelee = item ~= nil and item.__type == "Melee"
-        local matches = isMelee and (mode == "knife" and item.Name == "Knife"
-            or mode == "melee" and item.Name ~= "Knife")
-        if matches then
-            selected = item
-            break
+        if item ~= nil and item.__type == "Melee" then
+            if mode == "melee" or item.Name == "Knife" then
+                selected = item
+                break
+            end
         end
     end
     if selected ~= nil then
         local okEquipped, equipped = pcall(function() return selected:IsEquipped() end)
-        if not okEquipped then return nil, "Transient" end
+        if not okEquipped or type(equipped) ~= "boolean" then
+            return nil, "Transient"
+        end
         return { Type = equipped and "Attack" or "Swap", Item = selected }
     end
-    -- Match UE Simple: if the requested melee weapon is unavailable, fall back to Gun.
 end
 
 if mode ~= "gun" and mode ~= "knife" and mode ~= "melee" then mode = "gun" end
+local gunItems = {}
+for _, item in ipairs(items) do
+    if item ~= nil and item.__type == "Gun" then
+        gunItems[#gunItems + 1] = item
+    end
+end
+if #gunItems == 0 then return nil end
+
+-- UE's worker searches from the preferred end of the ordered gun list:
+-- Primary = first gun slot, Secondary = last gun slot. Keep this ordering
+-- even after an inventory remove/add cycle.
+local firstIndex = preferredWeapon == "secondary" and #gunItems or 1
+local indexStep = preferredWeapon == "secondary" and -1 or 1
+local candidateCount = #gunItems
 local candidates = {}
 local hasTransient = false
-for order, item in ipairs(items) do
-    local role = nil
-    if item ~= nil and item.__type == "Gun" then
-        local roleOk, resolvedRole = pcall(fn36, item)
-        if roleOk then
-            role = resolvedRole
-        else
+for rank = 0, candidateCount - 1 do
+    local index = firstIndex + rank * indexStep
+    local item = gunItems[index]
+    if item ~= nil then
+        local okEquipped, equipped = pcall(function() return item:IsEquipped() end)
+        if not okEquipped or type(equipped) ~= "boolean" then
             hasTransient = true
-        end
-    end
-    if role == "Primary" or role == "Secondary" then
-        if swapWhenEmpty or role == (preferredWeapon == "secondary" and "Secondary" or "Primary") then
-            local okEquipped, equipped = pcall(function() return item:IsEquipped() end)
-            if not okEquipped then
+        else
+            local okAmmo, ammoBased, ammo = readAmmoState(item)
+            if not okAmmo then
                 hasTransient = true
             else
-                local okAmmo, ammoBased, ammo = readAmmoState(item)
-                if not okAmmo then
-                    hasTransient = true
-                else
-                    local empty = ammoBased == true and type(ammo) == "number" and ammo <= 0
-                    local reserve = 0
-                    if empty then
-                        local okReserve, reserveValue = pcall(function() return item:GetAmmoReserve() end)
-                        if okReserve and type(reserveValue) == "number" and reserveValue == reserveValue
-                            and reserveValue ~= math.huge and reserveValue ~= -math.huge then
-                            reserve = math.max(0, reserveValue)
-                        else
-                            hasTransient = true
-                            continue
-                        end
-                        -- UE's selector omits fully depleted weapons with no reserve,
-                        -- allowing the other slot to be considered.
-                        if reserve <= 0 then continue end
+                local empty = ammoBased == true and type(ammo) == "number" and ammo <= 0
+                local reserve = 0
+                if empty then
+                    local okReserve, reserveValue = pcall(function() return item:GetAmmoReserve() end)
+                    if okReserve and type(reserveValue) == "number" and reserveValue == reserveValue
+                        and reserveValue ~= math.huge and reserveValue ~= -math.huge then
+                        reserve = math.max(0, reserveValue)
+                    else
+                        hasTransient = true
+                        continue
                     end
-                    table.insert(candidates, {
-                        Item = item,
-                        Role = role,
-                        Equipped = equipped == true,
-                        Empty = empty,
-                        Reserve = reserve,
-                        ProjectileRank = preferProjectile and item.IsRaycast == false and 0 or 1,
-                        WeaponRank = role == (preferredWeapon == "secondary" and "Secondary" or "Primary") and 0 or 1,
-                        Order = order,
-                    })
+                    -- A weapon with no reserve cannot be reloaded. UE omits it
+                    -- from the candidate list and continues to the other slot.
+                    if reserve <= 0 then continue end
                 end
+                candidates[#candidates + 1] = {
+                    Item = item,
+                    Equipped = equipped == true,
+                    Empty = empty,
+                    Reserve = reserve,
+                    ProjectileRank = preferProjectile and item.IsRaycast == false and 0 or 1,
+                    WeaponRank = rank,
+                    Order = index,
+                }
             end
         end
     end
@@ -75201,9 +75301,23 @@ table.sort(candidates, function(a, b)
     return a.Order < b.Order
 end)
 
--- Preserve preferred-slot order: an empty weapon with reserve is reloaded
--- before switching to the other slot, matching the UE Simple behavior.
-local selected = candidates[1]
+local selected = nil
+if swapWhenEmpty then
+    selected = candidates[1]
+else
+    for _, candidate in ipairs(candidates) do
+        if candidate.Empty ~= true then
+            selected = candidate
+            break
+        end
+    end
+    -- With swapping disabled, use a loaded weapon first. If every usable gun
+    -- is empty but has reserve ammo, retain the last preferred candidate so it
+    -- can enter the native reload path, matching UE's worker.
+    if selected == nil then
+        selected = candidates[#candidates]
+    end
+end
 if selected ~= nil then
     if not selected.Equipped then
         return { Type = "Swap", Item = selected.Item }
@@ -75391,7 +75505,7 @@ local v117 = tbl17.jD()
 
 local function ragebotGetVoidSpamApiFunction(name)
     local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
-    if type(api) ~= "table" or api.ApiVersion ~= 5 then return nil end
+    if type(api) ~= "table" or api.ApiVersion ~= 6 then return nil end
     local fn = rawget(api, name)
     return type(fn) == "function" and fn or nil
 end
@@ -75410,6 +75524,7 @@ local function ragebotVoidSpamState()
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil,
             pendingShotRequestCount = nil, pendingShotDeadline = 0,
+            activeShootingItem = nil,
             reloadHold = false, reloadTransportPending = false,
         }
         pcall(rawset, _G, key, state)
@@ -75536,7 +75651,46 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
     attack = math.clamp(attack, 0.01, 1)
     hide = math.clamp(hide, 0.01, 1)
+    local function releaseActiveShot()
+        if state.activeShootingItem == nil then return true end
+        local releaseFn = ragebotGetVoidSpamApiFunction("ReleaseActiveShot")
+        if releaseFn ~= nil then
+            local okRelease, released = pcall(releaseFn, state)
+            if okRelease then return released == true end
+        end
+        local item = state.activeShootingItem
+        local okMethod, method = pcall(function() return item.FinishShooting end)
+        if not okMethod or type(method) ~= "function" then return false end
+        local okCall, released = pcall(method, item)
+        if okCall and released == true then
+            state.activeShootingItem = nil
+            state.activeShootingReleaseFailures = 0
+            return true
+        end
+        state.activeShootingReleaseFailures = math.min(
+            (tonumber(state.activeShootingReleaseFailures) or 0) + 1, 1000000
+        )
+        return false
+    end
+    if state.phase == "hide" and state.activeShootingItem ~= nil then
+        releaseActiveShot()
+    end
+    if state.activeShootingItem ~= nil
+        and (state.cycleInitialized ~= true or state.cycleModelVersion ~= 2) then
+        local released = releaseActiveShot()
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        state.phaseStartedAt = now
+        state.activeUntil = now + (released and hide or math.clamp(hide, 0.01, 0.05))
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
     if state.reloadHold == true then
+        releaseActiveShot()
         state.phase = "hide"
         state.cycleInitialized = true
         state.cycleModelVersion = 2
@@ -75578,6 +75732,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if now >= phaseEnd then
         state.phaseStartedAt = now
         if state.phase == "attack" then
+            releaseActiveShot()
             state.phase = "hide"
             state.activeUntil = now + hide
             state.fakePositionActive = true
@@ -75587,6 +75742,12 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.fakePositionTargetZ = nil
             state.fakePositionTargetReady = false
         else
+            if state.activeShootingItem ~= nil and not releaseActiveShot() then
+                state.phase = "hide"
+                state.activeUntil = now + math.clamp(hide, 0.01, 0.05)
+                state.fakePositionActive = true
+                return state.phase
+            end
             state.phase = "attack"
             state.activeUntil = now + attack
             state.fakePositionActive = false
@@ -76219,6 +76380,10 @@ local function reconcileRagebotProfiles()
         v115:Set({ "Ragebot", "Profile" }, "Advanced")
         selectedProfile = "Advanced"
     end
+    local simpleStateOk, simpleState = pcall(v118.GetEnabledKeybindState, v118, { "Ragebot", "Simple" })
+    local advancedStateOk, advancedState = pcall(v118.GetEnabledKeybindState, v118, { "Ragebot", "Advanced" })
+    if simpleStateOk then profileKeybindActive.Simple = simpleState == true end
+    if advancedStateOk then profileKeybindActive.Advanced = advancedState == true end
     local desiredEnabled = selectedProfile == "Simple"
         and simpleEnabled and profileKeybindActive.Simple
         or selectedProfile == "Advanced"
@@ -76913,7 +77078,16 @@ local fighterState = innerContext.FighterState
 local character = fighterState ~= nil and fighterState.Character or nil
 local state = character ~= nil and character.State or nil
 local characterController = innerContext.CharacterController
-if fighterState == nil or fighterState.EnvironmentId == nil or not arg._enabled
+local localEnvironmentId = nil
+pcall(function()
+    localEnvironmentId = fighterState ~= nil and fighterState.EnvironmentId or nil
+    if localEnvironmentId == nil then
+        local localPlayer = Players.LocalPlayer
+        localEnvironmentId = localPlayer and (localPlayer:GetAttribute("EnvironmentID")
+            or localPlayer:GetAttribute("EnvironmentId")) or nil
+    end
+end)
+if fighterState == nil or localEnvironmentId == nil or not arg._enabled
    or state == nil or not state.Alive
    or characterController == nil or innerContext.ItemBehaviors == nil then
 if arg._repRootCounterRestorePending == true then
@@ -78996,6 +79170,23 @@ end
 
 if (not voidSpamConfigured or arg._enabled ~= true)
     and type(voidSpamState) == "table" then
+    local activeShootingItem = voidSpamState.activeShootingItem
+    if activeShootingItem ~= nil then
+        local releaseOk, releaseMethod = pcall(function() return activeShootingItem.FinishShooting end)
+        if releaseOk and type(releaseMethod) == "function" then
+            local callOk, released = pcall(releaseMethod, activeShootingItem)
+            if callOk and released == true then
+                voidSpamState.activeShootingItem = nil
+                voidSpamState.activeShootingReleaseFailures = 0
+            else
+                -- Keep the item reference so the native end-shooting event can
+                -- be retried on the next update; never forget a held attack.
+                voidSpamState.activeShootingReleaseFailures = math.min(
+                    (tonumber(voidSpamState.activeShootingReleaseFailures) or 0) + 1, 1000000
+                )
+            end
+        end
+    end
     voidSpamState.activeUntil = 0
     voidSpamState.nextAttackAt = 0
     voidSpamState.lastShotAt = 0
