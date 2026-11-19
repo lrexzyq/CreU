@@ -23119,7 +23119,7 @@ return bd.c
 end
 end
 do
-local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,Detector={Enabled=true},AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
+local function fn35()local I= tbl17 .i().atomic; tbl17 .aZ();local W,N,P= tbl17 .aU(), tbl17 .aW(), tbl17 .aY();return{Aimbot=W.buildConfig(),SilentAim=N.buildConfig(),Triggerbot=P.buildConfig(),Ragebot={Profile="Advanced",Enabled=false,Simple={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Mode="gun",PreferredWeapon="primary",SwapWeaponsWhenEmpty=true,PreferProjectileWeapon=false,AutoPrioritizeVoided=false,ShootFrames=1,VoidSpam={Enabled=false,Attack=0.1,Hide=0.25}},Advanced={Enabled=false,Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false}},Keybind={State=false,Kind="Always",Bind=nil,ShowInList=true,Invisible=false},Stability=0.15,ShootFrames=1,PrioritizeHackers=false,Detector={Enabled=true},AimDirection="Part",VoidSpam={Enabled=false,Attack=0.1,Hide=0.25},Weapons={Priority=I({"Primary","Secondary","Melee"}),Enabled={Primary=true,Secondary=true,Melee=true},OnEmpty="SwapOrReload"},Evasion={Mode="Random",Random={AnchorFromCharacter=false,BaseRadius=100,RadiusRandomFactor=0.5},ProjectileBreaker={DepthForward={Min=0,Max=4},DepthForwardFrequency=5,DepthUp={Min=0,Max=5.5},DepthUpFrequency=5,RepositionInterval=0.3,FallbackAnchorFromCharacter=false,FallbackBaseRadius=100,FallbackRadiusRandomFactor=0.5},Translocate={Offset=-5}},UtilizeHealthLead=false},Underground={Enabled=false},Flickbot={Enabled=false,Keybind={State=false,Kind="Hold",Bind=nil,ShowInList=true,Invisible=false},Shoot=false,ShotDelay=0,Cooldown=250,FlickDuration=110,Curvature=12,Humanness=30}};end
 
 tbl17.be = function()
 local be = tbl17.cache.be
@@ -31730,6 +31730,38 @@ arg:_RecordPendingShot(ammoSnapshot, true)
 else
 arg:_RecordPendingShot()
 end
+end
+
+index2.FinishShooting = function(arg)
+local inner = arg.Inner
+if inner == nil then return false end
+local inputMethod, finishMethod
+local methodsOk = pcall(function()
+    inputMethod = v102(inner, "Input")
+    finishMethod = v102(inner, "FinishShooting")
+end)
+if not methodsOk or type(inputMethod) ~= "function" or type(finishMethod) ~= "function" then
+    return false
+end
+
+-- Match the game's existing Throwable.Throw sequence and native payload:
+-- Input returns the local state result; FinishShooting returns success, event,
+-- and three arguments. Do not invent a remote event or argument layout.
+local inputResults = table.pack(pcall(v121, inputMethod, inner, "StartShooting"))
+if inputResults[1] ~= true then return false end
+local finishResults = table.pack(pcall(v121, finishMethod, inner, false))
+if finishResults[1] ~= true or finishResults[2] == false then return false end
+local eventName = finishResults[3]
+if type(eventName) ~= "string" or eventName == "" then return false end
+local encodeOk, encodedEvent = pcall(v116.encode, eventName)
+if not encodeOk or encodedEvent == nil then return false end
+local args = {
+    ["\0"] = finishResults[4],
+    ["\1"] = finishResults[5],
+    ["\2"] = finishResults[6],
+}
+local fireOk, fireResult = pcall(fireServer, useItemRemote, arg.ObjectId, encodedEvent, args, nil)
+return fireOk and fireResult ~= false
 end
 
 index2.IsFullyAiming = function(arg)
@@ -67356,7 +67388,7 @@ return ie.c
 end
 end
 do
-local function fn35() tbl17 .aE();local I= tbl17 .h6();local function l(W)I(W,"Enable Ragebot",{"Always","Toggle","Hold"},{"Ragebot"},true);W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddToggle({Label="Detector",Tooltip="Detects abnormal target Reproot behavior. When disabled, Ragebot ignores detector-based countering and keeps normal targeting.",Config={"Ragebot","Detector","Enabled"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
+local function fn35() tbl17 .aE();local function l(W)W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});W:AddToggle({Label="Detector",Tooltip="Detects abnormal target Reproot behavior. When disabled, Ragebot ignores detector-based countering and keeps normal targeting.",Config={"Ragebot","Detector","Enabled"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
     if enabled == false then
@@ -67385,10 +67417,10 @@ local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a co
     end
 end})
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
-voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.01–1 second.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
+voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.05–1 second (50ms minimum replication settle).",Min=0.05,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
-local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W)
-local activation=W:AddSection({Title="Activation",Side="left"})
+local a=P:AddDropdown({Label="Evasion Mode",Options={"Off","Random","Translocate","ProjectileBreaker"},Labels={ProjectileBreaker="Projectile Breaker"},Config={"Ragebot","Evasion","Mode"}});local e=P:AddGroup({Source=a,Option="Random"});e:AddToggle({Label="Character Origin",Config={"Ragebot","Evasion","Random","AnchorFromCharacter"}});e:AddSlider({Label="Base Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","Random","BaseRadius"}});e:AddSlider({Label="Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","Random","RadiusRandomFactor"}});P:AddGroup({Source=a,Option="Translocate"}):AddSlider({Label="Offset",Min=-10,Max=10,Step=0.01,Config={"Ragebot","Evasion","Translocate","Offset"}});W(P,a);P:AddDropdown({Label="Hitscan",Tooltip="Up: force shots upward; Down: force shots downward; Part: keep the original target-aware direction.",Options={"Up","Down","Part"},Config={"Ragebot","AimDirection"}});P:AddToggle({Label="Underground",Tooltip="Combines Underground offset with Ragebot server-CFrame control; runs standalone when Ragebot is inactive.",Config={"Underground","Enabled"},OnChanged=function(enabled)local controller=rawget(_G,"__CrefyUndergroundController");if type(controller)~="table"then return;end;local ok,result=pcall(function()if enabled then return controller.Start()else return controller.Stop()end end);if not ok then warn("[Underground] Toggle failed: "..tostring(result));end;end});end;return function(W, activation)
+activation = activation or W:AddSection({Title="Activation",Side="left"})
 l(activation)
 I_150(W:AddSection({Title="Weapon Strategy",Side="left"}))
 N(W:AddSection({Title="Evasion",Side="right"}))
@@ -67420,7 +67452,209 @@ return ii.c
 end
 end
 do
-local function fn35()local I,W,N,P= tbl17 .aU(), tbl17 .gR(), tbl17 .aW(), tbl17 .aY(); tbl17 .aE(); tbl17 .hN();local a,e,c,E,p,T,t,x,S= tbl17 .h0(), tbl17 .h7(), tbl17 .h8(), tbl17 .h9(), tbl17 .ia(), tbl17 .ib(), tbl17 .ic(), tbl17 .id(),{Combat="rbxassetid://99199363807265",CameraAim="rbxassetid://83752373575368",SilentAim="rbxassetid://109514269737059",FireAssist="rbxassetid://81854854241463",WeaponHandling="rbxassetid://128279962545721",HitFeedback="rbxassetid://140427675871522",Ragebot="rbxassetid://125012650497883"};return function(J,B)local X=B:AddTab({Label="Combat",Icon=S.Combat,Description="Aim assistance, fire control, weapon handling, feedback, and ragebot."});local H=X:AddTab({Label="Aimbot",Icon=S.CameraAim,Description="Camera-based aim assistance and target locking."});local k,D=H:Grid({Columns=2}),table.clone(I.BuildSpec);D.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,e(k,D));D,k=X:AddTab({Label="Silent Aim",Icon=S.SilentAim,Description="Redirect projectiles toward targets without moving the camera."}):Grid({Columns=2}),table.clone(N.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,E(D,k));k=X:AddTab({Label="Ragebot",Icon=S.Ragebot,Description="Aggressive targeting, weapon priority, and evasive movement."}):Grid({Columns=2});tbl17 .ih()(k);D,k=X:AddTab({Label="Fire Assist",Icon=S.FireAssist,Description="Automatic firing and fast camera flicks."}):Grid({Columns=2}),table.clone(P.BuildSpec);k.PinHint="Hold a weapon, then click the pin next to a setting to give that weapon its own value.";a(J.StoreProfiles,p(D,k)); tbl17 .ii()(D,function()H:Open();end);x((X:AddTab({Label="Weapon Handling",Icon=S.WeaponHandling,Description="Aim, firing, cooldown, melee, and grenade behavior."}):Grid({Columns=2})));D,k=X:AddTab({Label="Hit Feedback",Icon=S.HitFeedback,Description="Sound, visual, flash, and notification feedback."}):Grid({Columns=2}),c(B,J.SfxSoundStorage);t(J,D,k);T(J,D,k);end;end
+local function fn35()
+local I, W, N, P = tbl17.aU(), tbl17.gR(), tbl17.aW(), tbl17.aY()
+tbl17.aE()
+tbl17.hN()
+local a, e, c, E, p, T, t, x = tbl17.h0(), tbl17.h7(), tbl17.h8(), tbl17.h9(), tbl17.ia(), tbl17.ib(), tbl17.ic(), tbl17.id()
+local S = {
+    Combat = "rbxassetid://99199363807265",
+    CameraAim = "rbxassetid://83752373575368",
+    SilentAim = "rbxassetid://109514269737059",
+    FireAssist = "rbxassetid://81854854241463",
+    WeaponHandling = "rbxassetid://128279962545721",
+    HitFeedback = "rbxassetid://140427675871522",
+    Ragebot = "rbxassetid://125012650497883",
+}
+
+return function(J, B)
+    local X = B:AddTab({ Label = "Combat", Icon = S.Combat, Description = "Aim assistance, fire control, weapon handling, and feedback." })
+    local H = X:AddTab({ Label = "Aimbot", Icon = S.CameraAim, Description = "Camera-based aim assistance and target locking." })
+    local k, D = H:Grid({ Columns = 2 }), table.clone(I.BuildSpec)
+    D.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    a(J.StoreProfiles, e(k, D))
+
+    D, k = X:AddTab({ Label = "Silent Aim", Icon = S.SilentAim, Description = "Redirect projectiles toward targets without moving the camera." }):Grid({ Columns = 2 }), table.clone(N.BuildSpec)
+    k.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    a(J.StoreProfiles, E(D, k))
+
+    local rageRoot = B:AddTab({ Label = "Ragebot", Icon = S.Ragebot, Description = "Configure two independent Ragebot modes. Only one can be enabled at a time." })
+    local simpleTab = rageRoot:AddTab({ Label = "Simple", Description = "UE-style weapon modes, preferred weapon, ammo fallback, and weapon selection." })
+    local simpleGrid = simpleTab:Grid({ Columns = 2 })
+    local advancedTab = rageRoot:AddTab({ Label = "Advanced", Description = "Crefy's modern targeting, weapon strategy, detector, and evasion controls." })
+    local advancedGrid = advancedTab:Grid({ Columns = 2 })
+
+    local activation = simpleGrid:AddSection({ Title = "Activation", Side = "left" })
+    local adapter = J.ReactiveStoreAdapter
+
+    -- Migrate configs from the former single-Ragebot layout. The legacy root
+    -- Enabled/Keybind fields are copied to the previously selected profile only
+    -- when neither new profile has an explicit active state.
+    local function migrateLegacyRagebotSettings()
+        if adapter == nil then return end
+        local simpleEnabled = adapter:Get({ "Ragebot", "Simple", "Enabled" }) == true
+        local advancedEnabled = adapter:Get({ "Ragebot", "Advanced", "Enabled" }) == true
+        local profile = adapter:Get({ "Ragebot", "Profile" }) == "Simple" and "Simple" or "Advanced"
+        if not simpleEnabled and not advancedEnabled and adapter:Get({ "Ragebot", "Enabled" }) == true then
+            adapter:Set({ "Ragebot", profile, "Enabled" }, true)
+            advancedEnabled = profile == "Advanced"
+            simpleEnabled = profile == "Simple"
+        end
+        local legacyKeybind = adapter:Get({ "Ragebot", "Keybind" })
+        local profileKeybind = adapter:Get({ "Ragebot", profile, "Keybind" })
+        if type(legacyKeybind) == "table" and type(profileKeybind) == "table"
+            and profileKeybind.Bind == nil and legacyKeybind.Bind ~= nil then
+            for _, field in ipairs({ "Bind", "Kind", "State", "ShowInList", "Invisible" }) do
+                if legacyKeybind[field] ~= nil then
+                    adapter:Set({ "Ragebot", profile, "Keybind", field }, legacyKeybind[field])
+                end
+            end
+        end
+        if profile == "Simple" then
+            local legacyVoidSpam = adapter:Get({ "Ragebot", "VoidSpam" })
+            local simpleVoidSpam = adapter:Get({ "Ragebot", "Simple", "VoidSpam" })
+            if type(legacyVoidSpam) == "table" and type(simpleVoidSpam) == "table"
+                and simpleVoidSpam.Enabled == false and simpleVoidSpam.Attack == 0.1 and simpleVoidSpam.Hide == 0.25
+                and (legacyVoidSpam.Enabled == true or legacyVoidSpam.Attack ~= 0.1 or legacyVoidSpam.Hide ~= 0.25) then
+                for _, field in ipairs({ "Enabled", "Attack", "Hide" }) do
+                    if legacyVoidSpam[field] ~= nil then
+                        adapter:Set({ "Ragebot", "Simple", "VoidSpam", field }, legacyVoidSpam[field])
+                    end
+                end
+            end
+            local legacyFrames = adapter:Get({ "Ragebot", "ShootFrames" })
+            local simpleFrames = adapter:Get({ "Ragebot", "Simple", "ShootFrames" })
+            if simpleFrames == 1 and type(legacyFrames) == "number" and legacyFrames ~= 1 then
+                adapter:Set({ "Ragebot", "Simple", "ShootFrames" }, legacyFrames)
+            end
+        end
+        if simpleEnabled and advancedEnabled then
+            adapter:Set({ "Ragebot", "Simple", "Enabled" }, false)
+            adapter:Set({ "Ragebot", "Advanced", "Enabled" }, false)
+            adapter:Set({ "Ragebot", "Simple", "Keybind", "State" }, false)
+            adapter:Set({ "Ragebot", "Advanced", "Keybind", "State" }, false)
+            simpleEnabled, advancedEnabled = false, false
+        elseif simpleEnabled then
+            adapter:Set({ "Ragebot", "Profile" }, "Simple")
+        elseif advancedEnabled then
+            adapter:Set({ "Ragebot", "Profile" }, "Advanced")
+        end
+        adapter:Set({ "Ragebot", "Enabled" }, simpleEnabled or advancedEnabled)
+    end
+    migrateLegacyRagebotSettings()
+
+    local function stopBothProfiles()
+        if adapter == nil then return end
+        adapter:Set({ "Ragebot", "Simple", "Enabled" }, false)
+        adapter:Set({ "Ragebot", "Advanced", "Enabled" }, false)
+        adapter:Set({ "Ragebot", "Simple", "Keybind", "State" }, false)
+        adapter:Set({ "Ragebot", "Advanced", "Keybind", "State" }, false)
+        adapter:Set({ "Ragebot", "Enabled" }, false)
+    end
+
+    local function handleProfileToggle(profile, enabled)
+        if adapter == nil then return end
+        local other = profile == "Simple" and "Advanced" or "Simple"
+        local otherEnabled = adapter:Get({ "Ragebot", other, "Enabled" }) == true
+        if enabled == true then
+            if otherEnabled then
+                -- The clicked toggle has already been written by the config binding.
+                -- Reject the conflict after that write so both UI values and config agree.
+                stopBothProfiles()
+                return
+            end
+            adapter:Set({ "Ragebot", "Profile" }, profile)
+            adapter:Set({ "Ragebot", "Enabled" }, true) -- legacy mirror only
+        else
+            adapter:Set({ "Ragebot", profile, "Keybind", "State" }, false)
+            adapter:Set({ "Ragebot", "Enabled" }, otherEnabled)
+        end
+    end
+
+    local function addProfileKeybind(section, toggle, profile, label)
+        local keybind = section:AddKeybind({
+            Row = toggle.Row,
+            Modes = { "Always", "Toggle", "Hold" },
+            InKeybindList = true,
+            ListLabel = label,
+            ConfigMap = {
+                Key = { "Ragebot", profile, "Keybind", "Bind" },
+                Mode = { "Ragebot", profile, "Keybind", "Kind" },
+                Active = { "Ragebot", profile, "Keybind", "State" },
+                ShowInList = { "Ragebot", profile, "Keybind", "ShowInList" },
+                Invisible = { "Ragebot", profile, "Keybind", "Invisible" },
+            },
+        })
+        keybind:SetFeatureEnabled(toggle.Value == true)
+        toggle:Connect(toggle.ValueChanged, function(value)
+            keybind:SetFeatureEnabled(value == true)
+        end)
+        return keybind
+    end
+
+    local simpleEnableToggle = activation:AddToggle({
+        Label = "Enable Simple Ragebot",
+        Tooltip = "Simple and Advanced are mutually exclusive. Trying to enable both turns both off.",
+        Config = { "Ragebot", "Simple", "Enabled" },
+    })
+    simpleEnableToggle:OnChanged(function(enabled)
+        handleProfileToggle("Simple", enabled == true)
+    end)
+    addProfileKeybind(activation, simpleEnableToggle, "Simple", "Simple Ragebot")
+
+    activation:AddDropdown({ Label = "Mode", Options = { "gun", "knife", "melee" }, Labels = { gun = "Gun", knife = "Knife", melee = "Melee" }, Config = { "Ragebot", "Simple", "Mode" } })
+    activation:AddDropdown({ Label = "Preferred Weapon", Options = { "primary", "secondary" }, Labels = { primary = "Primary", secondary = "Secondary" }, Config = { "Ragebot", "Simple", "PreferredWeapon" } })
+    activation:AddLabel({ Label = "Simple uses its own single-frame cadence; Advanced uses Shoot Frames." })
+
+    local weaponSettings = simpleGrid:AddSection({ Title = "Weapon Settings", Side = "left" })
+    weaponSettings:AddToggle({ Label = "Swap Weapons When Empty", Config = { "Ragebot", "Simple", "SwapWeaponsWhenEmpty" } })
+    weaponSettings:AddToggle({ Label = "Prefer Projectile Weapon", Tooltip = "Prefers non-raycast guns when both weapon slots are available.", Config = { "Ragebot", "Simple", "PreferProjectileWeapon" } })
+    weaponSettings:AddToggle({ Label = "Auto Prioritize Voided Players", Tooltip = "Prioritizes valid enemies whose root position magnitude exceeds the UE void threshold.", Config = { "Ragebot", "Simple", "AutoPrioritizeVoided" } })
+
+    local simpleVoidSpam = simpleGrid:AddSection({ Title = "Void Spam", Side = "right" })
+    local simpleVoidToggle = simpleVoidSpam:AddToggle({ Label = "Void Spam", Tooltip = "Uses a separate Simple-profile attack/hide configuration.", Config = { "Ragebot", "Simple", "VoidSpam", "Enabled" } })
+    simpleVoidToggle:OnChanged(function(enabled)
+        if enabled == false then
+            local restore = rawget(_G, "__CrefyRestoreVoidSpamTransform")
+            if type(restore) == "function" then
+                local okRestore, restoreResult = pcall(restore)
+                if not okRestore or restoreResult == false then
+                    warn("[Ragebot:Simple] Void Spam restore will be retried by the managed controller.")
+                end
+            end
+        end
+    end)
+    local simpleVoidGroup = simpleVoidSpam:AddGroup({ Source = simpleVoidToggle })
+    simpleVoidGroup:AddSlider({ Label = "Attack", Min = 0.05, Max = 1, Step = 0.01, Config = { "Ragebot", "Simple", "VoidSpam", "Attack" } })
+    simpleVoidGroup:AddSlider({ Label = "Hide", Min = 0.01, Max = 1, Step = 0.01, Config = { "Ragebot", "Simple", "VoidSpam", "Hide" } })
+
+    local advancedActivation = advancedGrid:AddSection({ Title = "Activation", Side = "left" })
+    local advancedEnableToggle = advancedActivation:AddToggle({
+        Label = "Enable Advanced Ragebot",
+        Tooltip = "Simple and Advanced are mutually exclusive. Trying to enable both turns both off.",
+        Config = { "Ragebot", "Advanced", "Enabled" },
+    })
+    advancedEnableToggle:OnChanged(function(enabled)
+        handleProfileToggle("Advanced", enabled == true)
+    end)
+    addProfileKeybind(advancedActivation, advancedEnableToggle, "Advanced", "Advanced Ragebot")
+    tbl17.ih()(advancedGrid, advancedActivation)
+
+    -- Selecting a subtab only changes the visible page. The active Ragebot profile
+    -- is selected exclusively when its own Enable toggle is turned on.
+    -- Preserve Crefy's previous default: the modern Advanced profile opens first.
+    advancedTab:Open()
+
+    D, k = X:AddTab({ Label = "Fire Assist", Icon = S.FireAssist, Description = "Automatic firing and fast camera flicks." }):Grid({ Columns = 2 }), table.clone(P.BuildSpec)
+    k.PinHint = "Hold a weapon, then click the pin next to a setting to give that weapon its own value."
+    a(J.StoreProfiles, p(D, k))
+    tbl17.ii()(D, function() H:Open() end)
+    x(X:AddTab({ Label = "Weapon Handling", Icon = S.WeaponHandling, Description = "Aim, firing, cooldown, melee, and grenade behavior." }):Grid({ Columns = 2 }))
+    D, k = X:AddTab({ Label = "Hit Feedback", Icon = S.HitFeedback, Description = "Sound, visual, flash, and notification feedback." }):Grid({ Columns = 2 }), c(B, J.SfxSoundStorage)
+    t(J, D, k)
+    T(J, D, k)
+end
+end
 
 tbl17.ij = function()
 local ij = tbl17.cache.ij
@@ -72050,67 +72284,41 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.bM()
 
-local function fn36(arg, player, localEnvironmentId)
-if arg == nil or not arg.IsEnemy or localEnvironmentId == nil then
-return false
+local function fn37(fighter, player, selection)
+if fighter == nil or player == nil or type(selection) ~= "table" then return nil end
+local fighters = selection._fighters
+local localState = type(fighters) == "table" and fighters.LocalState or nil
+local resolverController = {
+    _targetSelection = selection,
+    _innerContext = { FighterState = localState },
+}
+local target = { FighterState = fighter, Player = player }
+local okResolved, resolved = pcall(ragebotResolveRepRootTarget, resolverController, target)
+if okResolved and resolved == true and target.AliveState ~= nil then
+    return target
 end
-local environmentOk, targetEnvironmentId = pcall(function() return arg.EnvironmentId end)
-if not environmentOk or targetEnvironmentId ~= localEnvironmentId then
-    return false
-end
-local okInvincible, isInvincible = pcall(function() return arg:IsInvincible() end)
-if not okInvincible or isInvincible then
-return false
-end
-local okState, characterState = pcall(function()
-local character = arg.Character
-return character ~= nil and character.State or nil
-end)
-if not okState or characterState == nil or characterState.Alive ~= true then
-return false
-end
-local okParts, rootPart, hitboxHead = pcall(function()
-return characterState.RootPart, characterState.HitboxHead
-end)
-if not okParts or rootPart == nil or hitboxHead == nil then
-return false
-end
-local okPartState, partsValid = pcall(function()
-if not rootPart:IsA("BasePart") or not hitboxHead:IsA("BasePart") then
-return false
-end
-if not rootPart:IsDescendantOf(workspace) or not hitboxHead:IsDescendantOf(workspace) then
-return false
-end
-if player ~= nil then
-local currentCharacter = player.Character
-if currentCharacter == nil then return false end
-return rootPart:IsDescendantOf(currentCharacter) and hitboxHead:IsDescendantOf(currentCharacter)
-end
-return rootPart.Parent ~= nil and hitboxHead.Parent ~= nil
-end)
-if not okPartState or not partsValid then
-return false
-end
-local okObserver, itemObserver = pcall(function() return arg.ItemObserver end)
-if not okObserver or itemObserver == nil then return false end
-local okItem, melee = pcall(function() return itemObserver:EquippedItemAsMelee() end)
-if not okItem then return false end
-if melee ~= nil then
-local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-if not okDeflecting or isDeflecting then return false end
-end
-return true
+return nil
 end
 
-local function fn37(arg)
-local ok, target = pcall(function()
-local character = arg and arg.Character or nil
-local state = character and character.State or nil
-if state == nil or state.Alive ~= true then return nil end
-return { FighterState = arg, AliveState = state }
-end)
-return ok and target or nil
+local function fn36(fighter, player, localEnvironmentId, selection)
+if fighter == nil or player == nil then return false end
+local okEnemy, isEnemy = pcall(function() return fighter.IsEnemy end)
+if not okEnemy or isEnemy == false then return false end
+local okEnvironment, targetEnvironmentId = pcall(function() return fighter.EnvironmentId end)
+if not okEnvironment then return false end
+if targetEnvironmentId == nil then
+    pcall(function()
+        targetEnvironmentId = player:GetAttribute("EnvironmentID")
+            or player:GetAttribute("EnvironmentId")
+    end)
+end
+-- EnvironmentId is optional during character/context replication. Reject only
+-- a known mismatch; normal target selection must not depend on Reproot Detector.
+if localEnvironmentId ~= nil and targetEnvironmentId ~= nil
+    and targetEnvironmentId ~= localEnvironmentId then
+    return false
+end
+return fn37(fighter, player, selection) ~= nil
 end
 
 local function getLocalEnvironmentId(fighters)
@@ -72118,7 +72326,16 @@ local function getLocalEnvironmentId(fighters)
         local localState = fighters and fighters.LocalState or nil
         return localState and localState.EnvironmentId or nil
     end)
-    if ok then return environmentId end
+    if ok and environmentId ~= nil then return environmentId end
+
+    -- FighterState can briefly lag behind Player attributes during a context
+    -- refresh. Reuse the detector resolver's fallback for ordinary targeting.
+    local playerOk, playerEnvironmentId = pcall(function()
+        local localPlayer = game:GetService("Players").LocalPlayer
+        return localPlayer and (localPlayer:GetAttribute("EnvironmentID")
+            or localPlayer:GetAttribute("EnvironmentId")) or nil
+    end)
+    if playerOk then return playerEnvironmentId end
     return nil
 end
 
@@ -72130,7 +72347,10 @@ return setmetatable({ _fighters = arg, _playerTags = arg2 }, index2)
 end
 
 index2.GetTarget = function(arg)
-local prioritizeHackers = v115.Data.Ragebot.PrioritizeHackers == true
+local ragebotConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local prioritizeHackers = ragebotConfig.Profile ~= "Simple" and ragebotConfig.PrioritizeHackers == true
+local simpleConfig = type(ragebotConfig.Simple) == "table" and ragebotConfig.Simple or {}
+local prioritizeVoided = ragebotConfig.Profile == "Simple" and simpleConfig.AutoPrioritizeVoided == true
 local Players = game:GetService("Players")
 local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
 local localPosition = nil
@@ -72152,12 +72372,12 @@ local function isHacker(player)
     return okTag and tagged == true
 end
 
-local function distanceTo(fighter)
+local function distanceTo(fighter, player)
     if localPosition == nil then return nil end
+    local resolvedTarget = fn37(fighter, player, arg)
+    if resolvedTarget == nil then return nil end
     local okDistance, distance = pcall(function()
-        local character = fighter.Character
-        local state = character and character.State or nil
-        local root = state and state.RootPart or nil
+        local root = resolvedTarget.AliveState and resolvedTarget.AliveState.RootPart or nil
         if root == nil or not root:IsA("BasePart") or not root:IsDescendantOf(workspace) then
             return nil
         end
@@ -72181,7 +72401,7 @@ local function isExplicitlyProtected(fighter)
     local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
     if not okMelee or melee == nil then return false end
     local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-    return not okDeflecting or isDeflecting == true
+    return okDeflecting and isDeflecting == true
 end
 
                                                                                
@@ -72204,9 +72424,10 @@ local function clearLockedTarget()
     resetLockedTargetTimers()
 end
 
+-- A missing local EnvironmentId is a replication gap, not a reason to
+-- disable Ragebot. fn36/locked-target validation reject only known mismatches.
 if localEnvironmentId == nil then
-    clearLockedTarget()
-    return nil
+    resetLockedTargetTimers()
 end
 
 local function lockTimeoutStatus(field, timeout)
@@ -72227,7 +72448,7 @@ local function rememberTarget(fighter, player)
     arg._lockedPlayer = player
     arg._lockedTargetAt = os.clock()
     resetLockedTargetTimers()
-    return fn37(fighter)
+    return fn37(fighter, player, arg)
 end
 
 local prioritizedHacker, prioritizedHackerDistance, prioritizedHackerPlayer = nil, math.huge, nil
@@ -72238,8 +72459,8 @@ if prioritizeHackers then
     if okPlayers and type(hackerPlayers) == "table" then
         for _, player in ipairs(hackerPlayers) do
             local fighter = arg._fighters.StateByPlayer[player]
-            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
-                local distance = distanceTo(fighter)
+            if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId, arg) then
+                local distance = distanceTo(fighter, player)
                 if distance ~= nil and distance < prioritizedHackerDistance then
                     prioritizedHacker = fighter
                     prioritizedHackerDistance = distance
@@ -72250,8 +72471,34 @@ if prioritizeHackers then
     end
 end
 
+local prioritizedVoided, prioritizedVoidedDistance, prioritizedVoidedPlayer = nil, math.huge, nil
+if prioritizeVoided then
+    for player, fighter in arg._fighters.EnemyByPlayer do
+        if player ~= nil and fighter ~= nil and fn36(fighter, player, localEnvironmentId, arg) then
+            local okVoid, isVoided = pcall(function()
+                local character = fighter.Character
+                local state = character and character.State or nil
+                local root = state and state.RootPart or nil
+                return root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace)
+                    and root.Position.Magnitude > 1000000
+            end)
+            if okVoid and isVoided then
+                local distance = distanceTo(fighter, player)
+                if distance ~= nil and distance < prioritizedVoidedDistance then
+                    prioritizedVoided = fighter
+                    prioritizedVoidedDistance = distance
+                    prioritizedVoidedPlayer = player
+                end
+            end
+        end
+    end
+end
+
 local lockedFighter = arg._lockedFighter
 local lockedPlayer = arg._lockedPlayer
+if prioritizedVoided ~= nil and lockedPlayer ~= prioritizedVoidedPlayer then
+    return rememberTarget(prioritizedVoided, prioritizedVoidedPlayer)
+end
 if lockedFighter ~= nil and lockedPlayer ~= nil
     and prioritizeHackers and prioritizedHacker ~= nil
     and not isHacker(lockedPlayer) and prioritizedHackerPlayer ~= lockedPlayer then
@@ -72265,47 +72512,38 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         if lockedPlayer.Parent ~= Players then
             return "release", nil, nil
         end
-        local character = lockedFighter.Character
-        if character == nil then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
-        local state = character.State
-        if state == nil then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
-        if state.Alive == false then
-            return "release", nil, nil
-        end
-        if state.Alive ~= true then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
-        arg._lockedUnavailableSince = nil
-
-        if lockedFighter.IsEnemy ~= true then
+        if lockedFighter.IsEnemy == false then
             arg._lockedUnattackableSince = nil
             return lockTimeoutStatus("_lockedEnemyMismatchSince", LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT)
         end
         arg._lockedEnemyMismatchSince = nil
-        if localEnvironmentId ~= nil and lockedFighter.EnvironmentId ~= localEnvironmentId then
+        local lockedEnvironmentId = nil
+        pcall(function() lockedEnvironmentId = lockedFighter.EnvironmentId end)
+        if localEnvironmentId ~= nil and lockedEnvironmentId ~= nil
+            and lockedEnvironmentId ~= localEnvironmentId then
             return "release", nil, nil
         end
 
-        local distance = distanceTo(lockedFighter)
+        -- Resolve through the same live-character/Humanoid fallback as fresh
+        -- targets. Requiring Character.State here dropped valid targets while
+        -- framework State / ItemObserver was temporarily unavailable.
+        local target = fn37(lockedFighter, lockedPlayer, arg)
+        if target == nil then
+            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+        end
+        arg._lockedUnavailableSince = nil
+
+        local distance = distanceTo(lockedFighter, lockedPlayer)
         if distance == nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
         end
         if isExplicitlyProtected(lockedFighter) then
             return "release", nil, nil
         end
-        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId) then
+        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId, arg) then
             return lockTimeoutStatus("_lockedUnattackableSince", LOCKED_TARGET_UNATTACKABLE_TIMEOUT)
         end
         arg._lockedUnattackableSince = nil
-
-        local target = fn37(lockedFighter)
-        if target == nil then
-            return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
-        end
         arg._lockedUnavailableSince = nil
         arg._lockedReadFailureSince = nil
         return "locked", target, distance
@@ -72335,11 +72573,14 @@ end
 if prioritizedHacker ~= nil then
     return rememberTarget(prioritizedHacker, prioritizedHackerPlayer)
 end
+if prioritizedVoided ~= nil then
+    return rememberTarget(prioritizedVoided, prioritizedVoidedPlayer)
+end
 
 local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
 for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
-    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId) then
-        local distance = distanceTo(fighter)
+    if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player, localEnvironmentId, arg) then
+        local distance = distanceTo(fighter, player)
         if distance ~= nil and distance < bestTargetDistance then
             bestTarget, bestTargetDistance, bestTargetPlayer = fighter, distance, player
         end
@@ -72364,11 +72605,8 @@ end
 
 index2.HasTargets = function(arg)
 local localEnvironmentId = getLocalEnvironmentId(arg._fighters)
-if localEnvironmentId == nil then
-    return false
-end
 for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116, player, localEnvironmentId) then
+if fn36(v116, player, localEnvironmentId, arg) then
 return true
 end
 end
@@ -72584,6 +72822,7 @@ local function ragebotVoidSpamState()
             reloadHold = false, reloadTransportPending = false,
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil, pendingShotRequestCount = nil, pendingShotDeadline = 0,
+            activeShootingItem = nil,
         }
         pcall(rawset, _G, RAGEBOT_VOID_SPAM_STATE_KEY, state)
     end
@@ -72648,8 +72887,28 @@ local function ragebotVoidSpamClearPendingAck(state)
     state.pendingShotDeadline = 0
 end
 
+local function ragebotVoidSpamReleaseActiveShot(state)
+    if type(state) ~= "table" then return false end
+    local item = state.activeShootingItem
+    if item == nil then return true end
+    local release = nil
+    local okMethod = pcall(function() release = item.FinishShooting end)
+    if not okMethod or type(release) ~= "function" then return false end
+    local okRelease, released = pcall(release, item)
+    if okRelease and released == true then
+        state.activeShootingItem = nil
+        state.activeShootingReleaseFailures = 0
+        return true
+    end
+    state.activeShootingReleaseFailures = math.min(
+        (tonumber(state.activeShootingReleaseFailures) or 0) + 1, 1000000
+    )
+    return false
+end
+
 local function ragebotVoidSpamReset(state)
     if type(state) ~= "table" then state = ragebotVoidSpamState() end
+    ragebotVoidSpamReleaseActiveShot(state)
     state.activeUntil = 0
     state.nextAttackAt = 0
     state.lastShotAt = 0
@@ -72673,13 +72932,21 @@ end
 local function ragebotVoidSpamConfig()
     local data = type(v115) == "table" and v115.Data or nil
     local ragebot = type(data) == "table" and data.Ragebot or nil
-    local config = type(ragebot) == "table" and ragebot.VoidSpam or nil
+    local config = nil
+    if type(ragebot) == "table" then
+        if ragebot.Profile == "Simple" then
+            local simple = type(ragebot.Simple) == "table" and ragebot.Simple or nil
+            config = type(simple) == "table" and simple.VoidSpam or nil
+        else
+            config = ragebot.VoidSpam
+        end
+    end
     if type(config) ~= "table" or config.Enabled ~= true then
         return false, 0.1, 0.25
     end
     local attack = tonumber(config.Attack) or 0.1
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
-    attack = math.clamp(attack, 0.01, 1)
+    attack = math.clamp(attack, 0.05, 1)
 
     if config.Attack ~= attack then
         pcall(function() config.Attack = attack end)
@@ -72704,6 +72971,7 @@ local function ragebotVoidSpamSetReloadHold(state, now, attack, hide, reloading)
 
     if reloading == true or state.reloadTransportPending == true then
         local enteringHold = state.reloadHold ~= true
+        ragebotVoidSpamReleaseActiveShot(state)
         state.reloadHold = true
         state.cycleModelVersion = 2
         state.cycleInitialized = true
@@ -72748,10 +73016,26 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(now) then now = os.clock() end
     if not ragebotFiniteNumber(attack) then attack = 0.1 end
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
-    attack = math.clamp(attack, 0.01, 1)
+    attack = math.clamp(attack, 0.05, 1)
     hide = math.clamp(hide, 0.01, 1)
 
+    if state.activeShootingItem ~= nil
+        and (state.cycleInitialized ~= true or state.cycleModelVersion ~= 2) then
+        local released = ragebotVoidSpamReleaseActiveShot(state)
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        state.phaseStartedAt = now
+        state.activeUntil = now + (released and hide or math.clamp(hide, 0.01, 0.05))
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
+
     if state.reloadHold == true then
+        ragebotVoidSpamReleaseActiveShot(state)
         state.phase = "hide"
         state.cycleInitialized = true
         state.cycleModelVersion = 2
@@ -72764,6 +73048,10 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         state.attackWindowPending = false
         state.attackWindowExpiresAt = 0
         return "hide"
+    end
+
+    if state.phase == "hide" and state.activeShootingItem ~= nil then
+        ragebotVoidSpamReleaseActiveShot(state)
     end
 
     if state.cycleModelVersion ~= 2 then
@@ -72784,6 +73072,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         state.phase = "attack"
         state.cycleInitialized = true
         state.phaseStartedAt = now
+        state.lastShotAt = 0
         state.activeUntil = now + attack
         state.nextAttackAt = 0
         state.fakePositionActive = false
@@ -72796,9 +73085,20 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     end
 
     if now >= phaseEnd then
-
+        if state.phase == "attack" then
+            local shotAt = tonumber(state.lastShotAt) or 0
+            local phaseStartedAt = tonumber(state.phaseStartedAt) or now
+            if shotAt < phaseStartedAt then
+                -- Never enter Hide before a real shot had time to pass the
+                -- fork's 50ms replication settle and weapon callback.
+                state.activeUntil = now + 0.05
+                state.nextAttackAt = 0
+                return state.phase
+            end
+        end
         state.phaseStartedAt = now
         if state.phase == "attack" then
+            ragebotVoidSpamReleaseActiveShot(state)
             state.phase = "hide"
             state.activeUntil = now + hide
             state.fakePositionActive = true
@@ -72808,6 +73108,17 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.fakePositionTargetZ = nil
             state.fakePositionTargetReady = false
         else
+            if state.activeShootingItem ~= nil then
+                local released = ragebotVoidSpamReleaseActiveShot(state)
+                if not released then
+                    -- A failed native release must never be followed by a new
+                    -- Attack window; retry during short Hide extensions.
+                    state.activeUntil = now + math.clamp(hide, 0.01, 0.05)
+                    state.phase = "hide"
+                    state.fakePositionActive = true
+                    return state.phase
+                end
+            end
             state.phase = "attack"
             state.activeUntil = now + attack
             state.fakePositionActive = false
@@ -72840,6 +73151,11 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfte
     local state = ragebotVoidSpamState()
     local now = os.clock()
     state.lastShotAt = now
+    if enabled and state.phase == "attack" then
+        local _, attack = ragebotVoidSpamConfig()
+        attack = math.clamp(tonumber(attack) or 0.1, 0.05, 1)
+        state.activeUntil = math.max(tonumber(state.activeUntil) or 0, now + attack)
+    end
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
     if not enabled then
@@ -72849,8 +73165,13 @@ local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfte
 
     state.awaitingShotAck = true
     state.pendingShotItem = item
-    state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
-    state.pendingShotRequestCount = ragebotFiniteNumber(requestCountAfter) and requestCountAfter or nil
+    state.activeShootingItem = item
+    local ammoValid = type(ammoBefore) == "number" and ammoBefore == ammoBefore
+        and ammoBefore ~= math.huge and ammoBefore ~= -math.huge
+    local countValid = type(requestCountAfter) == "number" and requestCountAfter == requestCountAfter
+        and requestCountAfter ~= math.huge and requestCountAfter ~= -math.huge
+    state.pendingShotAmmo = ammoValid and ammoBefore or nil
+    state.pendingShotRequestCount = countValid and requestCountAfter or nil
     state.pendingShotDeadline = now + 0.8
     state.nextAttackAt = 0
 end
@@ -72872,6 +73193,7 @@ local function ragebotVoidSpamReleasePendingForUnavailableTarget()
         ragebotVoidSpamReset(state)
         return
     end
+    ragebotVoidSpamReleaseActiveShot(state)
     if state.awaitingShotAck == true then
         ragebotVoidSpamResolveUnconfirmedShot(state, os.clock(), attack, "failed")
     end
@@ -72915,6 +73237,7 @@ end
 local function ragebotVoidSpamCancelShot()
     local enabled = ragebotVoidSpamConfig()
     local state = ragebotVoidSpamState()
+    ragebotVoidSpamReleaseActiveShot(state)
     ragebotVoidSpamClearPendingAck(state)
     state.attackWindowPending = false
     state.attackWindowExpiresAt = 0
@@ -73022,16 +73345,82 @@ end
                                                                               
                                               
 ragebotObserveFakePosition(targetRoot, os.clock())
-local v120 = arg._partGlue:Acquire(arg5, hitboxHead)
-if typeof(v120) ~= "CFrame" then
-ragebotVoidSpamReleasePendingForUnavailableTarget()
-arg:ClearTeleport()
-arg._shootLock:Reset()
-                                                                           
-                                                                        
-return nil, nil
+local acquireOk, v120 = pcall(function()
+    return arg._partGlue:Acquire(arg5, hitboxHead)
+end)
+local usedVoidSpamOriginFallback = false
+if not acquireOk or typeof(v120) ~= "CFrame" then
+    local voidSpamFallbackEnabled = ragebotVoidSpamConfig()
+    if voidSpamFallbackEnabled then
+        local fallbackPose = nil
+        local okFallback = pcall(function()
+            local params = arg._voidSpamFallbackRaycastParams
+            if params == nil then
+                params = RaycastParams.new()
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                params.IgnoreWater = true
+                arg._voidSpamFallbackRaycastParams = params
+            end
+            local ignored = {}
+            local localPlayer = Players.LocalPlayer
+            if localPlayer ~= nil and localPlayer.Character ~= nil then
+                table.insert(ignored, localPlayer.Character)
+            end
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player.Character ~= nil then table.insert(ignored, player.Character) end
+            end
+            local viewModels = workspace:FindFirstChild("ViewModels")
+            if viewModels ~= nil then table.insert(ignored, viewModels) end
+            local camera = workspace.CurrentCamera
+            if camera ~= nil then table.insert(ignored, camera) end
+            params.FilterDescendantsInstances = ignored
+
+            local localFighter = arg._innerContext ~= nil and arg._innerContext.FighterState or nil
+            local crouched = false
+            if localFighter ~= nil then
+                pcall(function() crouched = localFighter:IsCrouching() == true end)
+            end
+            local eye = Vector3.new(0, crouched and 0.25 or 1.75, 0)
+            local targetPosition = hitboxHead.Position
+            local candidates = {
+                targetPosition + Vector3.new(0, 3, 0),
+                targetPosition + Vector3.new(3, 1, 0),
+                targetPosition + Vector3.new(-3, 1, 0),
+                targetPosition + Vector3.new(0, 1, 3),
+                targetPosition + Vector3.new(0, 1, -3),
+                targetPosition + Vector3.new(3, 3, 3),
+                targetPosition + Vector3.new(-3, 3, -3),
+            }
+            for _, candidate in ipairs(candidates) do
+                local origin = candidate + eye
+                local hit = workspace:Raycast(origin, targetPosition - origin, params)
+                if hit == nil then
+                    fallbackPose = CFrame.new(candidate)
+                    break
+                end
+            end
+        end)
+        if okFallback and typeof(fallbackPose) == "CFrame" then
+            -- VoidSpam-only origin fallback. PartGlue's implementation/state is untouched.
+            arg:ClearTeleport()
+            v120 = fallbackPose
+            usedVoidSpamOriginFallback = true
+        end
+    end
+    if typeof(v120) ~= "CFrame" then
+        ragebotVoidSpamReleasePendingForUnavailableTarget()
+        arg:ClearTeleport()
+        arg._shootLock:Reset()
+        if not acquireOk and os.clock() >= (arg._nextPartGlueAcquireWarningAt or 0) then
+            arg._nextPartGlueAcquireWarningAt = os.clock() + 5
+            warn("[Ragebot] PartGlue acquisition and Void Spam origin fallback both failed: " .. tostring(v120))
+        end
+        return nil, nil
+    end
 end
-arg._gluedPart = arg5
+if not usedVoidSpamOriginFallback then
+    arg._gluedPart = arg5
+end
 local n
 
 if flag19 then
@@ -73040,7 +73429,7 @@ else
 n = v118(v120.Position + v119, hitboxHead.Position)
 end
 
-local shootFrames = tonumber(ragebot.ShootFrames) or 1
+local shootFrames = tonumber(ragebot.Profile == "Simple" and type(ragebot.Simple) == "table" and ragebot.Simple.ShootFrames or ragebot.ShootFrames) or 1
 if shootFrames ~= shootFrames or shootFrames == math.huge or shootFrames == -math.huge then
 shootFrames = 1
 end
@@ -73108,15 +73497,11 @@ local targetReadOk = pcall(function()
     end
     if targetStillValid then
         local okObserver, itemObserver = pcall(function() return fighterState.ItemObserver end)
-        if not okObserver or itemObserver == nil then
-            targetStillValid = false
-        else
+        if okObserver and itemObserver ~= nil then
             local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
-            if not okMelee then
-                targetStillValid = false
-            elseif melee ~= nil then
+            if okMelee and melee ~= nil then
                 local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-                if not okDeflecting or isDeflecting then
+                if okDeflecting and isDeflecting == true then
                     targetStillValid = false
                 end
             end
@@ -73188,7 +73573,7 @@ local okSend, sendError = pcall(function()
         end
     end
 
-    local aimDirectionMode = type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
+    local aimDirectionMode = ragebot.Profile == "Advanced" and type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
     if aimDirectionMode ~= "Up" and aimDirectionMode ~= "Down" and aimDirectionMode ~= "Part" then
         aimDirectionMode = "Part"
         pcall(function() ragebot.AimDirection = "Part" end)
@@ -73266,12 +73651,14 @@ end
 end
 
 local voidSpamApi = {
-    ApiVersion = 5,
+    ApiVersion = 6,
     State = ragebotVoidSpamState,
     Config = ragebotVoidSpamConfig,
     PollShotAck = ragebotVoidSpamPollShotAck,
     ResolveUnconfirmedShot = ragebotVoidSpamResolveUnconfirmedShot,
     SetReloadHold = ragebotVoidSpamSetReloadHold,
+    ReleaseActiveShot = ragebotVoidSpamReleaseActiveShot,
+    MarkShotRequest = ragebotVoidSpamMarkShotRequest,
     AdvancePhase = ragebotVoidSpamAdvancePhase,
     FiniteNumber = ragebotFiniteNumber,
 }
@@ -73741,7 +74128,7 @@ local meleeDt = tonumber(arg2) or 0
 if meleeDt ~= meleeDt or meleeDt == math.huge or meleeDt == -math.huge or meleeDt < 0 then
     meleeDt = 0
 end
-local meleeShootFrames = tonumber(ragebot.ShootFrames) or 1
+local meleeShootFrames = tonumber(ragebot.Profile == "Simple" and type(ragebot.Simple) == "table" and ragebot.Simple.ShootFrames or ragebot.ShootFrames) or 1
 if meleeShootFrames ~= meleeShootFrames or meleeShootFrames == math.huge or meleeShootFrames == -math.huge then
     meleeShootFrames = 1
 end
@@ -74576,7 +74963,8 @@ limitEntryTime = now2
 end
 
 if flag19 then
-local stability = tonumber(v115.Data.Ragebot.Stability) or 0
+local currentRagebot = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local stability = currentRagebot.Profile == "Simple" and 0 or (tonumber(currentRagebot.Stability) or 0)
 if stability ~= stability or stability == math.huge or stability == -math.huge then stability = 0 end
 stability = math.clamp(stability, 0, 1.5)
 if v117.ExpectedDuration - stability <= now2 - limitEntryTime then
@@ -74850,8 +75238,230 @@ end
 return true, true, ammo
 end
 
+local simpleNextEnumerationWarningAt = 0
+local function getSimpleAction(context)
+local ragebotConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local simple = type(ragebotConfig.Simple) == "table" and ragebotConfig.Simple or {}
+local mode = string.lower(tostring(simple.Mode or "gun"))
+local preferredWeapon = string.lower(tostring(simple.PreferredWeapon or "primary"))
+if preferredWeapon ~= "secondary" then preferredWeapon = "primary" end
+local swapWhenEmpty = simple.SwapWeaponsWhenEmpty ~= false
+local preferProjectile = simple.PreferProjectileWeapon == true
+
+-- ItemBehaviors appends newly-added wrappers to the end of _items. After an
+-- item is removed and replaced, enumeration order can differ from loadout
+-- slot order. The wrapper's Index is refreshed from LocalFighterState, and is
+-- also the index used by Item:Equip(), so use it as the authoritative order.
+local itemsOk, itemsOrError = pcall(function()
+    local entries = {}
+    local behaviors = context ~= nil and context.ItemBehaviors or nil
+    if behaviors == nil then error("ItemBehaviors is unavailable") end
+    local sourceItems = behaviors:GetItems()
+    if type(sourceItems) ~= "table" then error("ItemBehaviors:GetItems() did not return a table") end
+
+    for order, item in ipairs(sourceItems) do
+        if item ~= nil then
+            local slotIndex = nil
+            local okIndex, value = pcall(function() return item.Index end)
+            if okIndex and type(value) == "number" and value == value
+                and value ~= math.huge and value ~= -math.huge and value >= 1 then
+                slotIndex = value
+            end
+            entries[#entries + 1] = {
+                Item = item,
+                SlotIndex = slotIndex or math.huge,
+                Order = order,
+            }
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        if a.SlotIndex ~= b.SlotIndex then
+            return a.SlotIndex < b.SlotIndex
+        end
+        return a.Order < b.Order
+    end)
+
+    local result = {}
+    for _, entry in ipairs(entries) do
+        result[#result + 1] = entry.Item
+    end
+    return result
+end)
+if not itemsOk then
+    local warningNow = os.clock()
+    if warningNow >= simpleNextEnumerationWarningAt then
+        simpleNextEnumerationWarningAt = warningNow + 5
+        warn("[Ragebot:Simple] Item enumeration failed; retrying: " .. tostring(itemsOrError))
+    end
+    return nil, "Transient"
+end
+local items = itemsOrError
+
+-- Match UE's mode dispatch: Knife selects the named Knife, Melee selects the
+-- first item whose type is Melee (including Knife), and either mode falls back
+-- to the gun worker when the requested melee item is absent.
+if mode == "knife" or mode == "melee" then
+    local selected = nil
+    for _, item in ipairs(items) do
+        if item ~= nil and item.__type == "Melee" then
+            if mode == "melee" or item.Name == "Knife" then
+                selected = item
+                break
+            end
+        end
+    end
+    if selected ~= nil then
+        local okEquipped, equipped = pcall(function() return selected:IsEquipped() end)
+        if not okEquipped or type(equipped) ~= "boolean" then
+            return nil, "Transient"
+        end
+        return { Type = equipped and "Attack" or "Swap", Item = selected }
+    end
+end
+
+if mode ~= "gun" and mode ~= "knife" and mode ~= "melee" then mode = "gun" end
+local gunItems = {}
+for _, item in ipairs(items) do
+    if item ~= nil and item.__type == "Gun" then
+        gunItems[#gunItems + 1] = item
+    end
+end
+if #gunItems == 0 then return nil end
+
+-- UE's worker searches from the preferred end of the ordered gun list:
+-- Primary = first gun slot, Secondary = last gun slot. Keep this ordering
+-- even after an inventory remove/add cycle.
+local firstIndex = preferredWeapon == "secondary" and #gunItems or 1
+local indexStep = preferredWeapon == "secondary" and -1 or 1
+local candidateCount = #gunItems
+local candidates = {}
+local hasTransient = false
+for rank = 0, candidateCount - 1 do
+    local index = firstIndex + rank * indexStep
+    local item = gunItems[index]
+    if item ~= nil then
+        local okEquipped, equipped = pcall(function() return item:IsEquipped() end)
+        if not okEquipped or type(equipped) ~= "boolean" then
+            hasTransient = true
+        else
+            local okAmmo, ammoBased, ammo = readAmmoState(item)
+            if not okAmmo then
+                hasTransient = true
+            else
+                local empty = ammoBased == true and type(ammo) == "number" and ammo <= 0
+                local reserve = 0
+                if empty then
+                    local okReserve, reserveValue = pcall(function() return item:GetAmmoReserve() end)
+                    if okReserve and type(reserveValue) == "number" and reserveValue == reserveValue
+                        and reserveValue ~= math.huge and reserveValue ~= -math.huge then
+                        reserve = math.max(0, reserveValue)
+                    else
+                        hasTransient = true
+                        continue
+                    end
+                    if reserve <= 0 then continue end
+                end
+                local okReloading, reloading = pcall(function() return item:IsReloading() end)
+                if not okReloading or type(reloading) ~= "boolean" then
+                    hasTransient = true
+                    continue
+                end
+                local inner = item.Inner
+                local info = item._info
+                local reloadType = nil
+                pcall(function() reloadType = info and info.ReloadType end)
+                if reloadType == "Segmented" then
+                    local threads = nil
+                    pcall(function() threads = inner and rawget(inner, "_reload_threads") end)
+                    if type(threads) == "table" then
+                        local active = threads[#threads]
+                        if active ~= nil then
+                            local statusOk, status = pcall(coroutine.status, active)
+                            if not statusOk then
+                                hasTransient = true
+                                continue
+                            end
+                            reloading = reloading or status ~= "dead"
+                        end
+                    end
+                end
+                candidates[#candidates + 1] = {
+                    Item = item,
+                    Equipped = equipped == true,
+                    Empty = empty,
+                    Reloading = reloading == true,
+                    Reserve = reserve,
+                    ProjectileRank = preferProjectile and item.IsRaycast == false and 0 or 1,
+                    WeaponRank = rank,
+                    Order = index,
+                }
+            end
+        end
+    end
+end
+
+table.sort(candidates, function(a, b)
+    if preferProjectile and a.ProjectileRank ~= b.ProjectileRank then
+        return a.ProjectileRank < b.ProjectileRank
+    end
+    if a.WeaponRank ~= b.WeaponRank then return a.WeaponRank < b.WeaponRank end
+    return a.Order < b.Order
+end)
+
+local selected = nil
+if swapWhenEmpty then
+    -- Fork behavior: take the first loaded weapon that is not in a reload
+    -- window; only fall back to an empty/reloading candidate when none are ready.
+    for _, candidate in ipairs(candidates) do
+        if candidate.Empty ~= true and candidate.Reloading ~= true then
+            selected = candidate
+            break
+        end
+    end
+    selected = selected or candidates[1]
+else
+    for _, candidate in ipairs(candidates) do
+        if candidate.Empty ~= true then
+            selected = candidate
+            break
+        end
+    end
+    selected = selected or candidates[1]
+end
+if selected ~= nil then
+    if not selected.Equipped then
+        return { Type = "Swap", Item = selected.Item }
+    end
+    if selected.Empty then
+        return { Type = "Reload", Item = selected.Item }
+    end
+    if selected.Reloading then
+        return nil, "Transient"
+    end
+    return { Type = "Attack", Item = selected.Item }
+end
+if hasTransient then return nil, "Transient" end
+return nil
+end
+
 return { getAction = function(arg)
-local weapons = v115.Data.Ragebot.Weapons
+local currentRagebot = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or nil
+if currentRagebot == nil then return nil end
+local simpleConfig = type(currentRagebot.Simple) == "table" and currentRagebot.Simple or {}
+local advancedConfig = type(currentRagebot.Advanced) == "table" and currentRagebot.Advanced or {}
+local simpleEnabled = simpleConfig.Enabled == true
+local advancedEnabled = advancedConfig.Enabled == true
+-- Fail closed: both on, both off, or a Profile/Enabled mismatch means no action.
+if simpleEnabled == advancedEnabled then return nil end
+if currentRagebot.Profile == "Simple" then
+    if not simpleEnabled then return nil end
+    return getSimpleAction(arg)
+end
+if currentRagebot.Profile ~= "Advanced" or not advancedEnabled then
+    return nil
+end
+local weapons = currentRagebot.Weapons
 local onEmpty = weapons.OnEmpty
 if onEmpty ~= "Reload" and onEmpty ~= "Swap" and onEmpty ~= "SwapOrReload" then
     onEmpty = "SwapOrReload"
@@ -75009,7 +75619,7 @@ local v117 = tbl17.jD()
 
 local function ragebotGetVoidSpamApiFunction(name)
     local api = rawget(_G, "__CrefyRagebotVoidSpamApi")
-    if type(api) ~= "table" or api.ApiVersion ~= 5 then return nil end
+    if type(api) ~= "table" or api.ApiVersion ~= 6 then return nil end
     local fn = rawget(api, name)
     return type(fn) == "function" and fn or nil
 end
@@ -75028,6 +75638,7 @@ local function ragebotVoidSpamState()
             attackWindowPending = false, attackWindowExpiresAt = 0,
             awaitingShotAck = false, pendingShotItem = nil, pendingShotAmmo = nil,
             pendingShotRequestCount = nil, pendingShotDeadline = 0,
+            activeShootingItem = nil,
             reloadHold = false, reloadTransportPending = false,
         }
         pcall(rawset, _G, key, state)
@@ -75076,11 +75687,19 @@ local function ragebotVoidSpamConfig()
     end
     local data = type(v115) == "table" and v115.Data or nil
     local ragebot = type(data) == "table" and data.Ragebot or nil
-    local config = type(ragebot) == "table" and ragebot.VoidSpam or nil
+    local config = nil
+    if type(ragebot) == "table" then
+        if ragebot.Profile == "Simple" then
+            local simple = type(ragebot.Simple) == "table" and ragebot.Simple or nil
+            config = type(simple) == "table" and simple.VoidSpam or nil
+        else
+            config = ragebot.VoidSpam
+        end
+    end
     if type(config) ~= "table" or config.Enabled ~= true then return false, 0.1, 0.25 end
     local attack = tonumber(config.Attack) or 0.1
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
-    attack = math.clamp(attack, 0.01, 1)
+    attack = math.clamp(attack, 0.05, 1)
     local hide = tonumber(config.Hide) or 0.25
     if hide ~= hide or hide == math.huge or hide == -math.huge then hide = 0.25 end
     hide = math.clamp(hide, 0.01, 1)
@@ -75091,6 +75710,30 @@ local function ragebotVoidSpamConfig()
         pcall(function() config.Hide = hide end)
     end
     return true, attack, hide
+end
+
+local function ragebotVoidSpamMarkShotRequest(item, ammoBefore, requestCountAfter)
+    local fn = ragebotGetVoidSpamApiFunction("MarkShotRequest")
+    if fn ~= nil then
+        local okCall = pcall(fn, item, ammoBefore, requestCountAfter)
+        return okCall
+    end
+    local state = ragebotVoidSpamState()
+    local enabled, attack = ragebotVoidSpamConfig()
+    if not enabled then return false end
+    local now = os.clock()
+    state.lastShotAt = now
+    if state.phase == "attack" then
+        state.activeUntil = math.max(tonumber(state.activeUntil) or 0,
+            now + math.clamp(tonumber(attack) or 0.1, 0.05, 1))
+    end
+    state.awaitingShotAck = true
+    state.pendingShotItem = item
+    state.activeShootingItem = item
+    state.pendingShotAmmo = ragebotFiniteNumber(ammoBefore) and ammoBefore or nil
+    state.pendingShotRequestCount = ragebotFiniteNumber(requestCountAfter) and requestCountAfter or nil
+    state.pendingShotDeadline = now + 0.8
+    return true
 end
 
 local function ragebotVoidSpamResolveUnconfirmedShot(state, now, attack, result)
@@ -75144,9 +75787,48 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
     if not ragebotFiniteNumber(now) then now = os.clock() end
     if not ragebotFiniteNumber(attack) then attack = 0.1 end
     if not ragebotFiniteNumber(hide) then hide = 0.25 end
-    attack = math.clamp(attack, 0.01, 1)
+    attack = math.clamp(attack, 0.05, 1)
     hide = math.clamp(hide, 0.01, 1)
+    local function releaseActiveShot()
+        if state.activeShootingItem == nil then return true end
+        local releaseFn = ragebotGetVoidSpamApiFunction("ReleaseActiveShot")
+        if releaseFn ~= nil then
+            local okRelease, released = pcall(releaseFn, state)
+            if okRelease then return released == true end
+        end
+        local item = state.activeShootingItem
+        local okMethod, method = pcall(function() return item.FinishShooting end)
+        if not okMethod or type(method) ~= "function" then return false end
+        local okCall, released = pcall(method, item)
+        if okCall and released == true then
+            state.activeShootingItem = nil
+            state.activeShootingReleaseFailures = 0
+            return true
+        end
+        state.activeShootingReleaseFailures = math.min(
+            (tonumber(state.activeShootingReleaseFailures) or 0) + 1, 1000000
+        )
+        return false
+    end
+    if state.phase == "hide" and state.activeShootingItem ~= nil then
+        releaseActiveShot()
+    end
+    if state.activeShootingItem ~= nil
+        and (state.cycleInitialized ~= true or state.cycleModelVersion ~= 2) then
+        local released = releaseActiveShot()
+        state.phase = "hide"
+        state.cycleInitialized = true
+        state.cycleModelVersion = 2
+        state.phaseStartedAt = now
+        state.activeUntil = now + (released and hide or math.clamp(hide, 0.01, 0.05))
+        state.fakePositionActive = true
+        state.nextAttackAt = 0
+        state.attackWindowPending = false
+        state.attackWindowExpiresAt = 0
+        return "hide"
+    end
     if state.reloadHold == true then
+        releaseActiveShot()
         state.phase = "hide"
         state.cycleInitialized = true
         state.cycleModelVersion = 2
@@ -75175,6 +75857,7 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         state.cycleInitialized = true
         state.phase = "attack"
         state.phaseStartedAt = now
+        state.lastShotAt = 0
         state.activeUntil = now + attack
         state.nextAttackAt = 0
         state.fakePositionActive = false
@@ -75186,8 +75869,18 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
         return state.phase
     end
     if now >= phaseEnd then
+        if state.phase == "attack" then
+            local shotAt = tonumber(state.lastShotAt) or 0
+            local phaseStartedAt = tonumber(state.phaseStartedAt) or now
+            if shotAt < phaseStartedAt then
+                state.activeUntil = now + 0.05
+                state.nextAttackAt = 0
+                return state.phase
+            end
+        end
         state.phaseStartedAt = now
         if state.phase == "attack" then
+            releaseActiveShot()
             state.phase = "hide"
             state.activeUntil = now + hide
             state.fakePositionActive = true
@@ -75197,6 +75890,12 @@ local function ragebotVoidSpamAdvancePhase(state, now, attack, hide)
             state.fakePositionTargetZ = nil
             state.fakePositionTargetReady = false
         else
+            if state.activeShootingItem ~= nil and not releaseActiveShot() then
+                state.phase = "hide"
+                state.activeUntil = now + math.clamp(hide, 0.01, 0.05)
+                state.fakePositionActive = true
+                return state.phase
+            end
             state.phase = "attack"
             state.activeUntil = now + attack
             state.fakePositionActive = false
@@ -75735,31 +76434,130 @@ end
 arg._innerContext = nil
 end)
 
-arg._trove:Add(v118:ObserveEnabledKeybind({ "Ragebot" }, function(arg2)
-local desiredEnabled = arg2 == true
-local wasEnabled = arg._enabled == true
-if desiredEnabled == wasEnabled then
-    return
-end
-local setEnabled = arg.SetEnabled
-if type(setEnabled) == "function" then
-    local okEnabled, enabledError = pcall(setEnabled, arg, desiredEnabled)
-    if not okEnabled and os.clock() >= (arg._nextResetWarningAt or 0) then
-        arg._nextResetWarningAt = os.clock() + 5
-        warn("[Ragebot] SetEnabled callback failed: " .. tostring(enabledError))
-    end
-end
-if not desiredEnabled then
-    local reset = arg._Reset
-    if type(reset) == "function" then
-        local okReset, resetError = pcall(reset, arg)
-        if not okReset and os.clock() >= (arg._nextResetWarningAt or 0) then
+local profileKeybindActive = { Simple = false, Advanced = false }
+local reconcileQueued = false
+local normalizingProfilePair = false
+
+local function applyRagebotRuntimeEnabled(desiredEnabled)
+    desiredEnabled = desiredEnabled == true
+    if desiredEnabled == (arg._enabled == true) then return end
+    local setEnabled = arg.SetEnabled
+    if type(setEnabled) == "function" then
+        local okEnabled, enabledError = pcall(setEnabled, arg, desiredEnabled)
+        if not okEnabled and os.clock() >= (arg._nextResetWarningAt or 0) then
             arg._nextResetWarningAt = os.clock() + 5
-            warn("[Ragebot] Reset callback failed: " .. tostring(resetError))
+            warn("[Ragebot] SetEnabled callback failed: " .. tostring(enabledError))
+        end
+    end
+    if not desiredEnabled then
+        local reset = arg._Reset
+        if type(reset) == "function" then
+            local okReset, resetError = pcall(reset, arg)
+            if not okReset and os.clock() >= (arg._nextResetWarningAt or 0) then
+                arg._nextResetWarningAt = os.clock() + 5
+                warn("[Ragebot] Reset callback failed: " .. tostring(resetError))
+            end
         end
     end
 end
+
+local function reconcileRagebotProfiles()
+    if normalizingProfilePair then return end
+    local rageConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+    local simpleProfile = type(rageConfig.Simple) == "table" and rageConfig.Simple or {}
+    local advancedProfile = type(rageConfig.Advanced) == "table" and rageConfig.Advanced or {}
+    local simpleEnabled = simpleProfile.Enabled == true
+    local advancedEnabled = advancedProfile.Enabled == true
+
+    -- Configs saved before profile separation only have Ragebot.Enabled/Keybind.
+    -- Migrate that state at runtime too, because a config can be loaded after UI creation.
+    if not simpleEnabled and not advancedEnabled and rageConfig.Enabled == true then
+        local legacyProfile = rageConfig.Profile == "Simple" and "Simple" or "Advanced"
+        local legacyKeybind = type(rageConfig.Keybind) == "table" and rageConfig.Keybind or nil
+        local targetProfile = legacyProfile == "Simple" and simpleProfile or advancedProfile
+        local targetKeybind = type(targetProfile.Keybind) == "table" and targetProfile.Keybind or nil
+        if legacyKeybind ~= nil and targetKeybind ~= nil and targetKeybind.Bind == nil then
+            for _, field in ipairs({ "Bind", "Kind", "State", "ShowInList", "Invisible" }) do
+                if legacyKeybind[field] ~= nil then
+                    v115:Set({ "Ragebot", legacyProfile, "Keybind", field }, legacyKeybind[field])
+                end
+            end
+        end
+        if legacyProfile == "Simple" then
+            local legacyVoidSpam = rageConfig.VoidSpam
+            local simpleVoidSpam = type(simpleProfile.VoidSpam) == "table" and simpleProfile.VoidSpam or nil
+            if type(legacyVoidSpam) == "table" and simpleVoidSpam ~= nil
+                and simpleVoidSpam.Enabled == false and simpleVoidSpam.Attack == 0.1 and simpleVoidSpam.Hide == 0.25
+                and (legacyVoidSpam.Enabled == true or legacyVoidSpam.Attack ~= 0.1 or legacyVoidSpam.Hide ~= 0.25) then
+                for _, field in ipairs({ "Enabled", "Attack", "Hide" }) do
+                    if legacyVoidSpam[field] ~= nil then
+                        v115:Set({ "Ragebot", "Simple", "VoidSpam", field }, legacyVoidSpam[field])
+                    end
+                end
+            end
+            local legacyFrames = tonumber(rageConfig.ShootFrames)
+            if simpleProfile.ShootFrames == 1 and legacyFrames ~= nil and legacyFrames ~= 1 then
+                v115:Set({ "Ragebot", "Simple", "ShootFrames" }, legacyFrames)
+            end
+        end
+        v115:Set({ "Ragebot", legacyProfile, "Enabled" }, true)
+        simpleEnabled = legacyProfile == "Simple"
+        advancedEnabled = legacyProfile == "Advanced"
+    end
+
+    if simpleEnabled and advancedEnabled then
+        normalizingProfilePair = true
+        -- Store writes (not direct table mutation) notify both UI bindings and observers.
+        v115:Set({ "Ragebot", "Simple", "Enabled" }, false)
+        v115:Set({ "Ragebot", "Advanced", "Enabled" }, false)
+        v115:Set({ "Ragebot", "Simple", "Keybind", "State" }, false)
+        v115:Set({ "Ragebot", "Advanced", "Keybind", "State" }, false)
+        v115:Set({ "Ragebot", "Enabled" }, false)
+        normalizingProfilePair = false
+        profileKeybindActive.Simple = false
+        profileKeybindActive.Advanced = false
+        simpleEnabled, advancedEnabled = false, false
+    end
+
+    local selectedProfile = rageConfig.Profile == "Simple" and "Simple"
+        or rageConfig.Profile == "Advanced" and "Advanced" or nil
+    if simpleEnabled and not advancedEnabled and selectedProfile ~= "Simple" then
+        v115:Set({ "Ragebot", "Profile" }, "Simple")
+        selectedProfile = "Simple"
+    elseif advancedEnabled and not simpleEnabled and selectedProfile ~= "Advanced" then
+        v115:Set({ "Ragebot", "Profile" }, "Advanced")
+        selectedProfile = "Advanced"
+    end
+    local simpleStateOk, simpleState = pcall(v118.GetEnabledKeybindState, v118, { "Ragebot", "Simple" })
+    local advancedStateOk, advancedState = pcall(v118.GetEnabledKeybindState, v118, { "Ragebot", "Advanced" })
+    if simpleStateOk then profileKeybindActive.Simple = simpleState == true end
+    if advancedStateOk then profileKeybindActive.Advanced = advancedState == true end
+    local desiredEnabled = selectedProfile == "Simple"
+        and simpleEnabled and profileKeybindActive.Simple
+        or selectedProfile == "Advanced"
+        and advancedEnabled and profileKeybindActive.Advanced
+    applyRagebotRuntimeEnabled(desiredEnabled == true)
+end
+
+local function scheduleRagebotReconcile()
+    if reconcileQueued then return end
+    reconcileQueued = true
+    task.defer(function()
+        reconcileQueued = false
+        reconcileRagebotProfiles()
+    end)
+end
+
+arg._trove:Add(v118:ObserveEnabledKeybind({ "Ragebot", "Simple" }, function(active)
+    profileKeybindActive.Simple = active == true
+    scheduleRagebotReconcile()
 end))
+arg._trove:Add(v118:ObserveEnabledKeybind({ "Ragebot", "Advanced" }, function(active)
+    profileKeybindActive.Advanced = active == true
+    scheduleRagebotReconcile()
+end))
+arg._trove:Connect(v115:GetPropertyChangedSignal({ "Ragebot", "Profile" }), scheduleRagebotReconcile)
+scheduleRagebotReconcile()
 end
 
 index2._SetKnifeCameraLock = function(arg, locked)
@@ -76428,7 +77226,16 @@ local fighterState = innerContext.FighterState
 local character = fighterState ~= nil and fighterState.Character or nil
 local state = character ~= nil and character.State or nil
 local characterController = innerContext.CharacterController
-if fighterState == nil or fighterState.EnvironmentId == nil or not arg._enabled
+local localEnvironmentId = nil
+pcall(function()
+    localEnvironmentId = fighterState ~= nil and fighterState.EnvironmentId or nil
+    if localEnvironmentId == nil then
+        local localPlayer = Players.LocalPlayer
+        localEnvironmentId = localPlayer and (localPlayer:GetAttribute("EnvironmentID")
+            or localPlayer:GetAttribute("EnvironmentId")) or nil
+    end
+end)
+if fighterState == nil or not arg._enabled
    or state == nil or not state.Alive
    or characterController == nil or innerContext.ItemBehaviors == nil then
 if arg._repRootCounterRestorePending == true then
@@ -76581,7 +77388,9 @@ if phaseEnabledForUpdate then
     )
 end
 
-local mode = v115.Data.Ragebot.Evasion.Mode
+local activeRagebotConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local mode = activeRagebotConfig.Profile == "Simple" and "Off"
+    or (type(activeRagebotConfig.Evasion) == "table" and activeRagebotConfig.Evasion.Mode or "Off")
 
 local previousEvasionMode = arg._lastEvasionMode
 local enteredTranslocate = previousEvasionMode ~= mode and mode == "Translocate"
@@ -77732,6 +78541,344 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     }, anglePart, pitch, yaw
 end
 
+local SIMPLE_FORK_SETTLE = 0.05
+local SIMPLE_FORK_GUN_OFFSETS = {
+    Vector3.new(3, 1, 0), Vector3.new(-3, 1, 0),
+    Vector3.new(0, 1, 3), Vector3.new(0, 1, -3),
+    Vector3.new(3, 3, 3), Vector3.new(-3, 3, -3),
+}
+
+local function ragebotSimpleForkReset(owner)
+    local state = type(owner) == "table" and owner._simpleForkState or nil
+    if type(state) ~= "table" then return end
+    state.attackPose = nil
+    state.attackTarget = nil
+    state.attackItem = nil
+    state.attackMode = nil
+    state.attackPosition = nil
+    state.physicsAt = 0
+    state.poseFired = false
+    state.shotAt = 0
+    state.swingAt = 0
+    state.wasHiding = false
+end
+
+local function ragebotSimpleForkGetState(owner)
+    local state = owner._simpleForkState
+    if type(state) ~= "table" then
+        state = {
+            attackPose = nil,
+            attackTarget = nil,
+            attackItem = nil,
+            attackMode = nil,
+            attackPosition = nil,
+            physicsAt = 0,
+            poseFired = false,
+            shotAt = 0,
+            swingAt = 0,
+            wasHiding = false,
+            raycastParams = nil,
+        }
+        owner._simpleForkState = state
+    end
+    return state
+end
+
+local function ragebotSimpleForkClear(state, from, to)
+    if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then return false end
+    local params = state.raycastParams
+    if params == nil then
+        local okParams, made = pcall(RaycastParams.new)
+        if not okParams or made == nil then return false end
+        params = made
+        local configured = pcall(function()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.IgnoreWater = true
+        end)
+        if not configured then return false end
+        state.raycastParams = params
+    end
+    local ignored = {}
+    local players = game:GetService("Players")
+    local localPlayer = players.LocalPlayer
+    if localPlayer and localPlayer.Character then table.insert(ignored, localPlayer.Character) end
+    for _, player in ipairs(players:GetPlayers()) do
+        local character = player.Character
+        if character ~= nil then table.insert(ignored, character) end
+    end
+    local camera = workspace.CurrentCamera
+    if camera ~= nil then table.insert(ignored, camera) end
+    local filterOk = pcall(function() params.FilterDescendantsInstances = ignored end)
+    if not filterOk then return false end
+    local okRay, hit = pcall(function()
+        return workspace:Raycast(from, to - from, params)
+    end)
+    return okRay and hit == nil
+end
+
+local function ragebotSimpleForkGunPose(state, targetPosition, eye, held)
+    if held ~= nil then
+        local heldPosition = held.Position
+        if (heldPosition - targetPosition).Magnitude <= 16
+            and ragebotSimpleForkClear(state, heldPosition + eye, targetPosition) then
+            return held
+        end
+    end
+    local preferred = targetPosition + Vector3.new(0, 3, 0)
+    if ragebotSimpleForkClear(state, preferred + eye, targetPosition) then
+        return CFrame.new(preferred)
+    end
+    for _, offset in ipairs(SIMPLE_FORK_GUN_OFFSETS) do
+        local candidate = targetPosition + offset
+        if ragebotSimpleForkClear(state, candidate + eye, targetPosition) then
+            return CFrame.new(candidate)
+        end
+    end
+    return nil
+end
+
+local function ragebotSimpleForkTargetValid(target, targetPart)
+    local fighter = target ~= nil and target.FighterState or nil
+    local alive = target ~= nil and target.AliveState or nil
+    if type(fighter) ~= "table" or alive == nil then return false end
+    local enemyOk, isEnemy = pcall(function() return fighter.IsEnemy end)
+    if not enemyOk or isEnemy == false then return false end
+    local root = alive.RootPart
+    local valid = false
+    local ok = pcall(function()
+        valid = targetPart ~= nil and targetPart:IsA("BasePart")
+            and targetPart:IsDescendantOf(workspace)
+            and root ~= nil and root:IsA("BasePart") and root:IsDescendantOf(workspace)
+            and alive.Alive ~= false
+    end)
+    if not ok or not valid then return false end
+    local invincibleMethod = fighter.IsInvincible
+    if type(invincibleMethod) == "function" then
+        local invincibleOk, invincible = pcall(invincibleMethod, fighter)
+        if not invincibleOk or invincible == true then return false end
+    end
+    local player = fighter.Player or target.Player
+    if player ~= nil then
+        local players = game:GetService("Players")
+        local playerOk, playerValid = pcall(function()
+            return typeof(player) == "Instance" and player:IsA("Player")
+                and player.Parent == players and player.Character ~= nil
+                and targetPart:IsDescendantOf(player.Character)
+                and root:IsDescendantOf(player.Character)
+        end)
+        if not playerOk or not playerValid then return false end
+    end
+    return true
+end
+
+local function ragebotSimpleForkPlan(owner, action, target, rootPart, clientCFrame, movementMode, alwaysBackstab)
+    local state = ragebotSimpleForkGetState(owner)
+    local now = os.clock()
+    local enabled, attackSeconds, hideSeconds = ragebotVoidSpamConfig()
+    local spamState = ragebotVoidSpamState()
+    local hiding = enabled and spamState.phase == "hide"
+        and (spamState.reloadHold == true or now < (tonumber(spamState.activeUntil) or 0))
+
+    if hiding then
+        ragebotSimpleForkReset(owner)
+        state.wasHiding = true
+        return {
+            CFrame = typeof(clientCFrame) == "CFrame" and clientCFrame or nil,
+            ShouldSkipDefense = true,
+            ShouldForceCrouch = true,
+        }
+    end
+    if state.wasHiding then
+        ragebotSimpleForkReset(owner)
+        state.wasHiding = false
+    end
+
+    if action == nil or target == nil then
+        ragebotSimpleForkReset(owner)
+        if not enabled and type(spamState) == "table" and spamState.voidSpamTransformApplied == true then
+            ragebotRequestVoidSpamTransformRestore()
+            if typeof(clientCFrame) == "CFrame" then
+                return { CFrame = clientCFrame, ShouldSkipDefense = true }
+            end
+        end
+        return owner:_EvadePlan(clientCFrame, movementMode)
+    end
+
+    local item = type(action) == "table" and action.Item or nil
+    if item == nil or (action.Type ~= "Attack" and action.Type ~= "Melee") then
+        ragebotSimpleForkReset(owner)
+        return owner:_EvadePlan(clientCFrame, movementMode)
+    end
+
+    local targetPart = ragebotGetKnifeAimPart(target)
+    if targetPart == nil or not ragebotSimpleForkTargetValid(target, targetPart) then
+        ragebotSimpleForkReset(owner)
+        return { CFrame = typeof(clientCFrame) == "CFrame" and clientCFrame or nil, ShouldSkipDefense = true }
+    end
+
+    local context = owner._innerContext
+    local fighter = context ~= nil and context.FighterState or nil
+    local crouched = false
+    pcall(function() crouched = fighter ~= nil and fighter:IsCrouching() == true end)
+    local eye = Vector3.new(0, crouched and 0.25 or 1.75, 0)
+    local itemType = item.__type
+    local mode = "gun"
+    pcall(function()
+        local ragebot = v115.Data.Ragebot
+        local simple = type(ragebot) == "table" and ragebot.Simple or nil
+        mode = string.lower(tostring(type(simple) == "table" and simple.Mode or "gun"))
+    end)
+
+    local pose
+    local aim
+    local viewAngles = nil
+    local weaponAction = nil
+    if itemType == "Gun" then
+        local okEquipped, equipped = pcall(function() return item:IsEquipped() end)
+        local okReloading, reloading = pcall(function() return item:IsReloading() end)
+        local okAmmo, ammo = pcall(function() return item:GetAmmo() end)
+        if not okEquipped or equipped ~= true or not okReloading or reloading == true
+            or not okAmmo or not ragebotFiniteNumber(ammo) or ammo <= 0 then
+            ragebotSimpleForkReset(owner)
+            return owner:_EvadePlan(clientCFrame, movementMode)
+        end
+        local held = state.attackMode == "gun" and state.attackItem == item
+            and state.attackTarget == targetPart and state.attackPose or nil
+        pose = ragebotSimpleForkGunPose(state, targetPart.Position, eye, held)
+        if pose == nil then
+            ragebotSimpleForkReset(owner)
+            return owner:_EvadePlan(clientCFrame, movementMode)
+        end
+        local changed = state.attackPose == nil or state.attackItem ~= item
+            or state.attackTarget ~= targetPart or state.attackMode ~= "gun"
+            or (held ~= nil and held ~= pose)
+        if changed then
+            state.attackPose = pose
+            state.attackTarget = targetPart
+            state.attackItem = item
+            state.attackMode = "gun"
+            state.attackPosition = targetPart.Position
+            state.poseFired = false
+            state.physicsAt = now + math.max(SIMPLE_FORK_SETTLE, ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay))
+        end
+        state.attackTarget = targetPart
+        pose = state.attackPose
+        aim = CFrame.lookAt(pose.Position + eye, targetPart.Position)
+        if now >= (tonumber(state.physicsAt) or 0) and now >= (tonumber(state.shotAt) or 0) then
+            weaponAction = function()
+                if not ragebotSimpleForkTargetValid(target, targetPart) then return end
+                local beginOk, ready, generation = pcall(item.BeginRagebotShot, item, os.clock())
+                if not beginOk or ready ~= true then return end
+                local countOk, beforeCount = pcall(function() return item.ShotRequestCount end)
+                local ammoOk, ammoBefore = pcall(item.GetAmmo, item)
+                if not countOk or not ragebotFiniteNumber(beforeCount) or not ammoOk then
+                    pcall(item.FinishRagebotShot, item, false, os.clock(), generation)
+                    return
+                end
+                local sendOk, sendError = pcall(function()
+                    item:ShootAt(aim, aim, { Part = targetPart })
+                end)
+                local afterOk, afterCount = pcall(function() return item.ShotRequestCount end)
+                local sent = afterOk and ragebotFiniteNumber(afterCount) and afterCount > beforeCount
+                if sent then
+                    pcall(item.FinishRagebotShot, item, true, os.clock(), generation)
+                    state.poseFired = true
+                    state.shotAt = os.clock() + 1 / 120
+                    if enabled then
+                        ragebotVoidSpamMarkShotRequest(item, ammoBefore, afterCount)
+                    end
+                else
+                    pcall(item.FinishRagebotShot, item, false, os.clock(), generation)
+                    if os.clock() >= (owner._nextSimpleShotWarningAt or 0) then
+                        owner._nextSimpleShotWarningAt = os.clock() + 5
+                        warn("[Ragebot:Simple] Fork gun worker did not queue a shot: " .. tostring(sendError or afterCount))
+                    end
+                end
+            end
+        end
+    elseif itemType == "Melee" then
+        local isKnife = mode == "knife" and item.Name == "Knife"
+        local targetPosition = targetPart.Position
+        if isKnife then
+            local facing = targetPart.CFrame
+            pcall(function()
+                if type(target.FighterState.GetRotationCFrame) == "function" then
+                    facing = CFrame.new(targetPosition) * target.FighterState:GetRotationCFrame()
+                end
+            end)
+            pose = facing * CFrame.new(0, 0, 3)
+        else
+            local from = targetPosition + Random.new():NextUnitVector() * 3
+            pose = CFrame.new(from, targetPosition)
+        end
+        local changed = state.attackPose == nil or state.attackItem ~= item
+            or state.attackTarget ~= targetPart or state.attackMode ~= (isKnife and "knife" or "melee")
+            or (state.poseFired and state.attackPosition ~= nil
+                and (targetPosition - state.attackPosition).Magnitude > 2)
+        if changed then
+            state.attackPose = pose
+            state.attackTarget = targetPart
+            state.attackItem = item
+            state.attackMode = isKnife and "knife" or "melee"
+            state.attackPosition = targetPosition
+            state.poseFired = false
+            state.physicsAt = now + math.max(SIMPLE_FORK_SETTLE, ragebotSafeEstimatedDelay(v122.getEstimatedReplicationDelay))
+        end
+        pose = state.attackPose
+        aim = CFrame.lookAt(pose.Position, targetPosition)
+        local pitch, yaw = aim:ToOrientation()
+        viewAngles = { Kind = "Normalized", Pitch = math.deg(pitch), Yaw = math.deg(yaw) }
+        if isKnife and alwaysBackstab then
+            viewAngles = ragebotBuildBackstabKnifeViewAngles(target, owner)
+            if viewAngles == nil then
+                return { CFrame = pose, ShouldSkipDefense = true, ShouldForceCrouch = true }
+            end
+        end
+        local okEquipped, equipped = pcall(function() return item:IsEquipped() end)
+        if not okEquipped or equipped ~= true then
+            ragebotSimpleForkReset(owner)
+            return owner:_EvadePlan(clientCFrame, movementMode)
+        end
+        if now >= (tonumber(state.physicsAt) or 0) and now >= (tonumber(state.swingAt) or 0) then
+            weaponAction = function()
+                if not ragebotSimpleForkTargetValid(target, targetPart) then return end
+                local okAttack, attackResult = pcall(function()
+                    if isKnife then
+                        return item:HeavyAttack(aim, aim, { Part = targetPart })
+                    end
+                    return item:Attack(aim, aim, { Part = targetPart })
+                end)
+                if okAttack and attackResult ~= false then
+                    state.poseFired = true
+                    state.swingAt = os.clock() + 1 / 60
+                    if enabled then
+                        spamState.lastShotAt = os.clock()
+                        if spamState.phase == "attack" then
+                            spamState.activeUntil = math.max(tonumber(spamState.activeUntil) or 0,
+                                os.clock() + math.max(attackSeconds, SIMPLE_FORK_SETTLE))
+                        end
+                    end
+                elseif not okAttack and os.clock() >= (owner._nextSimpleMeleeWarningAt or 0) then
+                    owner._nextSimpleMeleeWarningAt = os.clock() + 5
+                    warn("[Ragebot:Simple] Fork melee worker failed: " .. tostring(attackResult))
+                end
+            end
+        end
+    else
+        ragebotSimpleForkReset(owner)
+        return owner:_EvadePlan(clientCFrame, movementMode)
+    end
+
+    return {
+        CFrame = pose,
+        ViewAngles = viewAngles,
+        WeaponAction = weaponAction,
+        ShouldSkipDefense = true,
+        ShouldForceCrouch = true,
+        IsAimPose = weaponAction ~= nil,
+    }
+end
+
 index2._Plan = function(arg, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 local function buildMovementPlan(clientPose, movementMode)
     if movementMode == "Off" then return {} end
@@ -77792,9 +78939,37 @@ arg:_SetKnifeCameraLock(shouldLockKnifeCamera)
 local flag19 = arg4 ~= nil and not arg._spatialLimitGate:Tick(arg4)
 local v130 = arg:_PlanReloadTransport(arg3, arg6, arg7, buildMovementPlan)
 if v130 ~= nil then
+local earlyRagebot = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local earlySimple = type(earlyRagebot.Simple) == "table" and earlyRagebot.Simple or {}
+local earlyAdvanced = type(earlyRagebot.Advanced) == "table" and earlyRagebot.Advanced or {}
+local earlyVoidSpam = type(earlySimple.VoidSpam) == "table" and earlySimple.VoidSpam.Enabled == true
+if earlyRagebot.Profile == "Simple" and earlySimple.Enabled == true
+    and earlyAdvanced.Enabled ~= true and earlyVoidSpam and typeof(arg6) == "CFrame" then
+    if typeof(v130.CFrame) ~= "CFrame" then v130.CFrame = arg6 end
+    v130.ShouldSkipDefense = true
+end
 arg._hitscanStrategy:ResetState()
 arg._meleeStrategy:ResetState()
 return v130
+end
+
+local ragebotDataForPlan = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local simpleDataForPlan = type(ragebotDataForPlan.Simple) == "table" and ragebotDataForPlan.Simple or {}
+local advancedDataForPlan = type(ragebotDataForPlan.Advanced) == "table" and ragebotDataForPlan.Advanced or {}
+local simpleForkActive = ragebotDataForPlan.Profile == "Simple"
+    and simpleDataForPlan.Enabled == true and advancedDataForPlan.Enabled ~= true
+if simpleForkActive then
+    if arg._simpleForkLegacyGlueReleased ~= true then
+        arg._hitscanStrategy:ResetState()
+        arg._meleeStrategy:ResetState()
+        arg._simpleForkLegacyGlueReleased = true
+    end
+    if arg3 == nil or (arg3.Type ~= "Swap" and arg3.Type ~= "Reload") then
+        return ragebotSimpleForkPlan(arg, arg3, arg4, arg5, arg6, arg7, useAlwaysBackstabKnifeRotation)
+    end
+    ragebotSimpleForkReset(arg)
+else
+    arg._simpleForkLegacyGlueReleased = nil
 end
 
 if arg3 == nil then
@@ -77821,6 +78996,13 @@ if stationaryCounterResponse and typeof(arg6) == "CFrame" then
     v131 = { CFrame = arg6, ShouldSkipDefense = true, ShouldForceCrouch = true }
 else
     v131 = arg:_EvadePlan(arg6, arg7)
+end
+if simpleForkActive then
+    local simpleVoidConfig = type(simpleDataForPlan.VoidSpam) == "table" and simpleDataForPlan.VoidSpam or {}
+    if simpleVoidConfig.Enabled == true and typeof(arg6) == "CFrame" then
+        if typeof(v131.CFrame) ~= "CFrame" then v131.CFrame = arg6 end
+        v131.ShouldSkipDefense = true
+    end
 end
 
 v131.WeaponAction = function()
@@ -77879,7 +79061,6 @@ end
 return buildMovementPlan(arg6, arg7)
 end
 local v131, v132 = arg._hitscanStrategy:Plan(arg2, arg4, item, arg5, flag19, arg6)
-
 local nowGun = os.clock()
 
 if v132 ~= nil then
@@ -78267,9 +79448,58 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local methodsOk = pcall(function() setFn = controller.SetServerCFrame end)
     if not methodsOk then setFn = nil end
 
+    local snapshotRoot = state.voidSpamRootPart
+    if snapshotRoot ~= nil then
+        if typeof(snapshotRoot) ~= "Instance" then
+            ragebotClearVoidSpamTransformSnapshot(state)
+            return true
+        end
+        local oldRootReadOk, oldRootStillCurrentCharacter = pcall(function()
+            local localPlayer = game:GetService("Players").LocalPlayer
+            local character = localPlayer and localPlayer.Character
+            return snapshotRoot:IsA("BasePart") and character ~= nil
+                and snapshotRoot:IsDescendantOf(character)
+                and snapshotRoot:IsDescendantOf(workspace)
+        end)
+        if not oldRootReadOk or not oldRootStillCurrentCharacter then
+            -- A dead/respawned character no longer owns this saved pose. Drop
+            -- the obsolete snapshot instead of retrying against a missing root forever.
+            ragebotClearVoidSpamTransformSnapshot(state)
+            return true
+        end
+    end
+
     local currentRoot = ragebotVoidSpamControllerRoot(controller)
+    local usingSavedRootFallback = false
     if typeof(currentRoot) ~= "Instance" then
-        return blocked("controller has no current RootPart")
+        -- A controller may temporarily drop its RootPart reference while the
+        -- same character's saved physical root remains valid. Restore that root
+        -- directly; never borrow one from a respawned/different character.
+        local fallbackCandidate = snapshotRoot
+        if fallbackCandidate == nil then
+            pcall(function()
+                local localPlayer = Players.LocalPlayer
+                local character = localPlayer and localPlayer.Character
+                fallbackCandidate = character and character:FindFirstChild("HumanoidRootPart") or nil
+            end)
+        end
+        if fallbackCandidate ~= nil then
+            local fallbackOk, fallbackValid = pcall(function()
+                local localPlayer = Players.LocalPlayer
+                local character = localPlayer and localPlayer.Character
+                return fallbackCandidate:IsA("BasePart")
+                    and fallbackCandidate.Parent ~= nil
+                    and fallbackCandidate:IsDescendantOf(workspace)
+                    and character ~= nil and fallbackCandidate:IsDescendantOf(character)
+            end)
+            if fallbackOk and fallbackValid then
+                currentRoot = fallbackCandidate
+                usingSavedRootFallback = true
+            end
+        end
+        if typeof(currentRoot) ~= "Instance" then
+            return blocked("controller has no current RootPart and the saved RootPart is unavailable")
+        end
     end
     local rootValidOk, rootValid = pcall(function()
         return currentRoot:IsA("BasePart")
@@ -78279,23 +79509,9 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     if not rootValidOk or not rootValid then
         return blocked("current RootPart is not a live workspace BasePart")
     end
-
-    local snapshotRoot = state.voidSpamRootPart
-    if snapshotRoot ~= nil then
-        if typeof(snapshotRoot) ~= "Instance" then
-            return blocked("saved RootPart reference is invalid")
-        end
-        local oldRootReadOk, oldRootStillInWorld = pcall(function()
-            return snapshotRoot:IsA("BasePart") and snapshotRoot:IsDescendantOf(workspace)
-        end)
-        if not oldRootReadOk then
-            return blocked("saved RootPart validity could not be read")
-        end
-        if snapshotRoot ~= currentRoot or not oldRootStillInWorld then
-            -- A respawn/replacement means the old transform no longer belongs to this rig.
-            ragebotClearVoidSpamTransformSnapshot(state)
-            return true
-        end
+    if snapshotRoot ~= nil and snapshotRoot ~= currentRoot then
+        ragebotClearVoidSpamTransformSnapshot(state)
+        return true
     end
 
     local currentReadOk, currentCFrame = pcall(function() return currentRoot.CFrame end)
@@ -78339,11 +79555,24 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local rotationIsStillRolled = outputScore > baseScore + 0.15
     local rotationAlreadyRestored = baseScore > outputScore + 0.15
     if not rotationIsStillRolled and not rotationAlreadyRestored then
-        return blocked("current orientation is ambiguous between transformed and restored poses")
+        if (nearBasePosition or nearOutputPosition or hideOffsetStillVisible)
+            and ragebotCFrameOrientationMatches(currentCFrame, baseCFrame) then
+            rotationAlreadyRestored = true
+        elseif nearOutputPosition or hideOffsetStillVisible then
+            -- Position alone cannot prove that the original orientation was
+            -- restored. If it does not match the saved base rotation, restore it.
+            rotationIsStillRolled = true
+        else
+            ragebotClearVoidSpamTransformSnapshot(state)
+            return true
+        end
     end
 
     if largeHideOffset and not nearOutputPosition and not nearBasePosition and not hideOffsetStillVisible then
-        return blocked("large hidden offset is no longer at a verifiable output position")
+        -- The character has moved away from the saved output/hide location.
+        -- Do not rewind a legitimate later movement or keep a stale transaction.
+        ragebotClearVoidSpamTransformSnapshot(state)
+        return true
     end
 
     local restoredPosition = currentPos
@@ -78363,18 +79592,34 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
     local restoredRotation = currentCFrame.Rotation
     local rotationNeedsCorrection = false
     if rotationIsStillRolled then
-        restoredRotation = (currentCFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90)):Inverse()).Rotation
+        if math.abs(outputScore - baseScore) <= 0.15 then
+            restoredRotation = baseCFrame.Rotation
+        else
+            restoredRotation = (currentCFrame * CFrame.Angles(math.rad(-90), 0, math.rad(90)):Inverse()).Rotation
+        end
         rotationNeedsCorrection = true
     end
 
     if rotationAlreadyRestored and not positionNeedsCorrection then
         if nearBasePosition or fakeOffset.Magnitude <= 0.01 then
-            local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
-                controller, currentRoot, lastOutputCFrame, baseCFrame, currentCFrame,
-                fakeOffset, normalTolerance
-            )
-            if not cachesOk then
-                return blocked("RootDesync caches could not be reconciled after pose was already restored")
+            if usingSavedRootFallback then
+                local stillDetached = ragebotVoidSpamControllerRoot(controller) == nil
+                local rootDesyncSafe = false
+                pcall(function()
+                    local rootDesync = controller._rootDesync
+                    rootDesyncSafe = rootDesync == nil or rootDesync._rootPart == nil
+                end)
+                if not stillDetached or not rootDesyncSafe then
+                    return blocked("controller reattached a different RootPart during saved-root fallback")
+                end
+            else
+                local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
+                    controller, currentRoot, lastOutputCFrame, baseCFrame, currentCFrame,
+                    fakeOffset, normalTolerance
+                )
+                if not cachesOk then
+                    return blocked("RootDesync caches could not be reconciled after pose was already restored")
+                end
             end
             ragebotClearVoidSpamTransformSnapshot(state)
             return true
@@ -78394,9 +79639,12 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
             setterOk, setterResult = pcall(setFn, controller, restoredCFrame)
         end
         if not setterOk or setterResult == false then
-            local rootDesyncPresent = false
-            pcall(function() rootDesyncPresent = controller._rootDesync ~= nil end)
-            if rootDesyncPresent or ragebotPoseRestoreGateIsActive() then
+            local rootDesyncOwnsRoot = false
+            pcall(function()
+                local rootDesync = controller._rootDesync
+                rootDesyncOwnsRoot = rootDesync ~= nil and rootDesync._rootPart ~= nil
+            end)
+            if rootDesyncOwnsRoot or ragebotPoseRestoreGateIsActive() then
                 return blocked("SetServerCFrame is gated by active RootDesync/pose restore")
             end
         end
@@ -78404,7 +79652,10 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
         if ragebotPoseRestoreGateIsActive() then
             return blocked("pose restore gate became active before direct verification")
         end
-        local rootStillCurrent = ragebotVoidSpamControllerRoot(controller) == currentRoot
+        local controllerRootAfterRead = ragebotVoidSpamControllerRoot(controller)
+        local rootStillCurrent = usingSavedRootFallback
+            and controllerRootAfterRead == nil
+            or controllerRootAfterRead == currentRoot
         if not rootStillCurrent then
             return blocked("RootPart changed while restore was being applied")
         end
@@ -78419,12 +79670,24 @@ local function ragebotRestoreVoidSpamTransform(stateOverride)
             return blocked("restored RootPart CFrame did not pass verification")
         end
 
-        local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
-            controller, currentRoot, lastOutputCFrame, baseCFrame, restoredCFrame,
-            fakeOffset, normalTolerance
-        )
-        if not cachesOk then
-            return blocked("RootDesync caches could not be reconciled after restore")
+        if usingSavedRootFallback then
+            local stillDetached = ragebotVoidSpamControllerRoot(controller) == nil
+            local rootDesyncSafe = false
+            pcall(function()
+                local rootDesync = controller._rootDesync
+                rootDesyncSafe = rootDesync == nil or rootDesync._rootPart == nil
+            end)
+            if not stillDetached or not rootDesyncSafe then
+                return blocked("controller reattached a different RootPart during saved-root fallback")
+            end
+        else
+            local cachesOk = ragebotVoidSpamReconcileRootDesyncCaches(
+                controller, currentRoot, lastOutputCFrame, baseCFrame, restoredCFrame,
+                fakeOffset, normalTolerance
+            )
+            if not cachesOk then
+                return blocked("RootDesync caches could not be reconciled after restore")
+            end
         end
     end
 
@@ -78444,7 +79707,15 @@ end
 
 index2._ApplyUndergroundOffset = function(arg, cframe, characterController)
 local ragebotData = type(v115) == "table" and v115.Data and v115.Data.Ragebot or nil
-local voidSpamConfig = type(ragebotData) == "table" and ragebotData.VoidSpam or nil
+local voidSpamConfig = nil
+if type(ragebotData) == "table" then
+    if ragebotData.Profile == "Simple" then
+        local simpleConfig = type(ragebotData.Simple) == "table" and ragebotData.Simple or nil
+        voidSpamConfig = type(simpleConfig) == "table" and simpleConfig.VoidSpam or nil
+    else
+        voidSpamConfig = ragebotData.VoidSpam
+    end
+end
 local voidSpamConfigured = type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true
 local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
 local voidSpamReloading = arg._reloadGun ~= nil
@@ -78502,6 +79773,23 @@ end
 
 if (not voidSpamConfigured or arg._enabled ~= true)
     and type(voidSpamState) == "table" then
+    local activeShootingItem = voidSpamState.activeShootingItem
+    if activeShootingItem ~= nil then
+        local releaseOk, releaseMethod = pcall(function() return activeShootingItem.FinishShooting end)
+        if releaseOk and type(releaseMethod) == "function" then
+            local callOk, released = pcall(releaseMethod, activeShootingItem)
+            if callOk and released == true then
+                voidSpamState.activeShootingItem = nil
+                voidSpamState.activeShootingReleaseFailures = 0
+            else
+                -- Keep the item reference so the native end-shooting event can
+                -- be retried on the next update; never forget a held attack.
+                voidSpamState.activeShootingReleaseFailures = math.min(
+                    (tonumber(voidSpamState.activeShootingReleaseFailures) or 0) + 1, 1000000
+                )
+            end
+        end
+    end
     voidSpamState.activeUntil = 0
     voidSpamState.nextAttackAt = 0
     voidSpamState.lastShotAt = 0
@@ -79082,6 +80370,10 @@ if cFrame == nil or arg3 == nil or shouldSkipDefense then
                                                                               
                                                                      
 local safeFallbackCFrame = arg:_ApplyUndergroundOffset(cFrame, characterController)
+if arg2 ~= nil and arg2.IsAimPose == true and type(arg2.WeaponAction) == "function"
+    and typeof(safeFallbackCFrame) == "CFrame" then
+    arg._lastAimServerCFrame = safeFallbackCFrame
+end
 characterController:SetServerCFrame(typeof(safeFallbackCFrame) == "CFrame" and safeFallbackCFrame or nil)
 if arg._knifeActionExpected == true then
     ragebotSendKnifeViewAngles(arg, characterController, defensiveViewAngles, arg3)
@@ -79229,6 +80521,9 @@ if not keepRestoreTransaction then
     arg._repRootRestoreRetryAt = nil
 end
 arg._lastEvasionMode = nil
+ragebotSimpleForkReset(arg)
+arg._simpleForkState = nil
+arg._simpleForkLegacyGlueReleased = nil
 local resetContext = rawget(arg, "_innerContext")
 local resetController = resetContext ~= nil and resetContext.CharacterController or nil
 local sameReset = rawget(arg, "_resetApplied") == true
