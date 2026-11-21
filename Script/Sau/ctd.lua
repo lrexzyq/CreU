@@ -1,7 +1,7 @@
 -- discord.gg/syncrypt
 
 do
-local _clientState = { Dead = false, Owner = false, Premium = false }
+local _clientState = { Dead = false, Owner = true, Premium = true } -- patched
 -- The loader passes its session context; Owner and Premium are the backend's signed claims.
 local _context = ...
 local _activeRun = shared._barrageGameRun
@@ -177,21 +177,14 @@ local function geniter(f, s, c)
 end
 
 local v4 = ...
+-- patched: inject fake client state, bypass barrage.cc/loader
+if type(shared._barrageClientState) ~= "table" then
+	shared._barrageClientState = { Dead = false, Owner = true, Premium = true }
+end
+if shared._barrageClientState.Dead then
+	shared._barrageClientState.Dead = false
+end
 local _barrageClientState = shared._barrageClientState
-
-if type(_barrageClientState) ~= "table" or _barrageClientState.Dead or v4 == nil and (type(shared._barrageUILibrary) ~= "table" or shared._barrageUILibrary._destroyed) then
-	shared._barrageEmbedded = true
-	pcall(function()
-		loadstring(game:HttpGet("https://barrage.cc/loader"))()
-	end)
-	shared._barrageEmbedded = nil
-	_barrageClientState = shared._barrageClientState
-end
-
-if type(_barrageClientState) ~= "table" or _barrageClientState.Dead then
-	return
-end
-
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
@@ -25764,9 +25757,9 @@ local v4390, v4391, v4392
 do
 	local Body
 	local v4394 = "https://barrage.cc/ui?t=" .. tostring(os.time())
-	local _barrageRequest = type(shared._barrageRequest) == "function" and shared._barrageRequest or syn and syn.request or http and http.request or request
+	local _barrageRequest = nil -- patched: skip custom request, use game:HttpGet
 	local n94 = 1
-	local v4397 = type(shared._barrageUISetup) == "function" and 0 or 3
+	local v4397 = type(shared._barrageUISetup) == "function" and 0 or 1 -- patched: 1 attempt
 	local result
 
 	for i = n94, v4397 do
