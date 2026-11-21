@@ -1362,47 +1362,36 @@ local function ragebotTargetKnifeState(target)
     if type(target) ~= "table" then return nil end
     local fighter = target.FighterState
     local itemObserver = fighter ~= nil and fighter.ItemObserver or nil
-    local observerRead = false
-    local observerEmpty = false
     if itemObserver ~= nil then
         local okMelee, melee = pcall(function()
             return itemObserver:EquippedItemAsMelee()
         end)
         if okMelee then
-            observerRead = true
-            if melee ~= nil then
-                local okName, name = pcall(function() return melee.Name end)
-                if okName and type(name) == "string" and name ~= "" then
-                    local normalizedName = string.lower(name)
-                    return string.find(normalizedName, "knife", 1, true) ~= nil
-                end
-            else
-                observerEmpty = true
+            -- A successful ItemObserver read is authoritative. In particular,
+            -- nil means no equipped melee; do not reinterpret a decorative/stale
+            -- Knife model somewhere in Character as an equipped weapon.
+            if melee == nil then return false end
+            local okName, name = pcall(function() return melee.Name end)
+            if not okName or type(name) ~= "string" or name == "" then
+                return nil
             end
+            return string.find(string.lower(name), "knife", 1, true) ~= nil
         end
     end
 
+    -- Fallback is permitted only when ItemObserver is unavailable/unreadable,
+    -- and it recognizes a real equipped Tool rather than arbitrary descendants.
     local player = target.Player or (fighter ~= nil and fighter.Player or nil)
     local character = player ~= nil and player.Character or nil
     if character ~= nil then
         local okTool, toolName = pcall(function()
             local equippedTool = character:FindFirstChildOfClass("Tool")
-            if equippedTool ~= nil then return equippedTool.Name end
-            local namedKnife = character:FindFirstChild("Knife", true)
-            if namedKnife ~= nil then return namedKnife.Name end
-            for _, descendant in ipairs(character:GetDescendants()) do
-                if (descendant:IsA("Tool") or descendant:IsA("Model") or descendant:IsA("BasePart"))
-                    and string.find(string.lower(descendant.Name), "knife", 1, true) then
-                    return descendant.Name
-                end
-            end
-            return nil
+            return equippedTool ~= nil and equippedTool.Name or nil
         end)
-        if okTool and type(toolName) == "string" then
+        if okTool and type(toolName) == "string" and toolName ~= "" then
             return string.find(string.lower(toolName), "knife", 1, true) ~= nil
         end
     end
-    if observerRead and observerEmpty then return false end
     return nil
 end
 
@@ -1434,16 +1423,16 @@ local function ragebotObserveKnifeApproach(targetRoot, localRoot)
     return ok and threat == true
 end
 
-local function ragebotResolveRepRootTarget(controller, target)
-    if type(controller) ~= "table" or type(target) ~= "table" then return false end
+local function ragebotGetCurrentEnemyPlayer(controller, target)
+    if type(controller) ~= "table" or type(target) ~= "table" then return nil end
     local fighter = target.FighterState
-    if fighter == nil then return false end
+    if fighter == nil then return nil end
     local okRoster, enemyByPlayer = pcall(function()
         local selection = controller._targetSelection
         local fighters = selection ~= nil and selection._fighters or nil
         return fighters ~= nil and fighters.EnemyByPlayer or nil
     end)
-    if not okRoster or type(enemyByPlayer) ~= "table" then return false end
+    if not okRoster or type(enemyByPlayer) ~= "table" then return nil end
 
     local player = target.Player
     if player == nil or enemyByPlayer[player] ~= fighter then
@@ -1455,6 +1444,21 @@ local function ragebotResolveRepRootTarget(controller, target)
             end
         end
     end
+    if player == nil then return nil end
+    local validOk, valid = pcall(function()
+        return typeof(player) == "Instance" and player:IsA("Player")
+            and player.Parent == Players and fighter.IsEnemy ~= false
+    end)
+    if not validOk or not valid then return nil end
+    target.Player = player
+    return player
+end
+
+local function ragebotResolveRepRootTarget(controller, target)
+    if type(controller) ~= "table" or type(target) ~= "table" then return false end
+    local fighter = target.FighterState
+    if fighter == nil then return false end
+    local player = ragebotGetCurrentEnemyPlayer(controller, target)
     if player == nil then return false end
 
     local okState, aliveState, root, hitbox = pcall(function()
@@ -31379,185 +31383,24 @@ local function pendingAmmoNumber(value)
 return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge and value >= 0
 end
 
--- Ragebot gun cadence mirrors Ue's scheduling model without replacing Crefy's
--- encoded-shot path: one serialized request, a per-item NextFire deadline, and
--- the weapon's native cooldown/equip/reload deadlines as authoritative gates.
-local RAGEBOT_GUN_CADENCE_STATES = setmetatable({}, { __mode = "k" })
--- Ue's Rage scheduler defaults to 25% of the weapon's declared cooldown.
--- Keep this as a local Ragebot cadence policy; do not mutate the game's Info table.
-local RAGEBOT_GUN_COOLDOWN_PERCENT = 25
-local function ragebotGunFinite(value)
-return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
-end
-
-local function ragebotGunCadenceState(item)
-local inner = type(item) == "table" and item.Inner or nil
-if inner == nil then return nil end
-local state = RAGEBOT_GUN_CADENCE_STATES[inner]
-if type(state) ~= "table" then
-    state = { NextFire = 0, Busy = false, BusySince = 0, LastRequestAt = -math.huge, Generation = 0, LastDebugAt = 0, LastDebugReason = nil }
-    RAGEBOT_GUN_CADENCE_STATES[inner] = state
-end
-return state
-end
-
--- Temporary, rate-limited diagnostics for identifying the shared firing gate.
--- Logs only while a gate blocks firing; it does not alter cadence or shot state.
+-- ShotDebug is diagnostic only; weapon cadence remains owned by the native item path.
+local RAGEBOT_SHOT_DEBUG_STATES = setmetatable({}, { __mode = "k" })
 local function ragebotGunDebug(item, reason, details, now)
-local state = ragebotGunCadenceState(item)
-if state == nil then return end
-now = ragebotGunFinite(now) and now or os.clock()
-local changed = state.LastDebugReason ~= reason
-if not changed and now - (tonumber(state.LastDebugAt) or 0) < 1.0 then return end
-state.LastDebugReason = reason
-state.LastDebugAt = now
-warn(string.format("[Ragebot][ShotDebug] weapon=%s gate=%s %s", tostring(item and item.Name or "?"), tostring(reason), tostring(details or "")))
+    local key = type(item) == "table" and (item.Inner or item) or item
+    if key == nil then return end
+    local state = RAGEBOT_SHOT_DEBUG_STATES[key]
+    if type(state) ~= "table" then
+        state = { LastAt = 0, LastReason = nil }
+        RAGEBOT_SHOT_DEBUG_STATES[key] = state
+    end
+    now = type(now) == "number" and now == now and now ~= math.huge and now ~= -math.huge and now or os.clock()
+    if state.LastReason == reason and now - (tonumber(state.LastAt) or 0) < 1.0 then return end
+    state.LastReason = reason
+    state.LastAt = now
+    warn(string.format("[Ragebot][ShotDebug] weapon=%s gate=%s %s", tostring(item and item.Name or "?"), tostring(reason), tostring(details or "")))
 end
 index2.DebugRagebotShot = function(item, reason, details, now)
     ragebotGunDebug(item, reason, details, now)
-end
-
-local function ragebotGunCurrentInfo(item)
-local info = type(item) == "table" and item.Info or nil
-pcall(function()
-    local current = v102(item.Inner, "Info")
-    if type(current) == "table" then info = current end
-end)
-return type(info) == "table" and info or {}
-end
-
-local function ragebotGunConfiguredCooldown(item)
-local info = ragebotGunCurrentInfo(item)
-local value
-if item.Name == "Revolver" then
-    value = tonumber(info.QuickShotCooldown)
-end
-if not ragebotGunFinite(value) or value < 0 then
-    value = tonumber(info.ShootCooldown)
-end
-local burstCount = tonumber(info.ShootBurst) or 1
-local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
-if not ragebotGunFinite(burstCount) or burstCount < 1 then burstCount = 1 end
-if not ragebotGunFinite(burstCooldown) or burstCooldown < 0 then burstCooldown = 0 end
-if not ragebotGunFinite(value) or value < 0 then value = 0 end
-if item.Name ~= "Revolver" and burstCount > 1 then
-    value = (burstCount - 1) * burstCooldown + math.max(value, burstCooldown)
-end
-local scale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
-return math.clamp(math.max(1 / 240, value * scale), 1 / 240, 10)
-end
-
-local function ragebotGunNativeReadyIn(item)
-local inner = type(item) == "table" and item.Inner or nil
-if inner == nil then return 0 end
-local nativeNow = tick()
-local remaining = 0
-local function includeDeadline(value)
-    if ragebotGunFinite(value) then
-        local delay = value - nativeNow
-        if delay > 0 and delay < 60 then remaining = math.max(remaining, delay) end
-    end
-end
-for _, field in ipairs({ "_shoot_cooldown", "_equip_cooldown", "_is_revolver_quick_shooting" }) do
-    local ok, value = pcall(rawget, inner, field)
-    if ok then includeDeadline(value) end
-end
-local reloadEnding, reloadCancel, reloadExpiration
-pcall(function()
-    reloadEnding = rawget(inner, "_reload_cooldown")
-    reloadCancel = rawget(inner, "_reload_cancel_cooldown")
-    reloadExpiration = rawget(inner, "_reload_cancel_expiration")
-end)
-local ammo = nil
-pcall(function() ammo = item:GetAmmo() end)
-local canCancelReload = ragebotGunFinite(ammo) and ammo > 0
-    and ragebotGunFinite(reloadCancel) and ragebotGunFinite(reloadExpiration)
-    and nativeNow >= reloadCancel and nativeNow < reloadExpiration
-if not canCancelReload then includeDeadline(reloadEnding) end
-return remaining
-end
-
-index2.GetRagebotShotWait = function(item, now)
-now = ragebotGunFinite(now) and now or os.clock()
-local state = ragebotGunCadenceState(item)
-if state == nil then return 0 end
-if state.Busy == true then
-    local busyAge = now - (tonumber(state.BusySince) or now)
-    if busyAge >= 0 and busyAge < 1.0 then
-        local busyWait = math.max(1 / 120, 1.0 - busyAge)
-        ragebotGunDebug(item, "busy", string.format("wait=%.3f busyAge=%.3f", busyWait, busyAge), now)
-        return busyWait
-    end
-    -- A failed/yielded callback must not permanently wedge the weapon.
-    state.Busy = false
-    state.BusySince = 0
-end
-local scheduled = tonumber(state.NextFire) or 0
-if not ragebotGunFinite(scheduled) then scheduled = 0 end
-local scheduledWait = math.max(0, scheduled - now)
--- Keep the pre-existing pending-shot estimate in the same gate. It is useful
--- while ammo replication is outstanding, but NextFire remains independent so
--- reconciliation cannot accidentally erase the weapon cadence deadline.
-local pendingDeadline = tonumber(item._nextLikelyShotRequestAt) or 0
-if not ragebotGunFinite(pendingDeadline) then pendingDeadline = 0 end
-local pendingWait = math.max(0, pendingDeadline - now)
-local nativeWait = ragebotGunNativeReadyIn(item)
-local shootRemaining = nil
-pcall(function()
-    local remaining = item:GetShootTimeRemaining()
-    if ragebotGunFinite(remaining) then
-        shootRemaining = remaining
-        if remaining > nativeWait then nativeWait = remaining end
-    end
-end)
-local waitFor = math.max(scheduledWait, pendingWait, nativeWait)
-if waitFor > 0 then
-    local reason = "scheduled"
-    local maxWait = scheduledWait
-    if pendingWait > maxWait then reason, maxWait = "pending-ammo", pendingWait end
-    if nativeWait > maxWait then reason, maxWait = "native-cooldown", nativeWait end
-    if state.Busy == true then reason = "busy" end
-    local info = ragebotGunCurrentInfo(item)
-    local shootCooldown = tonumber(info.ShootCooldown) or 0
-    local burstCount = tonumber(info.ShootBurst) or 1
-    local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
-    local ammo, outstanding = nil, tonumber(item._outstandingAmmoSpend) or 0
-    pcall(function() ammo = item:GetAmmo() end)
-    ragebotGunDebug(item, reason, string.format(
-        "wait=%.3f scheduled=%.3f pending=%.3f native=%.3f shootRemaining=%s NextFire=%.3f pendingDeadline=%.3f Busy=%s cooldown=%.3f burst=%s burstCooldown=%.3f scale=%d%% ammo=%s pendingSpend=%.1f",
-        waitFor, scheduledWait, pendingWait, nativeWait,
-        shootRemaining ~= nil and string.format("%.3f", shootRemaining) or "nil",
-        scheduled, pendingDeadline, tostring(state.Busy == true),
-        shootCooldown, tostring(burstCount), burstCooldown, RAGEBOT_GUN_COOLDOWN_PERCENT,
-        ammo ~= nil and tostring(ammo) or "nil", outstanding), now)
-end
-return waitFor
-end
-
-index2.BeginRagebotShot = function(item, now)
-now = ragebotGunFinite(now) and now or os.clock()
-local waitFor = item:GetRagebotShotWait(now)
-if waitFor > 0 then return false, waitFor end
-local state = ragebotGunCadenceState(item)
-if state == nil or state.Busy == true then return false, math.max(waitFor, 1 / 120) end
-state.Busy = true
-state.BusySince = now
-state.Generation = (tonumber(state.Generation) or 0) + 1
-return true, state.Generation
-end
-
-index2.FinishRagebotShot = function(item, sent, now, generation)
-now = ragebotGunFinite(now) and now or os.clock()
-local state = ragebotGunCadenceState(item)
-if state == nil then return false end
-if generation ~= nil and state.Generation ~= generation then return false end
-state.Busy = false
-state.BusySince = 0
-if sent == true then
-    state.LastRequestAt = now
-    state.NextFire = math.max(tonumber(state.NextFire) or 0, now + ragebotGunConfiguredCooldown(item))
-end
-return true
 end
 
 local function syncPendingShotSummary(item)
@@ -31726,17 +31569,14 @@ table.insert(pendingBatches, { spend = predictedSpend, deadline = deadline })
 syncPendingShotSummary(arg)
 local quickShotCooldown = arg:IsFanFired() and v102(info, "QuickShotCooldown") or nil
 if type(quickShotCooldown) == "number" and quickShotCooldown == quickShotCooldown and quickShotCooldown >= 0 and quickShotCooldown < math.huge then
-local cadenceScale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
-arg._nextLikelyShotRequestAt = now2 + math.max(1 / 240, quickShotCooldown * cadenceScale)
+arg._nextLikelyShotRequestAt = now2 + quickShotCooldown
 return
 end
 local burstCooldown = tonumber(info.ShootBurstCooldown) or 0
 local shootCooldown = tonumber(info.ShootCooldown) or 0
 if burstCooldown ~= burstCooldown or burstCooldown < 0 or burstCooldown == math.huge or burstCooldown == -math.huge then burstCooldown = 0 end
 if shootCooldown ~= shootCooldown or shootCooldown < 0 or shootCooldown == math.huge or shootCooldown == -math.huge then shootCooldown = 0 end
-local cadenceScale = math.clamp(RAGEBOT_GUN_COOLDOWN_PERCENT, 10, 100) / 100
-local configuredCooldown = (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
-arg._nextLikelyShotRequestAt = now2 + math.max(1 / 240, configuredCooldown * cadenceScale)
+arg._nextLikelyShotRequestAt = now2 + (burstCount - 1) * burstCooldown + math.max(shootCooldown, burstCooldown)
 end
 
 index2.Equip = function(arg)
@@ -57527,8 +57367,16 @@ if type(persistedSourceInfo) == "table" and not activeRetargetRollback then
 end
 local sourceRefInfoBefore = arg._sourceReferenceInfoBySourcePart[arg2]
 if type(sourceRefInfoBefore) == "table" and sourceRefInfoBefore.RestorePending == true then
-    local restored = partGlueRestoreTrackedSourceReference(arg, arg2)
-    if not restored then return nil end
+    local restored, restoreError = partGlueRestoreTrackedSourceReference(arg, arg2)
+    if not restored then
+        local warningNow = os.clock()
+        if warningNow >= (arg._nextSourceReferenceRestoreWarningAt or 0) then
+            arg._nextSourceReferenceRestoreWarningAt = warningNow + 5
+            warn("[PartGlue] Acquire blocked: tracked PhysicsRepRootRef restore is pending: " ..
+                tostring(restoreError or sourceRefInfoBefore.LastRestoreError or "restore not verified"))
+        end
+        return nil
+    end
 end
 local v118 = arg._glueInfoByTargetPart[arg3]
 local reference = v118 and v118.Reference or nil
@@ -73287,9 +73135,14 @@ if not acquireOk or typeof(v120) ~= "CFrame" then
         ragebotVoidSpamReleasePendingForUnavailableTarget()
         arg:ClearTeleport()
         arg._shootLock:Reset()
-        if not acquireOk and os.clock() >= (arg._nextPartGlueAcquireWarningAt or 0) then
-            arg._nextPartGlueAcquireWarningAt = os.clock() + 5
-            warn("[Ragebot] PartGlue acquisition and Void Spam origin fallback both failed: " .. tostring(v120))
+        local acquireNow = os.clock()
+        local acquireDetail = not acquireOk and tostring(v120)
+            or (v120 == nil and "Acquire returned nil (restore pending or ownership blocked)"
+                or ("Acquire returned " .. typeof(v120) .. " instead of CFrame"))
+        ragebotDebugShot(arg4, "part-glue", acquireDetail, acquireNow)
+        if acquireNow >= (arg._nextPartGlueAcquireWarningAt or 0) then
+            arg._nextPartGlueAcquireWarningAt = acquireNow + 5
+            warn("[Ragebot] PartGlue acquisition and Void Spam origin fallback both failed: " .. acquireDetail)
         end
         return nil, nil
     end
@@ -73329,37 +73182,28 @@ if voidSpamEnabled then
     end
 
     if not arg._shootLock:ShouldFire(arg6 == true, safeDt * shootFrames) then
-        ragebotDebugShot(arg4, "shoot-lock", string.format("dt=%.4f shootFrames=%d", safeDt, shootFrames), now)
+        ragebotDebugShot(arg4, "spatial-limit", string.format("spatialAllowed=%s dt=%.4f shootFrames=%d", tostring(arg6 == true), safeDt, shootFrames), now)
         return n, nil
     end
 else
     local state = ragebotVoidSpamState()
     ragebotVoidSpamReset(state)
     if not arg._shootLock:ShouldFire(arg6, safeDt * shootFrames) then
-        ragebotDebugShot(arg4, "shoot-lock", string.format("dt=%.4f shootFrames=%d", safeDt, shootFrames), os.clock())
+        ragebotDebugShot(arg4, "spatial-limit", string.format("spatialAllowed=%s dt=%.4f shootFrames=%d", tostring(arg6 == true), safeDt, shootFrames), os.clock())
         return n, nil
     end
 end
 
-if type(arg4.GetRagebotShotWait) == "function" then
-    local cadenceNow = os.clock()
-    local cadenceOk, cadenceWait = pcall(arg4.GetRagebotShotWait, arg4, cadenceNow)
-    if not cadenceOk then
-        ragebotDebugShot(arg4, "cadence-error", tostring(cadenceWait), cadenceNow)
-        return n, nil
-    end
-    if ragebotFiniteNumber(cadenceWait) and cadenceWait > 0 then
-        return n, nil
-    end
-end
 
 return n, function()
 local targetStillValid = false
 local targetReadOk = pcall(function()
     local fighterState = arg3 ~= nil and arg3.FighterState or nil
+    local currentEnemyPlayer = arg3 ~= nil and ragebotGetCurrentEnemyPlayer(arg, arg3) or nil
     targetStillValid = arg3 ~= nil
         and fighterState ~= nil
-        and fighterState.IsEnemy == true
+        and currentEnemyPlayer ~= nil
+        and fighterState.IsEnemy ~= false
         and aliveState ~= nil
         and arg3.AliveState == aliveState
         and aliveState.Alive == true
@@ -73369,6 +73213,9 @@ local targetReadOk = pcall(function()
         and hitboxHead.Parent ~= nil and hitboxHead:IsDescendantOf(workspace)
         and targetRoot ~= nil and targetRoot:IsA("BasePart")
         and targetRoot.Parent ~= nil and targetRoot:IsDescendantOf(workspace)
+        and currentEnemyPlayer.Character ~= nil
+        and hitboxHead:IsDescendantOf(currentEnemyPlayer.Character)
+        and targetRoot:IsDescendantOf(currentEnemyPlayer.Character)
     if targetStillValid then
         local okInvincible, isInvincible = pcall(fighterState.IsInvincible, fighterState)
         if not okInvincible or isInvincible then
@@ -73389,6 +73236,10 @@ local targetReadOk = pcall(function()
     end
 end)
 if not targetReadOk or targetStillValid ~= true then
+    ragebotDebugShot(arg4, "target-invalid", string.format(
+        "readOk=%s valid=%s; roster/alive/root/hitbox changed before send",
+        tostring(targetReadOk), tostring(targetStillValid)
+    ), os.clock())
     arg._shootLock:Reset()
     ragebotVoidSpamCancelShot()
     return false
@@ -73419,16 +73270,6 @@ local callbackReloadOk, callbackReloading = pcall(function() return arg4:IsReloa
 if not callbackReloadOk or callbackReloading ~= false then
     ragebotDebugShot(arg4, "reload-gate", string.format("readOk=%s reloading=%s", tostring(callbackReloadOk), tostring(callbackReloading)), os.clock())
     return false
-end
-local cadenceGeneration = nil
-if type(arg4.BeginRagebotShot) == "function" then
-    local beginOk, began, token = pcall(arg4.BeginRagebotShot, arg4, os.clock())
-    if not beginOk or began ~= true then
-        local detail = beginOk and string.format("wait=%.3f", tonumber(token) or -1) or tostring(began)
-        ragebotDebugShot(arg4, "begin-shot-rejected", detail, os.clock())
-        return false
-    end
-    cadenceGeneration = token
 end
 local requestedAmmoBefore = nil
 local requestedShotCount = nil
@@ -73485,9 +73326,6 @@ local okSend, sendError = pcall(function()
     requestedShotCount = afterCount
 end)
 if okSend then
-    if type(arg4.FinishRagebotShot) == "function" then
-        pcall(arg4.FinishRagebotShot, arg4, true, os.clock(), cadenceGeneration)
-    end
     ragebotVoidSpamMarkShotRequest(arg4, requestedAmmoBefore, requestedShotCount)
     return true
 end
@@ -73496,18 +73334,12 @@ if requestCountBefore ~= nil
     and okCountAfterFailure
     and ragebotFiniteNumber(countAfterFailure)
     and countAfterFailure > requestCountBefore then
-    if type(arg4.FinishRagebotShot) == "function" then
-        pcall(arg4.FinishRagebotShot, arg4, true, os.clock(), cadenceGeneration)
-    end
     ragebotVoidSpamMarkShotRequest(arg4, requestedAmmoBefore, countAfterFailure)
     if os.clock() >= (arg._nextShotRequestWarningAt or 0) then
         arg._nextShotRequestWarningAt = os.clock() + 5
         warn("[Ragebot] ShootEncoded raised after queuing the request; preserving Hide/cooldown: " .. tostring(sendError))
     end
     return true
-end
-if type(arg4.FinishRagebotShot) == "function" then
-    pcall(arg4.FinishRagebotShot, arg4, false, os.clock(), cadenceGeneration)
 end
 if os.clock() >= (arg._nextShotRequestWarningAt or 0) then
     arg._nextShotRequestWarningAt = os.clock() + 5
@@ -73813,15 +73645,16 @@ local function buildFreshKnifeAttackPayload()
         local fighter = arg3 ~= nil and arg3.FighterState or nil
         local characterState = fighter ~= nil and fighter.Character or nil
         local liveState = characterState ~= nil and characterState.State or nil
-        local targetPlayer = fighter ~= nil and fighter.Player or (arg3 ~= nil and arg3.Player or nil)
+        local targetPlayer = arg3 ~= nil and ragebotGetCurrentEnemyPlayer(arg, arg3) or nil
         local targetModel = rootPart ~= nil and rootPart:FindFirstAncestorOfClass("Model") or nil
 
-        if arg3 == nil or fighter == nil or fighter.IsEnemy ~= true
-            or characterState == nil or liveState == nil or liveState.Alive ~= true
+        if arg3 == nil or fighter == nil or targetPlayer == nil or fighter.IsEnemy == false
+            or (liveState ~= nil and liveState.Alive ~= true)
+            or (liveState == nil and (aliveState == nil or aliveState.Alive ~= true))
             or arg3.AliveState ~= aliveState or aliveState == nil or aliveState.Alive ~= true
             or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead
-            or (liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
-            or (liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
+            or (liveState ~= nil and liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
+            or (liveState ~= nil and liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
             or targetModel == nil or hitboxHead:FindFirstAncestorOfClass("Model") ~= targetModel
             or not rootPart:IsA("BasePart") or rootPart.Parent == nil
             or not rootPart:IsDescendantOf(workspace)
@@ -74844,14 +74677,19 @@ v117.LimitEntryTime = now2
 limitEntryTime = now2
 end
 
-if flag19 then
 local currentRagebot = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
 local stability = tonumber(currentRagebot.Stability) or 0
 if stability ~= stability or stability == math.huge or stability == -math.huge then stability = 0 end
 stability = math.clamp(stability, 0, 1.5)
-if v117.ExpectedDuration - stability <= now2 - limitEntryTime then
-return false
+local expectedDuration = tonumber(v117.ExpectedDuration) or 1
+if expectedDuration ~= expectedDuration or expectedDuration == math.huge or expectedDuration == -math.huge or expectedDuration < 0 then
+    expectedDuration = 1
 end
+-- Ammo-state read failure must not leave this legacy spatial guard blocking shots forever.
+-- Keep Stability adjustment for a confirmed ammo-state sample; otherwise use the full bounded fallback.
+local releaseAfter = flag19 and (expectedDuration - stability) or expectedDuration
+if releaseAfter <= math.max(0, now2 - limitEntryTime) then
+    return false
 end
 
 return v86[34]
@@ -75160,7 +74998,7 @@ local enumerationOk, enumerationError = pcall(function()
                 if ammoBased and ammo == 0 then
                     local reserveOk, reserve = pcall(item.GetAmmoReserve, item)
                     if not reserveOk or type(reserve) ~= "number" or reserve ~= reserve
-                        or reserve == -math.huge or reserve == math.huge or reserve < 0 then
+                        or reserve == -math.huge or reserve < 0 then
                         return nil, true, true
                     end
                     if reserve <= 0 then return nil, true end
@@ -76128,7 +75966,14 @@ local function reconcileRagebotProfiles()
     local rageConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
     local enabled = rageConfig.Enabled == true
     local keybindStateOk, keybindActive = pcall(v118.GetEnabledKeybindState, v118, { "Ragebot" })
-    if not keybindStateOk then keybindActive = true end
+    if not keybindStateOk then
+        keybindActive = false
+        local warningNow = os.clock()
+        if warningNow >= (arg._nextKeybindStateWarningAt or 0) then
+            arg._nextKeybindStateWarningAt = warningNow + 5
+            warn("[Ragebot] Keybind state could not be read; keeping Ragebot inactive until it is readable.")
+        end
+    end
 
     normalizingProfile = true
     if rageConfig.Profile ~= "Advanced" then
@@ -77070,12 +76915,15 @@ arg._nextGetActionWarningAt = warningNow + 5
 warn("[Ragebot] Weapon action selection failed: " .. tostring(actionResult))
 end
 elseif actionResult == nil then
-
-local warningNow = os.clock()
-if warningNow >= (arg._nextNoActionWarningAt or 0) then
-arg._nextNoActionWarningAt = warningNow + 5
-warn("[Ragebot] No weapon action selected; continuing evasion movement and retrying weapon selection")
-end
+    local warningNow = os.clock()
+    if warningNow >= (arg._nextNoActionWarningAt or 0) then
+        arg._nextNoActionWarningAt = warningNow + 5
+        if transientWeaponSelection then
+            warn("[Ragebot] Weapon state is temporarily unreadable; continuing evasion movement and retrying selection.")
+        else
+            warn("[Ragebot] No eligible weapon action; continuing evasion movement and retrying selection.")
+        end
+    end
 end
 
 local detectorDelay = 0.50
@@ -77097,10 +76945,10 @@ pcall(function()
     local ragebotConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or nil
     local detectorConfig = type(ragebotConfig) == "table" and ragebotConfig.Detector or nil
     -- Detector is an optional modifier of the single Ragebot, never an activation gate.
-    repRootDetectorEnabled = type(ragebotConfig) == "table" and ragebotConfig.Enabled == true
-    if type(detectorConfig) == "table" and detectorConfig.Enabled == false then
-        repRootDetectorEnabled = false
-    end
+    repRootDetectorEnabled = type(ragebotConfig) == "table"
+        and ragebotConfig.Enabled == true
+        and type(detectorConfig) == "table"
+        and detectorConfig.Enabled == true
 end)
 if not repRootDetectorEnabled and arg._repRootCounterRestorePending ~= true then
     local activeGate = ragebotPoseRestoreGateRead()
@@ -77235,10 +77083,13 @@ if repRootDetectorEnabled and (mode == "Translocate" or mode == "Random" or mode
                         arg._nextRepRootCounterNoticeAt = nowForRepRoot + 5
                         local _, estimatedCooldown, timeUntil =
                             ragebotKnifePredictImminent(detectedRoot, nowForRepRoot)
+                        local cooldownLabel = sampleCount >= 2 and string.format("%.3fs", tonumber(estimatedCooldown) or KNIFE_COOLDOWN_DEFAULT)
+                            or string.format("%.3fs (default; not learned)", KNIFE_COOLDOWN_DEFAULT)
+                        local nextAttackLabel = fakePositionFiniteNumber(timeUntil)
+                            and string.format("%.3fs", timeUntil) or "unknown (no cooldown samples)"
                         warn(string.format(
-                            "[Ragebot] Adaptive Knife response active: cooldown estimate=%.3fs, next attack in %.3fs, movement preserved.",
-                            tonumber(estimatedCooldown) or KNIFE_COOLDOWN_DEFAULT,
-                            tonumber(timeUntil) or math.huge))
+                            "[Ragebot] Adaptive Knife response active: cooldown estimate=%s, next attack in %s, movement preserved.",
+                            cooldownLabel, nextAttackLabel))
                     end
                 end
             else
@@ -77801,7 +77652,7 @@ local candidateModel = nil
 local targetWorldPosition = nil
 if target ~= nil and target.AliveState ~= nil then
 local candidateFighter = target.FighterState
-local candidatePlayer = candidateFighter ~= nil and candidateFighter.Player or nil
+local candidatePlayer = ragebotGetCurrentEnemyPlayer(arg, target)
 local candidateAliveState = target.AliveState
 local candidateRoot = candidateAliveState ~= nil and candidateAliveState.RootPart or nil
 local candidateHitbox = candidateAliveState ~= nil and candidateAliveState.HitboxHead or nil
@@ -77821,11 +77672,13 @@ if localEnvironment == nil and Players.LocalPlayer ~= nil then
     end)
 end
 if candidateFighter == nil or candidatePlayer == nil or candidatePlayer.Parent ~= Players
-    or candidateFighter.IsEnemy ~= true
+    or candidateFighter.IsEnemy == false
     or (candidateEnvironment ~= nil and localEnvironment ~= nil
         and candidateEnvironment ~= localEnvironment) then return nil, nil, nil, nil end
 local currentTargetCharacter = candidatePlayer.Character
-if currentTargetCharacter == nil then return nil, nil, nil, nil end
+if currentTargetCharacter == nil or currentTargetCharacter.Parent ~= workspace then
+    return nil, nil, nil, nil
+end
 local frameworkCharacter = candidateFighter ~= nil and candidateFighter.Character or nil
 local liveCharacterState = frameworkCharacter ~= nil and frameworkCharacter.State or nil
 if liveCharacterState ~= nil then
@@ -77841,9 +77694,14 @@ elseif candidateAliveState == nil or candidateAliveState.Alive ~= true then
     return nil, nil, nil, nil
 end
 local targetHumanoid = currentTargetCharacter:FindFirstChildWhichIsA("Humanoid", true)
-if targetHumanoid == nil then return nil, nil, nil, nil end
-local targetHealth = targetHumanoid.Health
-if not fakePositionFiniteNumber(targetHealth) or targetHealth <= 0 then
+if targetHumanoid ~= nil then
+    local targetHealth = targetHumanoid.Health
+    if not fakePositionFiniteNumber(targetHealth) or targetHealth <= 0 then
+        return nil, nil, nil, nil
+    end
+elseif candidateAliveState == nil or candidateAliveState.Alive ~= true then
+    -- Some framework-backed characters expose AliveState without a Humanoid.
+    -- Accept that only when the framework has positively confirmed Alive=true.
     return nil, nil, nil, nil
 end
 if candidateRoot == nil then
@@ -78081,39 +77939,35 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
     local aliveState = target ~= nil and target.AliveState or nil
     local fighter = target ~= nil and target.FighterState or nil
     local anglePart = aliveState ~= nil and aliveState.RootPart or nil
+    local targetPlayer = fighter ~= nil and ragebotGetCurrentEnemyPlayer(owner, target) or nil
     local okPart, validPart = pcall(function()
-        if fighter == nil or fighter.IsEnemy ~= true or aliveState == nil
+        if fighter == nil or targetPlayer == nil or fighter.IsEnemy == false or aliveState == nil
             or anglePart == nil or not anglePart:IsA("BasePart")
             or anglePart.Parent == nil or not anglePart:IsDescendantOf(workspace) then
             return false
         end
         local fighterCharacter = fighter.Character
         local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
-        if fighterState == nil or fighterState.Alive ~= true or aliveState.Alive ~= true then
-            return false
-        end
-        if fighterState.RootPart ~= nil and fighterState.RootPart ~= anglePart then
-            return false
+        if aliveState.Alive ~= true then return false end
+        if fighterState ~= nil then
+            if fighterState.Alive ~= true then return false end
+            if fighterState.RootPart ~= nil and fighterState.RootPart ~= anglePart then
+                return false
+            end
         end
         local targetHitbox = aliveState.HitboxHead
         local targetModel = anglePart:FindFirstAncestorOfClass("Model")
         if targetHitbox == nil or not targetHitbox:IsA("BasePart")
             or not targetHitbox:IsDescendantOf(workspace)
             or targetModel == nil or targetHitbox:FindFirstAncestorOfClass("Model") ~= targetModel
-            or (fighterState.HitboxHead ~= nil and fighterState.HitboxHead ~= targetHitbox) then
+            or (fighterState ~= nil and fighterState.HitboxHead ~= nil
+                and fighterState.HitboxHead ~= targetHitbox) then
             return false
         end
-        local targetPlayer = fighter.Player or target.Player
-        if targetPlayer ~= nil then
-            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
-                or targetPlayer.Parent ~= Players then
-                return false
-            end
-            local currentCharacter = targetPlayer.Character
-            if currentCharacter == nil or not anglePart:IsDescendantOf(currentCharacter)
-                or not targetHitbox:IsDescendantOf(currentCharacter) then
-                return false
-            end
+        local currentCharacter = targetPlayer.Character
+        if currentCharacter == nil or not anglePart:IsDescendantOf(currentCharacter)
+            or not targetHitbox:IsDescendantOf(currentCharacter) then
+            return false
         end
         local invincibleMethod = fighter.IsInvincible
         if type(invincibleMethod) ~= "function" then return false end
@@ -82914,13 +82768,13 @@ if v225 then
 end
 safeRuntimeUpdate("Movement.HeartbeatUpdate", v229, "Update")
 if v227 then
-    safeRuntimeUpdate("ProjectileEffects.Update", v227, "Update", arg2)
+    safeRuntimeUpdate("Ragebot.Update", v227, "Update", arg2)
 end
 safeRuntimeUpdate("AntiAim.Update", v228, "Update", arg2)
 safeRuntimeUpdate("SilentAim.Update", v219, "Update", arg2)
 safeRuntimeUpdate("EntityTracking.Update", v232, "Update")
 safeRuntimeUpdate("PlayerTracking.Update", v233, "Update")
-safeRuntimeUpdate("Ragebot.Update", v198, "Update", arg2)
+safeRuntimeUpdate("HackerDetector.Update", v198, "Update", arg2)
 safeRuntimeUpdate("Input.FlushViewAngles", v199, "FlushViewAngles")
 end)
 
