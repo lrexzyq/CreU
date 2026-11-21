@@ -1,155 +1,67 @@
--- discord.gg/syncrypt
+-- Standalone (barrage removed) | UI: CreU by lrexzyq
+local Repo = "https://raw.githubusercontent.com/lrexzyq/CreU/main/"
+local _CREU_LIB     = loadstring(game:HttpGet(Repo .. "Library.lua"))()
+local _CREU_THEME   = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
+local _CREU_SAVE    = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
+local _CREU_OPTIONS = _CREU_LIB.Options
+local _CREU_TOGGLES = _CREU_LIB.Toggles
 
-do
-local _clientState = { Dead = false, Owner = true, Premium = true } -- patched
--- The loader passes its session context; Owner and Premium are the backend's signed claims.
-local _context = ...
-local _activeRun = shared._barrageGameRun
+-- HTTP request setup (thay thế barrage request)
+local _httpFuncs = {}
+local function _tryHttp(fn) if type(fn) == "function" then _httpFuncs[#_httpFuncs + 1] = fn end end
+pcall(function() _tryHttp(type(syn) == "table" and syn.request) end)
+pcall(function() _tryHttp(type(http) == "table" and http.request) end)
+pcall(function() _tryHttp(type(fluxus) == "table" and fluxus.request) end)
+pcall(function() _tryHttp(request) end)
+pcall(function() _tryHttp(http_request) end)
 
-if type(_activeRun) == "table" and _activeRun.Active then
-	return
+local function _copyOpts(o)
+	local c = {}
+	for k, v in next, o do c[k] = v end
+	if type(o.Headers) == "table" then
+		local h = {}; for k, v in next, o.Headers do h[k] = v end; c.Headers = h
+	end
+	return c
+end
+local function _normResp(r)
+	if type(r) ~= "table" then return nil end
+	local body = r.Body or r.body or r.ResponseBody or r.responseBody or ""
+	local code = tonumber(r.StatusCode or r.Status or r.status_code or r.statusCode)
+	if not code or code == 0 then
+		code = (r.Success == false or r.success == false) and 0 or 200
+	end
+	return {
+		Body = type(body) == "string" and body or tostring(body or ""),
+		Headers = r.Headers or r.headers or {},
+		StatusCode = code,
+		Success = code >= 200 and code < 300,
+	}
+end
+local _reqPrimary
+shared._barrageRequest = function(opts)
+	if type(opts) ~= "table" then return nil, "invalid options" end
+	local lastErr = "request unavailable"
+	if _reqPrimary then
+		local ok, r = pcall(_reqPrimary, _copyOpts(opts))
+		local n = ok and _normResp(r)
+		if n then return n end
+		lastErr = ok and "invalid response" or tostring(r)
+		_reqPrimary = nil
+	end
+	for _, fn in ipairs(_httpFuncs) do
+		local ok, r = pcall(fn, _copyOpts(opts))
+		local n = ok and _normResp(r)
+		if n then _reqPrimary = fn; return n end
+		lastErr = ok and "invalid response" or tostring(r)
+	end
+	return nil, lastErr
 end
 
-local _gameRun = { Active = true, StartedAt = os.clock() }
+-- Bypass barrage auth — client state luôn hợp lệ
+shared._barrageClientState  = { Dead = false, Owner = true, Premium = true }
+shared._barrageWebhook      = shared._barrageWebhook or ""
+shared._barrageUID          = game:GetService("Players").LocalPlayer.UserId
 
-shared._barrageGameRun = _gameRun
-task.delay(30, function()
-	if shared._barrageGameRun == _gameRun and shared._barrageGameReady ~= true then
-		_gameRun.Active = false
-		shared._barrageGameRun = nil
-	end
-end)
-pcall(function()
-	local authenticationGui = game:GetService("CoreGui"):FindFirstChild("BARRAGEKeySystem")
-
-	if authenticationGui then
-		authenticationGui:Destroy()
-	end
-end)
-task.wait()
-task.wait()
-
-shared._barrageClientState = _clientState
-
-local _lp = game:GetService("Players").LocalPlayer
-
-if type(_context) == "table" and _context.version == 2 then
-	if _context.owner == true then
-		_clientState.Owner = true
-	end
-
-	_clientState.Premium = _context.premium == true
-end
-
-shared._barrageWebhook = shared._barrageWebhook or "https://barrage.cc"
-shared._barrageUID = _lp.UserId
-
-if type(shared._barrageRequest) ~= "function" then
-	local _requestFns = {}
-
-	local function _addRequest(fn)
-		if type(fn) ~= "function" then
-			return
-		end
-
-		for _, existing in ipairs(_requestFns) do
-			if existing == fn then
-				return
-			end
-		end
-
-		_requestFns[#_requestFns + 1] = fn
-	end
-
-	_addRequest(type(syn) == "table" and syn.request)
-	_addRequest(type(http) == "table" and http.request)
-	_addRequest(type(fluxus) == "table" and fluxus.request)
-	_addRequest(request)
-	_addRequest(http_request)
-
-	local _requestPrimary
-
-	-- Executors may rewrite the table they are given (Xeno base64-encodes Body in place),
-	-- so each call gets a fresh copy.
-	local function _copyOptions(options)
-		local copy = {}
-
-		for key, value in next, options do
-			copy[key] = value
-		end
-
-		if type(options.Headers) == "table" then
-			local headers = {}
-
-			for key, value in next, options.Headers do
-				headers[key] = value
-			end
-
-			copy.Headers = headers
-		end
-
-		return copy
-	end
-	local function _normalize(response)
-			-- Some executors (Real) return the error text as a bare string instead of a response.
-			if type(response) ~= "table" then
-				return nil
-			end
-
-			local body = response.Body or response.body or response.ResponseBody or response.responseBody or ""
-			local status = tonumber(response.StatusCode or response.Status or response.status_code or response.statusCode)
-			local failed = response.Success == false or response.success == false
-			local succeeded = response.Success == true or response.success == true
-
-			if not status or status == 0 and succeeded then
-				status = failed and 0 or 200
-			end
-
-			return {
-				Body = type(body) == "string" and body or tostring(body or ""),
-				Headers = response.Headers or response.headers or {},
-				StatusCode = status,
-				StatusMessage = response.StatusMessage or response.statusMessage or response.Message or response.message or "",
-				Success = status >= 200 and status < 300,
-			}
-	end
-
-	shared._barrageRequest = function(options)
-		if type(options) ~= "table" then
-			return nil, "invalid options"
-		end
-
-		local lastError = "request unavailable"
-
-		if _requestPrimary then
-			local ok, response = pcall(_requestPrimary, _copyOptions(options))
-			local normalized = ok and _normalize(response)
-
-			if normalized then
-				return normalized
-			end
-
-			lastError = ok and "invalid response" or tostring(response)
-			_requestPrimary = nil
-		end
-
-		for _, fn in ipairs(_requestFns) do
-			local ok, response = pcall(fn, _copyOptions(options))
-			local normalized = ok and _normalize(response)
-
-			if normalized then
-				_requestPrimary = fn
-
-				return normalized
-			end
-
-			lastError = ok and "invalid response" or tostring(response)
-		end
-
-		return nil, lastError
-	end
-end
-end
 
 
 local function geniter(f, s, c)
@@ -176,15 +88,9 @@ local function geniter(f, s, c)
 	end
 end
 
-local v4 = ...
--- patched: inject fake client state, bypass barrage.cc/loader
-if type(shared._barrageClientState) ~= "table" then
-	shared._barrageClientState = { Dead = false, Owner = true, Premium = true }
-end
-if shared._barrageClientState.Dead then
-	shared._barrageClientState.Dead = false
-end
-local _barrageClientState = shared._barrageClientState
+local v4 = true  -- bypass barrage auth check
+
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
@@ -25755,228 +25661,274 @@ local v4387, GlowButton, v4389
 local v4390, v4391, v4392
 
 do
-	local Body
-	local v4394 = "https://barrage.cc/ui?t=" .. tostring(os.time())
-	local _barrageRequest = nil -- patched: skip custom request, use game:HttpGet
-	local n94 = 1
-	local v4397 = type(shared._barrageUISetup) == "function" and 0 or 1 -- patched: 1 attempt
-	local result
-
-	for i = n94, v4397 do
-		local ok = not _barrageRequest
-
-		if not ok then
-			local ok2
-
-			ok2, result = pcall(_barrageRequest, {
-				Url = v4394,
-				Method = "GET"
-			})
-			ok = not (not not ok2 and not not result and result.StatusCode == 200 and not not result.Body and not not (#result.Body > 1000))
-		end
-
-		if ok then
-			local ok2, result2 = pcall(game.HttpGet, game, v4394)
-
-			if ok2 and type(result2) == "string" and #result2 > 1000 then
-				Body = result2
-
-				break
-			elseif i < 3 then
-				task.wait(2)
-			end
-		else
-			Body = result.Body
-
-			break
-		end
-	end
-
-	local _barrageUISetup = type(shared._barrageUISetup) == "function" and shared._barrageUISetup or nil
-
-	if not _barrageUISetup then
-		if not Body or #Body < 1000 then
-			pcall(t1._shutdown)
-
-			return
-		end
-
-		local chunk = loadstring(Body)
-
-		if not chunk then
-			pcall(t1._shutdown)
-
-			return
-		end
-
-		local ok, result2 = pcall(chunk)
-
-		if not ok or type(result2) ~= "function" then
-			pcall(t1._shutdown)
-
-			return
-		end
-
-		_barrageUISetup = result2
-	end
-
-	v4387 = _barrageUISetup({
-		Version = "4.0",
-		Icon = "rbxthumb://type=AvatarHeadShot&id=583572860&w=420&h=420",
-		Discord = t1.DISCORD,
-		Keybind = "LeftAlt",
-		LoaderDuration = 5,
-		Info = "Left Alt = Toggle UI\nAuto Play places and upgrades your units on the best path spots, Auto Join, Mode Vote and Match End chain the rounds, and the Summon, Units and Rewards tabs run the lobby; every action waits for the game to confirm it",
-		ConfigDir = "BARRAGE",
-		ConfigName = "Barrage-CameramanTowerDefense-Configs",
-		OnDestroy = function()
-			pcall(t1._shutdown)
-		end
+	-- ═══════════════════════════════════════════════════════════
+	-- CreU Window + Barrage-compatible API shim
+	-- ═══════════════════════════════════════════════════════════
+	local _creuWin = _CREU_LIB:CreateWindow({
+		Title       = "Cameraman TD | Auto",
+		Center      = true,
+		AutoShow    = true,
+		Size        = UDim2.fromOffset(730, 580),
+		MinimizeKeybind = Enum.KeyCode.LeftAlt,
 	})
-	t1.Hub = v4387.Lib
-	t1.Win = v4387.Window
-	t1.Notify = v4387.Notify
-	t1.CfgMgr = v4387.ConfigManager
+	_CREU_LIB:SetNotifySide("Right")
+	local _settingsTabRef = nil
 
-	if type(t1.CfgMgr) == "table" and not t1._cfgWrapped then
-		t1._cfgWrapped = true
+	-- ── Section factory ──────────────────────────────────────
+	local function _makeSection(gb)
+		local sec = { _gb = gb }
 
-		for _, v in ipairs({
-			"LoadConfig",
-			"LoadConfigFromString"
-		}) do
-			local v4410 = t1.CfgMgr[v]
+		local function _mkLink(flag)
+			return {
+				AddHelper = function(_, h)
+					pcall(function()
+						local c = _CREU_OPTIONS[flag] or _CREU_TOGGLES[flag]
+						if c and c.SetTooltip then c:SetTooltip(h.Text) end
+					end)
+				end,
+				AddKeybind = function(_, k)
+					local kbf = k.Flag
+					local lbl = gb:AddLabel("   Keybind")
+					pcall(function()
+						lbl:AddKeyPicker(kbf, {
+							Default = k.Default or "None",
+							Mode    = "Toggle",
+							Text    = "Keybind",
+						})
+						if k.Callback then
+							pcall(function()
+								_CREU_OPTIONS[kbf]:OnChanged(function(v)
+									pcall(k.Callback, v)
+								end)
+							end)
+						end
+					end)
+					return {
+						GetValue = function()
+							return _CREU_OPTIONS[kbf] and _CREU_OPTIONS[kbf].Value or k.Default or "None"
+						end,
+						SetValue = function(_, v)
+							pcall(function() _CREU_OPTIONS[kbf]:SetValue(v) end)
+						end,
+					}
+				end,
+			}
+		end
 
-			if type(v4410) == "function" then
-				t1.CfgMgr[v] = function(p867, ...)
-					local _loadingCfg = t1._loadingCfg
+		function sec:AddToggle(o)
+			local flag = o.Flag
+			gb:AddToggle(flag, {
+				Text     = o.Name,
+				Default  = o.Default == true,
+				Callback = function(v) if o.Callback then pcall(o.Callback, v) end end,
+			})
+			return {
+				Link     = _mkLink(flag),
+				SetValue = function(_, v) pcall(function() _CREU_TOGGLES[flag]:SetValue(v == true) end) end,
+				GetValue = function(_) return _CREU_TOGGLES[flag] and _CREU_TOGGLES[flag].Value end,
+			}
+		end
 
-					t1._loadingCfg = true
+		function sec:AddDropdown(o)
+			local flag = o.Flag
+			local def  = o.Default
+			if o.Multi and type(def) ~= "table" then def = {} end
+			gb:AddDropdown(flag, {
+				Text              = o.Name,
+				Values            = o.Values or {},
+				Default           = def,
+				Multi             = o.Multi == true,
+				Searchable        = #(o.Values or {}) > 8,
+				SelectAllButtons  = o.Multi == true,
+				Callback = function(v) if o.Callback then pcall(o.Callback, v) end end,
+			})
+			return {
+				Link      = _mkLink(flag),
+				SetValue  = function(_, v) pcall(function() _CREU_OPTIONS[flag]:SetValue(v) end) end,
+				GetValue  = function(_) return _CREU_OPTIONS[flag] and _CREU_OPTIONS[flag].Value end,
+				SetValues = function(_, vals) pcall(function() _CREU_OPTIONS[flag]:SetValues(vals) end) end,
+			}
+		end
 
-					local v4412 = table.pack(pcall(v4410, p867, ...))
+		function sec:AddSlider(o)
+			local flag = o.Flag
+			gb:AddSlider(flag, {
+				Text     = o.Name,
+				Default  = o.Default or o.Min or 0,
+				Min      = o.Min or 0,
+				Max      = o.Max or 100,
+				Rounding = o.Round or 0,
+				Suffix   = o.Suffix or "",
+				Callback = function(v) if o.Callback then pcall(o.Callback, v) end end,
+			})
+			return {
+				Link     = _mkLink(flag),
+				SetValue = function(_, v) pcall(function() _CREU_OPTIONS[flag]:SetValue(v) end) end,
+				GetValue = function(_) return _CREU_OPTIONS[flag] and _CREU_OPTIONS[flag].Value end,
+			}
+		end
 
-					if v4412[1] and v4412[2] ~= false then
-						pcall(t1._profileMigrate, p867, v, ...)
-					end
-
-					t1._loadingCfg = _loadingCfg
-
-					if v4412[1] and v4412[2] ~= false and t1.Pick and t1.Pick.migrate then
-						t1.Pick._migrated = nil
-						pcall(t1.Pick.migrate)
-					end
-
-					if v4412[1] then
-						return table.unpack(v4412, 2, v4412.n)
-					end
-
-					return false, v4412[2]
+		function sec:AddRangeSlider(o)
+			local flag = o.Flag
+			gb:AddRangeSlider(flag, {
+				Text     = o.Name,
+				Min      = o.Min or 0,
+				Max      = o.Max or 10,
+				Rounding = o.Round or 0,
+				Suffix   = o.Suffix or " s",
+				Default  = { o.DefaultMin or o.Min or 0, o.DefaultMax or o.Max or 10 },
+				Callback = function(lo, hi) if o.Callback then pcall(o.Callback, lo, hi) end end,
+			})
+			local c = { Link = _mkLink(flag) }
+			function c:SetValue(v)
+				if type(v) == "table" then
+					pcall(function() _CREU_OPTIONS[flag]:SetValue({ v.Min or 0, v.Max or 0 }) end)
 				end
 			end
+			return c
+		end
+
+		-- Segmented → Dropdown (CreU không có segmented)
+		function sec:AddSegmented(o)
+			local flag = "__seg_" .. tostring(o.Name or ""):gsub("[^%w]", "_")
+			gb:AddDropdown(flag, {
+				Text     = o.Name,
+				Values   = o.Values or {},
+				Default  = o.Default,
+				Multi    = o.Multi == true,
+				Callback = function(v) if o.Callback then pcall(o.Callback, v) end end,
+			})
+			local c = { Link = _mkLink(flag) }
+			function c:SetValue(v) pcall(function() _CREU_OPTIONS[flag]:SetValue(v) end) end
+			return c
+		end
+
+		function sec:AddParagraph(o)
+			local title = o.Title or "Status"
+			local lbl   = gb:AddLabel(title .. ":  " .. (o.Content or "[IDLE]"), true)
+			local _txt  = o.Content or "[IDLE]"
+			local p = {}
+			function p:SetContent(v)
+				_txt = tostring(v or "")
+				pcall(function()
+					-- cập nhật TextLabel qua Instance manipulation
+					if lbl and type(lbl) == "table" and lbl.Instance then
+						local function findTL(inst)
+							for _, c in ipairs(inst:GetChildren()) do
+								if c:IsA("TextLabel") then return c end
+								local r = findTL(c); if r then return r end
+							end
+						end
+						local tl = findTL(lbl.Instance)
+						if tl then tl.Text = title .. ":  " .. _txt end
+					end
+				end)
+			end
+			function p:SetIcon(_) end
+			return setmetatable(p, {
+				__index    = function(_, k) if k == "text" then return _txt end end,
+				__newindex = function(t, k, v)
+					if k == "text" then _txt = tostring(v or "")
+					else rawset(t, k, v) end
+				end,
+			})
+		end
+
+		function sec:AddProgressBar(o)
+			local ctrl = gb:AddProgressBar({ Text = o.Name or "Progress", Default = o.Default or 0 })
+			local c = {}
+			function c:SetValue(v) pcall(function() ctrl:SetProgress(tonumber(v) or 0) end) end
+			function c:SetText(_) end
+			return c
+		end
+
+		function sec:AddColorPicker(o)
+			local flag = "__cp_" .. tostring(o.Name or ""):gsub("[^%w]", "_")
+			local lbl  = gb:AddLabel(o.Name or "Color")
+			pcall(function()
+				lbl:AddColorPicker(flag, {
+					Default     = o.Default or Color3.fromRGB(255, 255, 255),
+					Title       = o.Name or "Color",
+					Transparency = 0,
+					Callback    = function(v) if o.Callback then pcall(o.Callback, v) end end,
+				})
+			end)
+			local c = { Link = _mkLink(flag) }
+			function c:SetValue(v) pcall(function() _CREU_OPTIONS[flag]:SetValueRGB(v) end) end
+			return c
+		end
+
+		return sec
+	end
+
+	-- ── Tab factory ──────────────────────────────────────────
+	local function _makeTab(tabObj)
+		local tab = {}
+		function tab:DrawSection(o)
+			local name = o.Name or "Section"
+			local gb   = (o.Position or "left") == "right"
+				and tabObj:AddRightGroupbox(name)
+				or  tabObj:AddLeftGroupbox(name)
+			return _makeSection(gb)
+		end
+		return tab
+	end
+
+	-- ── t1 UI objects ────────────────────────────────────────
+	t1.Win = {
+		DrawCategory = function() end,
+		DrawTab = function(_, o)
+			local tabObj = _creuWin:AddTab({ Name = o.Name, Icon = o.Icon })
+			if o.Name == "Settings" then _settingsTabRef = tabObj end
+			return _makeTab(tabObj)
+		end,
+	}
+
+	t1.Hub = {
+		Destroy = function(self) pcall(function() _CREU_LIB:Unload() end) end,
+	}
+
+	t1.Notify = function(title, msg, duration)
+		local text = msg ~= nil
+			and (tostring(title or "") .. ": " .. tostring(msg))
+			or  tostring(title or "")
+		pcall(_CREU_LIB.Notify, _CREU_LIB, text, tonumber(duration) or 4)
+	end
+
+	t1.CfgMgr = {
+		LoadConfig           = function() end,
+		LoadConfigFromString = function() end,
+	}
+
+	GlowButton = function(section, name, callback)
+		if type(section) == "table" and section._gb then
+			pcall(function()
+				section._gb:AddButton({
+					Text = tostring(name or "Action"),
+					Func = function() pcall(callback) end,
+				})
+			end)
 		end
 	end
 
-	t1._profileMigrate = function(p868, p869, p870, p871)
-		local v4413
-
-		if p869 == "LoadConfigFromString" then
-			local ok, result2 = pcall(HttpService.JSONDecode, HttpService, tostring(p870))
-
-			v4413 = ok and result2 or nil
-		elseif type(p871) == "table" then
-			v4413 = p871
-		elseif type(p868.ReadInfo) == "function" then
-			if type(p868._ForgetInfo) == "function" then
-				pcall(p868._ForgetInfo, p868)
-			end
-
-			local ok, _, result3 = pcall(p868.ReadInfo, p868, p870, true)
-
-			v4413 = ok and result3 or nil
-		end
-
-		if type(v4413) ~= "table" then
-			return
-		end
-
-		local t292 = {}
-
-		for _, v in pairs(v4413) do
-			if type(v) == "table" and type(v.Flag) == "string" and type(v.Value) == "table" then
-				t292[v.Flag] = v.Value.Value
-			end
-		end
-
-		local t293 = {
-			"CoverageFrom",
-			"CashReserve",
-			"MatchMods",
-			"MatchSkips",
-			"EspGround",
-			"EspPath"
-		}
-
-		local function v4423()
-			local t294 = {}
-
-			for i, v in ipairs(t293) do
-				t294[i] = t292[v] == nil and "" or t292[v]
-			end
-
-			return HttpService:JSONEncode(t294)
-		end
-
-		local v4427 = v4423()
-
-		if t292.CoverageFrom == "First" then
-			t292.CoverageFrom = "Front"
-		end
-
-		if t292.CashReserve == nil and t292.MoneyReserve ~= nil then
-			t292.CashReserve = t292.MoneyReserve
-		end
-
-		if t292.MatchMods == nil and t292.PlaceMods ~= nil then
-			t292.MatchMods = t292.PlaceMods
-		end
-
-		if t292.EspGround == nil and t292.EspArea ~= nil then
-			t292.EspGround = t292.EspArea
-		end
-
-		if t292.EspPath == nil and t292.EspNoBuild ~= nil then
-			t292.EspPath = t292.EspNoBuild
-		end
-
-		if v4423() == v4427 then
-			return
-		end
-
-		for _, v in ipairs(t293) do
-			local v4430 = t292[v]
-
-			if type(v4430) == "table" and v4430[1] == nil and next(v4430) ~= nil then
-				local t295 = {}
-
-				for k, v2 in pairs(v4430) do
-					if v2 == true and type(k) == "string" then
-						t295[#t295 + 1] = k
-					end
+	v4387 = {
+		BuildSettings = function()
+			pcall(function()
+				_CREU_THEME:SetLibrary(_CREU_LIB)
+				_CREU_THEME:SetFolder("CTD_Cameraman")
+				if _settingsTabRef then
+					_CREU_THEME:ApplyToTab(_settingsTabRef)
+					_CREU_SAVE:SetLibrary(_CREU_LIB)
+					_CREU_SAVE:IgnoreThemeSettings()
+					_CREU_SAVE:SetFolder("CTD_Cameraman")
+					_CREU_SAVE:BuildConfigSection(_settingsTabRef)
+					_CREU_SAVE:LoadAutoloadConfig()
 				end
+				_CREU_LIB.ToggleKeybind = _CREU_OPTIONS.MenuKeybind
+			end)
+		end,
+	}
 
-				table.sort(t295)
-				v4430 = t295
-			end
-
-			if v4430 ~= nil and type(v4430) == type(t12[v]) then
-				t12[v] = v4430
-				t1._setControl(v, v4430)
-			end
-		end
-
-		t1._saveSoon()
-	end
-	GlowButton = v4387.GlowButton
 	t1._multiFlags = {}
 	t1._refreshSig = setmetatable({}, {
 		__mode = "k"
