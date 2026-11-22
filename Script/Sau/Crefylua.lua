@@ -1498,7 +1498,7 @@ local function ragebotResolveRepRootTarget(controller, target)
                 return nil, nil, nil
             end
         end
-        if state == nil or state.Alive ~= true then
+        if type(state) ~= "table" or state.Alive ~= true then
             if humanoid == nil then return nil, nil, nil end
         end
 
@@ -72054,11 +72054,40 @@ return nil
 end
 
 local function fn36(fighter, player, localEnvironmentId, selection)
-if fighter == nil or player == nil then return false end
+if fighter == nil or player == nil then return false, "invalid" end
+
+-- Keep a reason for the lock path: unreadable replicated state is transient,
+-- not the same as a confirmed enemy/environment mismatch.
 local okEnemy, isEnemy = pcall(function() return fighter.IsEnemy end)
-if not okEnemy or isEnemy == false then return false end
+if not okEnemy then return false, "transient" end
+if isEnemy == false then return false, "enemy" end
+if isEnemy ~= true then return false, "transient" end
+
+local okInvincible, isInvincible = pcall(function()
+    return fighter:IsInvincible()
+end)
+if not okInvincible or isInvincible ~= false then
+    return false, (okInvincible and isInvincible == true) and "protected" or "transient"
+end
+
+local okObserver, itemObserver = pcall(function() return fighter.ItemObserver end)
+if not okObserver or itemObserver == nil then return false, "transient" end
+local okMelee, melee = pcall(function()
+    return itemObserver:EquippedItemAsMelee()
+end)
+if not okMelee then return false, "transient" end
+if melee ~= nil then
+    local okDeflecting, isDeflecting = pcall(function()
+        return melee:IsDeflecting()
+    end)
+    if not okDeflecting or type(isDeflecting) ~= "boolean" then
+        return false, "transient"
+    end
+    if isDeflecting then return false, "protected" end
+end
+
 local okEnvironment, targetEnvironmentId = pcall(function() return fighter.EnvironmentId end)
-if not okEnvironment then return false end
+if not okEnvironment then return false, "transient" end
 if targetEnvironmentId == nil then
     pcall(function()
         targetEnvironmentId = player:GetAttribute("EnvironmentID")
@@ -72069,9 +72098,10 @@ end
 -- a known mismatch; normal target selection must not depend on Reproot Detector.
 if localEnvironmentId ~= nil and targetEnvironmentId ~= nil
     and targetEnvironmentId ~= localEnvironmentId then
-    return false
+    return false, "environment"
 end
-return fn37(fighter, player, selection) ~= nil
+if fn37(fighter, player, selection) == nil then return false, "unavailable" end
+return true
 end
 
 local function getLocalEnvironmentId(fighters)
@@ -72144,9 +72174,11 @@ end
 local function isExplicitlyProtected(fighter)
     if fighter == nil then return false end
     local okInvincible, isInvincible = pcall(fighter.IsInvincible, fighter)
-    if okInvincible and isInvincible then
+    if okInvincible and isInvincible == true then
         return true
     end
+    -- A temporarily missing ItemObserver is not proof of invulnerability.
+    -- Let the lock's bounded unavailable timer handle the replication gap.
     local okObserver, itemObserver = pcall(function() return fighter.ItemObserver end)
     if not okObserver or itemObserver == nil then return false end
     local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
@@ -72157,7 +72189,7 @@ end
 
                                                                                
                                                                         
-local LOCKED_TARGET_UNAVAILABLE_TIMEOUT = 0.75
+local LOCKED_TARGET_UNAVAILABLE_TIMEOUT = 2.0
 local LOCKED_TARGET_ENEMY_MISMATCH_TIMEOUT = 0.5
 local LOCKED_TARGET_UNATTACKABLE_TIMEOUT = 0.5
 
@@ -72256,7 +72288,6 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         if target == nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
         end
-        arg._lockedUnavailableSince = nil
 
         local distance = distanceTo(lockedFighter, lockedPlayer)
         if distance == nil then
@@ -72265,7 +72296,11 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         if isExplicitlyProtected(lockedFighter) then
             return "release", nil, nil
         end
-        if not fn36(lockedFighter, lockedPlayer, localEnvironmentId, arg) then
+        local canAttack, attackabilityReason = fn36(lockedFighter, lockedPlayer, localEnvironmentId, arg)
+        if not canAttack then
+            if attackabilityReason == "transient" or attackabilityReason == "unavailable" then
+                return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
+            end
             return lockTimeoutStatus("_lockedUnattackableSince", LOCKED_TARGET_UNATTACKABLE_TIMEOUT)
         end
         arg._lockedUnattackableSince = nil
@@ -73068,7 +73103,23 @@ end
                                                                             
                                                                               
                                               
-ragebotObserveFakePosition(targetRoot, os.clock())
+-- Restore the legacy Crefy FakePosition response: when a real replicated-root
+-- oscillation is detected, refresh the local PartGlue anchor at a bounded rate.
+-- Do not disturb an active Void Spam Hide phase or its pending ACK state.
+local desyncRecentlyDetected = ragebotObserveFakePosition(targetRoot, os.clock())
+if desyncRecentlyDetected then
+    local nowForGlue = os.clock()
+    local track = RAGEBOT_FAKE_POSITION_TRACKS[targetRoot]
+    local lastRefresh = type(track) == "table" and tonumber(track.lastHitscanGlueRefreshAt) or -math.huge
+    if not ragebotFiniteNumber(lastRefresh) then lastRefresh = -math.huge end
+    local voidSpamEnabledNow = ragebotVoidSpamConfig()
+    local state = ragebotVoidSpamState()
+    local hidePhaseActive = voidSpamEnabledNow and state.phase == "hide"
+    if not hidePhaseActive and nowForGlue - lastRefresh >= 0.20 then
+        arg:ClearTeleport()
+        if type(track) == "table" then track.lastHitscanGlueRefreshAt = nowForGlue end
+    end
+end
 local acquireOk, v120 = pcall(function()
     return arg._partGlue:Acquire(arg5, hitboxHead)
 end)
@@ -73199,36 +73250,68 @@ return n, function()
 local targetStillValid = false
 local targetReadOk = pcall(function()
     local fighterState = arg3 ~= nil and arg3.FighterState or nil
-    local currentEnemyPlayer = arg3 ~= nil and ragebotGetCurrentEnemyPlayer(arg, arg3) or nil
+    local currentAliveState = arg3 ~= nil and arg3.AliveState or nil
+    local targetPlayer = arg3 ~= nil and arg3.Player or nil
+    local currentCharacter = targetPlayer ~= nil and targetPlayer.Character or nil
+    -- Bind the pending shot to the current Player.Character, not merely to
+    -- parts that happen to remain parented somewhere under Workspace.
     targetStillValid = arg3 ~= nil
         and fighterState ~= nil
-        and currentEnemyPlayer ~= nil
-        and fighterState.IsEnemy ~= false
+        and fighterState.IsEnemy == true
+        and typeof(targetPlayer) == "Instance"
+        and targetPlayer:IsA("Player")
+        and targetPlayer.Parent == Players
+        and currentCharacter ~= nil
+        and currentCharacter.Parent == workspace
         and aliveState ~= nil
-        and arg3.AliveState == aliveState
+        and currentAliveState ~= nil
+        and currentAliveState.Alive == true
+        and (currentAliveState.Model == nil or currentAliveState.Model == currentCharacter)
+        and currentAliveState.HitboxHead == hitboxHead
+        and currentAliveState.RootPart == targetRoot
         and aliveState.Alive == true
         and aliveState.HitboxHead == hitboxHead
         and aliveState.RootPart == targetRoot
         and hitboxHead ~= nil and hitboxHead:IsA("BasePart")
-        and hitboxHead.Parent ~= nil and hitboxHead:IsDescendantOf(workspace)
+        and hitboxHead.Parent ~= nil and hitboxHead:IsDescendantOf(currentCharacter)
         and targetRoot ~= nil and targetRoot:IsA("BasePart")
-        and targetRoot.Parent ~= nil and targetRoot:IsDescendantOf(workspace)
-        and currentEnemyPlayer.Character ~= nil
-        and hitboxHead:IsDescendantOf(currentEnemyPlayer.Character)
-        and targetRoot:IsDescendantOf(currentEnemyPlayer.Character)
+        and targetRoot.Parent ~= nil and targetRoot:IsDescendantOf(currentCharacter)
+    if targetStillValid then
+        local currentHumanoid = currentCharacter:FindFirstChildWhichIsA("Humanoid", true)
+        if currentHumanoid ~= nil then
+            local currentHealth = currentHumanoid.Health
+            if not ragebotFiniteNumber(currentHealth) or currentHealth <= 0 then
+                targetStillValid = false
+            end
+        end
+    end
+    if targetStillValid then
+        local frameworkCharacter = fighterState.Character
+        local liveCharacterState = frameworkCharacter ~= nil and frameworkCharacter.State or nil
+        if type(liveCharacterState) == "table" then
+            if liveCharacterState.Alive == false
+                or (liveCharacterState.Model ~= nil and liveCharacterState.Model ~= currentCharacter) then
+                targetStillValid = false
+            end
+        end
+    end
     if targetStillValid then
         local okInvincible, isInvincible = pcall(fighterState.IsInvincible, fighterState)
-        if not okInvincible or isInvincible then
+        if not okInvincible or isInvincible ~= false then
             targetStillValid = false
         end
     end
     if targetStillValid then
         local okObserver, itemObserver = pcall(function() return fighterState.ItemObserver end)
-        if okObserver and itemObserver ~= nil then
+        if not okObserver or itemObserver == nil then
+            targetStillValid = false
+        else
             local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
-            if okMelee and melee ~= nil then
+            if not okMelee then
+                targetStillValid = false
+            elseif melee ~= nil then
                 local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-                if okDeflecting and isDeflecting == true then
+                if not okDeflecting or isDeflecting ~= false then
                     targetStillValid = false
                 end
             end
@@ -73237,7 +73320,7 @@ local targetReadOk = pcall(function()
 end)
 if not targetReadOk or targetStillValid ~= true then
     ragebotDebugShot(arg4, "target-invalid", string.format(
-        "readOk=%s valid=%s; roster/alive/root/hitbox changed before send",
+        "readOk=%s valid=%s; enemy/alive/root/hitbox/deflect state changed before send",
         tostring(targetReadOk), tostring(targetStillValid)
     ), os.clock())
     arg._shootLock:Reset()
@@ -73265,11 +73348,6 @@ if voidSpamEnabledNow then
 
         return false
     end
-end
-local callbackReloadOk, callbackReloading = pcall(function() return arg4:IsReloading() end)
-if not callbackReloadOk or callbackReloading ~= false then
-    ragebotDebugShot(arg4, "reload-gate", string.format("readOk=%s reloading=%s", tostring(callbackReloadOk), tostring(callbackReloading)), os.clock())
-    return false
 end
 local requestedAmmoBefore = nil
 local requestedShotCount = nil
@@ -73301,7 +73379,7 @@ local okSend, sendError = pcall(function()
         end
     end
 
-    local aimDirectionMode = ragebot.Profile == "Advanced" and type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
+    local aimDirectionMode = type(ragebot.AimDirection) == "string" and ragebot.AimDirection or "Part"
     if aimDirectionMode ~= "Up" and aimDirectionMode ~= "Down" and aimDirectionMode ~= "Part" then
         aimDirectionMode = "Part"
         pcall(function() ragebot.AimDirection = "Part" end)
@@ -73645,16 +73723,17 @@ local function buildFreshKnifeAttackPayload()
         local fighter = arg3 ~= nil and arg3.FighterState or nil
         local characterState = fighter ~= nil and fighter.Character or nil
         local liveState = characterState ~= nil and characterState.State or nil
-        local targetPlayer = arg3 ~= nil and ragebotGetCurrentEnemyPlayer(arg, arg3) or nil
+        local liveStateIsTable = type(liveState) == "table"
+        local targetPlayer = arg3 ~= nil and arg3.Player or nil
         local targetModel = rootPart ~= nil and rootPart:FindFirstAncestorOfClass("Model") or nil
 
-        if arg3 == nil or fighter == nil or targetPlayer == nil or fighter.IsEnemy == false
-            or (liveState ~= nil and liveState.Alive ~= true)
-            or (liveState == nil and (aliveState == nil or aliveState.Alive ~= true))
+        if arg3 == nil or fighter == nil or targetPlayer == nil or fighter.IsEnemy ~= true
+            or (liveStateIsTable and liveState.Alive == false)
+            or (not liveStateIsTable and (aliveState == nil or aliveState.Alive ~= true))
             or arg3.AliveState ~= aliveState or aliveState == nil or aliveState.Alive ~= true
             or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead
-            or (liveState ~= nil and liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
-            or (liveState ~= nil and liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
+            or (liveStateIsTable and liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
+            or (liveStateIsTable and liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead)
             or targetModel == nil or hitboxHead:FindFirstAncestorOfClass("Model") ~= targetModel
             or not rootPart:IsA("BasePart") or rootPart.Parent == nil
             or not rootPart:IsDescendantOf(workspace)
@@ -73663,16 +73742,27 @@ local function buildFreshKnifeAttackPayload()
             return nil, nil
         end
 
-        if targetPlayer ~= nil then
-            if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
-                or targetPlayer.Parent ~= Players then
+        if typeof(targetPlayer) ~= "Instance" or not targetPlayer:IsA("Player")
+            or targetPlayer.Parent ~= Players then
+            return nil, nil
+        end
+        local currentCharacter = targetPlayer.Character
+        if currentCharacter == nil or currentCharacter.Parent ~= workspace
+            or not rootPart:IsDescendantOf(currentCharacter)
+            or not hitboxHead:IsDescendantOf(currentCharacter) then
+            return nil, nil
+        end
+        if liveStateIsTable and liveState.Model ~= nil and liveState.Model ~= currentCharacter then
+            return nil, nil
+        end
+        local targetHumanoid = currentCharacter:FindFirstChildWhichIsA("Humanoid", true)
+        if targetHumanoid ~= nil then
+            local targetHealth = targetHumanoid.Health
+            if not fakePositionFiniteNumber(targetHealth) or targetHealth <= 0 then
                 return nil, nil
             end
-            local currentCharacter = targetPlayer.Character
-            if currentCharacter == nil or not rootPart:IsDescendantOf(currentCharacter)
-                or not hitboxHead:IsDescendantOf(currentCharacter) then
-                return nil, nil
-            end
+        elseif not liveStateIsTable or liveState.Alive ~= true then
+            return nil, nil
         end
 
         local invincibleMethod = fighter.IsInvincible
@@ -73691,6 +73781,54 @@ local function buildFreshKnifeAttackPayload()
         return nil, nil
     end
     return attackOrigin, attackDirection
+end
+local function isFreshMeleeTarget()
+    local fighter = arg3 ~= nil and arg3.FighterState or nil
+    local targetPlayer = arg3 ~= nil and arg3.Player or nil
+    local currentAliveState = arg3 ~= nil and arg3.AliveState or nil
+    if fighter == nil or targetPlayer == nil or fighter.IsEnemy ~= true
+        or targetPlayer.Parent ~= Players or currentAliveState ~= aliveState
+        or aliveState == nil or aliveState.Alive ~= true
+        or aliveState.RootPart ~= rootPart or aliveState.HitboxHead ~= hitboxHead then
+        return false
+    end
+    local currentCharacter = targetPlayer.Character
+    if currentCharacter == nil or currentCharacter.Parent ~= workspace
+        or rootPart == nil or hitboxHead == nil
+        or not rootPart:IsA("BasePart") or not hitboxHead:IsA("BasePart")
+        or not rootPart:IsDescendantOf(currentCharacter)
+        or not hitboxHead:IsDescendantOf(currentCharacter) then
+        return false
+    end
+    local character = fighter.Character
+    local liveState = character ~= nil and character.State or nil
+    if type(liveState) == "table" then
+        if liveState.Alive == false or (liveState.Model ~= nil and liveState.Model ~= currentCharacter)
+            or (liveState.RootPart ~= nil and liveState.RootPart ~= rootPart)
+            or (liveState.HitboxHead ~= nil and liveState.HitboxHead ~= hitboxHead) then
+            return false
+        end
+    end
+    local humanoid = currentCharacter:FindFirstChildWhichIsA("Humanoid", true)
+    if humanoid ~= nil then
+        local health = humanoid.Health
+        if not fakePositionFiniteNumber(health) or health <= 0 then return false end
+    elseif type(liveState) ~= "table" or liveState.Alive ~= true then
+        return false
+    end
+    local invincibleOk, isInvincible = pcall(fighter.IsInvincible, fighter)
+    if not invincibleOk or isInvincible ~= false then return false end
+    local observerOk, itemObserver = pcall(function() return fighter.ItemObserver end)
+    if not observerOk or itemObserver == nil then return false end
+    local meleeOk, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
+    if not meleeOk then return false end
+    if melee ~= nil then
+        local deflectOk, isDeflecting = pcall(function() return melee:IsDeflecting() end)
+        if not deflectOk or type(isDeflecting) ~= "boolean" or isDeflecting then
+            return false
+        end
+    end
+    return true
 end
 local now2 = os.clock()
 local isKnife = isKnifeItem
@@ -73805,6 +73943,11 @@ if arg._hitboxWindowTarget ~= hitboxHead or attackNow >= arg._hitboxWindowUntil 
 return
 end
 arg._nextKnifeWindowAttackAt = attackNow + 0.08
+local freshOk, freshTarget = pcall(isFreshMeleeTarget)
+if not freshOk or freshTarget ~= true then
+    arg:_AbortBackstabAttempt(hitboxHead)
+    return
+end
 local attackOrigin, attackDirection = buildFreshKnifeAttackPayload()
 if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
@@ -73864,6 +74007,11 @@ end
 local attackPitch = arg._knifePrimePitch or v121
 local attackYaw = arg._knifePrimeYaw or v122
 return n, fn37(attackPitch, attackYaw), function()
+local freshOk, freshTarget = pcall(isFreshMeleeTarget)
+if not freshOk or freshTarget ~= true then
+    arg:_AbortBackstabAttempt(hitboxHead)
+    return
+end
 local attackOrigin, attackDirection = buildFreshKnifeAttackPayload()
 if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
@@ -73917,6 +74065,12 @@ arg._knifePrimeUntil = 0
 arg._knifePrimePitch = nil
 arg._knifePrimeYaw = nil
 return n, nil, function()
+local validOk, targetValid = pcall(isFreshMeleeTarget)
+if not validOk or targetValid ~= true then
+    arg:ClearTeleport()
+    arg._shootLock:Reset()
+    return
+end
 local okAttack, attackResult = pcall(arg4.AttackEncoded, arg4, v126, v127, hitboxHead, tbl22)
 if not okAttack or attackResult == false then
     arg:_AbortBackstabAttempt(hitboxHead)
@@ -77672,7 +77826,7 @@ if localEnvironment == nil and Players.LocalPlayer ~= nil then
     end)
 end
 if candidateFighter == nil or candidatePlayer == nil or candidatePlayer.Parent ~= Players
-    or candidateFighter.IsEnemy == false
+    or candidateFighter.IsEnemy ~= true
     or (candidateEnvironment ~= nil and localEnvironment ~= nil
         and candidateEnvironment ~= localEnvironment) then return nil, nil, nil, nil end
 local currentTargetCharacter = candidatePlayer.Character
@@ -77681,15 +77835,21 @@ if currentTargetCharacter == nil or currentTargetCharacter.Parent ~= workspace t
 end
 local frameworkCharacter = candidateFighter ~= nil and candidateFighter.Character or nil
 local liveCharacterState = frameworkCharacter ~= nil and frameworkCharacter.State or nil
-if liveCharacterState ~= nil then
-    if liveCharacterState.Alive ~= true then return nil, nil, nil, nil end
+if type(liveCharacterState) == "table" then
+    -- An explicit dead state remains authoritative. A missing/unknown Alive
+    -- flag may lag the Humanoid, so retain Resolver's validated fallback state.
+    if liveCharacterState.Alive == false then return nil, nil, nil, nil end
     local liveModel = liveCharacterState.Model
     if liveModel ~= nil and liveModel ~= currentTargetCharacter then
         return nil, nil, nil, nil
     end
-    candidateAliveState = liveCharacterState
-    candidateRoot = liveCharacterState.RootPart or candidateRoot
-    candidateHitbox = liveCharacterState.HitboxHead or candidateHitbox
+    if liveCharacterState.Alive == true then
+        candidateAliveState = liveCharacterState
+        candidateRoot = liveCharacterState.RootPart or candidateRoot
+        candidateHitbox = liveCharacterState.HitboxHead or candidateHitbox
+    elseif candidateAliveState == nil or candidateAliveState.Alive ~= true then
+        return nil, nil, nil, nil
+    end
 elseif candidateAliveState == nil or candidateAliveState.Alive ~= true then
     return nil, nil, nil, nil
 end
@@ -77948,9 +78108,10 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
         end
         local fighterCharacter = fighter.Character
         local fighterState = fighterCharacter ~= nil and fighterCharacter.State or nil
+        local fighterStateIsTable = type(fighterState) == "table"
         if aliveState.Alive ~= true then return false end
-        if fighterState ~= nil then
-            if fighterState.Alive ~= true then return false end
+        if fighterStateIsTable then
+            if fighterState.Alive == false then return false end
             if fighterState.RootPart ~= nil and fighterState.RootPart ~= anglePart then
                 return false
             end
@@ -77965,8 +78126,19 @@ local function ragebotBuildBackstabKnifeViewAngles(target, owner)
             return false
         end
         local currentCharacter = targetPlayer.Character
-        if currentCharacter == nil or not anglePart:IsDescendantOf(currentCharacter)
+        if currentCharacter == nil or currentCharacter.Parent ~= workspace
+            or not anglePart:IsDescendantOf(currentCharacter)
             or not targetHitbox:IsDescendantOf(currentCharacter) then
+            return false
+        end
+        if fighterStateIsTable and fighterState.Model ~= nil and fighterState.Model ~= currentCharacter then
+            return false
+        end
+        local targetHumanoid = currentCharacter:FindFirstChildWhichIsA("Humanoid", true)
+        if targetHumanoid ~= nil then
+            local targetHealth = targetHumanoid.Health
+            if not ragebotFiniteNumber(targetHealth) or targetHealth <= 0 then return false end
+        elseif not fighterStateIsTable or fighterState.Alive ~= true then
             return false
         end
         local invincibleMethod = fighter.IsInvincible
