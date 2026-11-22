@@ -67304,7 +67304,13 @@ end
 do
 local function fn35() tbl17 .aE();local enableRagebot=tbl17.h6();local function l(W)W:AddToggle({Label="Prioritize Hackers",Tooltip="Prioritizes players identified by Hacker Detector. Enable Hacker Detector for this to work.",Config={"Ragebot","PrioritizeHackers"}});local detectorToggle=W:AddToggle({Label="Detector",Tooltip="Detects abnormal target Reproot behavior. When disabled, Ragebot ignores detector-based countering and keeps normal targeting.",Config={"Ragebot","Detector","Enabled"}});local detectorGroup=W:AddGroup({Source=detectorToggle});detectorGroup:AddSlider({Label="Delay",Tooltip="Cooldown after a detector response expires or a pending pose restore completes before another response may start.",Min=0.01,Max=5,Step=0.01,Config={"Ragebot","Detector","Delay"}});detectorGroup:AddSlider({Label="Wait",Tooltip="Maximum time the confirmed detector counter-target response remains active before normal target selection resumes. This does not animate the camera.",Min=0.01,Max=2,Step=0.01,Config={"Ragebot","Detector","Wait"}});W:AddSlider({Label="Stability",Min=0,Max=1.5,Step=0.001,Config={"Ragebot","Stability"}});W:AddSlider({Label="Shoot Frames",Min=1,Max=5,Config={"Ragebot","ShootFrames"}});end;local function I_150(W)local N={"Primary","Secondary","Melee"};for P,P_151 in N,nil,nil do W:AddToggle({Label=string.format("%s Enabled",tostring(P_151)),Config={"Ragebot","Weapons","Enabled",P_151}});end;W:AddOrderedList({Label="Weapon Priority",Items=N,Default=N,Config={"Ragebot","Weapons","Priority"}});W:AddDropdown({Label="On Empty",Options={"Reload","Swap","SwapOrReload"},Labels={SwapOrReload="Swap or Reload"},Config={"Ragebot","Weapons","OnEmpty"}});end;local function W(N,P)local a=N:AddGroup({Source=P,Option="ProjectileBreaker"});a:AddRangeSlider({Label="Forward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForward"}});a:AddSlider({Label="Forward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthForwardFrequency"}});a:AddRangeSlider({Label="Upward Depth",Min=0,Max=10,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUp"}});a:AddSlider({Label="Upward Frequency",Min=0,Max=20,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","DepthUpFrequency"}});a:AddSlider({Label="Reposition Interval (s)",Min=0.05,Max=2,Step=0.01,Config={"Ragebot","Evasion","ProjectileBreaker","RepositionInterval"}});a:AddToggle({Label="Fallback Character Origin",Config={"Ragebot","Evasion","ProjectileBreaker","FallbackAnchorFromCharacter"}});a:AddSlider({Label="Fallback Radius",Min=5,Max=100000000,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackBaseRadius"}});a:AddSlider({Label="Fallback Random Factor",Min=0,Max=1,Step=0.1,Config={"Ragebot","Evasion","ProjectileBreaker","FallbackRadiusRandomFactor"}});end;local function N(P)
 local voidSpamRestoreRetryToken = 0
+local voidSpamControlKey = "__CrefyRagebotVoidSpamControl"
+local voidSpamControl = { Enabled = false }
+pcall(rawset, _G, voidSpamControlKey, voidSpamControl)
 local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a continuous attack window and a short hidden server-position window.",Config={"Ragebot","VoidSpam","Enabled"},OnChanged=function(enabled)
+    -- ValueChanged fires before this callback and before the config binder's
+    -- Changed writer. Keep the visible toggle state authoritative immediately.
+    voidSpamControl.Enabled = enabled == true
     if enabled == false then
         voidSpamRestoreRetryToken = voidSpamRestoreRetryToken + 1
         local retryToken = voidSpamRestoreRetryToken
@@ -67330,6 +67336,17 @@ local voidSpamToggle=P:AddToggle({Label="Void Spam",Tooltip="Cycles between a co
         voidSpamRestoreRetryToken = voidSpamRestoreRetryToken + 1
     end
 end})
+-- Seed from the value already applied by _Bind, then mirror silent config loads too.
+voidSpamControl.Enabled = voidSpamToggle.Value == true
+local voidSpamValueConnection = voidSpamToggle.ValueChanged:Connect(function(enabled)
+    voidSpamControl.Enabled = enabled == true
+end)
+K.onUnload(function()
+    pcall(function() voidSpamValueConnection:Disconnect() end)
+    if rawget(_G, voidSpamControlKey) == voidSpamControl then
+        pcall(rawset, _G, voidSpamControlKey, nil)
+    end
+end)
 local voidSpamGroup=P:AddGroup({Source=voidSpamToggle})
 voidSpamGroup:AddSlider({Label="Attack",Tooltip="Duration of the attack phase; shots follow the weapon's own firing cadence. Range: 0.05–1 second (50ms minimum replication settle).",Min=0.05,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Attack"}})
 voidSpamGroup:AddSlider({Label="Hide",Tooltip="Duration of the hidden server-position phase after the attack window. Range: 0.01–1 second; default: 0.25 seconds.",Min=0.01,Max=1,Step=0.01,Config={"Ragebot","VoidSpam","Hide"}})
@@ -72685,7 +72702,10 @@ local function ragebotVoidSpamConfig()
     if type(ragebot) == "table" then
         config = ragebot.VoidSpam
     end
-    if type(config) ~= "table" or config.Enabled ~= true then
+    local uiControl = rawget(_G, "__CrefyRagebotVoidSpamControl")
+    local uiStateKnown = type(uiControl) == "table" and type(uiControl.Enabled) == "boolean"
+    local configEnabled = type(config) == "table" and config.Enabled == true
+    if not configEnabled or (uiStateKnown and uiControl.Enabled ~= true) then
         return false, 0.1, 0.25
     end
     local attack = tonumber(config.Attack) or 0.1
@@ -75337,18 +75357,20 @@ local function ragebotVoidSpamSetReloadHold(state, now, attack, hide, reloading)
 end
 
 local function ragebotVoidSpamConfig()
-    local fn = ragebotGetVoidSpamApiFunction("Config")
-    if fn ~= nil then
-        local okCall, enabled, attack, hide = pcall(fn)
-        if okCall then return enabled, attack, hide end
-    end
+    -- Keep the update-side reader aligned with the same live UI control gate
+    -- used by the main firing path.
     local data = type(v115) == "table" and v115.Data or nil
     local ragebot = type(data) == "table" and data.Ragebot or nil
     local config = nil
     if type(ragebot) == "table" then
         config = ragebot.VoidSpam
     end
-    if type(config) ~= "table" or config.Enabled ~= true then return false, 0.1, 0.25 end
+    local uiControl = rawget(_G, "__CrefyRagebotVoidSpamControl")
+    local uiStateKnown = type(uiControl) == "table" and type(uiControl.Enabled) == "boolean"
+    local configEnabled = type(config) == "table" and config.Enabled == true
+    if not configEnabled or (uiStateKnown and uiControl.Enabled ~= true) then
+        return false, 0.1, 0.25
+    end
     local attack = tonumber(config.Attack) or 0.1
     if attack ~= attack or attack == math.huge or attack == -math.huge then attack = 0.1 end
     attack = math.clamp(attack, 0.05, 1)
@@ -79007,7 +79029,12 @@ local voidSpamConfig = nil
 if type(ragebotData) == "table" then
     voidSpamConfig = ragebotData.VoidSpam
 end
-local voidSpamConfigured = type(voidSpamConfig) == "table" and voidSpamConfig.Enabled == true
+local voidSpamUiControl = rawget(_G, "__CrefyRagebotVoidSpamControl")
+local voidSpamUiStateKnown = type(voidSpamUiControl) == "table"
+    and type(voidSpamUiControl.Enabled) == "boolean"
+local voidSpamConfigured = type(voidSpamConfig) == "table"
+    and voidSpamConfig.Enabled == true
+    and (not voidSpamUiStateKnown or voidSpamUiControl.Enabled == true)
 local voidSpamState = rawget(_G, "__CrefyRagebotVoidSpamState")
 local voidSpamReloading = arg._reloadGun ~= nil
 if type(voidSpamState) == "table" then
