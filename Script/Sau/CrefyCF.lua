@@ -1,11 +1,36 @@
-local __cfLegacyEnv = _G
+pcall(function()
+    local lp = cloneref(game:GetService("Players")).LocalPlayer
+    local oldKick = lp.Kick
+    hookfunction(oldKick, newcclosure(function(self, ...)
+        if self == lp then return end
+        return oldKick(self, ...)
+    end))
+end)
+
+pcall(function()
+    local mtHook
+    mtHook = hookfunction(getrenv().setmetatable, newcclosure(function(t, mt)
+        if mt and type(mt) == "table" and rawget(mt, "__mode") then
+            local mode = rawget(mt, "__mode")
+            if mode == "kv" or mode == "v" or mode == "k" then
+                local tr = debug.traceback()
+                if tr:find("MiscellaneousController") or tr:find("CameraSecurity") or tr:find("AnalyticsPipelineController") then
+                    return mtHook({1, 2, 3}, {})
+                end
+            end
+        end
+        return mtHook(t, mt)
+    end))
+end)
+
+local cfLE = _G
 pcall(function()
     if type(getgenv) == "function" then
         local candidate = getgenv()
-        if type(candidate) == "table" then __cfLegacyEnv = candidate end
+        if type(candidate) == "table" then cfLE = candidate end
     end
 end)
-local function __cfMigrateLegacyGlobals(source, target)
+local function cfMLG(source, target)
     if type(source) ~= "table" or type(target) ~= "table" then return end
     local ok = pcall(function()
         -- Snapshot before writing aliases: getgenv() may be the same table as _G,
@@ -38,27 +63,27 @@ local function __cfMigrateLegacyGlobals(source, target)
     end)
     return ok
 end
-pcall(__cfMigrateLegacyGlobals, _G, __cfLegacyEnv)
-if __cfLegacyEnv ~= _G then
-    pcall(__cfMigrateLegacyGlobals, __cfLegacyEnv, _G)
+pcall(cfMLG, _G, cfLE)
+if cfLE ~= _G then
+    pcall(cfMLG, cfLE, _G)
 end
 
-local __cfQueuedBootGeneration = nil
-local __cfQueuedBootEnvironment = _G
+local cfQBG = nil
+local cfQBE = _G
 pcall(function()
     if type(getgenv) == "function" then
         local candidate = getgenv()
         if type(candidate) == "table" then
-            __cfQueuedBootEnvironment = candidate
+            cfQBE = candidate
         end
     end
-    __cfQueuedBootGeneration = rawget(__cfQueuedBootEnvironment, "__cfQueuedRerunExpectedGeneration")
-    if __cfQueuedBootGeneration == nil then
-        __cfQueuedBootGeneration = rawget(_G, "__cfQueuedRerunExpectedGeneration")
+    cfQBG = rawget(cfQBE, "__cfQueuedRerunExpectedGeneration")
+    if cfQBG == nil then
+        cfQBG = rawget(_G, "__cfQueuedRerunExpectedGeneration")
     end
 end)
 
-local function __cfFindReadyPath(root, path)
+local function cfFRP(root, path)
     local node = root
     for _, name in ipairs(path) do
         if node == nil then return nil end
@@ -69,7 +94,7 @@ local function __cfFindReadyPath(root, path)
     return node
 end
 
-local function __cfSameReadySignature(a, b)
+local function cfSRS(a, b)
     if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then return false end
     for i = 1, #a do
         if a[i] ~= b[i] then return false end
@@ -77,7 +102,7 @@ local function __cfSameReadySignature(a, b)
     return true
 end
 
-local function __cfCheckBootstrapReady()
+local function cfCBR()
     if not game:IsLoaded() then return false, "DataModel is still loading" end
 
     local players = game:GetService("Players")
@@ -191,7 +216,7 @@ local function __cfCheckBootstrapReady()
     }
 
     for _, entry in ipairs(requiredModulePaths) do
-        local moduleScript = __cfFindReadyPath(roots[entry[1]], entry[2])
+        local moduleScript = cfFRP(roots[entry[1]], entry[2])
         if moduleScript == nil then
             return false, "Missing module: " .. entry[1] .. "." .. table.concat(entry[2], ".")
         end
@@ -217,7 +242,7 @@ local function __cfCheckBootstrapReady()
         { "PlayerModules", { "Pages" } },
     }
     for _, entry in ipairs(requiredInstancePaths) do
-        local instance = __cfFindReadyPath(roots[entry[1]], entry[2])
+        local instance = cfFRP(roots[entry[1]], entry[2])
         if instance == nil then
             return false, "Missing instance: " .. entry[1] .. "." .. table.concat(entry[2], ".")
         end
@@ -234,38 +259,38 @@ local function __cfCheckBootstrapReady()
     return true, signature
 end
 
-local __cfReadyStartedAt = os.clock()
-local __cfReadyDeadline = __cfReadyStartedAt + 90
-local __cfCoreContainerDeadline = __cfReadyStartedAt + 45
-local __cfClientReady = false
-local __cfReadyStableSince = nil
-local __cfReadySignature = nil
-local __cfLastReadyReason = "Bootstrap readiness has not been checked"
-local __cfHasRivalsCoreContainers = false
+local cfRSA = os.clock()
+local cfRD = cfRSA + 90
+local cfCCD = cfRSA + 45
+local cfCR = false
+local cfRSS = nil
+local cfRS = nil
+local cfLRR = "Bootstrap readiness has not been checked"
+local cfHRCC = false
 
 print("[Crefy] Startup guard: checking required Rivals modules and controllers...")
-local __cfNextReadyDiagnostic = __cfReadyStartedAt + 8
-while os.clock() < __cfReadyDeadline do
-    local __checkOk, __isReady, __readyInfo = pcall(__cfCheckBootstrapReady)
-    if __checkOk and __isReady == true then
-        if __cfReadyStableSince == nil
-            or not __cfSameReadySignature(__cfReadySignature, __readyInfo) then
-            __cfReadyStableSince = os.clock()
-            __cfReadySignature = __readyInfo
-            __cfLastReadyReason = "required dependency tree is still stabilizing"
-        elseif os.clock() - __cfReadyStableSince >= 1.5 then
-            __cfClientReady = true
+local cfNRD = cfRSA + 8
+while os.clock() < cfRD do
+    local cfOK, cfIR, cfRI = pcall(cfCBR)
+    if cfOK and cfIR == true then
+        if cfRSS == nil
+            or not cfSRS(cfRS, cfRI) then
+            cfRSS = os.clock()
+            cfRS = cfRI
+            cfLRR = "required dependency tree is still stabilizing"
+        elseif os.clock() - cfRSS >= 1.5 then
+            cfCR = true
             break
         end
     else
-        __cfReadyStableSince = nil
-        __cfReadySignature = nil
-        __cfLastReadyReason = __checkOk and tostring(__readyInfo) or tostring(__isReady)
+        cfRSS = nil
+        cfRS = nil
+        cfLRR = cfOK and tostring(cfRI) or tostring(cfIR)
     end
 
-    if os.clock() >= __cfNextReadyDiagnostic and not __cfClientReady then
-        warn("[Crefy] Still waiting for dependency: " .. __cfLastReadyReason)
-        __cfNextReadyDiagnostic = os.clock() + 8
+    if os.clock() >= cfNRD and not cfCR then
+        warn("[Crefy] Still waiting for dependency: " .. cfLRR)
+        cfNRD = os.clock() + 8
     end
 
     pcall(function()
@@ -277,42 +302,42 @@ while os.clock() < __cfReadyDeadline do
         local modules = replicatedStorage:FindFirstChild("Modules")
         local playerModules = playerScripts and playerScripts:FindFirstChild("Modules") or nil
         local remotes = replicatedStorage:FindFirstChild("Remotes")
-        __cfHasRivalsCoreContainers = controllers ~= nil and modules ~= nil
+        cfHRCC = controllers ~= nil and modules ~= nil
             and playerModules ~= nil and remotes ~= nil
     end)
-    if not __cfHasRivalsCoreContainers and os.clock() >= __cfCoreContainerDeadline then
+    if not cfHRCC and os.clock() >= cfCCD then
         break
     end
     task.wait(0.5)
 end
 
-if not __cfClientReady then
-    if type(__cfQueuedBootGeneration) == "string" or type(__cfQueuedBootGeneration) == "number" then
-        local failedRunKey = tostring(__cfQueuedBootGeneration) .. ":" .. tostring(game.PlaceId)
-        pcall(rawset, __cfQueuedBootEnvironment, "__cfAutoExecuteLastFailedRunKey", failedRunKey)
+if not cfCR then
+    if type(cfQBG) == "string" or type(cfQBG) == "number" then
+        local failedRunKey = tostring(cfQBG) .. ":" .. tostring(game.PlaceId)
+        pcall(rawset, cfQBE, "__cfAutoExecuteLastFailedRunKey", failedRunKey)
         pcall(rawset, _G, "__cfAutoExecuteLastFailedRunKey", failedRunKey)
-        pcall(rawset, __cfQueuedBootEnvironment, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
+        pcall(rawset, cfQBE, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
         pcall(rawset, _G, "__CrefyAutoExecuteLastFailedRunKey", failedRunKey)
     end
-    warn("[Crefy] Startup aborted before module initialization: " .. __cfLastReadyReason
+    warn("[Crefy] Startup aborted before module initialization: " .. cfLRR
         .. ". Check the exact missing module path above; character spawn and ScreenGui count are not startup gates.")
     return
 end
 
-if type(__cfQueuedBootGeneration) == "string" or type(__cfQueuedBootGeneration) == "number" then
+if type(cfQBG) == "string" or type(cfQBG) == "number" then
     print("[Crefy] Re-run After Teleport: required game dependencies are present and stable.")
 else
     print("[Crefy] Startup guard passed: required game dependencies are present and stable.")
 end
 
-local __cfPreviousRuntime = nil
+local cfPR = nil
 pcall(function()
     local env = getgenv()
     if type(env) == "table" then
-        __cfPreviousRuntime = rawget(env, "cfRuntime") or rawget(env, "KiciaRebuild")
+        cfPR = rawget(env, "cfRT") or rawget(env, "cfRuntime") or rawget(env, "KiciaRebuild")
     end
-    if type(__cfPreviousRuntime) == "table" and type(__cfPreviousRuntime.Unload) == "function" then
-        pcall(__cfPreviousRuntime.Unload)
+    if type(cfPR) == "table" and type(cfPR.Unload) == "function" then
+        pcall(cfPR.Unload)
     end
 end)
 do
@@ -325,10 +350,10 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 print("[Crefy Premium] script file executing, PlaceId=" .. tostring(game.PlaceId))
 
 local K: { [string]: any } = { connections = {}, cleanups = {}, destroyed = false }
-getgenv().cfRuntime = K
+getgenv().cfRT = K
 getgenv().KiciaRebuild = K
 
-local function markcfQueuedRerunBootState(success)
+local function cfMRBS(success)
     local env = _G
     pcall(function()
         if type(getgenv) == "function" then
@@ -589,7 +614,7 @@ local function startupScheduleMutationRecovery()
     local function retry()
         local ownerOk, owner = pcall(function()
             local env = getgenv()
-            return type(env) == "table" and (rawget(env, "cfRuntime") or rawget(env, "KiciaRebuild")) or nil
+            return type(env) == "table" and (rawget(env, "cfRT") or rawget(env, "cfRuntime") or rawget(env, "KiciaRebuild")) or nil
         end)
         if ownerOk and owner ~= nil and owner ~= K then return end
         attempts = attempts + 1
@@ -615,7 +640,6 @@ local _Lighting = game:GetService("Lighting")
 local _player = Players.LocalPlayer
 
 local RAGEBOT_FAKE_POSITION_TRACKS = setmetatable({}, { __mode = "k" })
-local RAGEBOT_PURE_TP_TRACKS = setmetatable({}, { __mode = "k" })
 local function fakePositionFiniteNumber(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
@@ -801,211 +825,6 @@ local function ragebotObserveFakePosition(rootPart, now)
     return recentlyDetected, detected, recentKnifeThreat
 end
 
-local function ragebotObservePureTpAttack(targetRoot, localRoot, now)
-    if targetRoot == nil or localRoot == nil or not fakePositionFiniteNumber(now) then
-        return false
-    end
-
-    local okSample, targetPosition, localHeadPosition, upY, targetVelocity, localVelocity = pcall(function()
-        if not targetRoot:IsA("BasePart") or not targetRoot:IsDescendantOf(workspace)
-            or not localRoot:IsA("BasePart") or not localRoot:IsDescendantOf(workspace) then
-            return nil, nil, nil
-        end
-        local targetModel = targetRoot:FindFirstAncestorOfClass("Model")
-        local localModel = localRoot:FindFirstAncestorOfClass("Model")
-        if targetModel == nil or localModel == nil then return nil, nil, nil end
-
-        local localHead = localModel:FindFirstChild("Head")
-        if localHead == nil or not localHead:IsA("BasePart") then
-            localHead = localModel:FindFirstChild("HitboxHead")
-        end
-        local headPosition
-        if localHead ~= nil and localHead:IsA("BasePart") and localHead:IsDescendantOf(localModel) then
-            headPosition = localHead.Position
-        else
-            headPosition = localRoot.Position + Vector3.new(0, 1.5, 0)
-        end
-
-        local bodyPart = targetModel:FindFirstChild("UpperTorso")
-            or targetModel:FindFirstChild("Torso")
-            or targetModel:FindFirstChild("LowerTorso")
-            or targetRoot
-        if bodyPart == nil or not bodyPart:IsA("BasePart") then bodyPart = targetRoot end
-        return targetRoot.Position, headPosition, bodyPart.CFrame.UpVector.Y,
-            targetRoot.AssemblyLinearVelocity, localRoot.AssemblyLinearVelocity
-    end)
-    if not okSample or typeof(targetPosition) ~= "Vector3"
-        or typeof(localHeadPosition) ~= "Vector3" or not fakePositionFiniteNumber(upY) then
-        return false
-    end
-    if not fakePositionFiniteNumber(targetPosition.X) or not fakePositionFiniteNumber(targetPosition.Y)
-        or not fakePositionFiniteNumber(targetPosition.Z)
-        or not fakePositionFiniteNumber(localHeadPosition.X) or not fakePositionFiniteNumber(localHeadPosition.Y)
-        or not fakePositionFiniteNumber(localHeadPosition.Z) then
-        return false
-    end
-
-    local relativeOffset = targetPosition - localHeadPosition
-    local horizontalOffset = Vector3.new(relativeOffset.X, 0, relativeOffset.Z).Magnitude
-    local verticalOffset = relativeOffset.Y
-    local relativeDistance = relativeOffset.Magnitude
-    local overhead = horizontalOffset <= 4.25 and verticalOffset >= 2.35 and verticalOffset <= 5.65
-    local tilted = math.abs(upY) <= 0.48
-
-    local supportingSignature = overhead and tilted
-
-    local track = RAGEBOT_PURE_TP_TRACKS[targetRoot]
-
-    if type(track) ~= "table" or track.localRoot ~= localRoot then
-        RAGEBOT_PURE_TP_TRACKS[targetRoot] = {
-            localRoot = localRoot,
-            lastTargetPosition = targetPosition,
-            lastLocalHeadPosition = localHeadPosition,
-            lastRelativeOffset = relativeOffset,
-            lastAt = now,
-            lastTilted = tilted,
-            lastSupportingSignature = supportingSignature,
-            supportingSignatureSince = supportingSignature and now or nil,
-            triggeredWhileNear = false,
-            lastTriggeredAt = -math.huge,
-        }
-        return false
-    end
-
-    local priorAt = tonumber(track.lastAt) or now
-    local dt = now - priorAt
-
-    if dt <= 0 then return false end
-    if dt > 0.45 then
-        track.localRoot = localRoot
-        track.lastTargetPosition = targetPosition
-        track.lastLocalHeadPosition = localHeadPosition
-        track.lastRelativeOffset = relativeOffset
-        track.lastAt = now
-        track.lastTilted = tilted
-        track.lastSupportingSignature = supportingSignature
-        track.supportingSignatureSince = supportingSignature and now or nil
-        track.triggeredWhileNear = false
-        return false
-    end
-
-    local priorTargetPosition = track.lastTargetPosition
-    local priorLocalHeadPosition = track.lastLocalHeadPosition
-    local targetDelta = typeof(priorTargetPosition) == "Vector3"
-        and (targetPosition - priorTargetPosition) or Vector3.zero
-    local localHeadDelta = typeof(priorLocalHeadPosition) == "Vector3"
-        and (localHeadPosition - priorLocalHeadPosition) or Vector3.zero
-    local targetIndependentSnap = false
-    local localMotionDiscontinuity = false
-    local localVelocityValid = typeof(localVelocity) == "Vector3"
-        and fakePositionFiniteNumber(localVelocity.X) and fakePositionFiniteNumber(localVelocity.Y)
-        and fakePositionFiniteNumber(localVelocity.Z)
-    local targetVelocityValid = typeof(targetVelocity) == "Vector3"
-        and fakePositionFiniteNumber(targetVelocity.X) and fakePositionFiniteNumber(targetVelocity.Y)
-        and fakePositionFiniteNumber(targetVelocity.Z)
-    if dt > 0 and dt <= 0.45 and localVelocityValid then
-        local localDeltaMagnitude = localHeadDelta.Magnitude
-        local localResidual = (localHeadDelta - localVelocity * dt).Magnitude
-        local localSpeed = math.min(localVelocity.Magnitude, 120)
-        local localTeleportThreshold = math.max(18, localSpeed * dt * 2 + 8)
-        localMotionDiscontinuity = (localDeltaMagnitude >= 3.25
-            and fakePositionFiniteNumber(localResidual) and localResidual >= 2.5)
-            or localDeltaMagnitude > localTeleportThreshold
-    end
-    if dt > 0 and dt <= 0.45 and targetVelocityValid then
-        local targetDeltaMagnitude = targetDelta.Magnitude
-        local targetResidual = (targetDelta - targetVelocity * dt).Magnitude
-
-        local targetSnapDistance = dt <= 0.25 and 3.25 or 8.0
-        local targetSnapResidual = dt <= 0.25 and 2.5 or 5.0
-        targetIndependentSnap = targetDeltaMagnitude >= targetSnapDistance
-            and fakePositionFiniteNumber(targetResidual) and targetResidual >= targetSnapResidual
-    end
-    if localMotionDiscontinuity and not targetIndependentSnap then
-
-        track.localRoot = localRoot
-        track.lastTargetPosition = targetPosition
-        track.lastLocalHeadPosition = localHeadPosition
-        track.lastRelativeOffset = relativeOffset
-        track.lastAt = now
-        track.lastTilted = tilted
-        track.lastSupportingSignature = supportingSignature
-        track.supportingSignatureSince = supportingSignature and now or nil
-        track.triggeredWhileNear = false
-        return false
-    end
-
-    local priorOffset = track.lastRelativeOffset
-    local priorDistance = typeof(priorOffset) == "Vector3" and priorOffset.Magnitude or math.huge
-    local relativeDelta = typeof(priorOffset) == "Vector3" and (relativeOffset - priorOffset) or Vector3.zero
-    local horizontalDelta = Vector3.new(relativeDelta.X, 0, relativeDelta.Z).Magnitude
-    local abruptRelativeMove = dt <= 0.25 and (
-        relativeDelta.Magnitude >= 3.25
-        or (math.abs(relativeDelta.Y) >= 2.25 and horizontalDelta <= 3.25)
-    )
-
-    local velocityResidualMagnitude = nil
-    if typeof(targetVelocity) == "Vector3" and typeof(localVelocity) == "Vector3"
-        and fakePositionFiniteNumber(targetVelocity.X) and fakePositionFiniteNumber(targetVelocity.Y)
-        and fakePositionFiniteNumber(targetVelocity.Z) and fakePositionFiniteNumber(localVelocity.X)
-        and fakePositionFiniteNumber(localVelocity.Y) and fakePositionFiniteNumber(localVelocity.Z) then
-        local predictedRelativeDelta = (targetVelocity - localVelocity) * dt
-        if predictedRelativeDelta.Magnitude <= 18 then
-            velocityResidualMagnitude = (relativeDelta - predictedRelativeDelta).Magnitude
-        end
-    end
-
-    local attackEnvelope = horizontalOffset <= 6.25 and verticalOffset >= -2.75
-        and verticalOffset <= 8.0 and relativeDistance <= 10.0
-    local closingDistance = priorDistance - relativeDistance
-    local velocityBackedSnap = velocityResidualMagnitude ~= nil
-        and velocityResidualMagnitude >= 2.5
-        and (closingDistance >= 1.0 or overhead)
-    local fastSnapWithoutVelocity = velocityResidualMagnitude == nil
-        and dt <= 0.20 and relativeDelta.Magnitude >= 3.0
-        and (closingDistance >= 1.0 or overhead)
-    local rapidTPIntoCombat = attackEnvelope and (velocityBackedSnap or fastSnapWithoutVelocity
-        or (abruptRelativeMove and overhead
-            and (velocityResidualMagnitude == nil or velocityResidualMagnitude >= 2.5)))
-
-    local tiltTransition = dt <= 0.25 and tilted and track.lastTilted ~= true and overhead
-    if supportingSignature then
-        if track.lastSupportingSignature ~= true
-            or not fakePositionFiniteNumber(track.supportingSignatureSince) then
-            track.supportingSignatureSince = now
-            track.triggeredWhileNear = false
-        end
-    else
-        track.supportingSignatureSince = nil
-        if relativeDistance > 11.0 then track.triggeredWhileNear = false end
-    end
-
-    local signatureSince = tonumber(track.supportingSignatureSince)
-    local stableSupportingSignature = supportingSignature and signatureSince ~= nil
-        and now - signatureSince >= 0.055
-    local supportingTP = supportingSignature and (tiltTransition or stableSupportingSignature)
-
-    local movementBackedTP = rapidTPIntoCombat
-        or (attackEnvelope and abruptRelativeMove and supportingTP)
-
-    if relativeDistance > 6.0 then track.triggeredWhileNear = false end
-    local canTriggerNear = track.triggeredWhileNear ~= true
-    local detected = canTriggerNear and movementBackedTP
-
-    track.localRoot = localRoot
-    track.lastTargetPosition = targetPosition
-    track.lastLocalHeadPosition = localHeadPosition
-    track.lastRelativeOffset = relativeOffset
-    track.lastAt = now
-    track.lastTilted = tilted
-    track.lastSupportingSignature = supportingSignature
-    if detected then
-        track.triggeredWhileNear = true
-        track.lastTriggeredAt = now
-    end
-    return detected
-end
-
 local RAGEBOT_REP_ROOT_CONTACT_TRACKS = setmetatable({}, { __mode = "k" })
 
 local RAGEBOT_KNIFE_COOLDOWN_TRACKS = setmetatable({}, { __mode = "k" })
@@ -1067,8 +886,12 @@ local function ragebotRecordKnifeAttack(targetRoot, now)
     local last = tonumber(t.lastAttackAt) or -math.huge
     if last > -math.huge and now > last then
         local interval = now - last
+        -- Multiple detector signals can describe the same swing. Ignore an
+        -- implausibly short duplicate without moving the baseline timestamp;
+        -- otherwise the next real cooldown sample is measured from the duplicate.
+        if interval < KNIFE_COOLDOWN_MIN_PLAUSIBLE then return end
         local maxPlausibleInterval = ragebotKnifeMaxPlausibleInterval(t)
-        if interval >= KNIFE_COOLDOWN_MIN_PLAUSIBLE and interval <= maxPlausibleInterval then
+        if interval <= maxPlausibleInterval then
             local samples = t.intervals
             samples[#samples + 1] = interval
             if #samples > KNIFE_COOLDOWN_SAMPLES_MAX then table.remove(samples, 1) end
@@ -1146,7 +969,7 @@ local function ragebotIsHookerAnchorPosition(position)
         and position.Z >= -101000 and position.Z <= 11000
 end
 
-local function ragebotReadPhysicsRepRootLink(part)
+local function ragebotReadPhysicsRepRootLink(part, referenceRoot)
     if part == nil then return nil, nil end
     local hiddenGetter, allPropertiesGetter
     pcall(function()
@@ -1167,6 +990,11 @@ local function ragebotReadPhysicsRepRootLink(part)
         local ok, result = pcall(allPropertiesGetter, part)
         if ok and type(result) == "table" then cachedProperties = result end
     end
+
+    local compareRoot = referenceRoot or part
+    local compareModel = nil
+    pcall(function() compareModel = compareRoot:FindFirstAncestorOfClass("Model") end)
+    local fallbackLink, fallbackProperty = nil, nil
     for _, propertyName in ipairs({ "PhysicsRepRootPart", "PhysicsRepRootRef" }) do
         local value
         local readOk = false
@@ -1189,20 +1017,44 @@ local function ragebotReadPhysicsRepRootLink(part)
             end
         end
         if readOk and typeof(value) == "Instance" then
-            if value:IsA("ObjectValue") then
+            local objectTypeOk, isObjectValue = pcall(function() return value:IsA("ObjectValue") end)
+            if objectTypeOk and isObjectValue then
                 local valueOk, objectValue = pcall(function() return value.Value end)
                 value = valueOk and objectValue or nil
+            elseif not objectTypeOk then
+                value = nil
             end
             if typeof(value) == "Instance" then
                 local validOk, valid = pcall(function()
                     return value:IsA("BasePart") and value.Parent ~= nil
                         and value:IsDescendantOf(workspace)
                 end)
-                if validOk and valid then return value, propertyName end
+                if validOk and valid then
+                    if fallbackLink == nil then fallbackLink, fallbackProperty = value, propertyName end
+                    if referenceRoot ~= nil then
+                        local externalOk, isExternal = pcall(function()
+                            local linkModel = value:FindFirstAncestorOfClass("Model")
+                            return value ~= compareRoot and linkModel ~= compareModel
+                                and (value.Position - compareRoot.Position).Magnitude >= 12
+                        end)
+                        if externalOk and isExternal then return value, propertyName end
+                    end
+                end
             end
         end
     end
-    return nil, nil
+    return fallbackLink, fallbackProperty
+end
+
+local function ragebotIsExternalPhysicsRepRootLink(targetRoot, physicsRepLink)
+    if targetRoot == nil or physicsRepLink == nil then return false end
+    local ok, external = pcall(function()
+        local targetModel = targetRoot:FindFirstAncestorOfClass("Model")
+        local linkModel = physicsRepLink:FindFirstAncestorOfClass("Model")
+        return physicsRepLink ~= targetRoot and linkModel ~= targetModel
+            and (physicsRepLink.Position - targetRoot.Position).Magnitude >= 12
+    end)
+    return ok and external == true
 end
 
 local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot, now, knifeThreat, knownPhysicsRepLink, knownPhysicsRepProperty)
@@ -1253,16 +1105,7 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
     -- Reuse that snapshot instead of doing duplicate executor property reads.
     local physicsRepLink = knownPhysicsRepLink
     local physicsRepProperty = knownPhysicsRepProperty
-    local externalPhysicsRepLink = false
-    if physicsRepLink ~= nil then
-        local linkOk, isExternalLink = pcall(function()
-            local targetModel = targetRoot:FindFirstAncestorOfClass("Model")
-            local linkModel = physicsRepLink:FindFirstAncestorOfClass("Model")
-            return physicsRepLink ~= targetRoot and linkModel ~= targetModel
-                and (physicsRepLink.Position - rootPosition).Magnitude >= 12
-        end)
-        externalPhysicsRepLink = linkOk and isExternalLink == true
-    end
+    local externalPhysicsRepLink = ragebotIsExternalPhysicsRepRootLink(targetRoot, physicsRepLink)
 
     local track = RAGEBOT_REP_ROOT_CONTACT_TRACKS[targetRoot]
     local priorAt = type(track) == "table" and tonumber(track.lastAt) or nil
@@ -1392,7 +1235,7 @@ local function ragebotObserveRepRootContact(targetRoot, targetHitbox, localRoot,
         if anomalousProximityNow then track.anomalousTriggerConsumed = true end
         -- Chỉ record từ hitboxDiscontinuity (attack thực anchor→victim).
         -- anomalousFiringFirstTime fire theo ready cycle 0.5s → học sai cooldown.
-        if hitboxDiscontinuity then
+        if knifeThreat == true and hitboxDiscontinuity then
             ragebotRecordKnifeAttack(targetRoot, now)
         end
 
@@ -1644,9 +1487,12 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
     table.sort(candidates, function(a, b) return a.distance < b.distance end)
 
     for _, candidate in ipairs(candidates) do
-        local physicsRepLink, physicsRepProperty = ragebotReadPhysicsRepRootLink(candidate.root)
-        if physicsRepLink == nil then
-            physicsRepLink, physicsRepProperty = ragebotReadPhysicsRepRootLink(candidate.hitbox)
+        local physicsRepLink, physicsRepProperty = ragebotReadPhysicsRepRootLink(candidate.root, candidate.root)
+        if not ragebotIsExternalPhysicsRepRootLink(candidate.root, physicsRepLink) then
+            local hitboxLink, hitboxProperty = ragebotReadPhysicsRepRootLink(candidate.hitbox, candidate.root)
+            if ragebotIsExternalPhysicsRepRootLink(candidate.root, hitboxLink) or physicsRepLink == nil then
+                physicsRepLink, physicsRepProperty = hitboxLink, hitboxProperty
+            end
         end
         if physicsRepLink == nil then
             -- Ordinary targets without either RepRoot property are outside
@@ -1676,14 +1522,6 @@ local function ragebotFindRepRootContactTarget(controller, localRoot, now)
             end
 
             if knifeState == true then
-                local pureTpAttack = false
-                local okPureTp, pureTpResult = pcall(ragebotObservePureTpAttack, candidate.root, localRoot, now)
-                if okPureTp then pureTpAttack = pureTpResult == true end
-                if pureTpAttack then
-                    ragebotRecordKnifeAttack(candidate.root, now)
-                    return candidate.target, "knife-cooldown-predict"
-                end
-
                 local imminentAttack = ragebotKnifePredictImminent(candidate.root, now)
                 local fakeTrack = RAGEBOT_FAKE_POSITION_TRACKS[candidate.root]
                 local lastDesyncAt = type(fakeTrack) == "table"
@@ -1734,7 +1572,7 @@ local function ragebotCleanupStillCurrentScript()
     if type(getgenv) == "function" then
         local envOk, env = pcall(getgenv)
         if envOk and type(env) == "table" then
-            local currentOwner = rawget(env, "cfRuntime") or rawget(env, "KiciaRebuild")
+            local currentOwner = rawget(env, "cfRT") or rawget(env, "cfRuntime") or rawget(env, "KiciaRebuild")
             return currentOwner == nil or currentOwner == K
         end
     end
@@ -19973,7 +19811,7 @@ local function validUrl(value)
     return type(value) == "string" and value:match("^https?://%S+$") ~= nil
 end
 
-local function tryReadablecfPath(path)
+local function cfTRP(path)
     if type(path) ~= "string" or path == "" then return nil end
     local env = getEnvironment()
     local readFn = rawget(env, "readfile")
@@ -19987,7 +19825,7 @@ local function tryReadablecfPath(path)
     return path
 end
 
-local function resolveReloadSource()
+local function cfRRS()
     local env = getEnvironment()
     local urlKeys = { "cfSourceUrl", "__cfSourceUrl", "CrefySourceUrl", "CrefyScriptUrl", "CrefyLoaderUrl" }
     for _, key in ipairs(urlKeys) do
@@ -20016,7 +19854,7 @@ local function resolveReloadSource()
     end)
     if type(sourceHint) == "string" and sourceHint:sub(1, 1) == "@" then
         local candidate = sourceHint:sub(2)
-        local readable = tryReadablecfPath(candidate)
+        local readable = cfTRP(candidate)
         if readable then return nil, readable end
     end
 
@@ -20027,7 +19865,7 @@ local function resolveReloadSource()
         "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
     }
     for _, candidate in ipairs(candidates) do
-        local readable = tryReadablecfPath(candidate)
+        local readable = cfTRP(candidate)
         if readable then return nil, readable end
     end
     -- Keep a bounded auto-discovery fallback in the queued loader. Some
@@ -20036,22 +19874,22 @@ local function resolveReloadSource()
     return nil, nil
 end
 
-local function makeQueuedLoader(sourceUrl, sourcePath, generation)
+local function cfMQL(sourceUrl, sourcePath, generation)
     local urlLiteral = string.format("%q", sourceUrl or "")
     local pathLiteral = string.format("%q", sourcePath or "")
     local generationLiteral = string.format("%q", tostring(generation or ""))
     return [[
-local __env = _G
+local cfEnv = _G
 pcall(function()
     if type(getgenv) == "function" then
-        local __candidate = getgenv()
-        if type(__candidate) == "table" then __env = __candidate end
+        local cfCand = getgenv()
+        if type(cfCand) == "table" then cfEnv = cfCand end
     end
 end)
-local function __getFunction(name)
-    local candidate = rawget(__env, name)
+local function cfGF(name)
+    local candidate = rawget(cfEnv, name)
     if type(candidate) == "function" then return candidate end
-    local okEnv, envValue = pcall(function() return __env[name] end)
+    local okEnv, envValue = pcall(function() return cfEnv[name] end)
     if okEnv and type(envValue) == "function" then return envValue end
     candidate = rawget(_G, name)
     if type(candidate) == "function" then return candidate end
@@ -20059,10 +19897,10 @@ local function __getFunction(name)
     if okGlobal and type(globalValue) == "function" then return globalValue end
     return nil
 end
-local function __getSetting(name)
-    local value = rawget(__env, name)
+local function cfGS(name)
+    local value = rawget(cfEnv, name)
     if value ~= nil then return value end
-    local okEnv, envValue = pcall(function() return __env[name] end)
+    local okEnv, envValue = pcall(function() return cfEnv[name] end)
     if okEnv and envValue ~= nil then return envValue end
     value = rawget(_G, name)
     if value ~= nil then return value end
@@ -20070,200 +19908,200 @@ local function __getSetting(name)
     if okGlobal then return globalValue end
     return nil
 end
-if __getSetting("__cfAutoExecuteEnabled") == false then return end
-local __generation = ]] .. generationLiteral .. [[
-local __placeId = tostring(game.PlaceId)
-local __runKey = __generation .. ":" .. __placeId
-if __generation ~= "" then
-    local __currentGeneration = __getSetting("__cfAutoExecuteGeneration")
-    if __currentGeneration ~= nil and tostring(__currentGeneration) ~= __generation then return end
+if cfGS("__cfAutoExecuteEnabled") == false then return end
+local cfGen = ]] .. generationLiteral .. [[
+local cfPID = tostring(game.PlaceId)
+local cfRK = cfGen .. ":" .. cfPID
+if cfGen ~= "" then
+    local cfCG = cfGS("__cfAutoExecuteGeneration")
+    if cfCG ~= nil and tostring(cfCG) ~= cfGen then return end
 end
-if __getSetting("__cfAutoExecuteLastSuccessfulRunKey") == __runKey then return end
-if __getSetting("__cfAutoExecuteLastFailedRunKey") == __runKey then return end
+if cfGS("__cfAutoExecuteLastSuccessfulRunKey") == cfRK then return end
+if cfGS("__cfAutoExecuteLastFailedRunKey") == cfRK then return end
 
 -- If the general settings file is readable, it is authoritative. A malformed
 -- or explicitly disabled setting must never execute a stale queued payload.
-local __readFile = __getFunction("readfile")
-local __stateFileReadable = false
-if type(__readFile) == "function" then
-    local __readOk, __stateText = pcall(__readFile, "kiciarebuild/rivals/general.json")
-    if __readOk and type(__stateText) == "string" then
-        __stateFileReadable = true
-        local __decodeOk, __stateDoc = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(__stateText)
+local cfRF = cfGF("readfile")
+local cfSFR = false
+if type(cfRF) == "function" then
+    local cfROK, cfSTxt = pcall(cfRF, "kiciarebuild/rivals/general.json")
+    if cfROK and type(cfSTxt) == "string" then
+        cfSFR = true
+        local cfDOK, cfSDoc = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(cfSTxt)
         end)
-        if not __decodeOk or type(__stateDoc) ~= "table" then
+        if not cfDOK or type(cfSDoc) ~= "table" then
             warn("[Crefy] Re-run After Teleport cancelled: general settings JSON is invalid.")
             return
         end
-        local __stateData = __stateDoc.Data or __stateDoc.data
-        if type(__stateData) ~= "table" then
+        local cfSD = cfSDoc.Data or cfSDoc.data
+        if type(cfSD) ~= "table" then
             warn("[Crefy] Re-run After Teleport cancelled: general settings data is missing.")
             return
         end
-        local __savedToggle = __stateData.ReRunAfterTeleport
-        if __savedToggle == false then return end
-        if __savedToggle ~= nil and __savedToggle ~= true then
+        local cfST = cfSD.ReRunAfterTeleport
+        if cfST == false then return end
+        if cfST ~= nil and cfST ~= true then
             warn("[Crefy] Re-run After Teleport cancelled: saved toggle value is invalid.")
             return
         end
         -- Older Crefy builds stored this option only in the active Config path.
         -- For a missing GeneralState field, require the live opt-in flag instead
         -- of treating the legacy file as an explicit disable.
-        if __savedToggle == nil and __getSetting("__cfAutoExecuteEnabled") ~= true then return end
+        if cfST == nil and cfGS("__cfAutoExecuteEnabled") ~= true then return end
     end
 end
-if not __stateFileReadable and __getSetting("__cfAutoExecuteEnabled") ~= true then
+if not cfSFR and cfGS("__cfAutoExecuteEnabled") ~= true then
     -- Without a readable persisted opt-in, require an explicit runtime opt-in.
     return
 end
 
-local __existingFlight = __getSetting("__cfQueuedRerunInFlight")
-if __existingFlight ~= nil and __existingFlight ~= false then return end
+local cfEF = cfGS("__cfQueuedRerunInFlight")
+if cfEF ~= nil and cfEF ~= false then return end
 -- Use a unique lock token as well as a stable run key: an old timeout callback
 -- must never clear a newer retry for the same generation/place pair.
-local __lockToken = __runKey .. ":" .. tostring({})
-rawset(__env, "__cfQueuedRerunInFlight", __lockToken)
-rawset(_G, "__cfQueuedRerunInFlight", __lockToken)
-rawset(__env, "__cfQueuedRerunExpectedGeneration", __generation)
-rawset(_G, "__cfQueuedRerunExpectedGeneration", __generation)
-local __timedOut = false
-local function __finish()
-    if rawget(__env, "__cfQueuedRerunInFlight") == __lockToken then
-        rawset(__env, "__cfQueuedRerunInFlight", nil)
+local cfLT = cfRK .. ":" .. tostring({})
+rawset(cfEnv, "__cfQueuedRerunInFlight", cfLT)
+rawset(_G, "__cfQueuedRerunInFlight", cfLT)
+rawset(cfEnv, "__cfQueuedRerunExpectedGeneration", cfGen)
+rawset(_G, "__cfQueuedRerunExpectedGeneration", cfGen)
+local cfTO = false
+local function cfFin()
+    if rawget(cfEnv, "__cfQueuedRerunInFlight") == cfLT then
+        rawset(cfEnv, "__cfQueuedRerunInFlight", nil)
     end
-    if rawget(_G, "__cfQueuedRerunInFlight") == __lockToken then
+    if rawget(_G, "__cfQueuedRerunInFlight") == cfLT then
         rawset(_G, "__cfQueuedRerunInFlight", nil)
     end
-    if tostring(rawget(__env, "__cfQueuedRerunExpectedGeneration") or "") == __generation then
-        rawset(__env, "__cfQueuedRerunExpectedGeneration", nil)
+    if tostring(rawget(cfEnv, "__cfQueuedRerunExpectedGeneration") or "") == cfGen then
+        rawset(cfEnv, "__cfQueuedRerunExpectedGeneration", nil)
     end
-    if tostring(rawget(_G, "__cfQueuedRerunExpectedGeneration") or "") == __generation then
+    if tostring(rawget(_G, "__cfQueuedRerunExpectedGeneration") or "") == cfGen then
         rawset(_G, "__cfQueuedRerunExpectedGeneration", nil)
     end
 end
-local __taskDelay = type(task) == "table" and task.delay or nil
-if type(__taskDelay) == "function" then
-    pcall(__taskDelay, 420, function()
-        if __getSetting("__cfQueuedRerunInFlight") == __lockToken then
-            __timedOut = true
-            if __getSetting("__cfAutoExecuteLastSuccessfulRunKey") ~= __runKey then
-                rawset(__env, "__cfAutoExecuteLastFailedRunKey", __runKey)
-                rawset(_G, "__cfAutoExecuteLastFailedRunKey", __runKey)
+local cfTD = type(task) == "table" and task.delay or nil
+if type(cfTD) == "function" then
+    pcall(cfTD, 420, function()
+        if cfGS("__cfQueuedRerunInFlight") == cfLT then
+            cfTO = true
+            if cfGS("__cfAutoExecuteLastSuccessfulRunKey") ~= cfRK then
+                rawset(cfEnv, "__cfAutoExecuteLastFailedRunKey", cfRK)
+                rawset(_G, "__cfAutoExecuteLastFailedRunKey", cfRK)
             end
             warn("[Crefy] Re-run After Teleport bootstrap timed out; duplicate guard was released.")
-            __finish()
+            cfFin()
         end
     end)
 end
-local function __iscfSource(value)
+local function cfIS(value)
     return type(value) == "string" and #value >= 10000
         and (value:find("Crefy Premium", 1, true) ~= nil
             or value:find("KiciaRebuild", 1, true) ~= nil)
 end
-local function __read(path)
-    if type(path) ~= "string" or path == "" or type(__readFile) ~= "function" then return nil end
-    local ok, value = pcall(__readFile, path)
-    if ok and __iscfSource(value) then return value end
+local function cfRead(path)
+    if type(path) ~= "string" or path == "" or type(cfRF) ~= "function" then return nil end
+    local ok, value = pcall(cfRF, path)
+    if ok and cfIS(value) then return value end
     return nil
 end
-local function __runQueuedSource()
-    local __url = ]] .. urlLiteral .. [[
-    local __path = ]] .. pathLiteral .. [[
-    local __envUrl = __getSetting("cfSourceUrl") or __getSetting("CrefySourceUrl")
-    if type(__envUrl) == "string" and __envUrl:match("^https?://%S+$") then __url = __envUrl end
-    local __envPath = __getSetting("cfSourcePath") or __getSetting("CrefySourcePath")
-    if type(__envPath) == "string" and __envPath ~= "" then __path = __envPath end
+local function cfRQS()
+    local cfUrl = ]] .. urlLiteral .. [[
+    local cfPath = ]] .. pathLiteral .. [[
+    local cfEU = cfGS("cfSourceUrl") or cfGS("CrefySourceUrl")
+    if type(cfEU) == "string" and cfEU:match("^https?://%S+$") then cfUrl = cfEU end
+    local cfEP = cfGS("cfSourcePath") or cfGS("CrefySourcePath")
+    if type(cfEP) == "string" and cfEP ~= "" then cfPath = cfEP end
 
-    local __source
-    if type(__url) == "string" and __url:match("^https?://%S+$") then
-        local __httpOk, __value = pcall(function() return game:HttpGet(__url) end)
-        if __httpOk and __iscfSource(__value) then
-            __source = __value
-        elseif __httpOk and type(__value) == "string" and #__value > 0 then
+    local cfSrc
+    if type(cfUrl) == "string" and cfUrl:match("^https?://%S+$") then
+        local cfHO, cfVal = pcall(function() return game:HttpGet(cfUrl) end)
+        if cfHO and cfIS(cfVal) then
+            cfSrc = cfVal
+        elseif cfHO and type(cfVal) == "string" and #cfVal > 0 then
             warn("[Crefy] Re-run After Teleport URL returned content that does not look like Crefy; trying file paths.")
         end
     end
-    if not __source then __source = __read(__path) end
-    if not __source then
-        local __candidates = {
+    if not cfSrc then cfSrc = cfRead(cfPath) end
+    if not cfSrc then
+        local cfCs = {
             "Crefy.lua", "Crefy.lua.txt", "Crefy.txt",
             "scripts/Crefy.lua", "scripts/Crefy.lua.txt",
             "workspace/Crefy.lua", "workspace/Crefy.lua.txt", "workspace/scripts/Crefy.lua",
             "autoexec/Crefy.lua", "autoexec/Crefy.lua.txt",
         }
-        for _, __candidatePath in ipairs(__candidates) do
-            __source = __read(__candidatePath)
-            if __source then break end
+        for _, cfCP in ipairs(cfCs) do
+            cfSrc = cfRead(cfCP)
+            if cfSrc then break end
         end
     end
-    local __listFiles = __getFunction("listfiles")
-    if not __source and type(__listFiles) == "function" then
-        for _, __folder in ipairs({ "", ".", "scripts", "workspace", "workspace/scripts", "autoexec" }) do
-            local __okList, __files = pcall(__listFiles, __folder)
-            if __okList and type(__files) == "table" then
-                for _, __file in ipairs(__files) do
-                    local __lower = tostring(__file):lower():gsub("\\", "/")
-                    if __lower:match("/?crefy%.lua$") or __lower:match("/?crefy%.lua%.txt$")
-                        or __lower:match("/?crefy%.txt$") then
-                        __source = __read(__file)
-                        if __source then break end
+    local cfLF = cfGF("listfiles")
+    if not cfSrc and type(cfLF) == "function" then
+        for _, cfFol in ipairs({ "", ".", "scripts", "workspace", "workspace/scripts", "autoexec" }) do
+            local cfOL, cfFiles = pcall(cfLF, cfFol)
+            if cfOL and type(cfFiles) == "table" then
+                for _, cfFile in ipairs(cfFiles) do
+                    local cfLow = tostring(cfFile):lower():gsub("\\", "/")
+                    if cfLow:match("/?crefy%.lua$") or cfLow:match("/?crefy%.lua%.txt$")
+                        or cfLow:match("/?crefy%.txt$") then
+                        cfSrc = cfRead(cfFile)
+                        if cfSrc then break end
                     end
                 end
             end
-            if __source then break end
+            if cfSrc then break end
         end
     end
-    if type(__source) ~= "string" or #__source == 0 then
+    if type(cfSrc) ~= "string" or #cfSrc == 0 then
         warn("[Crefy] Re-run After Teleport could not locate a valid Crefy source. Set getgenv().cfSourcePath or getgenv().cfSourceUrl.")
         return false
     end
-    local __compiler = __getFunction("loadstring") or __getFunction("load")
-    if type(__compiler) ~= "function" then
+    local cfComp = cfGF("loadstring") or cfGF("load")
+    if type(cfComp) ~= "function" then
         warn("[Crefy] Re-run After Teleport: this executor has no loadstring/load compiler.")
         return false
     end
-    local __compileCallOk, __chunk, __compileError = pcall(__compiler, __source)
-    if not __compileCallOk or type(__chunk) ~= "function" then
-        warn("[Crefy] Re-run After Teleport compile failed: " .. tostring(__compileError or __chunk))
+    local cfCCO, cfChunk, cfCE = pcall(cfComp, cfSrc)
+    if not cfCCO or type(cfChunk) ~= "function" then
+        warn("[Crefy] Re-run After Teleport compile failed: " .. tostring(cfCE or cfChunk))
         return false
     end
-    local __runOk, __runError = pcall(__chunk)
-    if not __runOk then
-        warn("[Crefy] Re-run After Teleport execution failed: " .. tostring(__runError))
+    local cfRO, cfRE = pcall(cfChunk)
+    if not cfRO then
+        warn("[Crefy] Re-run After Teleport execution failed: " .. tostring(cfRE))
         return false
     end
 
     -- Crefy starts its client bootstrap asynchronously. Keep the duplicate
     -- guard until it confirms boot, rather than clearing it after a fixed 3s.
-    local __deadline = os.clock() + 420
-    while os.clock() < __deadline and not __timedOut do
-        if __getSetting("__cfAutoExecuteLastSuccessfulRunKey") == __runKey then
+    local cfDL = os.clock() + 420
+    while os.clock() < cfDL and not cfTO do
+        if cfGS("__cfAutoExecuteLastSuccessfulRunKey") == cfRK then
             return true
         end
-        if __getSetting("__cfAutoExecuteLastFailedRunKey") == __runKey then
+        if cfGS("__cfAutoExecuteLastFailedRunKey") == cfRK then
             warn("[Crefy] Re-run After Teleport source started but Crefy bootstrap reported failure.")
             return false
         end
         task.wait(0.25)
     end
-    if __timedOut then return false end
+    if cfTO then return false end
     warn("[Crefy] Re-run After Teleport did not receive bootstrap confirmation within 420s.")
     return false
 end
-local __callOk, __callResult = pcall(__runQueuedSource)
-if not __callOk then warn("[Crefy] Re-run After Teleport loader error: " .. tostring(__callResult)) end
-if __getSetting("__cfAutoExecuteLastSuccessfulRunKey") ~= __runKey then
-    rawset(__env, "__cfAutoExecuteLastFailedRunKey", __runKey)
-    rawset(_G, "__cfAutoExecuteLastFailedRunKey", __runKey)
+local cfCO, cfCRes = pcall(cfRQS)
+if not cfCO then warn("[Crefy] Re-run After Teleport loader error: " .. tostring(cfCRes)) end
+if cfGS("__cfAutoExecuteLastSuccessfulRunKey") ~= cfRK then
+    rawset(cfEnv, "__cfAutoExecuteLastFailedRunKey", cfRK)
+    rawset(_G, "__cfAutoExecuteLastFailedRunKey", cfRK)
 end
-__finish()
+cfFin()
 ]]
 end
 
 local queueRegisteredForCurrentEnable = false
 local runtimeEnabled = nil
-local function applyRerunSetting(enabled, persist)
+local function cfARS(enabled, persist)
     enabled = enabled == true
     local wasEnabled = runtimeEnabled
     runtimeEnabled = enabled
@@ -20318,7 +20156,7 @@ local function applyRerunSetting(enabled, persist)
     local needsRequeue = enabled and (wasEnabled ~= true or persist == true
         or queueRegisteredForCurrentEnable == false)
     if needsRequeue then
-        local sourceUrl, sourcePath = resolveReloadSource()
+        local sourceUrl, sourcePath = cfRRS()
         local queueFn, queueOwner
         local candidateNames = {
             "queue_on_teleport", "queueonteleport", "queueOnTeleport", "QueueOnTeleport",
@@ -20361,7 +20199,7 @@ local function applyRerunSetting(enabled, persist)
         else
             local currentGeneration = tonumber(rawget(env, "__cfAutoExecuteGeneration")) or 0
             local nextGeneration = currentGeneration + 1
-            local payload = makeQueuedLoader(sourceUrl, sourcePath, nextGeneration)
+            local payload = cfMQL(sourceUrl, sourcePath, nextGeneration)
             local okQueue, queueResult = pcall(queueFn, payload)
             if (not okQueue or queueResult == false) and queueOwner ~= nil then
                 okQueue, queueResult = pcall(queueFn, queueOwner, payload)
@@ -20398,7 +20236,7 @@ end
 local toggle = arg:AddToggle({ Label = "Re-run After Teleport", Config = arg3 })
 if toggle ~= nil and type(toggle.OnChanged) == "function" then
     toggle:OnChanged(function(enabled)
-        applyRerunSetting(enabled, true)
+        cfARS(enabled, true)
     end)
 end
 local configuredEnabled = false
@@ -20407,7 +20245,7 @@ if config ~= nil and type(arg3) == "table" then
 end
 local initialEnabled = configuredEnabled
 if persistedEnabled ~= nil then initialEnabled = persistedEnabled end
-applyRerunSetting(initialEnabled, persistedEnabled == nil and configuredEnabled == true)
+cfARS(initialEnabled, persistedEnabled == nil and configuredEnabled == true)
 
 arg:AddToggle({
 Label = v86[142],
@@ -38767,13 +38605,28 @@ arg._typeByName = {}
 arg._namesByType = { Skin = {}, Wrap = {}, Charm = {}, Finisher = {}, Emote = {} }
 arg._nameSetByType = { Skin = {}, Wrap = {}, Charm = {}, Finisher = {}, Emote = {} }
 
-for k, v119 in v102(cosmeticLibrary, "Cosmetics"), nil, nil do
-local v120 = v102(v119, "Type")
+local cosmeticEntries = v102(cosmeticLibrary, "Cosmetics")
+if type(cosmeticEntries) ~= "table" then
+    arg.Built:Fire()
+    return
+end
+if type(arg._typeSet) ~= "table" then arg._typeSet = {} end
+if type(arg._raritySet) ~= "table" then arg._raritySet = {} end
 
-if arg._typeSet[v120] then
-if arg._raritySet[v102(v119, "Rarity")] then
+for k, v119 in next, cosmeticEntries do
+if type(k) ~= "string" or k == "" or type(v119) ~= "table" then
+    continue
+end
+local v120 = v102(v119, "Type")
+local rarity = v102(v119, "Rarity")
+
+if type(v120) == "string" and arg._typeSet[v120] == true
+    and arg._raritySet[rarity] == true then
 if v120 == "Skin" then
 local itemName = v102(v119, "ItemName")
+if type(itemName) ~= "string" or itemName == "" then
+    continue
+end
 
 if arg._namesByType.Skin[itemName] == nil then
 arg._namesByType.Skin[itemName] = {}
@@ -38805,7 +38658,6 @@ arg._inventory[k] = v118
 elseif v120 == "Emote" then
 arg._typeByName[k] = v120
 arg._inventory[k] = true
-end
 end
 end
 end
@@ -38859,18 +38711,27 @@ return v119 == nil or #v119 == 0
 end
 
 index2.IsInCatalog = function(arg, arg2)
+if type(arg2) ~= "table" or type(arg2.CosmeticName) ~= "string"
+    or type(arg2.CosmeticType) ~= "string" then
+    return false
+end
 if arg2.CosmeticName:match("^" .. noneCosmetic) or arg2.CosmeticName == randomCosmetic then
 return true
 end
 
 if arg2.CosmeticType == "Skin" then
-local v119 = arg._nameSetByType.Skin[arg2.ItemName]
-return v119 ~= nil and v119[arg2.CosmeticName] == true
+if type(arg2.ItemName) ~= "string" then return false end
+local skinNames = type(arg._nameSetByType) == "table"
+    and type(arg._nameSetByType.Skin) == "table" and arg._nameSetByType.Skin[arg2.ItemName] or nil
+return type(skinNames) == "table" and skinNames[arg2.CosmeticName] == true
 end
-return arg._nameSetByType[arg2.CosmeticType][arg2.CosmeticName] == true
+local namesByType = type(arg._nameSetByType) == "table"
+    and arg._nameSetByType[arg2.CosmeticType] or nil
+return type(namesByType) == "table" and namesByType[arg2.CosmeticName] == true
 end
 
 index2.IsCosmeticInCatalog = function(arg, arg2, arg3)
+if type(arg2) ~= "string" or type(arg3) ~= "string" then return false end
 if arg3:match("^" .. noneCosmetic) then
 return true
 end
@@ -39558,7 +39419,6 @@ local tbl18 = {}
 arg._proposed[arg2] = tbl18
 v119 = tbl18
 else
-
 
 v119 = v118
 end
@@ -40562,7 +40422,6 @@ if not (n25 > 3892) then
 return setmetatable(tbl19, index2)
 end
 return nil
-
 
 end
 
@@ -41590,11 +41449,11 @@ if cosmetics == nil then
 return
 end
 local v117 = cosmetics[arg2]
-if v117 == nil then
+if type(v117) ~= "table" then
 return
 end
 local wrapGroups = v102(v117, "WrapGroups")
-if wrapGroups == nil then
+if type(wrapGroups) ~= "table" then
 return
 end
 
@@ -41609,7 +41468,11 @@ wrapGroup = v86[63]
 end
 end
 
-local tbl19 = wrapGroups[wrapGroup] or {}
+if type(wrapGroup) ~= "number" then
+    continue
+end
+local tbl19 = wrapGroups[wrapGroup]
+if type(tbl19) ~= "table" then tbl19 = {} end
 local ignoreTransparency = v118.IgnoreTransparency
 local ignoreMaterial = v118.IgnoreMaterial
 
@@ -42339,7 +42202,6 @@ local function fn35()
 tbl17.dB()
 tbl17.cF()
 local v115 = tbl17.k()
-local v116 = tbl17.dE()
 local v117 = tbl17.dG()
 
 local tbl18 = {
@@ -42359,8 +42221,83 @@ IKControl = true,
 }
 
 local v118 = cloneref(game:GetService("CollectionService"))
+local function cloneTreeSignature(instance)
+local className = instance.ClassName
+local name = instance.Name
+local children = {}
+for _, child in ipairs(instance:GetChildren()) do
+    children[#children + 1] = cloneTreeSignature(child)
+end
+table.sort(children)
+return tostring(#className) .. ":" .. className
+    .. tostring(#name) .. ":" .. name .. "{" .. table.concat(children) .. "}"
+end
+local function cloneCharacterSnapshot(sourceModel)
+if sourceModel == nil then return nil end
+local sourceOk, sourceValid = pcall(function()
+    return sourceModel:IsA("Model") and sourceModel.Parent ~= nil
+end)
+if not sourceOk or not sourceValid then return nil end
+local nodesOk, nodes = pcall(function()
+    local descendants = sourceModel:GetDescendants()
+    descendants[#descendants + 1] = sourceModel
+    return descendants
+end)
+if not nodesOk or type(nodes) ~= "table" then return nil end
+local snapshot = {}
+local toggleOk = true
+for _, instance in ipairs(nodes) do
+    local readOk, oldArchivable = pcall(function() return instance.Archivable end)
+    if not readOk then
+        toggleOk = false
+        break
+    end
+    snapshot[#snapshot + 1] = { instance, oldArchivable }
+    if oldArchivable ~= true then
+        local setOk, actual = pcall(function()
+            instance.Archivable = true
+            return instance.Archivable
+        end)
+        if not setOk or actual ~= true then
+            toggleOk = false
+            break
+        end
+    end
+end
+local sourceSignatureOk, sourceSignature = false, nil
+if toggleOk then
+    sourceSignatureOk, sourceSignature = pcall(cloneTreeSignature, sourceModel)
+    if not sourceSignatureOk then toggleOk = false end
+end
+local cloneOk, clone = false, nil
+if toggleOk then
+    cloneOk, clone = pcall(function() return sourceModel:Clone() end)
+end
+local restoreOk = true
+for i = #snapshot, 1, -1 do
+    local entry = snapshot[i]
+    local restore, actual = pcall(function()
+        entry[1].Archivable = entry[2]
+        return entry[1].Archivable
+    end)
+    if not restore or actual ~= entry[2] then restoreOk = false end
+end
+local cloneSignatureOk, cloneSignature = false, nil
+if cloneOk and clone ~= nil then
+    cloneSignatureOk, cloneSignature = pcall(cloneTreeSignature, clone)
+end
+if not cloneOk or not restoreOk or clone == nil
+    or not sourceSignatureOk or not cloneSignatureOk or cloneSignature ~= sourceSignature then
+    if clone ~= nil then pcall(function() clone:Destroy() end) end
+    return nil
+end
+return clone
+end
 local index2 = {}
 index2.__index = index2
+index2.CloneSnapshot = function(_, sourceModel)
+    return cloneCharacterSnapshot(sourceModel)
+end
 
 index2.new = function(arg, arg2)
 return setmetatable({
@@ -42371,6 +42308,9 @@ _cloneByPlayer = {},
 _stateTroveByFighter = {},
 _characterTroveByPlayer = {},
 _acquiredPlayerSet = {},
+_sourceCharacterByPlayer = {},
+_sourceModelByPlayer = {},
+_buildGenerationByPlayer = {},
 }, index2)
 end
 
@@ -42427,58 +42367,132 @@ end
 arg:_ResetPlayer(arg2.Player)
 end
 
-index2._CloneFor = function(arg, arg2, arg3)
-if arg._acquiredPlayerSet[arg2] then
+index2._CloneFor = function(arg, player, decoratedModel)
+if player == nil or decoratedModel == nil or arg._acquiredPlayerSet[player] then
 return
 end
-arg:_DestroyCloneFor(arg2)
-arg:_DestroyCharTrove(arg2)
-local FinisherCloneCache = v115.new("cosmetics.FinisherCloneCache")
-arg._characterTroveByPlayer[arg2] = FinisherCloneCache
+local sourceCharacter = player.Character
+if sourceCharacter == nil then
+return
+end
+local generation = (tonumber(arg._buildGenerationByPlayer[player]) or 0) + 1
+arg._buildGenerationByPlayer[player] = generation
+arg:_DestroyCloneFor(player)
+arg:_DestroyCharTrove(player)
+arg._sourceCharacterByPlayer[player] = sourceCharacter
+arg._sourceModelByPlayer[player] = decoratedModel
+local buildTrove = v115.new("cosmetics.FinisherCloneCache")
+arg._characterTroveByPlayer[player] = buildTrove
 
-local v119 = v117(arg3, 10):andThen(function()
-arg:_BuildClone(arg2, arg3)
+local promise = v117(decoratedModel, 10):andThen(function()
+if arg._buildGenerationByPlayer[player] ~= generation
+    or arg._sourceCharacterByPlayer[player] ~= sourceCharacter
+    or arg._sourceModelByPlayer[player] ~= decoratedModel
+    or arg._characterTroveByPlayer[player] ~= buildTrove
+    or player.Character ~= sourceCharacter then
+    return
+end
+local sourceOk, sourceValid = pcall(function()
+    return decoratedModel:IsA("Model") and decoratedModel.Parent ~= nil
+end)
+if not sourceOk or not sourceValid then
+    return
+end
+arg:_BuildClone(player, decoratedModel, generation, sourceCharacter)
 end):catch(function()
 end)
 
-FinisherCloneCache:AddPromise(v119)
+buildTrove:AddPromise(promise)
 end
 
-index2._BuildClone = function(arg, arg2, arg3)
-local v119 = v116(arg3)
-if v119 == nil then
-return
+index2._BuildClone = function(arg, player, decoratedModel, generation, sourceCharacter)
+if arg._buildGenerationByPlayer[player] ~= generation
+    or arg._sourceCharacterByPlayer[player] ~= sourceCharacter
+    or arg._sourceModelByPlayer[player] ~= decoratedModel
+    or player.Character ~= sourceCharacter then
+    return
+end
+local clone = cloneCharacterSnapshot(decoratedModel)
+if clone == nil then
+    return
+end
+local function discardClone()
+    pcall(function() clone:Destroy() end)
+end
+local validOk, humanoid, root = pcall(function()
+    if not clone:IsA("Model") or clone.Parent ~= nil then
+        return nil, nil
+    end
+    return clone:FindFirstChildOfClass("Humanoid"), clone:FindFirstChild("HumanoidRootPart")
+end)
+if not validOk or humanoid == nil or root == nil or not root:IsA("BasePart") then
+    discardClone()
+    return
+end
+local healthOk = pcall(function()
+    local maxHealth = humanoid.MaxHealth
+    if type(maxHealth) ~= "number" or maxHealth ~= maxHealth or maxHealth <= 0
+        or maxHealth == math.huge then
+        maxHealth = 100
+        humanoid.MaxHealth = maxHealth
+    end
+    local health = humanoid.Health
+    if type(health) ~= "number" or health ~= health or health == math.huge
+        or health == -math.huge or health <= 0 then
+        humanoid.Health = maxHealth
+    end
+end)
+if not healthOk then
+    discardClone()
+    return
 end
 
-for _, v120 in v119:GetDescendants() do
-if tbl18[v120.ClassName] then
-v120:Destroy()
-elseif v120:IsA("BasePart") then
-v120.Anchored = false
-
-if v120.Transparency < 1 then
-v120.Transparency = v86[186]
+for _, descendant in clone:GetDescendants() do
+if tbl18[descendant.ClassName] then
+pcall(function() descendant:Destroy() end)
+elseif descendant:IsA("BasePart") then
+pcall(function()
+    descendant.Anchored = false
+    if descendant.Transparency < 1 then
+        descendant.Transparency = v86[186]
+    end
+end)
+elseif descendant:IsA("ParticleEmitter") then
+pcall(function()
+    descendant:Clear()
+    descendant:Destroy()
+end)
 end
-elseif v120:IsA("ParticleEmitter") then
-v120:Clear()
-v120:Destroy()
-end
-end
-
-for _, v120 in v118:GetTags(v119) do
-v118:RemoveTag(v119, v120)
-end
-
-arg._cloneByPlayer[arg2] = v119
 end
 
-index2._DestroyCloneFor = function(arg, arg2)
-local v119 = arg._cloneByPlayer[arg2]
-if v119 == nil then
-return
+for _, tag in v118:GetTags(clone) do
+pcall(v118.RemoveTag, v118, clone, tag)
 end
-arg._cloneByPlayer[arg2] = nil
-v119:Destroy()
+if arg._buildGenerationByPlayer[player] ~= generation
+    or arg._sourceCharacterByPlayer[player] ~= sourceCharacter
+    or player.Character ~= sourceCharacter then
+    discardClone()
+    return
+end
+arg._cloneByPlayer[player] = clone
+arg._cloneSourceCharacterByPlayer = arg._cloneSourceCharacterByPlayer or {}
+arg._cloneSourceCharacterByPlayer[player] = sourceCharacter
+arg._cloneSourceModelByPlayer = arg._cloneSourceModelByPlayer or {}
+arg._cloneSourceModelByPlayer[player] = decoratedModel
+end
+
+index2._DestroyCloneFor = function(arg, player)
+local clone = arg._cloneByPlayer[player]
+arg._cloneByPlayer[player] = nil
+if type(arg._cloneSourceCharacterByPlayer) == "table" then
+    arg._cloneSourceCharacterByPlayer[player] = nil
+end
+if type(arg._cloneSourceModelByPlayer) == "table" then
+    arg._cloneSourceModelByPlayer[player] = nil
+end
+if clone ~= nil then
+    pcall(function() clone:Destroy() end)
+end
 end
 
 index2._DestroyCharTrove = function(arg, arg2)
@@ -42490,21 +42504,44 @@ arg._characterTroveByPlayer[arg2] = nil
 v119:Destroy()
 end
 
-index2._ResetPlayer = function(arg, arg2)
-arg:_DestroyCloneFor(arg2)
-arg:_DestroyCharTrove(arg2)
-arg._acquiredPlayerSet[arg2] = nil
+index2._ResetPlayer = function(arg, player)
+arg._buildGenerationByPlayer[player] = (tonumber(arg._buildGenerationByPlayer[player]) or 0) + 1
+arg:_DestroyCloneFor(player)
+arg:_DestroyCharTrove(player)
+arg._sourceCharacterByPlayer[player] = nil
+arg._sourceModelByPlayer[player] = nil
+arg._acquiredPlayerSet[player] = nil
 end
 
-index2.AcquireClone = function(arg, arg2)
-local v119 = arg._cloneByPlayer[arg2]
-if v119 == nil then
+index2.AcquireClone = function(arg, player, expectedCharacter)
+local clone = arg._cloneByPlayer[player]
+if clone == nil then
 return nil
 end
-arg._cloneByPlayer[arg2] = nil
-arg:_DestroyCharTrove(arg2)
-arg._acquiredPlayerSet[arg2] = true
-return v119
+local sourceCharacter = arg._cloneSourceCharacterByPlayer and arg._cloneSourceCharacterByPlayer[player]
+local sourceModel = arg._cloneSourceModelByPlayer and arg._cloneSourceModelByPlayer[player]
+local sourceModelOk, sourceModelAlive = pcall(function()
+    return sourceModel ~= nil and sourceModel:IsA("Model") and sourceModel.Parent ~= nil
+end)
+local valid = sourceCharacter ~= nil and sourceCharacter == player.Character
+    and (expectedCharacter == nil or expectedCharacter == sourceCharacter)
+    and sourceModelOk and sourceModelAlive == true
+local cloneCheckOk, cloneValid = pcall(function()
+    return clone:IsA("Model") and clone.Parent == nil
+end)
+if not valid or not cloneCheckOk or cloneValid ~= true then
+    arg:_DestroyCloneFor(player)
+    arg:_DestroyCharTrove(player)
+    return nil
+end
+arg._cloneByPlayer[player] = nil
+arg._cloneSourceCharacterByPlayer[player] = nil
+arg._cloneSourceModelByPlayer[player] = nil
+arg._sourceCharacterByPlayer[player] = nil
+arg._sourceModelByPlayer[player] = nil
+arg:_DestroyCharTrove(player)
+arg._acquiredPlayerSet[player] = true
+return clone
 end
 
 index2.Destroy = function(arg)
@@ -42540,7 +42577,6 @@ local finishers = tbl17.aS().Finishers
 local v116 = tbl17.dV()
 tbl17.et()
 tbl17.eb()
-local v117 = tbl17.dE()
 local v118 = cloneref(game:GetService("Players"))
 local noneCosmetic = v116.NoneCosmetic
 local v119 = clientEntity
@@ -42568,60 +42604,91 @@ end
 end
 end
 
-local function fn38(arg, arg2, arg3, arg4, arg5, arg6, arg7)
-local humanoid = arg:FindFirstChildOfClass("Humanoid")
-if humanoid == nil then
-arg:Destroy()
-return
+local function fn38(clone, originalModel, finisherModule, arg4, arg5, serial, clientEntity)
+local setupOk = pcall(function()
+if clone == nil or originalModel == nil or finisherModule == nil
+    or not clone:IsA("Model") or not originalModel:IsA("Model") then
+    error("invalid finisher character model")
 end
-local humanoidRootPart = arg:FindFirstChild("HumanoidRootPart")
-if humanoidRootPart == nil then
-arg:Destroy()
-return
+local humanoid = clone:FindFirstChildOfClass("Humanoid")
+local root = clone:FindFirstChild("HumanoidRootPart")
+if humanoid == nil or root == nil or not root:IsA("BasePart") then
+    error("finisher clone is missing Humanoid or HumanoidRootPart")
 end
-humanoidRootPart.AssemblyLinearVelocity = Vector3.zero
-humanoid.Health = 0
-local tbl18 = {}
+local maxHealth = humanoid.MaxHealth
+if type(maxHealth) ~= "number" or maxHealth ~= maxHealth or maxHealth <= 0
+    or maxHealth == math.huge then
+    maxHealth = 100
+    humanoid.MaxHealth = maxHealth
+end
+-- The finisher target is an animated character copy, not a corpse. Preserve a
+-- positive copied health value; revive only if the source appearance was already dead.
+local copiedHealth = humanoid.Health
+if type(copiedHealth) ~= "number" or copiedHealth ~= copiedHealth
+    or copiedHealth == math.huge or copiedHealth == -math.huge or copiedHealth <= 0 then
+    humanoid.Health = maxHealth
+end
+root.AssemblyLinearVelocity = Vector3.zero
+root.AssemblyAngularVelocity = Vector3.zero
+local bodyParts = {}
+for _, child in clone:GetChildren() do
+    if child:IsA("BasePart") then
+        pcall(function() child.CollisionGroup = "Players" end)
+        bodyParts[#bodyParts + 1] = child
+    end
+end
+for i = 1, #bodyParts do
+    for j = i + 1, #bodyParts do
+        local constraint = Instance.new("NoCollisionConstraint")
+        constraint.Part0 = bodyParts[i]
+        constraint.Part1 = bodyParts[j]
+        constraint.Parent = bodyParts[i]
+    end
+end
+clone:PivotTo(originalModel:GetPivot())
+clone.Parent = originalModel.Parent
 
-for _, v120 in arg:GetChildren() do
-if v120:IsA("BasePart") then
-v120.CollisionGroup = "Players"
-table.insert(tbl18, v120)
+local previousIdentity = nil
+local identityRead = pcall(function() previousIdentity = getthreadidentity() end)
+if not identityRead or previousIdentity == nil then
+    error("could not read previous finisher thread identity")
 end
-end
-
-for k, v120 in tbl18, nil, nil do
-for i = k + 1, #tbl18 do
-local noCollisionConstraint = Instance.new("NoCollisionConstraint")
-noCollisionConstraint.Part0 = v120
-noCollisionConstraint.Part1 = tbl18[i]
-noCollisionConstraint.Parent = v120
-end
-end
-
-arg:PivotTo(arg2:GetPivot())
-arg.Parent = arg2.Parent
-local v120 = getthreadidentity()
-setthreadidentity(v86[56])
-local v121 = v102(arg7, "_current_finisher")
-
-if v121 ~= nil then
-coroutine.wrap(v121.Destroy)(v121)
-end
-
-local v122 = coroutine.wrap(v102(arg3, "new"))(humanoid, arg4, arg5)
-v103(arg7, "_current_finisher", v122)
-v122:SetSerial(arg6)
-
-arg2.Destroying:Once(function()
-if arg.Parent ~= nil then
-arg:Destroy()
-end
+local identitySetOk = pcall(setthreadidentity, v86[56])
+local createdFinisher = nil
+local createOk, finisher = pcall(function()
+    if not identitySetOk then error("could not set finisher thread identity") end
+    local current = v102(clientEntity, "_current_finisher")
+    if current ~= nil then
+        pcall(function() current:Destroy() end)
+    end
+    local create = v102(finisherModule, "new")
+    if type(create) ~= "function" then error("finisher module constructor missing") end
+    createdFinisher = create(humanoid, arg4, arg5)
+    if createdFinisher == nil then error("finisher constructor returned nil") end
+    createdFinisher:SetSerial(serial)
+    return createdFinisher
 end)
-
-task.spawn(v107, v122.PlayServer, v122)
-task.spawn(v107, v122.PlayClient, v122)
-setthreadidentity(v120)
+pcall(setthreadidentity, previousIdentity)
+if not createOk then
+    if createdFinisher ~= nil then
+        pcall(function() createdFinisher:Destroy() end)
+    end
+    error(finisher)
+end
+v103(clientEntity, "_current_finisher", finisher)
+originalModel.Destroying:Once(function()
+    if clone.Parent ~= nil then
+        pcall(function() clone:Destroy() end)
+    end
+end)
+task.spawn(v107, finisher.PlayServer, finisher)
+task.spawn(v107, finisher.PlayClient, finisher)
+end)
+if not setupOk then
+    pcall(function() clone:Destroy() end)
+    return false
+end
+return true
 end
 
 local index2 = {}
@@ -42676,16 +42743,31 @@ if v123 == nil then
 return fn39()
 end
 local model = v102(arg2, "Model")
+if model == nil or not model:IsA("Model") then
+return fn39()
+end
+local previousIdentity = nil
+local identityRead = pcall(function() previousIdentity = getthreadidentity() end)
+if not identityRead or previousIdentity == nil then
+return fn39()
+end
+local requireOk, module = pcall(function()
+    local identitySetOk = pcall(setthreadidentity, 2)
+    if not identitySetOk then error("could not set finisher require identity") end
+    return require(v123)
+end)
+pcall(setthreadidentity, previousIdentity)
+if not requireOk or type(module) ~= "table" or type(v102(module, "new")) ~= "function" then
+return fn39()
+end
 local v124 = arg:_AcquireClone(model)
 if v124 == nil then
 return fn39()
 end
-local v125 = getthreadidentity()
-setthreadidentity(2)
-local module = require(v123)
-setthreadidentity(v125)
-fn37(model)
-fn38(v124, model, module, arg4, arg5, arg6, arg2)
+if not fn38(v124, model, module, arg4, arg5, arg6, arg2) then
+return fn39()
+end
+pcall(fn37, model)
 return nil
 end)
 
@@ -42693,12 +42775,27 @@ arg._restore = { Func = replicateFromServer, TargetConstant = v120 }
 return v115.VoidOk
 end
 
-index2._AcquireClone = function(arg, arg2)
-local playerFromCharacter = v118:GetPlayerFromCharacter(arg2)
-if playerFromCharacter ~= nil then
-return arg._finisherCloneCache:AcquireClone(playerFromCharacter)
+index2._AcquireClone = function(arg, model)
+if model == nil or not model:IsA("Model") then
+    return nil
 end
-return v117(arg2)
+local cache = arg._finisherCloneCache
+local player = v118:GetPlayerFromCharacter(model)
+if player ~= nil then
+    local cacheOk, cachedClone = pcall(function()
+        return cache:AcquireClone(player, model)
+    end)
+    if cacheOk and cachedClone ~= nil then
+        return cachedClone
+    end
+end
+-- If the asynchronous appearance cache is late/stale, clone the exact model
+-- the finisher is about to replace using the same full-descendant snapshot path.
+local cloneOk, clone = pcall(function()
+    return cache:CloneSnapshot(model)
+end)
+if cloneOk then return clone end
+return nil
 end
 
 index2._Restore = function(arg)
@@ -42873,6 +42970,9 @@ if v123 == nil or v124 == nil then
 return v115.err("ViewModelHook", "upvalue_scan", "ClientItem prototype not found - CreateSpectatorSound marker missing")
 end
 local v125 = v123[v124]
+if type(v125) ~= "table" then
+return v115.err("ViewModelHook", "prototype_type", "ClientItem prototype is not a table")
+end
 
 v123[v124] = {
 __index = function(_, key) return v125[key] end,
@@ -42883,28 +42983,123 @@ return
 end
 v103(arg2, "Info", arg4)
 setmetatable(arg2, v125)
-local v126 = debug.getstack(2, v86[63])
-
-if type(v126) ~= "table" then
-v126 = debug.getstack(v86[56], 2)
+local function cosmeticDebugDescribe(value)
+    local valueType = type(value)
+    local ok, rendered = pcall(tostring, value)
+    if not ok then rendered = "<tostring failed>" end
+    if #rendered > 180 then rendered = string.sub(rendered, 1, 180) .. "..." end
+    return valueType .. "=" .. rendered
 end
 
-local viewModel = v102(v126[1], "ViewModel")
-local player = v102(v102(arg2, "ClientFighter"), "Player")
+local viewModel = nil
+local viewModelSource = nil
+local diagnostic = {
+    "[Crefy Cosmetic ViewModelHook DEBUG v2]",
+    "The previous stack lookup selected a numeric local instead of the ViewModel owner.",
+    "arg2: " .. cosmeticDebugDescribe(arg2),
+    "arg2.Name: " .. cosmeticDebugDescribe(v102(arg2, "Name")),
+    "arg2.ClientFighter: " .. cosmeticDebugDescribe(v102(arg2, "ClientFighter")),
+}
+
+local function describeTableKeys(value)
+    local keys = {}
+    local count = 0
+    for key, item in next, value do
+        count += 1
+        if #keys < 24 then
+            keys[#keys + 1] = tostring(key) .. "(" .. type(item) .. ")"
+        else
+            break
+        end
+    end
+    return "keys=" .. table.concat(keys, ", ") .. (count > #keys and ", ..." or "")
+end
+
+local encodedDataKey = v116.encode("Data")
+for level = 1, 12 do
+    for slot = 1, 12 do
+        local ok, value = pcall(debug.getstack, level, slot)
+        if ok and type(value) == "table" then
+            local directViewModel = rawget(value, "ViewModel")
+            if type(directViewModel) == "table" and type(rawget(directViewModel, encodedDataKey)) == "table" then
+                viewModel = directViewModel
+                viewModelSource = string.format("stack[%d][%d]", level, slot)
+                break
+            end
+            if #diagnostic < 40 then
+                diagnostic[#diagnostic + 1] = string.format(
+                    "stack[%d][%d]: %s; %s; ViewModel=%s",
+                    level, slot, cosmeticDebugDescribe(value), describeTableKeys(value),
+                    cosmeticDebugDescribe(directViewModel)
+                )
+            end
+            local nestedScanned = 0
+            for nestedKey, nestedValue in next, value do
+                nestedScanned += 1
+                if nestedScanned > 128 then break end
+                if type(nestedValue) == "table" then
+                    local nestedViewModel = rawget(nestedValue, "ViewModel")
+                    if type(nestedViewModel) == "table" and type(rawget(nestedViewModel, encodedDataKey)) == "table" then
+                        viewModel = nestedViewModel
+                        viewModelSource = string.format("stack[%d][%d][%s]", level, slot, tostring(nestedKey))
+                        break
+                    end
+                end
+            end
+            if viewModel ~= nil then break end
+        end
+    end
+    if viewModel ~= nil then break end
+end
+
+if viewModel == nil then
+    diagnostic[#diagnostic + 1] = "RESULT: no stack table or immediate nested table exposed a ViewModel field."
+    diagnostic[#diagnostic + 1] = "traceback: " .. debug.traceback("Cosmetic ViewModelHook stack scan", 2)
+    local report = table.concat(diagnostic, "\n")
+    warn(report)
+    if type(setclipboard) == "function" then
+        pcall(setclipboard, report)
+    elseif type(toclipboard) == "function" then
+        pcall(toclipboard, report)
+    end
+    return
+end
+
+
+local clientFighter = v102(arg2, "ClientFighter")
+if type(clientFighter) ~= "table" then return end
+local player = v102(clientFighter, "Player")
 local name = v102(arg2, "Name")
+if player == nil or type(name) ~= "string" then return end
 
 if player == localPlayer then
 arg.ViewModelCreated:Fire(name)
 end
 
-local v127 = arg._store:Get(player, name)
-local v128 = viewModel[v116.encode("Data")]
+local storeOk, v127 = pcall(function() return arg._store:Get(player, name) end)
+if not storeOk then
+warn("[Crefy Cosmetic] Store lookup failed safely: " .. tostring(v127))
+return
+end
+if v127 ~= nil and type(v127) ~= "table" then
+warn("[Crefy Cosmetic] Store returned a non-table payload; skipped this cosmetic update.")
+return
+end
+local dataKey = encodedDataKey
+local dataOk, v128 = pcall(function() return rawget(viewModel, dataKey) end)
+if not dataOk or type(v128) ~= "table" then
+warn("[Crefy Cosmetic] ViewModel Data is not ready; skipped this cosmetic update.")
+return
+end
 local flag19 = arg._rankPatchActive and player == localPlayer and (v127 == nil or v127.Charm == nil)
 local v129 = nil
 
 if flag19 then
-local _v130, v131 = v117.findCharmPayload(v128)
-v129 = v117.resolvePatchedPayload(v131, arg._rankCharm)
+local findOk, _v130, charmPayload = pcall(v117.findCharmPayload, v128)
+if findOk then
+    local resolveOk, resolvedPayload = pcall(v117.resolvePatchedPayload, charmPayload, arg._rankCharm)
+    if resolveOk then v129 = resolvedPayload end
+end
 end
 
 if v127 == nil and v129 == nil then
@@ -42922,13 +43117,18 @@ tbl18[name] = table.clone(v128)
 end
 
 if v127 ~= nil then
-v120(name, v128, v127, v116.encode, function(arg5)
+local applyOk, applyError = pcall(v120, name, v128, v127, v116.encode, function(arg5)
 return arg._rankCharm:ResolveMetadata(arg5)
 end)
+if not applyOk then
+    warn("[Crefy Cosmetic] Cosmetic payload application failed safely: " .. tostring(applyError))
+    return
+end
 end
 
 if v129 ~= nil then
-v128[v116.encode("Charm")] = v129
+local charmKey = v116.encode("Charm")
+if charmKey ~= nil then v128[charmKey] = v129 end
 end
 end,
 }
@@ -43437,7 +43637,6 @@ end
 tbl18:_ReloadEquippedSeasonCharms()
 return
 end
-
 
 end)
 
@@ -44258,7 +44457,6 @@ if not (n26 <= 4781) then
 return v115.err("EmoteEquipWheel", "prototype_lookup", "EquipEmote.__index not found")
 end
 return nil
-
 
 end
 
@@ -45184,25 +45382,34 @@ local function fn35()
 tbl17.aL()
 local tbl18 = { Skins = {}, Wraps = {}, Charms = {}, Finishers = {}, Emotes = {}, Images = {} }
 
-for k, v115 in next, v102(tbl17.aS().CosmeticLibrary, "Cosmetics"), nil do
+local cosmeticEntries = v102(tbl17.aS().CosmeticLibrary, "Cosmetics")
+if type(cosmeticEntries) ~= "table" then
+    return table.freeze(tbl18)
+end
+for k, v115 in next, cosmeticEntries do
+if type(k) ~= "string" or k == "" or type(v115) ~= "table" then
+    continue
+end
 local v116 = v102(v115, "Type")
 local image = v102(v115, "Image")
 
-if image and image ~= "" then
+if type(image) == "string" and image ~= "" then
 tbl18.Images[k] = image
 end
 
 if v116 == "Skin" then
 local itemName = v102(v115, "ItemName")
-local skins = tbl18.Skins
-local tbl19 = skins[itemName]
+if type(itemName) == "string" and itemName ~= "" then
+    local skins = tbl18.Skins
+    local tbl19 = skins[itemName]
 
-if tbl19 == nil then
-tbl19 = {}
-skins[itemName] = tbl19
+    if tbl19 == nil then
+        tbl19 = {}
+        skins[itemName] = tbl19
+    end
+
+    table.insert(tbl19, k)
 end
-
-table.insert(tbl19, k)
 elseif v116 == "Charm" then
 table.insert(tbl18.Charms, k)
 elseif v116 == "Wrap" then
@@ -45246,7 +45453,10 @@ local tbl18 = {}
 local tbl19 = {}
 
 local function fn36(arg)
+if type(arg) ~= "string" or arg == "" then return end
 local v118 = v116.str(arg)
+if type(v118) ~= "number" or v118 ~= v118
+    or v118 == math.huge or v118 == -math.huge then return end
 tbl18[v118] = arg
 tbl19[arg] = v118
 end
@@ -46163,7 +46373,6 @@ end)
 return tbl18
 end
 return nil
-
 
 end
 
@@ -56257,7 +56466,9 @@ if not restored then
         arg._nextSourceReferenceRestoreWarningAt = warningNow + 5
         warn("[PartGlue] PhysicsRepRootRef restore pending: " .. tostring(restoreError))
     end
+    return false, restoreError
 end
+return true
 end
 
 index2._SetupGlue = function(arg, arg2, arg3)
@@ -65031,7 +65242,6 @@ return false
 end
 return nil
 
-
 end)
 
 fn51(v141, v140, function()
@@ -69553,10 +69763,19 @@ local v115 = tbl17.bG()
 tbl17.cF()
 tbl17.bM()
 
+local Players = game:GetService("Players")
+
 local function fn36(arg, player)
-if arg == nil or not arg.IsEnemy then
+if arg == nil or arg.IsEnemy ~= true then
 return false
 end
+local okPlayer, currentPlayerCharacter = pcall(function()
+if typeof(player) ~= "Instance" or not player:IsA("Player") or player.Parent ~= Players then
+return nil
+end
+return player.Character
+end)
+if not okPlayer or currentPlayerCharacter == nil then return false end
 local okInvincible, isInvincible = pcall(function() return arg:IsInvincible() end)
 if not okInvincible or isInvincible then
 return false
@@ -69581,12 +69800,9 @@ end
 if not rootPart:IsDescendantOf(workspace) or not hitboxHead:IsDescendantOf(workspace) then
 return false
 end
-if player ~= nil then
 local currentCharacter = player.Character
-if currentCharacter == nil then return false end
+if currentCharacter == nil or currentCharacter ~= currentPlayerCharacter then return false end
 return rootPart:IsDescendantOf(currentCharacter) and hitboxHead:IsDescendantOf(currentCharacter)
-end
-return rootPart.Parent ~= nil and hitboxHead.Parent ~= nil
 end)
 if not okPartState or not partsValid then
 return false
@@ -69602,12 +69818,12 @@ end
 return true
 end
 
-local function fn37(arg)
+local function fn37(arg, player)
 local ok, target = pcall(function()
 local character = arg and arg.Character or nil
 local state = character and character.State or nil
 if state == nil or state.Alive ~= true then return nil end
-return { FighterState = arg, AliveState = state }
+return { FighterState = arg, AliveState = state, Player = player }
 end)
 return ok and target or nil
 end
@@ -69620,7 +69836,25 @@ return setmetatable({ _fighters = arg, _playerTags = arg2 }, index2)
 end
 
 index2.GetTarget = function(arg)
-local prioritizeHackers = v115.Data.Ragebot.PrioritizeHackers == true
+local prioritizeHackers = false
+pcall(function()
+local data = type(v115) == "table" and v115.Data or nil
+local ragebot = type(data) == "table" and data.Ragebot or nil
+prioritizeHackers = type(ragebot) == "table" and ragebot.PrioritizeHackers == true
+end)
+local fighters = type(arg._fighters) == "table" and arg._fighters or nil
+local enemyByPlayer = type(fighters) == "table" and fighters.EnemyByPlayer or nil
+local stateByPlayer = type(fighters) == "table" and fighters.StateByPlayer or nil
+if type(enemyByPlayer) ~= "table" then
+arg._lockedFighter = nil
+arg._lockedPlayer = nil
+arg._lockedTargetAt = nil
+arg._lockedUnavailableSince = nil
+arg._lockedEnemyMismatchSince = nil
+arg._lockedUnattackableSince = nil
+arg._lockedReadFailureSince = nil
+return nil
+end
 local Players = game:GetService("Players")
 local localPosition = nil
 local okLocalPosition, localPositionValue = pcall(function()
@@ -69637,7 +69871,12 @@ if okLocalPosition and typeof(localPositionValue) == "Vector3" then
 end
 
 local function isHacker(player)
-    local okTag, tagged = pcall(arg._playerTags.Has, arg._playerTags, player, "Hacker")
+    local tags = arg._playerTags
+    local methodOk, hasTag = pcall(function()
+        return tags ~= nil and tags.Has or nil
+    end)
+    if not methodOk or type(hasTag) ~= "function" then return false end
+    local okTag, tagged = pcall(hasTag, tags, player, "Hacker")
     return okTag and tagged == true
 end
 
@@ -69711,7 +69950,7 @@ local function rememberTarget(fighter, player)
     arg._lockedPlayer = player
     arg._lockedTargetAt = os.clock()
     resetLockedTargetTimers()
-    return fn37(fighter)
+    return fn37(fighter, player)
 end
 
 
@@ -69762,7 +70001,7 @@ if lockedFighter ~= nil and lockedPlayer ~= nil then
         end
         arg._lockedUnattackableSince = nil
 
-        local target = fn37(lockedFighter)
+        local target = fn37(lockedFighter, lockedPlayer)
         if target == nil then
             return lockTimeoutStatus("_lockedUnavailableSince", LOCKED_TARGET_UNAVAILABLE_TIMEOUT)
         end
@@ -69802,8 +70041,10 @@ if prioritizeHackers then
     if okPlayers and type(hackerPlayers) == "table" then
         local bestHacker, bestHackerDistance, bestHackerPlayer = nil, math.huge, nil
         for _, player in hackerPlayers do
-            local fighter = arg._fighters.StateByPlayer[player]
-            if fighter ~= nil and fn36(fighter, player) then
+            local fighterOk, fighter = pcall(function()
+                return type(stateByPlayer) == "table" and stateByPlayer[player] or nil
+            end)
+            if fighterOk and fighter ~= nil and fn36(fighter, player) then
                 local distance = distanceTo(fighter)
                 if distance ~= nil and distance < bestHackerDistance then
                     bestHacker, bestHackerDistance, bestHackerPlayer = fighter, distance, player
@@ -69817,7 +70058,7 @@ if prioritizeHackers then
 end
 
 local bestTarget, bestTargetDistance, bestTargetPlayer = nil, math.huge, nil
-for player, fighter in arg._fighters.EnemyByPlayer, nil, nil do
+for player, fighter in enemyByPlayer, nil, nil do
     if (not prioritizeHackers or not isHacker(player)) and fighter ~= nil and fn36(fighter, player) then
         local distance = distanceTo(fighter)
         if distance ~= nil and distance < bestTargetDistance then
@@ -69843,17 +70084,21 @@ arg._lockedReadFailureSince = nil
 end
 
 index2.HasTargets = function(arg)
-for player, v116 in arg._fighters.EnemyByPlayer, nil, nil do
-if fn36(v116, player) then
+local fighters = type(arg._fighters) == "table" and arg._fighters or nil
+local enemyByPlayer = type(fighters) == "table" and fighters.EnemyByPlayer or nil
+if type(enemyByPlayer) ~= "table" then return v86[153] end
+for player, fighter in pairs(enemyByPlayer) do
+if fn36(fighter, player) then
 return true
 end
 end
-
 return v86[153]
 end
 
-index2.IsSameTarget = function(arg, arg2)
-return arg.FighterState == arg2.FighterState and arg.AliveState == arg2.AliveState
+index2.IsSameTarget = function(arg, other)
+if type(arg) ~= "table" or type(other) ~= "table" then return false end
+return arg.FighterState ~= nil and arg.FighterState == other.FighterState
+    and arg.AliveState ~= nil and arg.AliveState == other.AliveState
 end
 
 return index2
@@ -70681,13 +70926,16 @@ end
 
 index2.ClearTeleport = function(arg)
 local gluedPart = arg._gluedPart
-arg._gluedPart = nil
-if gluedPart == nil then return end
+if gluedPart == nil then return true end
 local partGlue = arg._partGlue
 local free = type(partGlue) == "table" and partGlue.Free or nil
-if type(free) == "function" then
-pcall(free, partGlue, gluedPart)
+if type(free) ~= "function" then return false end
+local freeOk, freeResult = pcall(free, partGlue, gluedPart)
+if freeOk and freeResult == true then
+    arg._gluedPart = nil
+    return true
 end
+return false
 end
 
 index2.ResetState = function(arg)
@@ -70867,7 +71115,19 @@ if meleeDesyncRecentlyDetected then
         local previousSource = arg._gluedOurPart
         local partGlue = arg._partGlue
         if previousSource ~= nil and type(partGlue) == "table" and type(partGlue.Free) == "function" then
-            pcall(partGlue.Free, partGlue, previousSource)
+            local freeOk, freeResult = pcall(partGlue.Free, partGlue, previousSource)
+            if not freeOk or freeResult ~= true then
+                -- Do not discard the only source-part reference while its
+                -- PhysicsRepRootRef rollback is still pending. Acquire also
+                -- refuses a new glue until that snapshot has been restored.
+                local safeCFrame = nil
+                pcall(function()
+                    if gluedOurPart ~= nil and gluedOurPart:IsA("BasePart") then
+                        safeCFrame = gluedOurPart.CFrame
+                    end
+                end)
+                return safeCFrame, nil, nil, false, nil
+            end
         end
         arg._gluedOurPart = nil
         if type(track) == "table" then track.lastMeleeGlueRefreshAt = nowForGlue end
@@ -71223,10 +71483,13 @@ arg._knifePrimePitch = nil
 arg._knifePrimeYaw = nil
 arg._shootLock:Reset()
 local gluedOurPart = arg._gluedOurPart
-
 if gluedOurPart ~= nil then
-arg._partGlue:Free(gluedOurPart)
-arg._gluedOurPart = nil
+    local partGlue = arg._partGlue
+    local free = type(partGlue) == "table" and partGlue.Free or nil
+    if type(free) == "function" then
+        local freeOk, freeResult = pcall(free, partGlue, gluedOurPart)
+        if freeOk and freeResult == true then arg._gluedOurPart = nil end
+    end
 end
 end
 
@@ -72178,7 +72441,7 @@ ammoValue = readAmmo
 end
 if v118.__type == "Gun" and ammoBased and ammoValue == 0 then
 local okReserve, reserve = pcall(v118.GetAmmoReserve, v118)
-if not okReserve or type(reserve) ~= "number" or reserve ~= reserve or reserve == -math.huge or reserve < 0 then
+if not okReserve or type(reserve) ~= "number" or reserve ~= reserve or reserve == math.huge or reserve == -math.huge or reserve < 0 then
 continue
 end
 if reserve > 0 then
@@ -73135,7 +73398,7 @@ else
     ragebotPublishControlState(false)
     table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
     table.clear(RAGEBOT_FAKE_POSITION_TRACKS)
-    table.clear(RAGEBOT_PURE_TP_TRACKS)
+
     table.clear(RAGEBOT_KNIFE_COOLDOWN_TRACKS)
     if not keepRestoreTransaction then
         arg._repRootCounterTarget = nil
@@ -73753,7 +74016,8 @@ if repRootDetectorEnabled and okAction
                 and (confirmedKnifePrediction or confirmedKnifeApproach)
             if knifeCounterResponse then
                 arg._repRootCounterTarget = detectedTarget
-                arg._repRootCounterKind = "knife-cooldown-predict"
+                arg._repRootCounterKind = detectedKind
+                -- Preserve whether the response came from cooldown prediction or close approach.
                 -- [NEW] Dynamic counter window:
                 -- Nếu có cooldown estimate cho target này, extend window để cover cả lần attack kế.
                 -- Ví dụ: hooker cooldown 1.25s → window = max(0.75, 1.25 + 0.35) = 1.60s
@@ -73817,12 +74081,12 @@ if repRootDetectorEnabled and okAction
                 repRootCounterTarget = detectedTarget
                 if nowForRepRoot >= (arg._nextRepRootCounterNoticeAt or 0) then
                     arg._nextRepRootCounterNoticeAt = nowForRepRoot + 5
-                    if detectedKind == "pure-tp" then
-                        warn("[Ragebot] Pure TP detected; evasion paused and Ragebot is focusing the detected attacker.")
-                    elseif detectedKind == "rep-root-contact" then
+                    if detectedKind == "rep-root-contact" then
                         warn("[Ragebot] Observable RepRoot/PartGlue signature detected; evasion paused and Ragebot is focusing the detected attacker.")
                     elseif detectedKind == "fake-position-memory" then
                         warn("[Ragebot] Recently observed FakePosition threat resumed/changed state; consuming one bounded response window.")
+                    elseif detectedKind == "knife-approach" then
+                        warn("[Ragebot] Knife approach signature detected; opening a bounded counter response window.")
                     elseif detectedKind == "knife-cooldown-predict" then
                         local _, cdEst, timeUntil = ragebotKnifePredictImminent(
                             (detectedTarget.AliveState and detectedTarget.AliveState.RootPart) or nil,
@@ -74069,8 +74333,7 @@ if arg._repRootCounterRestorePending == true then
                 ragebotResolveRepRootTarget, arg, targetToResume
             )
             local resumedKind = arg._repRootCounterKind
-            local resumedHasConfirmedSignature = resumedKind == "pure-tp"
-                or resumedKind == "rep-root-contact"
+            local resumedHasConfirmedSignature = resumedKind == "rep-root-contact"
                 or resumedKind == "knife-cooldown-predict"
                 or resumedKind == "knife-approach"
             local resumedKnifeState = ragebotTargetKnifeState(targetToResume)
@@ -74247,7 +74510,7 @@ local candidateModel = nil
 local targetWorldPosition = nil
 if target ~= nil and target.AliveState ~= nil then
 local candidateFighter = target.FighterState
-local candidatePlayer = candidateFighter ~= nil and candidateFighter.Player or nil
+local candidatePlayer = target.Player or (candidateFighter ~= nil and candidateFighter.Player or nil)
 local candidateRoot = target.AliveState.RootPart
 local candidateHitbox = target.AliveState.HitboxHead
 local okParts, validatedModel, validatedPosition = pcall(function()
@@ -74533,7 +74796,7 @@ local function ragebotUsesExternalRiotCamera(item, target, owner)
     end
     local aliveState = target.AliveState
     local fighter = target.FighterState
-    local player = fighter ~= nil and fighter.Player or nil
+    local player = target.Player or (fighter ~= nil and fighter.Player or nil)
     local targetModel = player ~= nil and player.Character or (aliveState ~= nil and aliveState.Model or nil)
     local targetRoot = aliveState ~= nil and aliveState.RootPart or nil
     local localRoot = nil
@@ -74615,7 +74878,7 @@ local function ragebotPrimeExternalRiotCamera(owner, target)
     local shared = ragebotStateGet("__SilentCamTargetRotationExactReplication_v1")
     local aliveState = target ~= nil and target.AliveState or nil
     local fighter = target ~= nil and target.FighterState or nil
-    local player = fighter ~= nil and fighter.Player or nil
+    local player = target.Player or (fighter ~= nil and fighter.Player or nil)
     local model = player ~= nil and player.Character or (aliveState ~= nil and aliveState.Model or nil)
     local targetKey = aliveState ~= nil and aliveState.HitboxHead or nil
     local now = os.clock()
@@ -74836,7 +75099,7 @@ local counterTargetMatches = type(counterTarget) == "table" and type(arg4) == "t
     and (counterTarget == arg4 or (counterTarget.FighterState ~= nil
         and counterTarget.FighterState == arg4.FighterState))
 local stationaryCounterResponse = arg._enabled == true and os.clock() < counterUntil
-    and (counterKind == "pure-tp" or counterKind == "rep-root-contact"
+    and (counterKind == "rep-root-contact"
         or counterKind == "knife-cooldown-predict" or counterKind == "knife-approach")
     and counterTargetMatches
 local actionItem = arg3 ~= nil and arg3.Item or nil
@@ -75607,10 +75870,10 @@ elseif itemBehaviors ~= nil then
 end
 
 -- Void Spam uses +4 studs on its own. When Underground is integrated,
--- Underground wins: the effective baseline is -3.8 studs for this combined mode.
--- Melee already receives -3.8 from ApplyToRagebotCFrame, so do not double it.
+-- Underground wins: the effective baseline is -4 studs for this combined mode.
+-- Melee already receives -4 from ApplyToRagebotCFrame, so do not double it.
 local RAGEBOT_VOID_SPAM_Y_OFFSET = 4
-local RAGEBOT_UNDERGROUND_Y_OFFSET = -3.8
+local RAGEBOT_UNDERGROUND_Y_OFFSET = -4
 if voidSpamEnabledForRoll and (weaponKind == "Gun" or weaponKind == "Melee") then
     if undergroundIntegrated then
         voidSpamBaseCFrame = cframe + Vector3.new(0, RAGEBOT_UNDERGROUND_Y_OFFSET, 0)
@@ -75838,7 +76101,7 @@ if voidSpamConfigured and type(voidSpamState) == "table" and not voidSpamSuppres
         if panicZ ~= panicZ or panicZ == math.huge or panicZ == -math.huge then panicZ = 0 end
 
         -- Underground has precedence over Void Spam's vertical Hide offset.
-        -- Its existing -3.8-stud baseline stays intact; Hide only randomizes X/Z.
+        -- Its existing -4-stud baseline stays intact; Hide only randomizes X/Z.
         cframe = cframe + Vector3.new(panicX, hideYOffset, panicZ)
         voidSpamState.fakePositionActive = true
     else
@@ -76103,7 +76366,7 @@ end
 -- Clear them on every reset/disable/context removal so re-enable starts clean.
 table.clear(RAGEBOT_REP_ROOT_CONTACT_TRACKS)
 table.clear(RAGEBOT_FAKE_POSITION_TRACKS)
-table.clear(RAGEBOT_PURE_TP_TRACKS)
+
 table.clear(RAGEBOT_KNIFE_COOLDOWN_TRACKS)
 if not keepRestoreTransaction then
     arg._repRootCounterTarget = nil
@@ -79481,8 +79744,10 @@ function K.Unload()
             ragebotPoseRestoreGateSet(restoreGateOwner, false, 0, nil)
         end
     end
-    if getgenv().cfRuntime == K then getgenv().cfRuntime = nil end
-    if getgenv().KiciaRebuild == K then getgenv().KiciaRebuild = nil end
+    local env = getgenv()
+    if rawget(env, "cfRT") == K then rawset(env, "cfRT", nil) end
+    if rawget(env, "cfRuntime") == K then rawset(env, "cfRuntime", nil) end
+    if rawget(env, "KiciaRebuild") == K then rawset(env, "KiciaRebuild", nil) end
 end
 
 
@@ -79499,7 +79764,7 @@ if K.destroyed then return end
 local _lp = _players.LocalPlayer
 if not _lp then
 warn("[Crefy Premium] ABORTED: no LocalPlayer after 60s")
-markcfQueuedRerunBootState(false)
+cfMRBS(false)
 pcall(K.Unload)
 return
 end
@@ -79511,7 +79776,7 @@ _ps = _lp:FindFirstChild("PlayerScripts")
 end
 if not _ps then
 warn("[Crefy Premium] ABORTED: no PlayerScripts")
-markcfQueuedRerunBootState(false)
+cfMRBS(false)
 pcall(K.Unload)
 return
 end
@@ -79524,7 +79789,7 @@ _ctrl = _ps:FindFirstChild("Controllers")
 end
 if not _ctrl then
 warn("[Crefy Premium] ABORTED: PlayerScripts.Controllers not found. This script is built for Rivals - remove it from autoexec if you are in a different game.")
-markcfQueuedRerunBootState(false)
+cfMRBS(false)
 pcall(K.Unload)
 return
 end
@@ -79570,7 +79835,7 @@ end
 local _finalUiOk = _finalGuiCount >= 2
 if not _clientReady or not _finalSpawnedOk or not _finalUiOk then
     warn("[Crefy Premium] ABORTED: client did not reach the required character/UI ready state within 45s.")
-    markcfQueuedRerunBootState(false)
+    cfMRBS(false)
     pcall(K.Unload)
     return
 end
@@ -79578,7 +79843,7 @@ local _finalPlayerScripts = _lp:FindFirstChild("PlayerScripts")
 local _finalControllers = _finalPlayerScripts and _finalPlayerScripts:FindFirstChild("Controllers") or nil
 if _finalControllers == nil then
     warn("[Crefy Premium] ABORTED: Controllers disappeared before bootstrap.")
-    markcfQueuedRerunBootState(false)
+    cfMRBS(false)
     pcall(K.Unload)
     return
 end
@@ -79591,11 +79856,11 @@ local bootOk, bootResult = pcall(function()
 end)
 if not bootOk then
     warn("[Crefy Premium] bootstrap failed: " .. tostring(bootResult))
-    markcfQueuedRerunBootState(false)
+    cfMRBS(false)
     pcall(K.Unload)
     return
 end
-markcfQueuedRerunBootState(true)
+cfMRBS(true)
 task.spawn(function()
 task.wait(60)
 if K.destroyed then return end
