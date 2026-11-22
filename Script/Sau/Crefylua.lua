@@ -72054,53 +72054,46 @@ return nil
 end
 
 local function fn36(fighter, player, localEnvironmentId, selection)
-if fighter == nil or player == nil then return false, "invalid" end
+if fighter == nil or player == nil or type(selection) ~= "table" then
+    return false, "invalid"
+end
 
--- Keep a reason for the lock path: unreadable replicated state is transient,
--- not the same as a confirmed enemy/environment mismatch.
+-- Roster membership + the shared resolver are authoritative. Do not require
+-- transient FighterState fields (IsEnemy/IsInvincible/ItemObserver) to be fully
+-- replicated as strict Booleans when the resolver can already validate the
+-- current Player.Character, alive state, parts and explicit protection flags.
+local okPlayer, playerValid = pcall(function()
+    return typeof(player) == "Instance" and player:IsA("Player") and player.Parent == Players
+end)
+if not okPlayer then return false, "transient" end
+if not playerValid then return false, "enemy" end
+
 local okEnemy, isEnemy = pcall(function() return fighter.IsEnemy end)
 if not okEnemy then return false, "transient" end
 if isEnemy == false then return false, "enemy" end
-if isEnemy ~= true then return false, "transient" end
 
-local okInvincible, isInvincible = pcall(function()
-    return fighter:IsInvincible()
+local okTargetEnvironment, targetEnvironmentId = pcall(function()
+    return fighter.EnvironmentId
 end)
-if not okInvincible or isInvincible ~= false then
-    return false, (okInvincible and isInvincible == true) and "protected" or "transient"
-end
-
-local okObserver, itemObserver = pcall(function() return fighter.ItemObserver end)
-if not okObserver or itemObserver == nil then return false, "transient" end
-local okMelee, melee = pcall(function()
-    return itemObserver:EquippedItemAsMelee()
-end)
-if not okMelee then return false, "transient" end
-if melee ~= nil then
-    local okDeflecting, isDeflecting = pcall(function()
-        return melee:IsDeflecting()
-    end)
-    if not okDeflecting or type(isDeflecting) ~= "boolean" then
-        return false, "transient"
-    end
-    if isDeflecting then return false, "protected" end
-end
-
-local okEnvironment, targetEnvironmentId = pcall(function() return fighter.EnvironmentId end)
-if not okEnvironment then return false, "transient" end
+if not okTargetEnvironment then return false, "transient" end
 if targetEnvironmentId == nil then
     pcall(function()
         targetEnvironmentId = player:GetAttribute("EnvironmentID")
             or player:GetAttribute("EnvironmentId")
     end)
 end
--- EnvironmentId is optional during character/context replication. Reject only
--- a known mismatch; normal target selection must not depend on Reproot Detector.
 if localEnvironmentId ~= nil and targetEnvironmentId ~= nil
     and targetEnvironmentId ~= localEnvironmentId then
     return false, "environment"
 end
-if fn37(fighter, player, selection) == nil then return false, "unavailable" end
+
+-- This verifies the current EnemyByPlayer ownership and resolves a live target.
+-- nil ItemObserver / nil Invincible / unreadable optional Deflect samples are not
+-- converted into a multi-second target-lock outage; explicit protected states
+-- are still rejected by the resolver.
+if fn37(fighter, player, selection) == nil then
+    return false, "unavailable"
+end
 return true
 end
 
@@ -73248,16 +73241,18 @@ end
 
 return n, function()
 local targetStillValid = false
-local targetReadOk = pcall(function()
+local targetInvalidReason = "enemy/player/character/alive/root/hitbox mismatch"
+local targetReadOk, targetReadError = pcall(function()
     local fighterState = arg3 ~= nil and arg3.FighterState or nil
     local currentAliveState = arg3 ~= nil and arg3.AliveState or nil
     local targetPlayer = arg3 ~= nil and arg3.Player or nil
     local currentCharacter = targetPlayer ~= nil and targetPlayer.Character or nil
-    -- Bind the pending shot to the current Player.Character, not merely to
-    -- parts that happen to remain parented somewhere under Workspace.
+    -- The resolver already binds this wrapper to EnemyByPlayer. Match its
+    -- semantics: reject an explicit non-enemy, but tolerate a transient nil.
+    -- The actual Player.Character and both combat parts remain mandatory.
     targetStillValid = arg3 ~= nil
         and fighterState ~= nil
-        and fighterState.IsEnemy == true
+        and fighterState.IsEnemy ~= false
         and typeof(targetPlayer) == "Instance"
         and targetPlayer:IsA("Player")
         and targetPlayer.Parent == Players
@@ -73276,52 +73271,76 @@ local targetReadOk = pcall(function()
         and hitboxHead.Parent ~= nil and hitboxHead:IsDescendantOf(currentCharacter)
         and targetRoot ~= nil and targetRoot:IsA("BasePart")
         and targetRoot.Parent ~= nil and targetRoot:IsDescendantOf(currentCharacter)
-    if targetStillValid then
-        local currentHumanoid = currentCharacter:FindFirstChildWhichIsA("Humanoid", true)
-        if currentHumanoid ~= nil then
-            local currentHealth = currentHumanoid.Health
-            if not ragebotFiniteNumber(currentHealth) or currentHealth <= 0 then
-                targetStillValid = false
-            end
-        end
-    end
-    if targetStillValid then
-        local frameworkCharacter = fighterState.Character
-        local liveCharacterState = frameworkCharacter ~= nil and frameworkCharacter.State or nil
-        if type(liveCharacterState) == "table" then
-            if liveCharacterState.Alive == false
-                or (liveCharacterState.Model ~= nil and liveCharacterState.Model ~= currentCharacter) then
-                targetStillValid = false
-            end
-        end
-    end
-    if targetStillValid then
-        local okInvincible, isInvincible = pcall(fighterState.IsInvincible, fighterState)
-        if not okInvincible or isInvincible ~= false then
+    if not targetStillValid then return end
+
+    local currentHumanoid = currentCharacter:FindFirstChildWhichIsA("Humanoid", true)
+    if currentHumanoid ~= nil then
+        local currentHealth = currentHumanoid.Health
+        if not ragebotFiniteNumber(currentHealth) or currentHealth <= 0 then
             targetStillValid = false
+            targetInvalidReason = "humanoid-dead-or-health-unreadable"
+            return
         end
     end
-    if targetStillValid then
-        local okObserver, itemObserver = pcall(function() return fighterState.ItemObserver end)
-        if not okObserver or itemObserver == nil then
+
+    local frameworkCharacter = fighterState.Character
+    local liveCharacterState = frameworkCharacter ~= nil and frameworkCharacter.State or nil
+    if type(liveCharacterState) == "table" then
+        if liveCharacterState.Alive == false then
             targetStillValid = false
-        else
-            local okMelee, melee = pcall(itemObserver.EquippedItemAsMelee, itemObserver)
-            if not okMelee then
+            targetInvalidReason = "framework-state-dead"
+            return
+        end
+        if liveCharacterState.Model ~= nil and liveCharacterState.Model ~= currentCharacter then
+            targetStillValid = false
+            targetInvalidReason = "framework-model-changed"
+            return
+        end
+    end
+
+    local invincibleMethod = fighterState.IsInvincible
+    if type(invincibleMethod) == "function" then
+        local okInvincible, isInvincible = pcall(invincibleMethod, fighterState)
+        -- Match Resolver semantics: an unreadable/nil sample is not confirmed
+        -- invulnerability. Only an explicit true blocks this pending shot.
+        if okInvincible and isInvincible == true then
+            targetStillValid = false
+            targetInvalidReason = "confirmed-invincible"
+            return
+        end
+    end
+
+    local okObserver, itemObserver = pcall(function() return fighterState.ItemObserver end)
+    if not okObserver then
+        targetStillValid = false
+        targetInvalidReason = "item-observer-property-read-failed"
+        return
+    end
+    -- Resolver permits a nil observer during replication. Do not cancel every
+    -- shot solely because the optional melee observer has not appeared yet.
+    if itemObserver ~= nil then
+        local okMelee, melee = pcall(function()
+            return itemObserver:EquippedItemAsMelee()
+        end)
+        -- A transient method/read failure is not proof of Deflect. Preserve the
+        -- resolver's rule and reject only a confirmed Deflect state.
+        if okMelee and melee ~= nil then
+            local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
+            if okDeflecting and isDeflecting == true then
                 targetStillValid = false
-            elseif melee ~= nil then
-                local okDeflecting, isDeflecting = pcall(function() return melee:IsDeflecting() end)
-                if not okDeflecting or isDeflecting ~= false then
-                    targetStillValid = false
-                end
+                targetInvalidReason = "confirmed-deflect"
+                return
             end
         end
     end
 end)
 if not targetReadOk or targetStillValid ~= true then
+    if not targetReadOk then
+        targetInvalidReason = "validation-read-error: " .. tostring(targetReadError)
+    end
     ragebotDebugShot(arg4, "target-invalid", string.format(
-        "readOk=%s valid=%s; enemy/alive/root/hitbox/deflect state changed before send",
-        tostring(targetReadOk), tostring(targetStillValid)
+        "readOk=%s valid=%s reason=%s",
+        tostring(targetReadOk), tostring(targetStillValid), targetInvalidReason
     ), os.clock())
     arg._shootLock:Reset()
     ragebotVoidSpamCancelShot()
@@ -75113,121 +75132,99 @@ return true, true, ammo
 end
 
 return { getAction = function(arg)
-local currentRagebot = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or nil
-if currentRagebot == nil then return nil end
-local advancedConfig = type(currentRagebot.Advanced) == "table" and currentRagebot.Advanced or {}
--- The legacy Combat/Ragebot controls are the sole activation source.
-if currentRagebot.Profile ~= "Advanced" or currentRagebot.Enabled ~= true
-    or advancedConfig.Enabled ~= true then
-    return nil
-end
-local weapons = type(currentRagebot.Weapons) == "table" and currentRagebot.Weapons or {}
+local ragebotConfig = type(v115.Data.Ragebot) == "table" and v115.Data.Ragebot or {}
+local weapons = type(ragebotConfig.Weapons) == "table" and ragebotConfig.Weapons or {}
 local onEmpty = weapons.OnEmpty
 if onEmpty ~= "Reload" and onEmpty ~= "Swap" and onEmpty ~= "SwapOrReload" then
-    onEmpty = "SwapOrReload"
+onEmpty = "SwapOrReload"
 end
 local priority = type(weapons.Priority) == "table" and weapons.Priority or nil
 if priority == nil or #priority == 0 then
-    priority = { "Primary", "Secondary", "Melee" }
+priority = { "Primary", "Secondary", "Melee" }
+end
+local huge = math.huge
+local huge2 = math.huge
+local flag19 = false
+local v116 = nil
+local v117 = nil
+
+for _, v118 in arg.ItemBehaviors:GetItems(), nil, nil do
+local v119 = fn36(v118)
+
+if not (v119 == nil or not fn37(v119)) then
+flag19 = v86[34]
+local huge3 = table.find(priority, v119) or math.huge
+
+local ammoValue = nil
+local ammoBased = false
+if v118.__type == "Gun" then
+local okAmmoState, readAmmoBased, readAmmo = readAmmoState(v118)
+if not okAmmoState then
+continue
+end
+ammoBased = readAmmoBased
+ammoValue = readAmmo
+end
+if v118.__type == "Gun" and ammoBased and ammoValue == 0 then
+local okReserve, reserve = pcall(v118.GetAmmoReserve, v118)
+if not okReserve or type(reserve) ~= "number" or reserve ~= reserve or reserve == -math.huge or reserve < 0 then
+continue
+end
+if reserve > 0 then
+if onEmpty == "Reload" then
+if v116 == nil or huge3 < huge then
+v116 = v118
+huge = huge3
+end
+elseif huge3 < huge2 then
+huge2 = huge3
+v117 = v118
+end
+end
+elseif v116 == nil or huge3 < huge then
+v116 = v118
+huge = huge3
+end
+end
 end
 
-local hasEnabledItem = false
-local hasTransientItemState = false
-local bestCandidate, bestPriority = nil, math.huge
-local emptyFallback, emptyFallbackPriority = nil, math.huge
-local enumerationOk, enumerationError = pcall(function()
-    for _, item in arg.ItemBehaviors:GetItems(), nil, nil do
-        local inspectOk, candidate, enabled, itemTransient = pcall(function()
-            local role = fn36(item)
-            if role == nil or not fn37(role) then return nil, false end
-
-            local order = table.find(priority, role) or math.huge
-            local equippedOk, equipped = pcall(item.IsEquipped, item)
-            if not equippedOk then
-                error("IsEquipped failed: " .. tostring(equipped))
-            end
-            if item.__type == "Gun" then
-                local ammoOk, ammoBased, ammo = readAmmoState(item)
-                if not ammoOk then return nil, true, true end
-                if ammoBased and ammo == 0 then
-                    local reserveOk, reserve = pcall(item.GetAmmoReserve, item)
-                    if not reserveOk or type(reserve) ~= "number" or reserve ~= reserve
-                        or reserve == -math.huge or reserve < 0 then
-                        return nil, true, true
-                    end
-                    if reserve <= 0 then return nil, true end
-                    return { Item = item, Priority = order, Kind = "EmptyWithReserve", Equipped = equipped }, true
-                end
-            end
-            return { Item = item, Priority = order, Kind = "Ready", Equipped = equipped }, true
-        end)
-
-        if not inspectOk then
-            hasTransientItemState = true
-            local warningNow = os.clock()
-            if warningNow >= (arg._nextItemInspectWarningAt or 0) then
-                arg._nextItemInspectWarningAt = warningNow + 5
-                warn("[Ragebot] Skipped an item whose state could not be inspected: " .. tostring(candidate))
-            end
-        else
-            if enabled == true then hasEnabledItem = true end
-            if itemTransient == true then hasTransientItemState = true end
-            if type(candidate) == "table" and candidate.Item ~= nil then
-                if candidate.Kind == "EmptyWithReserve" and onEmpty ~= "Reload" then
-                    if emptyFallback == nil or candidate.Priority < emptyFallbackPriority then
-                        emptyFallback = candidate
-                        emptyFallbackPriority = candidate.Priority
-                    end
-                else
-                    if bestCandidate == nil or candidate.Priority < bestPriority then
-                        bestCandidate = candidate
-                        bestPriority = candidate.Priority
-                    end
-                end
-            end
-        end
-    end
-end)
-
-if not enumerationOk then
-    local warningNow = os.clock()
-    if warningNow >= (arg._nextItemEnumerationWarningAt or 0) then
-        arg._nextItemEnumerationWarningAt = warningNow + 5
-        warn("[Ragebot] Weapon enumeration failed; retrying without resetting combat state: " .. tostring(enumerationError))
-    end
-    return nil, "Transient"
-end
-if not hasEnabledItem then
-    if hasTransientItemState then return nil, "Transient" end
-    return nil
+if not flag19 then
+return nil
 end
 
-local function actionFor(candidate)
-    if type(candidate) ~= "table" or candidate.Item == nil then return nil end
-    local item = candidate.Item
-    local equipped = candidate.Equipped == true
-    local empty = false
-    if item.__type == "Gun" then
-        local ammoOk, ammoBased, currentAmmo = readAmmoState(item)
-        if not ammoOk then return nil, true end
-        empty = ammoBased and currentAmmo == 0
-    end
-
-    if equipped then
-        return { Type = empty and "Reload" or "Attack", Item = item }
-    end
-    return { Type = "Swap", Item = item }
+if v116 ~= nil then
+local flag20 = false
+if v116.__type == "Gun" then
+local okAmmoState, ammoBased, currentAmmo = readAmmoState(v116)
+if not okAmmoState then
+return nil
+end
+if ammoBased then
+flag20 = currentAmmo == v86[186]
+end
 end
 
-local selectedAction, selectedTransient = actionFor(bestCandidate)
-if selectedAction ~= nil then return selectedAction end
-if selectedTransient == true then hasTransientItemState = true end
-if onEmpty ~= "Swap" and emptyFallback ~= bestCandidate then
-    local fallbackAction, fallbackTransient = actionFor(emptyFallback)
-    if fallbackAction ~= nil then return fallbackAction end
-    if fallbackTransient == true then hasTransientItemState = true end
+if v116:IsEquipped() then
+if flag20 then
+return { Type = "Reload", Item = v116 }
 end
-if hasTransientItemState then return nil, "Transient" end
+return { Type = "Attack", Item = v116 }
+end
+
+return { Type = "Swap", Item = v116 }
+end
+
+if onEmpty == "Swap" then
+return nil
+end
+
+if v117 ~= nil then
+if v117:IsEquipped() then
+return { Type = "Reload", Item = v117 }
+end
+return { Type = "Swap", Item = v117 }
+end
+
 return nil
 end }
 end
@@ -77032,7 +77029,8 @@ if previousEvasionMode ~= mode then
 end
 arg._lastEvasionMode = mode
 local okAction, actionResult, actionMeta = pcall(v128.getAction, innerContext)
-local transientWeaponSelection = okAction and actionResult == nil and actionMeta == "Transient"
+local transientWeaponSelection = not okAction
+    or (actionResult == nil and actionMeta == "Transient")
 if okAction and actionResult ~= nil then
     if type(actionResult) ~= "table" then
 
@@ -77049,6 +77047,7 @@ if okAction and actionResult ~= nil then
         end
     end
 end
+if not okAction then transientWeaponSelection = true end
 local v130 = okAction and actionResult or nil
 if phaseEnabledForUpdate and type(v130) == "table" and v130.Type == "Reload" then
                                                                               
@@ -77073,7 +77072,7 @@ elseif actionResult == nil then
     if warningNow >= (arg._nextNoActionWarningAt or 0) then
         arg._nextNoActionWarningAt = warningNow + 5
         if transientWeaponSelection then
-            warn("[Ragebot] Weapon state is temporarily unreadable; continuing evasion movement and retrying selection.")
+            warn("[Ragebot] Weapon state is temporarily unreadable; holding current pose and retrying selection.")
         else
             warn("[Ragebot] No eligible weapon action; continuing evasion movement and retrying selection.")
         end
@@ -77731,10 +77730,27 @@ end
 local knifeCounterKeepsMovement = repRootCounterActive
     and arg._repRootCounterKind == "knife-cooldown-predict"
 
+-- Translocate is an out-of-combat movement mode. Do not alternate between a
+-- short gun-shot grace window and a remote CFrame teleport while an enemy is
+-- available: keep the normal Ragebot aim/shot plan active for the whole combat
+-- engagement, and let the weapon's own ShootLock enforce its firing cadence.
+local translocateTargetAvailable = false
+local translocateTargetReadOk = pcall(function()
+    local selection = arg._targetSelection
+    translocateTargetAvailable = selection ~= nil and selection:HasTargets() == true
+end)
+if not translocateTargetReadOk then
+    -- An unreadable target list is not proof that combat is empty. Fail closed
+    -- against a teleport that could interrupt a pending shot.
+    translocateTargetAvailable = true
+end
+
 if okAction and mode == "Translocate"
     and (v130 == nil or v130.Type ~= "Reload")
     and (not repRootCounterActive or knifeCounterKeepsMovement)
-    and not repRootTranslocateBlocked and not gunShootWindowActive then
+    and not repRootTranslocateBlocked
+    and not gunShootWindowActive
+    and not translocateTargetAvailable then
 
 ragebotSafeInvokeMethod(arg, "_SetKnifeCameraLock", false)
 arg._knifeActionExpected = false
@@ -77800,6 +77816,22 @@ else
     end
 end
 
+-- GetTarget deliberately returns nil while a locked target is inside the
+-- bounded replication-unavailable timeout. Treat that as a transient combat
+-- gap, not as an instruction to run Random/ProjectileBreaker and teleport away.
+if target == nil then
+    local selection = arg._targetSelection
+    local lockedUnavailable = false
+    pcall(function()
+        lockedUnavailable = type(selection) == "table"
+            and selection._lockedFighter ~= nil
+            and selection._lockedPlayer ~= nil
+            and (ragebotFiniteNumber(selection._lockedUnavailableSince)
+                or ragebotFiniteNumber(selection._lockedReadFailureSince))
+    end)
+    if lockedUnavailable then transientWeaponSelection = true end
+end
+
 local targetPartsValid = false
 local targetWasRejected = false
 local candidateModel = nil
@@ -77826,7 +77858,7 @@ if localEnvironment == nil and Players.LocalPlayer ~= nil then
     end)
 end
 if candidateFighter == nil or candidatePlayer == nil or candidatePlayer.Parent ~= Players
-    or candidateFighter.IsEnemy ~= true
+    or candidateFighter.IsEnemy == false
     or (candidateEnvironment ~= nil and localEnvironment ~= nil
         and candidateEnvironment ~= localEnvironment) then return nil, nil, nil, nil end
 local currentTargetCharacter = candidatePlayer.Character
@@ -77929,7 +77961,16 @@ if safeDt ~= safeDt or safeDt == math.huge or safeDt == -math.huge or safeDt < 0
 safeDt = 0
 end
 
-local okPlan, v131 = pcall(arg._Plan, arg, safeDt, v130, target, rootPart, clientCFrame, mode, targetWasRejected, transientWeaponSelection)
+local plannerMode = mode
+if mode == "Translocate" and translocateTargetAvailable then
+    -- Also disable the fallback EvadePlan path when a target is present; otherwise
+    -- a nil/temporarily rejected target could still teleport between shot attempts.
+    plannerMode = "Off"
+end
+local okPlan, v131 = pcall(
+    arg._Plan, arg, safeDt, v130, target, rootPart, clientCFrame,
+    plannerMode, targetWasRejected, transientWeaponSelection
+)
 if not okPlan or type(v131) ~= "table" then
 local warningNow = os.clock()
 if warningNow >= (arg._nextPlanWarningAt or 0) then
@@ -78239,6 +78280,13 @@ end
                                                                     
                                                                            
                                                                
+-- A transient weapon-state read is not a signal to run Random/ProjectileBreaker.
+-- Hold the last client pose and retry selection; otherwise a temporary nil action
+-- becomes an evade teleport between short bursts of shots.
+if arg9 == true and typeof(arg6) == "CFrame" then
+    return { CFrame = arg6, HoldPosition = true }
+end
+
 return arg:_EvadePlan(arg6, arg7)
 end
 
