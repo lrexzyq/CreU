@@ -27297,7 +27297,7 @@ index2._SelectRandomHitbox = function(l,I,W,N,P,a)local e,c=l._targetProvider,l.
 index2.SelectBest = function(l,I)local W=l._targetProvider;W:PreScan();if W.CheckHitboxConditionsOnBestFirst then return l:_SelectWithBestFirstCheck(I);else return l:_SelectBest(I);end;end
 index2._SelectBest = function(l,I)local W,N,P,a=l._targetProvider,l._targetComparator,workspace.CurrentCamera, nil;local e,c=math.huge, nil;for E,E_69 in W:GetTargets()do if not W:TargetMeetsConditions(E_69)then continue;end;local W_70,p=l:_SelectTarget(P,E_69,false,I);if W_70==nil then continue;end;if a~=nil and not N(E_69,p,a,e)then continue;end;a,e,c=E_69,p,W_70;end;return a,c;end
 index2._SelectWithBestFirstCheck = function(l,I)local W,N,P=l._targetProvider,l._targetComparator,workspace.CurrentCamera;W:PreScan();local a=W:GetTargets();local e;local c,E=math.huge, nil;for p,p_71 in a,nil,nil do if not W:TargetMeetsConditions(p_71)then continue;end;local T,t=l:_SelectTarget(P,p_71,true,I);if T==nil then continue;end;if e~=nil and not N(p_71,t,e,c)then continue;end;e,c,E=p_71,t,T;end;if E==nil then return nil,nil;end;if W:HitboxMeetsConditions(E,true)then return e,E;end;local p,T=e,E;e,c,E=nil,math.huge,nil;for t,x in a,nil,nil do if x==p then continue;end;t,W=l:_SelectTarget(P,x,T,I);if t==nil then continue;end;if e~=nil and not N(x,W,e,c)then continue;end;e,c,E=x,W,t;end;return e,E;end
-index2.SelectTarget = function(l,I,W)local N=l._targetProvider;if not N:TargetMeetsConditions(I)then return nil;end;N:PreScan();return(l:_SelectTarget(workspace.CurrentCamera,I,false,W));end
+index2.SelectTarget = function(l,I,W)local N=l._targetProvider;N:PreScan();if not N:TargetMeetsConditions(I)then return nil;end;return(l:_SelectTarget(workspace.CurrentCamera,I,false,W));end
 return index2
 end
 
@@ -32622,7 +32622,7 @@ end
 return db.c
 end
 end
-do
+do -- dc
 local function fn35()
 tbl17.cr()
 tbl17.aG()
@@ -32676,8 +32676,14 @@ arg.CheckHitboxConditionsOnBestFirst = checkHitboxConditionsOnBestFirst
 end
 
 index2.GetTargets = function(l)return l._enemyByPlayer;end
-index2.PreScan = function(I)I._shooterPosition= v117 ().Position;end
-
+index2.PreScan = function(self)
+local ok, position = pcall(function()
+local shooterRoot = v117()
+if shooterRoot == nil then return nil end
+return shooterRoot.Position
+end)
+self._shooterPosition = ok and typeof(position) == "Vector3" and position or nil
+end
 index2.TargetMeetsConditions = function(self, target)
     if target == nil then return false end
     local okState, state = pcall(function()
@@ -32867,7 +32873,7 @@ end
 return dg.c
 end
 end
-do
+do -- dh
 local function fn35()
 local v115 = tbl17.cf()
 local v116 = tbl17.cn()
@@ -32983,19 +32989,8 @@ index2.Update = function(arg, arg2)
 local inner = arg._playerContext.Inner
 local aimbot = data.Aimbot
 local flag19 = inner ~= nil and inner.ItemBehaviors:EquippedItemAsGun() or nil
--- Lock mode is sampled on Heartbeat; render/camera-phase modes keep their existing cadence.
-if type(aimbot.Mode) ~= "table" or aimbot.Mode.Type ~= "Lock" then
-    arg:_UpdateAim(arg2, flag19, aimbot)
-end
-arg:_UpdateRender(arg2, flag19, aimbot)
-end
-
-index2.HeartbeatUpdate = function(arg, arg2)
-local aimbot = data.Aimbot
-if type(aimbot.Mode) ~= "table" or aimbot.Mode.Type ~= "Lock" then return end
-local inner = arg._playerContext.Inner
-local flag19 = inner ~= nil and inner.ItemBehaviors:EquippedItemAsGun() or nil
 arg:_UpdateAim(arg2, flag19, aimbot)
+arg:_UpdateRender(arg2, flag19, aimbot)
 end
 
 index2._UpdateRender = function(arg, arg2, arg3, arg4)
@@ -34415,24 +34410,81 @@ table.insert(arg._inputBindings, new)
 return new
 end
 
-index2._Dispatch = function(arg, arg2)
-for _, v120 in arg._inputBindings, nil, nil do
-if not v120.Enabled then
-continue
-else
-local handler = v120.Handler
+local function snapshotArgsForHandler(args)
+if type(args) ~= "table" then
+return { Root = args }
+end
 
+local snapshot = { Root = args, RootValues = {}, Children = {} }
+for key, value in next, args do
+snapshot.RootValues[key] = value
+if type(value) == "table" then
+local childValues = {}
+for childKey, childValue in next, value do
+childValues[childKey] = childValue
+end
+snapshot.Children[value] = childValues
+end
+end
+return snapshot
+end
+
+local function restoreArgsAfterHandler(context, snapshot)
+if snapshot == nil then
+return
+end
+
+local root = snapshot.Root
+if type(root) == "table" and snapshot.RootValues ~= nil then
+for key in next, root do
+root[key] = nil
+end
+for key, value in next, snapshot.RootValues do
+root[key] = value
+end
+for child, childValues in next, snapshot.Children do
+for key in next, child do
+child[key] = nil
+end
+for key, value in next, childValues do
+child[key] = value
+end
+end
+end
+context.Args = root
+end
+
+local lastHandlerErrorAt = -math.huge
+
+index2._Dispatch = function(arg, arg2)
+for _, binding in arg._inputBindings, nil, nil do
+if not binding.Enabled then
+continue
+end
+
+local handler = binding.Handler
 if handler == nil then
 continue
-else
-handler(arg2)
-if not arg2.Block then
-continue
-end
-end
 end
 
+local snapshotOk, argsSnapshot = pcall(snapshotArgsForHandler, arg2.Args)
+if not snapshotOk then
+argsSnapshot = { Root = arg2.Args }
+end
+local blockBefore = arg2.Block
+local handlerOk, handlerError = pcall(handler, arg2)
+
+if not handlerOk then
+pcall(restoreArgsAfterHandler, arg2, argsSnapshot)
+arg2.Block = blockBefore
+local now = os.clock()
+if now - lastHandlerErrorAt >= 5 then
+lastHandlerErrorAt = now
+warn("[Crefy Input] handler failed: " .. tostring(handlerError))
+end
+elseif arg2.Block then
 break
+end
 end
 end
 
@@ -59837,7 +59889,7 @@ end
 do
 local function fn35()
 tbl17.c_()
-return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
+return function(l,I,W)local N=W.Parent;local P,a=l:Check(I,W,N);if P then return true,I;end;P=W.Position-I;local e=P.Magnitude;if e<=1e-5 then return false,nil;end;local c,E=P/e,W.Size.Magnitude/2;local P_111,p=math.min(9.9,e-E),false;if a~=nil and P_111>0 and a.Distance<P_111 then e=I+c*P_111;if l:Check(e,W,N)then return false,e;end;p=true;end;e=Vector3.yAxis;E=c:Cross(if math.abs(c:Dot(e))>0.99 then Vector3.xAxis else e).Unit;a,e=E:Cross(c).Unit,p and 6 or 7;for p_112=0,e-1,1 do P_111=math.tau*p_112/e;c=I+(E*math.cos(P_111)+a*math.sin(P_111))*9.9;if l:Check(c,W,N)then return false,c;end;end;return false,nil;end
 end
 
 tbl17.gU = function()
@@ -59851,7 +59903,7 @@ end
 return gu.c
 end
 end
-do
+do -- gV
 local function fn35()
 local v115 = tbl17.cn()
 local v116 = tbl17.cN()
@@ -59891,96 +59943,23 @@ local targetConditions = silentAim2.TargetConditions
 local v134 = silentAim2.TargetHitboxes[v127.DefaultProfile.Class]
 local manipulate = silentAim2.Manipulate
 local obj = setmetatable({}, { __mode = "k" })
-local manipulationAttempts = setmetatable({}, { __mode = "k" })
-local MANIPULATION_RETRY_INTERVAL = 0.22
-local MANIPULATION_ORIGIN_TOLERANCE = 2.5
-local MANIPULATION_TARGET_TOLERANCE = 4
-
-local function isFiniteVector3(value)
-return typeof(value) == "Vector3"
-and value.X == value.X and value.Y == value.Y and value.Z == value.Z
-and math.abs(value.X) < math.huge
-and math.abs(value.Y) < math.huge
-and math.abs(value.Z) < math.huge
-end
 
 local function fn36(arg6, arg7, arg8)
+if manipulate.Enabled then
 local mode = manipulate.Mode
-local shouldManipulate = manipulate.Enabled
-and (mode == "OnAllTargets" or arg8 and mode == "OnBestTarget")
 
-if shouldManipulate then
-if not isFiniteVector3(arg6) or typeof(arg7) ~= "Instance"
-or not arg7:IsA("BasePart") or not arg7:IsDescendantOf(workspace) then
-if arg7 ~= nil then
-obj[arg7] = nil
-manipulationAttempts[arg7] = nil
-end
-return false
+if mode == "OnAllTargets" or arg8 and mode == "OnBestTarget" then
+local v135, v136 = v132(arg3, arg6, arg7)
+
+if not v135 then
+obj[arg7] = v136
 end
 
-local now = os.clock()
-local targetPosition = arg7.Position
-local cached = manipulationAttempts[arg7]
-
-if cached ~= nil then
-local sameOrigin = isFiniteVector3(cached.Origin)
-and (arg6 - cached.Origin).Magnitude <= MANIPULATION_ORIGIN_TOLERANCE
-local sameTarget = isFiniteVector3(cached.TargetPosition)
-and (targetPosition - cached.TargetPosition).Magnitude <= MANIPULATION_TARGET_TOLERANCE
-
-if sameOrigin and sameTarget and now - cached.At < MANIPULATION_RETRY_INTERVAL then
-local directCheckOk, directlyVisible = pcall(function()
-return arg3:Check(arg6, arg7, arg7.Parent)
-end)
-
-if directCheckOk and directlyVisible then
-obj[arg7] = nil
-manipulationAttempts[arg7] = nil
-return true
+return v136 ~= nil
+end
 end
 
 obj[arg7] = nil
-return false
-end
-end
-
-local solveOk, directlyVisible, manipulatedOrigin = pcall(v132, arg3, arg6, arg7)
-if not solveOk then
-obj[arg7] = nil
-manipulationAttempts[arg7] = {
-At = now,
-Origin = arg6,
-TargetPosition = targetPosition,
-Success = false,
-}
-return false
-end
-
-if directlyVisible then
-obj[arg7] = nil
-manipulationAttempts[arg7] = nil
-return true
-end
-
-if isFiniteVector3(manipulatedOrigin) then
-obj[arg7] = manipulatedOrigin
-manipulationAttempts[arg7] = nil
-return true
-end
-
-obj[arg7] = nil
-manipulationAttempts[arg7] = {
-At = now,
-Origin = arg6,
-TargetPosition = targetPosition,
-Success = false,
-}
-return false
-end
-
-obj[arg7] = nil
-manipulationAttempts[arg7] = nil
 return not targetConditions.Visible or arg3:Check(arg6, arg7, arg7.Parent)
 end
 
@@ -60016,27 +59995,13 @@ tbl18._active = active
 arg4:SetEnabled(active)
 end))
 
-local cfSIWA = 0
-arg4:SetHandler(function(cfIE)
-    local cfOK, cfErr = pcall(function()
-        tbl18:_HandleInput(cfIE)
-    end)
-    if not cfOK then
-        local cfNow = os.clock()
-        if cfNow >= cfSIWA then
-            cfSIWA = cfNow + 5
-            warn("[Crefy Runtime] SilentAim input handler failed: " .. tostring(cfErr))
-        end
-    end
+arg4:SetHandler(function(arg6)
+tbl18:_HandleInput(arg6)
 end)
 
 local v138 = v129(arg2, silentAim, "features.SilentAim", v137, function() return data.SilentAim.TargetHitboxes end)
 local function fn37(selection) tbl18._targetSelection:SetHitboxSelectionMode(v115.buildHitboxSelectionMode(selection)) end
 local function fn38(m)
-if manipulate ~= m then
- table.clear(obj)
- table.clear(manipulationAttempts)
-end
 manipulate = m
 v137:UseBestFirstConditionCheck(m.Enabled and m.Mode == "OnBestTarget")
 end
@@ -60116,7 +60081,6 @@ index2._Reset = function(arg)
 arg._currentTarget = nil
 arg._currentHitbox = nil
 arg._targetScreenPosition = nil
-table.clear(arg._visibleOriginByHitbox)
 arg._targetAcquisition:Reset()
 end
 
@@ -80943,7 +80907,6 @@ end)
 
 v239:SetHeartbeat(function(arg2)
 cfSRU("Input.HeartbeatUpdate", v199, "HeartbeatUpdate")
-cfSRU("Aimbot.HeartbeatUpdate", v220, "HeartbeatUpdate", arg2)
 cfSRU("Controller.Update", v190, "Update", arg2)
 if v225 then
     cfSRU("NetworkEffects.Update", v225, "Update", arg2)
