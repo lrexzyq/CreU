@@ -42232,6 +42232,7 @@ local function fn35()
 tbl17.dB()
 tbl17.cF()
 local v115 = tbl17.k()
+local v116 = tbl17.dE()
 local v117 = tbl17.dG()
 
 local tbl18 = {
@@ -42251,83 +42252,8 @@ IKControl = true,
 }
 
 local v118 = cloneref(game:GetService("CollectionService"))
-local function cloneTreeSignature(instance)
-local className = instance.ClassName
-local name = instance.Name
-local children = {}
-for _, child in ipairs(instance:GetChildren()) do
-    children[#children + 1] = cloneTreeSignature(child)
-end
-table.sort(children)
-return tostring(#className) .. ":" .. className
-    .. tostring(#name) .. ":" .. name .. "{" .. table.concat(children) .. "}"
-end
-local function cloneCharacterSnapshot(sourceModel)
-if sourceModel == nil then return nil end
-local sourceOk, sourceValid = pcall(function()
-    return sourceModel:IsA("Model") and sourceModel.Parent ~= nil
-end)
-if not sourceOk or not sourceValid then return nil end
-local nodesOk, nodes = pcall(function()
-    local descendants = sourceModel:GetDescendants()
-    descendants[#descendants + 1] = sourceModel
-    return descendants
-end)
-if not nodesOk or type(nodes) ~= "table" then return nil end
-local snapshot = {}
-local toggleOk = true
-for _, instance in ipairs(nodes) do
-    local readOk, oldArchivable = pcall(function() return instance.Archivable end)
-    if not readOk then
-        toggleOk = false
-        break
-    end
-    snapshot[#snapshot + 1] = { instance, oldArchivable }
-    if oldArchivable ~= true then
-        local setOk, actual = pcall(function()
-            instance.Archivable = true
-            return instance.Archivable
-        end)
-        if not setOk or actual ~= true then
-            toggleOk = false
-            break
-        end
-    end
-end
-local sourceSignatureOk, sourceSignature = false, nil
-if toggleOk then
-    sourceSignatureOk, sourceSignature = pcall(cloneTreeSignature, sourceModel)
-    if not sourceSignatureOk then toggleOk = false end
-end
-local cloneOk, clone = false, nil
-if toggleOk then
-    cloneOk, clone = pcall(function() return sourceModel:Clone() end)
-end
-local restoreOk = true
-for i = #snapshot, 1, -1 do
-    local entry = snapshot[i]
-    local restore, actual = pcall(function()
-        entry[1].Archivable = entry[2]
-        return entry[1].Archivable
-    end)
-    if not restore or actual ~= entry[2] then restoreOk = false end
-end
-local cloneSignatureOk, cloneSignature = false, nil
-if cloneOk and clone ~= nil then
-    cloneSignatureOk, cloneSignature = pcall(cloneTreeSignature, clone)
-end
-if not cloneOk or not restoreOk or clone == nil
-    or not sourceSignatureOk or not cloneSignatureOk or cloneSignature ~= sourceSignature then
-    if clone ~= nil then pcall(function() clone:Destroy() end) end
-    return nil
-end
-return clone
-end
 local index2 = {}
 index2.__index = index2
-index2.CloneSnapshot = function(_, sourceModel)
-    return cloneCharacterSnapshot(sourceModel)
-end
 
 index2.new = function(arg, arg2)
 return setmetatable({
@@ -42338,9 +42264,6 @@ _cloneByPlayer = {},
 _stateTroveByFighter = {},
 _characterTroveByPlayer = {},
 _acquiredPlayerSet = {},
-_sourceCharacterByPlayer = {},
-_sourceModelByPlayer = {},
-_buildGenerationByPlayer = {},
 }, index2)
 end
 
@@ -42397,132 +42320,70 @@ end
 arg:_ResetPlayer(arg2.Player)
 end
 
-index2._CloneFor = function(arg, player, decoratedModel)
-if player == nil or decoratedModel == nil or arg._acquiredPlayerSet[player] then
+index2._CloneFor = function(arg, arg2, arg3)
+if arg._acquiredPlayerSet[arg2] then
 return
 end
-local sourceCharacter = player.Character
-if sourceCharacter == nil then
+arg:_DestroyCloneFor(arg2)
+arg:_DestroyCharTrove(arg2)
+local FinisherCloneCache = v115.new("cosmetics.FinisherCloneCache")
+arg._characterTroveByPlayer[arg2] = FinisherCloneCache
+
+local v119 = v117(arg3, 10):andThen(function()
+arg:_BuildClone(arg2, arg3)
+end):catch(function(err)
+warn("[FinisherCloneCache] clone preparation failed: " .. tostring(err))
+end)
+
+FinisherCloneCache:AddPromise(v119)
+end
+
+index2._BuildClone = function(arg, arg2, arg3)
+local cloneOk, cloneResult = pcall(v116, arg3)
+if not cloneOk or typeof(cloneResult) ~= "Instance" or not cloneResult:IsA("Model") then
+    if typeof(cloneResult) == "Instance" then pcall(cloneResult.Destroy, cloneResult) end
+    if not cloneOk then warn("[FinisherCloneCache] clone failed: " .. tostring(cloneResult)) end
+    return nil
+end
+
+local clone = cloneResult
+local prepareOk, prepareError = pcall(function()
+    for _, v120 in clone:GetDescendants() do
+        if tbl18[v120.ClassName] then
+            v120:Destroy()
+        elseif v120:IsA("BasePart") then
+            v120.Anchored = false
+            if v120.Transparency < 1 then
+                v120.Transparency = v86[186]
+            end
+        elseif v120:IsA("ParticleEmitter") then
+            v120:Clear()
+            v120:Destroy()
+        end
+    end
+
+    for _, v120 in v118:GetTags(clone) do
+        v118:RemoveTag(clone, v120)
+    end
+end)
+
+if not prepareOk then
+    pcall(clone.Destroy, clone)
+    warn("[FinisherCloneCache] clone preparation failed: " .. tostring(prepareError))
+    return nil
+end
+
+arg._cloneByPlayer[arg2] = clone
+return clone
+end
+
+index2._DestroyCloneFor = function(arg, arg2)
+local v119 = arg._cloneByPlayer[arg2]
+if v119 == nil then
 return
 end
-local generation = (tonumber(arg._buildGenerationByPlayer[player]) or 0) + 1
-arg._buildGenerationByPlayer[player] = generation
-arg:_DestroyCloneFor(player)
-arg:_DestroyCharTrove(player)
-arg._sourceCharacterByPlayer[player] = sourceCharacter
-arg._sourceModelByPlayer[player] = decoratedModel
-local buildTrove = v115.new("cosmetics.FinisherCloneCache")
-arg._characterTroveByPlayer[player] = buildTrove
-
-local promise = v117(decoratedModel, 10):andThen(function()
-if arg._buildGenerationByPlayer[player] ~= generation
-    or arg._sourceCharacterByPlayer[player] ~= sourceCharacter
-    or arg._sourceModelByPlayer[player] ~= decoratedModel
-    or arg._characterTroveByPlayer[player] ~= buildTrove
-    or player.Character ~= sourceCharacter then
-    return
-end
-local sourceOk, sourceValid = pcall(function()
-    return decoratedModel:IsA("Model") and decoratedModel.Parent ~= nil
-end)
-if not sourceOk or not sourceValid then
-    return
-end
-arg:_BuildClone(player, decoratedModel, generation, sourceCharacter)
-end):catch(function()
-end)
-
-buildTrove:AddPromise(promise)
-end
-
-index2._BuildClone = function(arg, player, decoratedModel, generation, sourceCharacter)
-if arg._buildGenerationByPlayer[player] ~= generation
-    or arg._sourceCharacterByPlayer[player] ~= sourceCharacter
-    or arg._sourceModelByPlayer[player] ~= decoratedModel
-    or player.Character ~= sourceCharacter then
-    return
-end
-local clone = cloneCharacterSnapshot(decoratedModel)
-if clone == nil then
-    return
-end
-local function discardClone()
-    pcall(function() clone:Destroy() end)
-end
-local validOk, humanoid, root = pcall(function()
-    if not clone:IsA("Model") or clone.Parent ~= nil then
-        return nil, nil
-    end
-    return clone:FindFirstChildOfClass("Humanoid"), clone:FindFirstChild("HumanoidRootPart")
-end)
-if not validOk or humanoid == nil or root == nil or not root:IsA("BasePart") then
-    discardClone()
-    return
-end
-local healthOk = pcall(function()
-    local maxHealth = humanoid.MaxHealth
-    if type(maxHealth) ~= "number" or maxHealth ~= maxHealth or maxHealth <= 0
-        or maxHealth == math.huge then
-        maxHealth = 100
-        humanoid.MaxHealth = maxHealth
-    end
-    local health = humanoid.Health
-    if type(health) ~= "number" or health ~= health or health == math.huge
-        or health == -math.huge or health <= 0 then
-        humanoid.Health = maxHealth
-    end
-end)
-if not healthOk then
-    discardClone()
-    return
-end
-
-for _, descendant in clone:GetDescendants() do
-if tbl18[descendant.ClassName] then
-pcall(function() descendant:Destroy() end)
-elseif descendant:IsA("BasePart") then
-pcall(function()
-    descendant.Anchored = false
-    if descendant.Transparency < 1 then
-        descendant.Transparency = v86[186]
-    end
-end)
-elseif descendant:IsA("ParticleEmitter") then
-pcall(function()
-    descendant:Clear()
-    descendant:Destroy()
-end)
-end
-end
-
-for _, tag in v118:GetTags(clone) do
-pcall(v118.RemoveTag, v118, clone, tag)
-end
-if arg._buildGenerationByPlayer[player] ~= generation
-    or arg._sourceCharacterByPlayer[player] ~= sourceCharacter
-    or player.Character ~= sourceCharacter then
-    discardClone()
-    return
-end
-arg._cloneByPlayer[player] = clone
-arg._cloneSourceCharacterByPlayer = arg._cloneSourceCharacterByPlayer or {}
-arg._cloneSourceCharacterByPlayer[player] = sourceCharacter
-arg._cloneSourceModelByPlayer = arg._cloneSourceModelByPlayer or {}
-arg._cloneSourceModelByPlayer[player] = decoratedModel
-end
-
-index2._DestroyCloneFor = function(arg, player)
-local clone = arg._cloneByPlayer[player]
-arg._cloneByPlayer[player] = nil
-if type(arg._cloneSourceCharacterByPlayer) == "table" then
-    arg._cloneSourceCharacterByPlayer[player] = nil
-end
-if type(arg._cloneSourceModelByPlayer) == "table" then
-    arg._cloneSourceModelByPlayer[player] = nil
-end
-if clone ~= nil then
-    pcall(function() clone:Destroy() end)
-end
+arg._cloneByPlayer[arg2] = nil
+v119:Destroy()
 end
 
 index2._DestroyCharTrove = function(arg, arg2)
@@ -42534,44 +42395,21 @@ arg._characterTroveByPlayer[arg2] = nil
 v119:Destroy()
 end
 
-index2._ResetPlayer = function(arg, player)
-arg._buildGenerationByPlayer[player] = (tonumber(arg._buildGenerationByPlayer[player]) or 0) + 1
-arg:_DestroyCloneFor(player)
-arg:_DestroyCharTrove(player)
-arg._sourceCharacterByPlayer[player] = nil
-arg._sourceModelByPlayer[player] = nil
-arg._acquiredPlayerSet[player] = nil
+index2._ResetPlayer = function(arg, arg2)
+arg:_DestroyCloneFor(arg2)
+arg:_DestroyCharTrove(arg2)
+arg._acquiredPlayerSet[arg2] = nil
 end
 
-index2.AcquireClone = function(arg, player, expectedCharacter)
-local clone = arg._cloneByPlayer[player]
-if clone == nil then
+index2.AcquireClone = function(arg, arg2)
+local v119 = arg._cloneByPlayer[arg2]
+if v119 == nil then
 return nil
 end
-local sourceCharacter = arg._cloneSourceCharacterByPlayer and arg._cloneSourceCharacterByPlayer[player]
-local sourceModel = arg._cloneSourceModelByPlayer and arg._cloneSourceModelByPlayer[player]
-local sourceModelOk, sourceModelAlive = pcall(function()
-    return sourceModel ~= nil and sourceModel:IsA("Model") and sourceModel.Parent ~= nil
-end)
-local valid = sourceCharacter ~= nil and sourceCharacter == player.Character
-    and (expectedCharacter == nil or expectedCharacter == sourceCharacter)
-    and sourceModelOk and sourceModelAlive == true
-local cloneCheckOk, cloneValid = pcall(function()
-    return clone:IsA("Model") and clone.Parent == nil
-end)
-if not valid or not cloneCheckOk or cloneValid ~= true then
-    arg:_DestroyCloneFor(player)
-    arg:_DestroyCharTrove(player)
-    return nil
-end
-arg._cloneByPlayer[player] = nil
-arg._cloneSourceCharacterByPlayer[player] = nil
-arg._cloneSourceModelByPlayer[player] = nil
-arg._sourceCharacterByPlayer[player] = nil
-arg._sourceModelByPlayer[player] = nil
-arg:_DestroyCharTrove(player)
-arg._acquiredPlayerSet[player] = true
-return clone
+arg._cloneByPlayer[arg2] = nil
+arg:_DestroyCharTrove(arg2)
+arg._acquiredPlayerSet[arg2] = true
+return v119
 end
 
 index2.Destroy = function(arg)
@@ -42607,6 +42445,7 @@ local finishers = tbl17.aS().Finishers
 local v116 = tbl17.dV()
 tbl17.et()
 tbl17.eb()
+local v117 = tbl17.dE()
 local v118 = cloneref(game:GetService("Players"))
 local noneCosmetic = v116.NoneCosmetic
 local v119 = clientEntity
@@ -42634,90 +42473,101 @@ end
 end
 end
 
-local function fn38(clone, originalModel, finisherModule, arg4, arg5, serial, clientEntity)
-local setupOk = pcall(function()
-if clone == nil or originalModel == nil or finisherModule == nil
-    or not clone:IsA("Model") or not originalModel:IsA("Model") then
-    error("invalid finisher character model")
+local function fn38(arg, arg2, arg3, arg4, arg5, arg6, arg7)
+local humanoid = arg:FindFirstChildOfClass("Humanoid")
+local humanoidRootPart = arg:FindFirstChild("HumanoidRootPart")
+if humanoid == nil or humanoidRootPart == nil or arg2 == nil or arg2.Parent == nil then
+    return false, "finisher clone is missing its Humanoid, root part, or target parent"
 end
-local humanoid = clone:FindFirstChildOfClass("Humanoid")
-local root = clone:FindFirstChild("HumanoidRootPart")
-if humanoid == nil or root == nil or not root:IsA("BasePart") then
-    error("finisher clone is missing Humanoid or HumanoidRootPart")
-end
-local maxHealth = humanoid.MaxHealth
-if type(maxHealth) ~= "number" or maxHealth ~= maxHealth or maxHealth <= 0
-    or maxHealth == math.huge then
-    maxHealth = 100
-    humanoid.MaxHealth = maxHealth
-end
--- The finisher target is an animated character copy, not a corpse. Preserve a
--- positive copied health value; revive only if the source appearance was already dead.
-local copiedHealth = humanoid.Health
-if type(copiedHealth) ~= "number" or copiedHealth ~= copiedHealth
-    or copiedHealth == math.huge or copiedHealth == -math.huge or copiedHealth <= 0 then
-    humanoid.Health = maxHealth
-end
-root.AssemblyLinearVelocity = Vector3.zero
-root.AssemblyAngularVelocity = Vector3.zero
-local bodyParts = {}
-for _, child in clone:GetChildren() do
-    if child:IsA("BasePart") then
-        pcall(function() child.CollisionGroup = "Players" end)
-        bodyParts[#bodyParts + 1] = child
-    end
-end
-for i = 1, #bodyParts do
-    for j = i + 1, #bodyParts do
-        local constraint = Instance.new("NoCollisionConstraint")
-        constraint.Part0 = bodyParts[i]
-        constraint.Part1 = bodyParts[j]
-        constraint.Parent = bodyParts[i]
-    end
-end
-clone:PivotTo(originalModel:GetPivot())
-clone.Parent = originalModel.Parent
 
-local previousIdentity = nil
-local identityRead = pcall(function() previousIdentity = getthreadidentity() end)
-if not identityRead or previousIdentity == nil then
-    error("could not read previous finisher thread identity")
-end
-local identitySetOk = pcall(setthreadidentity, v86[56])
-local createdFinisher = nil
-local createOk, finisher = pcall(function()
-    if not identitySetOk then error("could not set finisher thread identity") end
-    local current = v102(clientEntity, "_current_finisher")
-    if current ~= nil then
-        pcall(function() current:Destroy() end)
+local previousIdentity
+local identityCaptured = false
+local newFinisher
+local destroyConnection
+local prepareOk, prepareError = pcall(function()
+    humanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+    humanoid.Health = 0
+    local parts = {}
+
+    for _, part in arg:GetChildren() do
+        if part:IsA("BasePart") then
+            part.CollisionGroup = "Players"
+            table.insert(parts, part)
+        end
     end
-    local create = v102(finisherModule, "new")
-    if type(create) ~= "function" then error("finisher module constructor missing") end
-    createdFinisher = create(humanoid, arg4, arg5)
-    if createdFinisher == nil then error("finisher constructor returned nil") end
-    createdFinisher:SetSerial(serial)
-    return createdFinisher
-end)
-pcall(setthreadidentity, previousIdentity)
-if not createOk then
-    if createdFinisher ~= nil then
-        pcall(function() createdFinisher:Destroy() end)
+
+    for index, part in ipairs(parts) do
+        for otherIndex = index + 1, #parts do
+            local noCollisionConstraint = Instance.new("NoCollisionConstraint")
+            noCollisionConstraint.Part0 = part
+            noCollisionConstraint.Part1 = parts[otherIndex]
+            noCollisionConstraint.Parent = part
+        end
     end
-    error(finisher)
-end
-v103(clientEntity, "_current_finisher", finisher)
-originalModel.Destroying:Once(function()
-    if clone.Parent ~= nil then
-        pcall(function() clone:Destroy() end)
-    end
+
+    arg:PivotTo(arg2:GetPivot())
+    arg.Parent = arg2.Parent
+
+    previousIdentity = getthreadidentity()
+    assert(type(previousIdentity) == "number", "unable to read current thread identity")
+    identityCaptured = true
+    setthreadidentity(v86[56])
+
+    local constructor = v102(arg3, "new")
+    assert(type(constructor) == "function", "finisher module has no constructor")
+    newFinisher = constructor(humanoid, arg4, arg5)
+    assert(newFinisher ~= nil, "finisher constructor returned nil")
+    assert(type(newFinisher.SetSerial) == "function", "finisher has no SetSerial method")
+    assert(type(newFinisher.PlayServer) == "function", "finisher has no PlayServer method")
+    assert(type(newFinisher.PlayClient) == "function", "finisher has no PlayClient method")
+    newFinisher:SetSerial(arg6)
+
+    destroyConnection = arg2.Destroying:Once(function()
+        if arg.Parent ~= nil then
+            arg:Destroy()
+        end
+    end)
 end)
-task.spawn(v107, finisher.PlayServer, finisher)
-task.spawn(v107, finisher.PlayClient, finisher)
-end)
-if not setupOk then
-    pcall(function() clone:Destroy() end)
-    return false
+
+-- Restore the caller's identity even when setup, construction, or SetSerial throws.
+if identityCaptured and previousIdentity ~= nil then
+    pcall(setthreadidentity, previousIdentity)
 end
+
+if not prepareOk then
+    if destroyConnection ~= nil then pcall(function() destroyConnection:Disconnect() end) end
+    if newFinisher ~= nil then pcall(function() newFinisher:Destroy() end) end
+    return false, prepareError
+end
+
+local previousFinisher = v102(arg7, "_current_finisher")
+v103(arg7, "_current_finisher", newFinisher)
+if previousFinisher ~= nil and previousFinisher ~= newFinisher then
+    pcall(function() previousFinisher:Destroy() end)
+end
+
+-- Hide the decorated source model after custom setup succeeds but before playback starts.
+pcall(fn37, arg2)
+
+local function spawnFinisherPlayback(method, methodName)
+    task.spawn(function()
+        local oldIdentity
+        local identityOk, identityValue = pcall(getthreadidentity)
+        if identityOk and type(identityValue) == "number" then
+            oldIdentity = identityValue
+            pcall(setthreadidentity, v86[56])
+        end
+        local playOk, playError = pcall(method, newFinisher)
+        if oldIdentity ~= nil then
+            pcall(setthreadidentity, oldIdentity)
+        end
+        if not playOk then
+            warn("[FinisherHook] " .. methodName .. " failed: " .. tostring(playError))
+        end
+    end)
+end
+spawnFinisherPlayback(newFinisher.PlayServer, "PlayServer")
+spawnFinisherPlayback(newFinisher.PlayClient, "PlayClient")
 return true
 end
 
@@ -42773,31 +42623,55 @@ if v123 == nil then
 return fn39()
 end
 local model = v102(arg2, "Model")
-if model == nil or not model:IsA("Model") then
-return fn39()
+local validModel = typeof(model) == "Instance"
+    and model:IsA("Model") and model.Parent ~= nil
+if not validModel then
+    return fn39()
 end
-local previousIdentity = nil
-local identityRead = pcall(function() previousIdentity = getthreadidentity() end)
-if not identityRead or previousIdentity == nil then
-return fn39()
+
+local player = v118:GetPlayerFromCharacter(model)
+local clone = arg:_AcquireClone(model)
+if clone == nil or typeof(clone) ~= "Instance" or not clone:IsA("Model") then
+    if typeof(clone) == "Instance" then pcall(clone.Destroy, clone) end
+    if player ~= nil then
+        pcall(function() arg._finisherCloneCache:_ResetPlayer(player) end)
+    end
+    return fn39()
 end
-local requireOk, module = pcall(function()
-    local identitySetOk = pcall(setthreadidentity, 2)
-    if not identitySetOk then error("could not set finisher require identity") end
-    return require(v123)
-end)
-pcall(setthreadidentity, previousIdentity)
-if not requireOk or type(module) ~= "table" or type(v102(module, "new")) ~= "function" then
-return fn39()
+
+local function releaseFailedClone()
+    pcall(function() clone:Destroy() end)
+    if player ~= nil then
+        pcall(function() arg._finisherCloneCache:_ResetPlayer(player) end)
+    end
 end
-local v124 = arg:_AcquireClone(model)
-if v124 == nil then
-return fn39()
+
+local identityOk, previousIdentity = pcall(getthreadidentity)
+if not identityOk or type(previousIdentity) ~= "number" then
+    releaseFailedClone()
+    return fn39()
 end
-if not fn38(v124, model, module, arg4, arg5, arg6, arg2) then
-return fn39()
+local identitySetOk = pcall(setthreadidentity, 2)
+if not identitySetOk then
+    pcall(setthreadidentity, previousIdentity)
+    releaseFailedClone()
+    return fn39()
 end
-pcall(fn37, model)
+local moduleOk, module = pcall(require, v123)
+if previousIdentity ~= nil then
+    pcall(setthreadidentity, previousIdentity)
+end
+if not moduleOk or type(module) ~= "table" or type(module.new) ~= "function" then
+    releaseFailedClone()
+    return fn39()
+end
+
+local setupOk, setupResult = pcall(fn38, clone, model, module, arg4, arg5, arg6, arg2)
+if not setupOk or setupResult ~= true then
+    releaseFailedClone()
+    return fn39()
+end
+
 return nil
 end)
 
@@ -42805,27 +42679,12 @@ arg._restore = { Func = replicateFromServer, TargetConstant = v120 }
 return v115.VoidOk
 end
 
-index2._AcquireClone = function(arg, model)
-if model == nil or not model:IsA("Model") then
-    return nil
+index2._AcquireClone = function(arg, arg2)
+local playerFromCharacter = v118:GetPlayerFromCharacter(arg2)
+if playerFromCharacter ~= nil then
+return arg._finisherCloneCache:AcquireClone(playerFromCharacter)
 end
-local cache = arg._finisherCloneCache
-local player = v118:GetPlayerFromCharacter(model)
-if player ~= nil then
-    local cacheOk, cachedClone = pcall(function()
-        return cache:AcquireClone(player, model)
-    end)
-    if cacheOk and cachedClone ~= nil then
-        return cachedClone
-    end
-end
--- If the asynchronous appearance cache is late/stale, clone the exact model
--- the finisher is about to replace using the same full-descendant snapshot path.
-local cloneOk, clone = pcall(function()
-    return cache:CloneSnapshot(model)
-end)
-if cloneOk then return clone end
-return nil
+return v117(arg2)
 end
 
 index2._Restore = function(arg)
@@ -58691,7 +58550,7 @@ index2._BindDamageNumberTarget = function(arg, targetModel)
         pcall(function() health = humanoid.Health end)
         if type(health) == "number" and health <= 0 then
             onTargetEnded()
-            return true
+            return false
         end
         pcall(function() connect(humanoid.Died, onTargetEnded) end)
         pcall(function() connect(humanoid.Destroying, onTargetEnded) end)
@@ -59199,7 +59058,12 @@ index2._SpawnDamageNumber = function(arg, damage, worldPosition, isHeadshot, hit
     }
     table.insert(arg._damageNumbers, record)
     if targetModel ~= nil then
-        arg:_BindDamageNumberTarget(targetModel)
+        local bound = arg:_BindDamageNumberTarget(targetModel)
+        if bound ~= true or record.Cleared == true then
+            arg:_DestroyDamageNumberRecord(record)
+            arg:_ReleaseDamageNumberTarget(targetModel)
+            return false
+        end
     end
 
     -- Debris is the primary timeout; this explicit cleanup also handles failed Debris scheduling.
@@ -60286,9 +60150,37 @@ if arg2.Type ~= "StartShooting" then
 return
 end
 local currentHitbox = arg._currentHitbox
-if currentHitbox == nil then
+local currentTarget = arg._currentTarget
+if currentHitbox == nil or currentTarget == nil then
 return
 end
+
+-- Revalidate the already-selected target and hitbox at the point of payload
+-- mutation. Do not call SelectBest here: Random hitbox mode can legitimately
+-- choose a different part on each call and would suppress otherwise valid shots.
+local provider = arg._targetSelection and arg._targetSelection._targetProvider or nil
+local validationOk, targetValid, hitboxValid = pcall(function()
+    if provider == nil then return false, false end
+    provider:PreScan()
+    return provider:TargetMeetsConditions(currentTarget), provider:HitboxMeetsConditions(currentHitbox, false)
+end)
+if not validationOk or targetValid ~= true or hitboxValid ~= true then
+    return
+end
+local ownershipOk, hitboxBelongsToCurrentCharacter = pcall(function()
+    local character = currentTarget.Character
+    local state = character ~= nil and character.State or nil
+    local targetParts = type(state) == "table" and state.TargetPartsByName or nil
+    if type(targetParts) ~= "table" then return false end
+    for _, part in next, targetParts do
+        if part == currentHitbox then return true end
+    end
+    return false
+end)
+if not ownershipOk or hitboxBelongsToCurrentCharacter ~= true then
+    return
+end
+
 local inner = arg._playerContext.Inner
 if inner == nil then
 return
@@ -60336,37 +60228,8 @@ v140 = localPoint
 end
 end
 end
-if v140 == nil or v140 == Vector3.zero then
-local fallbackOk, fallbackPoint = pcall(function()
-local hitboxFrame = currentHitbox.CFrame
-local halfSize = currentHitbox.Size * 0.5
-local localTarget = hitboxFrame:PointToObjectSpace(v136)
-local surfaceLocal = Vector3.new(
-math.clamp(localTarget.X, -halfSize.X, halfSize.X),
-math.clamp(localTarget.Y, -halfSize.Y, halfSize.Y),
-math.clamp(localTarget.Z, -halfSize.Z, halfSize.Z)
-)
-local inside = math.abs(localTarget.X) <= halfSize.X
-and math.abs(localTarget.Y) <= halfSize.Y
-and math.abs(localTarget.Z) <= halfSize.Z
-if inside then
-local distanceX = halfSize.X - math.abs(localTarget.X)
-local distanceY = halfSize.Y - math.abs(localTarget.Y)
-local distanceZ = halfSize.Z - math.abs(localTarget.Z)
-if distanceX <= distanceY and distanceX <= distanceZ then
-surfaceLocal = Vector3.new((localTarget.X >= 0 and 1 or -1) * halfSize.X, surfaceLocal.Y, surfaceLocal.Z)
-elseif distanceY <= distanceZ then
-surfaceLocal = Vector3.new(surfaceLocal.X, (localTarget.Y >= 0 and 1 or -1) * halfSize.Y, surfaceLocal.Z)
-else
-surfaceLocal = Vector3.new(surfaceLocal.X, surfaceLocal.Y, (localTarget.Z >= 0 and 1 or -1) * halfSize.Z)
-end
-end
-return surfaceLocal
-end)
-if fallbackOk and typeof(fallbackPoint) == "Vector3" and fallbackPoint ~= Vector3.zero then
-v140 = fallbackPoint
-end
-end
+-- Do not approximate MeshPart/Union geometry with its rectangular bounding box.
+-- If the solver and GetClosestPointOnSurface both fail, leave the payload unchanged.
 if v140 == nil or v140 == Vector3.zero then
 return
 end
@@ -72533,27 +72396,13 @@ _hitboxWindowTarget = nil,
 _hitboxWindowAliveState = nil,
 _hitboxWindowInitialHealth = nil,
 _hitboxWindowConfirmed = false,
-_attackCooldown = -1,
-_attackCooldownTarget = nil,
+_attackCooldownByTarget = setmetatable({}, { __mode = "k" }),
 _lastKnifeTarget = nil,
 _knifePrimeTarget = nil,
 _knifePrimeUntil = 0,
 _knifePrimePitch = nil,
 _knifePrimeYaw = nil,
-_nextKnifeWindowAttackAt = 0,
-_genericMeleeNextAttackAt = 0,
-_genericMeleeTarget = nil,
-_genericMeleeItem = nil,
 }, index2)
-end
-
-local function fn39(item)
-local info = type(item) == "table" and type(item._info) == "table" and item._info or {}
-local interval = tonumber(rawget(info, "AttackCooldown"))
-if type(interval) ~= "number" or interval ~= interval or interval == math.huge or interval == -math.huge or interval <= 0 then
-return 0.12
-end
-return math.clamp(interval, 0.08, 3)
 end
 
 index2.Plan = function(arg, arg2, arg3, arg4, gluedOurPart, arg5)
@@ -72682,45 +72531,12 @@ if okPing and type(ping) == "number" and ping == ping and ping >= 0 and ping < 1
 primeDelay = math.clamp(0.05 + ping * 0.5, 0.075, 0.18)
 end
 
-local function finiteKnifeHealth(state)
-    local okHealth, healthValue = pcall(function()
-        return state ~= nil and state.Health or nil
-    end)
-    local health = okHealth and tonumber(healthValue) or nil
-    if type(health) ~= "number" or health ~= health or health == math.huge or health == -math.huge or health < 0 then
-        return nil
-    end
-    return health
-end
-
-local function refreshBackstabConfirmation(expectedTarget)
-    local trackedTarget = expectedTarget or hitboxHead
-    if arg._hitboxWindowTarget ~= trackedTarget or arg._hitboxWindowConfirmed == true then
-        return
-    end
-    local baseline = tonumber(arg._hitboxWindowInitialHealth)
-    local currentHealth = finiteKnifeHealth(arg._hitboxWindowAliveState or aliveState)
-    if baseline ~= nil and baseline == baseline and baseline ~= math.huge and baseline ~= -math.huge
-        and currentHealth ~= nil and currentHealth < baseline - 1e-4 then
-        -- Health change is the best local confirmation available that the server
-        -- accepted the attack. Stop retries, but retain the target cooldown.
-        arg._hitboxWindowConfirmed = true
-        arg._hitboxWindowUntil = -1
-        arg._nextKnifeWindowAttackAt = 0
-    end
-end
-
 if isKnife then
 if arg._lastKnifeTarget ~= hitboxHead then
     local previousWindowTarget = arg._hitboxWindowTarget
     if previousWindowTarget ~= nil and previousWindowTarget ~= hitboxHead then
-        refreshBackstabConfirmation(previousWindowTarget)
-        -- A target switch must not strand an unconfirmed attempt behind the
-        -- 1.25s cooldown. Preserve cooldown only when health change confirmed it.
-        if arg._hitboxWindowConfirmed ~= true and arg._attackCooldownTarget == previousWindowTarget then
-            arg._attackCooldown = -1
-            arg._attackCooldownTarget = nil
-        end
+        -- Keep the cooldown attached to this exact target. A target switch must
+        -- not erase it or let damage from another player decide whether it sticks.
         arg._hitboxWindowUntil = -1
         arg._hitboxWindowTarget = nil
         arg._hitboxWindowAliveState = nil
@@ -72771,15 +72587,11 @@ return n, fn37(v121, v122), nil
 end
 
 if hasHitboxWindow then
-if now2 < arg._nextKnifeWindowAttackAt then
-return n, fn37(v121, v122), nil
-end
 return n, fn37(v121, v122), function()
 local attackNow = os.clock()
-if arg._hitboxWindowTarget ~= hitboxHead or attackNow >= arg._hitboxWindowUntil or attackNow < arg._nextKnifeWindowAttackAt then
-return
+if arg._hitboxWindowTarget ~= hitboxHead or attackNow >= arg._hitboxWindowUntil then
+    return
 end
-arg._nextKnifeWindowAttackAt = attackNow + 0.12
 local attackOrigin, attackDirection = buildFreshKnifeAttackPayload()
 if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
@@ -72789,23 +72601,18 @@ local okAttack, attackResult = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if not okAttack or attackResult == false then
-arg:_AbortBackstabAttempt(hitboxHead)
+    arg:_AbortBackstabAttempt(hitboxHead)
 end
 end
 elseif isKnife and arg._hitboxWindowTarget == hitboxHead and now2 >= arg._hitboxWindowUntil then
-    -- Inspect health at the end of the retry window, rather than stopping retries
-    -- on any early health change (which could come from another player).
-    refreshBackstabConfirmation(hitboxHead)
-    if arg._hitboxWindowConfirmed == true then
-        -- Keep the confirmed target identity until target switch/reset so its
-        -- cooldown cannot be mistaken for an unconfirmed stale attempt.
-        arg._nextKnifeWindowAttackAt = 0
-    else
-        -- A non-throwing remote call is not server acknowledgement. If no health
-        -- change arrived during the retry window, release the cooldown and prime
-        -- a fresh attempt instead of silently suppressing this target for 1.25s.
-        arg:_AbortBackstabAttempt(hitboxHead)
-    end
+    -- The request was sent successfully at the client boundary. Health deltas are
+    -- not attributable to this request, so end retries without treating unrelated
+    -- damage as an acknowledgement. Keep the 1.25s cooldown for this target.
+    arg._hitboxWindowUntil = -1
+    arg._hitboxWindowTarget = nil
+    arg._hitboxWindowAliveState = nil
+    arg._hitboxWindowInitialHealth = nil
+    arg._hitboxWindowConfirmed = false
 end
 
 local meleeDt = tonumber(arg2) or 0
@@ -72827,7 +72634,8 @@ if not arg._shootLock:ShouldFire(arg5 == true, meleeDt * meleeShootFrames) then
     return fn36(), nil, nil
 end
 
-if now2 < arg._attackCooldown and arg._attackCooldownTarget == hitboxHead then
+local targetCooldowns = arg._attackCooldownByTarget
+if type(targetCooldowns) == "table" and now2 < (targetCooldowns[hitboxHead] or -1) then
     return n, isKnife and fn37(v121, v122) or nil, nil
 end
 
@@ -72848,12 +72656,11 @@ if attackOrigin == nil or attackDirection == nil then
     arg:_AbortBackstabAttempt(hitboxHead)
     return
 end
-local healthBeforeAttack = finiteKnifeHealth(aliveState)
 local okAttack, attackResult = pcall(function()
 return arg4:HeavyAttackEncoded(attackOrigin, attackDirection, hitboxHead, tbl22)
 end)
 if okAttack and attackResult ~= false then
-arg:_RecordBackstab(hitboxHead, aliveState, healthBeforeAttack)
+arg:_RecordBackstab(hitboxHead, aliveState)
 else
 arg:_AbortBackstabAttempt(hitboxHead)
 end
@@ -72864,40 +72671,29 @@ arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
 arg._knifePrimePitch = nil
 arg._knifePrimeYaw = nil
-local genericInterval = fn39(arg4)
-if arg._genericMeleeItem == arg4 and now2 < arg._genericMeleeNextAttackAt then
-return n, nil, nil
-end
 return n, nil, function()
-local attackNow = os.clock()
-if arg._genericMeleeItem == arg4 and attackNow < arg._genericMeleeNextAttackAt then
-return
-end
-arg._genericMeleeItem = arg4
-arg._genericMeleeTarget = hitboxHead
-arg._genericMeleeNextAttackAt = attackNow + genericInterval
 local okAttack, attackResult = pcall(arg4.AttackEncoded, arg4, v126, v127, hitboxHead, tbl22)
 if not okAttack or attackResult == false then
-arg._genericMeleeNextAttackAt = os.clock() + 0.12
+    -- Let the existing ShootLock/game cooldown govern the next attempt.
+    -- Do not stack a second item-info throttle on top of it.
+    return
 end
 end
 end
 
-index2._RecordBackstab = function(arg, targetHitbox, targetAliveState, healthBeforeAttack)
+index2._RecordBackstab = function(arg, targetHitbox, targetAliveState)
 local now2 = os.clock()
 arg._hitboxWindowUntil = now2 + 0.625
 arg._hitboxWindowTarget = targetHitbox
 arg._hitboxWindowAliveState = targetAliveState
-local baselineHealth = tonumber(healthBeforeAttack)
-if type(baselineHealth) ~= "number" or baselineHealth ~= baselineHealth
-    or baselineHealth == math.huge or baselineHealth == -math.huge or baselineHealth < 0 then
-    baselineHealth = nil
-end
-arg._hitboxWindowInitialHealth = baselineHealth
+arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = now2 + 0.12
-arg._attackCooldown = now2 + 1.25
-arg._attackCooldownTarget = targetHitbox
+local cooldowns = arg._attackCooldownByTarget
+if type(cooldowns) ~= "table" then
+    cooldowns = setmetatable({}, { __mode = "k" })
+    arg._attackCooldownByTarget = cooldowns
+end
+cooldowns[targetHitbox] = now2 + 1.25
 end
 
 index2._AbortBackstabAttempt = function(arg, targetHitbox)
@@ -72907,11 +72703,12 @@ arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
 arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = 0
 end
-if targetHitbox == nil or arg._attackCooldownTarget == targetHitbox then
-arg._attackCooldown = -1
-arg._attackCooldownTarget = nil
+local cooldowns = arg._attackCooldownByTarget
+if type(cooldowns) == "table" and targetHitbox ~= nil then
+    cooldowns[targetHitbox] = nil
+elseif type(cooldowns) == "table" then
+    table.clear(cooldowns)
 end
 if targetHitbox == nil or arg._knifePrimeTarget == targetHitbox then
 arg._knifePrimeTarget = nil
@@ -72927,9 +72724,9 @@ arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
 arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = 0
-arg._attackCooldown = -1
-arg._attackCooldownTarget = nil
+if type(arg._attackCooldownByTarget) == "table" then
+    table.clear(arg._attackCooldownByTarget)
+end
 arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
@@ -72943,12 +72740,9 @@ arg._hitboxWindowTarget = nil
 arg._hitboxWindowAliveState = nil
 arg._hitboxWindowInitialHealth = nil
 arg._hitboxWindowConfirmed = false
-arg._nextKnifeWindowAttackAt = 0
-arg._genericMeleeNextAttackAt = 0
-arg._genericMeleeTarget = nil
-arg._genericMeleeItem = nil
-arg._attackCooldown = -1
-arg._attackCooldownTarget = nil
+if type(arg._attackCooldownByTarget) == "table" then
+    table.clear(arg._attackCooldownByTarget)
+end
 arg._lastKnifeTarget = nil
 arg._knifePrimeTarget = nil
 arg._knifePrimeUntil = 0
@@ -78148,7 +77942,7 @@ Crouch = 3,
 Slide = 4,
 Look = 5,
 ItemInput = 6,
-QuickAttack = v86[122],
+QuickAttack = 7,
 Equip = 8,
 }
 
@@ -78238,32 +78032,51 @@ fn39(arg, arg2.Index)
 end
 end
 
+local function fn53(arg, byteCount)
+local length = buffer.len(arg.Buf)
+if type(byteCount) ~= "number" or byteCount < 0 or byteCount % 1 ~= 0
+    or arg.Off < 0 or arg.Off + byteCount > length then
+    error("recording data is truncated or has an invalid read length", 2)
+end
+end
+
 local function fn45(arg)
+fn53(arg, 1)
 local v116 = buffer.readu8(arg.Buf, arg.Off)
-arg.Off = arg.Off + v86[63]
+arg.Off = arg.Off + 1
 return v116
 end
 
 local function fn46(arg)
+fn53(arg, 2)
 local v116 = buffer.readu16(arg.Buf, arg.Off)
 arg.Off = arg.Off + 2
 return v116
 end
 
 local function fn47(arg)
+fn53(arg, 4)
 local v116 = buffer.readu32(arg.Buf, arg.Off)
 arg.Off = arg.Off + 4
 return v116
 end
 
 local function fn48(arg)
+fn53(arg, 4)
 local v116 = buffer.readf32(arg.Buf, arg.Off)
 arg.Off = arg.Off + 4
+if v116 ~= v116 or math.abs(v116) == math.huge then
+    error("recording contains a non-finite number", 2)
+end
 return v116
 end
 
-local function fn49(arg)
+local function fn49(arg, maxLength)
 local v116 = fn46(arg)
+if v116 > (maxLength or 4096) then
+    error("recording string exceeds the allowed length", 2)
+end
+fn53(arg, v116)
 local v117 = buffer.readstring(arg.Buf, arg.Off, v116)
 arg.Off = arg.Off + v116
 return v117
@@ -78283,8 +78096,15 @@ end
 return CFrame.new(table.unpack(v116))
 end
 
-local function fn52(arg)
-local v116 = tbl20[fn45(arg)]
+local function fn52(arg, formatVersion)
+local eventCode = fn45(arg)
+if formatVersion == 1 and (eventCode == 7 or eventCode == 8) then
+    error("legacy recording uses an ambiguous QuickAttack/Equip event code; re-record this movement", 2)
+end
+local v116 = tbl20[eventCode]
+if v116 == nil then
+    error("recording contains an unknown action event code", 2)
+end
 if v116 == "Move" then
 return { Kind = "Move", Direction = fn50(arg) }
 end
@@ -78312,12 +78132,15 @@ end
 if v116 == "Jump" then
 return { Kind = "Jump" }
 end
-return { Kind = "Slide" }
+if v116 == "Slide" then
+    return { Kind = "Slide" }
+end
+error("recording contains an unsupported action event", 2)
 end
 
 tbl18.encode = function(arg)
 local tbl21 = { Buf = buffer.create(1024), Len = 0 }
-fn37(tbl21, 1)
+fn37(tbl21, 2)
 fn41(tbl21, arg.MapName)
 fn43(tbl21, arg.StartCFrame)
 fn42(tbl21, arg.DisplayPosition)
@@ -78373,10 +78196,15 @@ return v115.encode(buffer.tostring(v116))
 end
 
 tbl18.decode = function(arg)
-local tbl21 = { Buf = buffer.fromstring(v115.decode(arg)), Off = 0 }
-local v116 = fn45(tbl21)
-assert(v116 == 1, string.format("unsupported recording format version %s", tostring(v116)))
-local v117 = fn49(tbl21)
+assert(type(arg) == "string" and #arg <= 11200000, "recording payload is invalid or exceeds the encoded size limit")
+local decoded = v115.decode(arg)
+assert(type(decoded) == "string", "recording payload is invalid")
+assert(#decoded <= 8 * 1024 * 1024, "recording payload exceeds 8 MiB")
+local tbl21 = { Buf = buffer.fromstring(decoded), Off = 0 }
+local formatVersion = fn45(tbl21)
+assert(formatVersion == 1 or formatVersion == 2,
+    string.format("unsupported recording format version %s", tostring(formatVersion)))
+local v117 = fn49(tbl21, 256)
 local v118 = fn51(tbl21)
 local v119 = fn50(tbl21)
 local v120 = nil
@@ -78393,24 +78221,38 @@ end
 
 local tbl22 = {}
 
-for i = 1, fn47(tbl21) do
+local loadoutCount = fn47(tbl21)
+local remaining = buffer.len(tbl21.Buf) - tbl21.Off
+assert(loadoutCount <= 128 and loadoutCount <= math.floor(remaining / 2),
+    "recording loadout count is invalid")
+for i = 1, loadoutCount do
 local v122 = v86[34]
-tbl22[fn49(tbl21)] = v122
+local requirement = fn49(tbl21, 256)
+assert(requirement ~= "", "recording contains an empty loadout requirement")
+tbl22[requirement] = v122
 end
 
 local v122 = fn47(tbl21)
+remaining = buffer.len(tbl21.Buf) - tbl21.Off
+assert(v122 <= 50000 and v122 <= math.floor(remaining / 5),
+    "recording keypoint count is invalid")
 local v123 = table.create(v122)
 
 for i = 1, v122 do
-v123[i] = { Offset = fn48(tbl21), Action = fn52(tbl21) }
+v123[i] = { Offset = fn48(tbl21), Action = fn52(tbl21, formatVersion) }
 end
 
 local v124 = fn47(tbl21)
+remaining = buffer.len(tbl21.Buf) - tbl21.Off
+assert(v124 <= 100000 and v124 <= math.floor(remaining / 16),
+    "recording position count is invalid")
 local v125 = table.create(v124)
 
 for i = 1, v124 do
 v125[i] = { Offset = fn48(tbl21), Position = fn50(tbl21) }
 end
+
+assert(tbl21.Off == buffer.len(tbl21.Buf), "recording contains unexpected trailing data")
 
 return {
 MapName = v117,
@@ -80382,26 +80224,107 @@ fn36("Recording stopped")
 end
 
 index2._StartReplaying = function(arg, arg2)
+local function finiteNumber(value)
+    return type(value) == "number" and value == value and math.abs(value) < math.huge
+end
+local function finiteVector3(value)
+    return typeof(value) == "Vector3"
+        and finiteNumber(value.X) and finiteNumber(value.Y) and finiteNumber(value.Z)
+        and math.abs(value.X) <= 1000000 and math.abs(value.Y) <= 1000000 and math.abs(value.Z) <= 1000000
+end
+local function finiteCFrame(value)
+    if typeof(value) ~= "CFrame" then return false end
+    local ok, components = pcall(function() return { value:GetComponents() } end)
+    if not ok or type(components) ~= "table" or #components ~= 12 then return false end
+    for _, component in ipairs(components) do
+        if not finiteNumber(component) or math.abs(component) > 1000000 then return false end
+    end
+    return true
+end
+
 local v123 = arg:_ResolveStartContext()
 if v123 == nil then
 return false
 end
-if type(arg2) ~= "table" or typeof(arg2.StartCFrame) ~= "CFrame" or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or type(arg2.Positions) ~= "table" then
-fn36("Recording data is invalid")
-return false
+if type(arg2) ~= "table"
+    or type(arg2.MapName) ~= "string" or arg2.MapName == "" or #arg2.MapName > 256
+    or not finiteCFrame(arg2.StartCFrame)
+    or not finiteVector3(arg2.DisplayPosition)
+    or type(arg2.Keypoints) ~= "table" or #arg2.Keypoints == 0 or #arg2.Keypoints > 50000
+    or type(arg2.Positions) ~= "table" or #arg2.Positions > 100000
+    or type(arg2.LoadoutRequirementSet) ~= "table" then
+    fn36("Recording data is invalid")
+    return false
 end
+
+local loadoutCount = 0
+for requirement, enabled in pairs(arg2.LoadoutRequirementSet) do
+    loadoutCount += 1
+    if loadoutCount > 128 or type(requirement) ~= "string" or requirement == ""
+        or #requirement > 256 or enabled ~= true then
+        fn36("Recording data is invalid")
+        return false
+    end
+end
+if arg2.StartEquippedIndex ~= nil and (not finiteNumber(arg2.StartEquippedIndex)
+    or arg2.StartEquippedIndex < 0 or arg2.StartEquippedIndex > 4294967295
+    or arg2.StartEquippedIndex % 1 ~= 0) then
+    fn36("Recording data is invalid")
+    return false
+end
+if arg2.StartEquipCooldown ~= nil and (not finiteNumber(arg2.StartEquipCooldown)
+    or arg2.StartEquipCooldown < 0 or arg2.StartEquipCooldown > 3600) then
+    fn36("Recording data is invalid")
+    return false
+end
+
+local lastValidatedKeypointOffset = -math.huge
 for _, keypoint in ipairs(arg2.Keypoints) do
-if type(keypoint) ~= "table" or type(keypoint.Offset) ~= "number" or keypoint.Offset ~= keypoint.Offset or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
-fn36("Recording data is invalid")
-return false
+    if type(keypoint) ~= "table" or not finiteNumber(keypoint.Offset)
+        or keypoint.Offset < 0 or keypoint.Offset > 3600
+        or keypoint.Offset < lastValidatedKeypointOffset
+        or type(keypoint.Action) ~= "table" or type(keypoint.Action.Kind) ~= "string" then
+        fn36("Recording data is invalid")
+        return false
+    end
+    lastValidatedKeypointOffset = keypoint.Offset
+    local action = keypoint.Action
+    local actionKind = action.Kind
+    if actionKind == "Move" then
+        if not finiteVector3(action.Direction) then fn36("Recording data is invalid"); return false end
+    elseif actionKind == "Crouch" then
+        if type(action.Crouching) ~= "boolean" then fn36("Recording data is invalid"); return false end
+    elseif actionKind == "Look" then
+        if not finiteCFrame(action.CFrame) then fn36("Recording data is invalid"); return false end
+    elseif actionKind == "ItemInput" then
+        if type(action.InputType) ~= "string" or action.InputType == "" or #action.InputType > 128 then
+            fn36("Recording data is invalid"); return false
+        end
+    elseif actionKind == "QuickAttack" then
+        if type(action.AttackType) ~= "string" or action.AttackType == "" or #action.AttackType > 128 then
+            fn36("Recording data is invalid"); return false
+        end
+    elseif actionKind == "Equip" then
+        if not finiteNumber(action.Index) or action.Index < 0 or action.Index > 4294967295 or action.Index % 1 ~= 0 then
+            fn36("Recording data is invalid"); return false
+        end
+    elseif actionKind ~= "Jump" and actionKind ~= "Slide" then
+        fn36("Recording data is invalid")
+        return false
+    end
 end
-end
+
+local lastValidatedPositionOffset = -math.huge
 for _, sample in ipairs(arg2.Positions) do
-if type(sample) ~= "table" or type(sample.Offset) ~= "number" or typeof(sample.Position) ~= "Vector3" then
-fn36("Recording data is invalid")
-return false
+    if type(sample) ~= "table" or not finiteNumber(sample.Offset)
+        or sample.Offset < 0 or sample.Offset > 3600
+        or sample.Offset < lastValidatedPositionOffset or not finiteVector3(sample.Position) then
+        fn36("Recording data is invalid")
+        return false
+    end
+    lastValidatedPositionOffset = sample.Offset
 end
-end
+
 local kind = arg._state.Kind
 
 if kind ~= "Idle" then
@@ -81286,44 +81209,13 @@ end
 
 
 
-print("[Crefy Premium] waiting for client to come alive ...")
-local _wt1 = os.clock()
-local _clientReady = false
-while os.clock() - _wt1 < 45 do
+-- Required game modules/controllers were already checked by the startup guard.
+-- Character spawn and an arbitrary ScreenGui count are intentionally not boot gates:
+-- the player may be dead/respawning and the UI can still be created by this script.
 if K.destroyed then return end
-local _ch = _lp.Character
-local _pg0 = _lp:FindFirstChild("PlayerGui")
-local _spawnedOk = _ch ~= nil and _ch:FindFirstChildOfClass("Humanoid") ~= nil
-local _uiOk = false
-if _pg0 then
-local _n = 0
-for _, _c in ipairs(_pg0:GetChildren()) do
-if _c:IsA("ScreenGui") then _n = _n + 1 end
-end
-_uiOk = _n >= 2
-end
-if _spawnedOk and _uiOk then
-_clientReady = true
-break
-end
-task.wait(1)
-end
-if K.destroyed then return end
--- Revalidate readiness after the wait rather than booting unconditionally when
--- the 45-second deadline expires. The UI/player may also have changed meanwhile.
-local _finalCharacter = _lp.Character
-local _finalPlayerGui = _lp:FindFirstChild("PlayerGui")
-local _finalSpawnedOk = _finalCharacter ~= nil
-    and _finalCharacter:FindFirstChildOfClass("Humanoid") ~= nil
-local _finalGuiCount = 0
-if _finalPlayerGui then
-    for _, _gui in ipairs(_finalPlayerGui:GetChildren()) do
-        if _gui:IsA("ScreenGui") then _finalGuiCount = _finalGuiCount + 1 end
-    end
-end
-local _finalUiOk = _finalGuiCount >= 2
-if not _clientReady or not _finalSpawnedOk or not _finalUiOk then
-    warn("[Crefy Premium] ABORTED: client did not reach the required character/UI ready state within 45s.")
+local _finalPlayerGui = _lp:FindFirstChildOfClass("PlayerGui") or _lp:FindFirstChild("PlayerGui")
+if _finalPlayerGui == nil then
+    warn("[Crefy Premium] ABORTED: PlayerGui disappeared before bootstrap.")
     cfMRBS(false)
     pcall(K.Unload)
     return
@@ -81350,14 +81242,4 @@ if not bootOk then
     return
 end
 cfMRBS(true)
-task.spawn(function()
-task.wait(60)
-if K.destroyed then return end
-local _pg3 = _lp:FindFirstChild("PlayerGui")
-local _ls = _pg3 and _pg3:FindFirstChild("LoadingScreen")
-if _ls and _ls:IsA("LayerCollector") and _ls.Enabled then
-print("[Crefy Premium] please rejoin it broke lolz.")
-_ls.Enabled = false
-end
-end)
 end)
